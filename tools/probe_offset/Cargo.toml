@@ -1,0 +1,15 @@
+[package]
+name = "probe-offset"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "probe-offset"
+path = "src/main.rs"
+
+[dependencies]
+vrf-bitio = { path = "../../crates/vrf-bitio" }
+vrf-container = { path = "../../crates/vrf-container" }
+vrf-frame = { path = "../../crates/vrf-frame" }
+vrf-net = { path = "../../crates/vrf-net" }
+vrf-schema = { path = "../../crates/vrf-schema" }
