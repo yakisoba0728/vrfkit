@@ -265,6 +265,137 @@ impl NetGuidCache {
         None
     }
 
+    /// Resolve a bare instance name to a `_ClassNetCache` export group.
+    ///
+    /// This bridges the gap between actor/subobject instance names (e.g.
+    /// `BombDestination_A`, `ForceModuleManager`, `AudDeadeyeVOComponent`) and
+    /// their ClassNetCache groups in the replay schema. The replay declares
+    /// groups like `BombDestination_C_ClassNetCache` or
+    /// `ForceModuleManagerComponent_ClassNetCache` but the wire only gives us
+    /// the bare instance name.
+    ///
+    /// # Strategy
+    ///
+    /// For each candidate stem (starting with the full name, then progressively
+    /// stripping the last `_SEGMENT`), try these leaf lookups in `by_leaf`:
+    ///
+    /// 1. `stem_ClassNetCache` (exact class, e.g. `AresAbilitySystem` matches
+    ///    `AresAbilitySystemComponent_ClassNetCache` via step 2)
+    /// 2. `stemComponent_ClassNetCache` (Unreal components often drop the suffix
+    ///    in instance names)
+    /// 3. `stem_C_ClassNetCache` (Blueprint classes use `_C` to denote the
+    ///    compiled class)
+    ///
+    /// The capacity comes from the matched group's declared
+    /// `NetFieldExportsLength` (never guessed). Only unambiguous matches (one
+    /// group per leaf) are accepted.
+    ///
+    /// # Why instance-suffix stripping is needed
+    ///
+    /// Unreal appends instance identifiers to actor names: `BombDestination_A`,
+    /// `WindowShieldA1`, `RespawningWallPlate_2`, `AmbientAudio_Ascent_*`. The
+    /// class name is the stem before the instance suffix. Stripping one
+    /// underscore segment at a time from the right correctly recovers the class
+    /// for all observed patterns without hardcoding any actor or map name.
+    #[must_use]
+    pub fn resolve_cnc_for_instance_name(&self, bare_name: &str) -> Option<&NetFieldExportGroup> {
+        // Only bare names (no path separators).
+        if bare_name.contains('/') || bare_name.contains('.') || bare_name.contains(':') {
+            return None;
+        }
+
+        // Try with the full name first, then progressively shorter stems.
+        let mut stem = bare_name;
+        loop {
+            if let Some(group) = self.try_cnc_leaf_candidates(stem) {
+                return Some(group);
+            }
+
+            // Strip the last underscore-delimited segment to get a shorter stem.
+            // e.g. "BombDestination_A" -> "BombDestination"
+            //      "AmbientAudio_Ascent_Defender_SoundA_003" -> ...
+            match stem.rfind('_') {
+                Some(pos) if pos > 0 => {
+                    stem = &bare_name[..pos];
+                }
+                _ => break,
+            }
+        }
+
+        // Final fallback: strip trailing digits (handles WindowShieldA1 ->
+        // WindowShield, MeleeAttackState1 -> MeleeAttackState). Only attempt
+        // this if the name does NOT end with an underscore-separated segment
+        // (those were already tried above).
+        let trimmed = bare_name.trim_end_matches(|c: char| c.is_ascii_digit());
+        if trimmed.len() < bare_name.len() && !trimmed.is_empty() {
+            // Also strip a trailing uppercase letter that acts as a site/variant
+            // marker (e.g. WindowShieldA1 -> WindowShieldA -> WindowShield).
+            let trimmed2 = trimmed.trim_end_matches(|c: char| c.is_ascii_uppercase());
+            if trimmed2.len() < trimmed.len() && !trimmed2.is_empty() {
+                if let Some(group) = self.try_cnc_leaf_candidates(trimmed2) {
+                    return Some(group);
+                }
+            }
+            if trimmed != bare_name {
+                if let Some(group) = self.try_cnc_leaf_candidates(trimmed) {
+                    return Some(group);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Try ClassNetCache leaf candidates for a given stem.
+    ///
+    /// Checks `stem_ClassNetCache`, `stemComponent_ClassNetCache`, and
+    /// `stem_C_ClassNetCache` in the leaf index.
+    fn try_cnc_leaf_candidates(&self, stem: &str) -> Option<&NetFieldExportGroup> {
+        // Reusable buffer for candidate construction.
+        let base_cap = stem.len() + "_ClassNetCache".len() + "Component".len();
+        let mut candidate = String::with_capacity(base_cap);
+
+        // 1. stem_ClassNetCache
+        candidate.push_str(stem);
+        candidate.push_str("_ClassNetCache");
+        if let Some(group) = self.lookup_cnc_leaf(&candidate) {
+            return Some(group);
+        }
+
+        // 2. stemComponent_ClassNetCache
+        candidate.clear();
+        candidate.push_str(stem);
+        candidate.push_str("Component_ClassNetCache");
+        if let Some(group) = self.lookup_cnc_leaf(&candidate) {
+            return Some(group);
+        }
+
+        // 3. stem_C_ClassNetCache
+        candidate.clear();
+        candidate.push_str(stem);
+        candidate.push_str("_C_ClassNetCache");
+        if let Some(group) = self.lookup_cnc_leaf(&candidate) {
+            return Some(group);
+        }
+
+        None
+    }
+
+    /// Look up a CNC leaf in by_leaf, accepting only unambiguous matches whose
+    /// group path actually ends with `_ClassNetCache`.
+    fn lookup_cnc_leaf(&self, leaf: &str) -> Option<&NetFieldExportGroup> {
+        let &idx = self.by_leaf.get(leaf)?;
+        if idx == Self::AMBIGUOUS_LEAF {
+            return None;
+        }
+        let group = self.groups.get(idx)?;
+        if group.path.ends_with("_ClassNetCache") {
+            Some(group)
+        } else {
+            None
+        }
+    }
+
     /// Register the leaf component of a group path in the `by_leaf` index.
     ///
     /// Extracts the trailing class name after the last `.` in the path. If

@@ -741,4 +741,233 @@ mod tests {
         ));
         assert!(cache.unique_leaf_match("NonexistentThing").is_none());
     }
+
+    // -- resolve_cnc_for_instance_name tests --
+
+    #[test]
+    fn cnc_resolve_exact_class_name() {
+        // AresAbilitySystem -> AresAbilitySystemComponent_ClassNetCache (Component suffix)
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Script/ShooterGame.AresAbilitySystemComponent_ClassNetCache".into(),
+            80,
+            1,
+        ));
+        let g = cache
+            .resolve_cnc_for_instance_name("AresAbilitySystem")
+            .unwrap();
+        assert_eq!(
+            g.path,
+            "/Script/ShooterGame.AresAbilitySystemComponent_ClassNetCache"
+        );
+        assert_eq!(g.len(), 1);
+    }
+
+    #[test]
+    fn cnc_resolve_component_suffix() {
+        // ForceModuleManager -> ForceModuleManagerComponent_ClassNetCache
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Script/ShooterGame.ForceModuleManagerComponent_ClassNetCache".into(),
+            81,
+            4,
+        ));
+        let g = cache
+            .resolve_cnc_for_instance_name("ForceModuleManager")
+            .unwrap();
+        assert_eq!(
+            g.path,
+            "/Script/ShooterGame.ForceModuleManagerComponent_ClassNetCache"
+        );
+        assert_eq!(g.len(), 4);
+    }
+
+    #[test]
+    fn cnc_resolve_blueprint_c_suffix() {
+        // AudDeadeyeVOComponent -> AudDeadeyeVOComponent_C_ClassNetCache
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Game/Audio/VOComponent/AudDeadeyeVoComponent.AudDeadeyeVOComponent_C_ClassNetCache"
+                .into(),
+            82,
+            3,
+        ));
+        let g = cache
+            .resolve_cnc_for_instance_name("AudDeadeyeVOComponent")
+            .unwrap();
+        assert!(g.path.ends_with("_ClassNetCache"));
+        assert_eq!(g.len(), 3);
+    }
+
+    #[test]
+    fn cnc_resolve_instance_suffix_stripping() {
+        // BombDestination_A -> strip _A -> BombDestination -> _C_ClassNetCache
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Game/GameModes/Bomb/BombDestination.BombDestination_C_ClassNetCache".into(),
+            83,
+            3,
+        ));
+        let g = cache
+            .resolve_cnc_for_instance_name("BombDestination_A")
+            .unwrap();
+        assert_eq!(
+            g.path,
+            "/Game/GameModes/Bomb/BombDestination.BombDestination_C_ClassNetCache"
+        );
+        // Also works for _B variant:
+        let g2 = cache
+            .resolve_cnc_for_instance_name("BombDestination_B")
+            .unwrap();
+        assert_eq!(g.path, g2.path);
+    }
+
+    #[test]
+    fn cnc_resolve_trailing_digit_strip() {
+        // WindowShieldA1 -> strip digits -> WindowShieldA -> strip uppercase ->
+        // WindowShield -> _C_ClassNetCache
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Game/Interactable/WindowShield.WindowShield_C_ClassNetCache".into(),
+            84,
+            5,
+        ));
+        let g = cache
+            .resolve_cnc_for_instance_name("WindowShieldA1")
+            .unwrap();
+        assert_eq!(
+            g.path,
+            "/Game/Interactable/WindowShield.WindowShield_C_ClassNetCache"
+        );
+    }
+
+    #[test]
+    fn cnc_resolve_multi_segment_strip() {
+        // AmbientAudio_Ascent_Defender_SoundA_003 -> strips segments until
+        // AmbientAudio matches via _C_ClassNetCache
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Game/Audio/Core/AmbientAudio.AmbientAudio_C_ClassNetCache".into(),
+            85,
+            1,
+        ));
+        let g = cache
+            .resolve_cnc_for_instance_name("AmbientAudio_Ascent_Defender_SoundA_003")
+            .unwrap();
+        assert_eq!(
+            g.path,
+            "/Game/Audio/Core/AmbientAudio.AmbientAudio_C_ClassNetCache"
+        );
+    }
+
+    #[test]
+    fn cnc_resolve_variant_suffix() {
+        // MeleeAttackState_Alt -> strip _Alt -> MeleeAttackState ->
+        // Component_ClassNetCache
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Script/ShooterGame.MeleeAttackStateComponent_ClassNetCache".into(),
+            86,
+            2,
+        ));
+        let g = cache
+            .resolve_cnc_for_instance_name("MeleeAttackState_Alt")
+            .unwrap();
+        assert_eq!(
+            g.path,
+            "/Script/ShooterGame.MeleeAttackStateComponent_ClassNetCache"
+        );
+    }
+
+    #[test]
+    fn cnc_resolve_no_match_returns_none() {
+        // AbilitiesAndBuffsComponent has no CNC group in schema -- must still
+        // fail (return None) so the oracle counts it as function_count=0.
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Script/ShooterGame.SomethingUnrelated_ClassNetCache".into(),
+            87,
+            5,
+        ));
+        assert!(
+            cache
+                .resolve_cnc_for_instance_name("AbilitiesAndBuffsComponent")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn cnc_resolve_rejects_qualified_paths() {
+        // Fully-qualified paths must not trigger instance name resolution.
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Script/ShooterGame.TestComponent_ClassNetCache".into(),
+            88,
+            2,
+        ));
+        assert!(
+            cache
+                .resolve_cnc_for_instance_name("/Script/ShooterGame.Test")
+                .is_none()
+        );
+        assert!(
+            cache
+                .resolve_cnc_for_instance_name("ShooterGame.Test")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn cnc_resolve_ambiguous_returns_none() {
+        // If two groups share the same CNC leaf, resolution must return None
+        // (ambiguous) rather than guessing.
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Script/A.SharedName_ClassNetCache".into(),
+            89,
+            3,
+        ));
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Script/B.SharedName_ClassNetCache".into(),
+            90,
+            5,
+        ));
+        assert!(cache.resolve_cnc_for_instance_name("SharedName").is_none());
+    }
+
+    #[test]
+    fn cnc_resolve_grenade_indicator_bounce() {
+        // GrenadeExplodeIndicator_Bounce -> strip _Bounce ->
+        // GrenadeExplodeIndicator -> _C_ClassNetCache
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Game/Abilities/GrenadeExplodeIndicator.GrenadeExplodeIndicator_C_ClassNetCache"
+                .into(),
+            91,
+            1,
+        ));
+        let g = cache
+            .resolve_cnc_for_instance_name("GrenadeExplodeIndicator_Bounce")
+            .unwrap();
+        assert!(g.path.ends_with("_ClassNetCache"));
+    }
+
+    #[test]
+    fn cnc_resolve_switch_exact_name() {
+        // Switch_BlackMarket_2 -> first tries full name with _C_ClassNetCache
+        // suffix which matches directly without stripping.
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Game/Maps/Switch_BlackMarket_2.Switch_BlackMarket_2_C_ClassNetCache".into(),
+            92,
+            4,
+        ));
+        let g = cache
+            .resolve_cnc_for_instance_name("Switch_BlackMarket_2")
+            .unwrap();
+        assert_eq!(
+            g.path,
+            "/Game/Maps/Switch_BlackMarket_2.Switch_BlackMarket_2_C_ClassNetCache"
+        );
+    }
 }

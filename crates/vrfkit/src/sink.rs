@@ -435,13 +435,15 @@ impl<'a> ExportSink<'a> {
     /// Determine function_count for a ClassNetCache block.
     ///
     /// The function count equals `NetFieldExportGroup.len()` for the matching
-    /// ClassNetCache group. The C# parser uses `ReadSerializedInt(FunctionsByHandle.Length)`
-    /// where `FunctionsByHandle` is sized to `replayGroup.NetFieldExportsLength` ??    /// i.e. the number of declared export slots in the ClassNetCache group.
+    /// ClassNetCache group. The C# parser uses
+    /// `ReadSerializedInt(FunctionsByHandle.Length)` where `FunctionsByHandle`
+    /// is sized to `replayGroup.NetFieldExportsLength`, i.e. the number of
+    /// declared export slots in the ClassNetCache group.
     ///
     /// If the group cannot be resolved we return 0, which causes the RPC parser
-    /// to skip the bits but NOT silently drop them ??the caller still records
-    /// the raw payload.
-    fn resolve_function_count(&self, header: &ContentBlockHeader, channel_index: u32) -> u32 {
+    /// to skip the bits but NOT silently drop them. The caller still records the
+    /// raw payload and the oracle counts this as a stream failure.
+    fn resolve_function_count(&mut self, header: &ContentBlockHeader, channel_index: u32) -> u32 {
         // Fast path: current_group_path was already resolved to a CNC group.
         if let Some(group) = self.cache.get_group_by_path(&self.current_group_path) {
             if group.path.ends_with("_ClassNetCache") {
@@ -476,6 +478,38 @@ impl<'a> ExportSink<'a> {
                         }
                     }
                 }
+            }
+        }
+
+        // Schema-driven fallback: when the resolved path is a bare instance
+        // name (no path separators), search the replay's own ClassNetCache
+        // groups for one whose leaf matches the instance name after applying
+        // Unreal naming conventions.
+        //
+        // This recovers blocks for static actors (BombDestination_A,
+        // WindowShieldA1) and stably-named subobjects (ForceModuleManager,
+        // AudDeadeyeVOComponent) that have no archetype GUID or class net GUID
+        // on the wire. The capacity comes from the matched group's declared
+        // NetFieldExportsLength -- never guessed.
+        //
+        // The C# reference parser also fails on these same blocks. This lookup
+        // goes beyond C# by leveraging the replay's own declared schema.
+        if !self.current_group_path.contains('/')
+            && !self.current_group_path.contains('.')
+            && !self.current_group_path.contains(':')
+            && !self.current_group_path.starts_with('<')
+        {
+            if let Some(group) = self
+                .cache
+                .resolve_cnc_for_instance_name(&self.current_group_path)
+            {
+                let resolved_path = group.path.clone();
+                let len = group.len();
+                // Update current_group_path so downstream field/RPC handle
+                // lookups use the correct group. Without this, resolved RPCs
+                // would emit handle-indexed names instead of proper field names.
+                self.current_group_path = resolved_path;
+                return len;
             }
         }
 
