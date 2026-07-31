@@ -1,0 +1,24 @@
+[package]
+name = "vrfkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI for inspecting, validating, and exporting VALORANT replay files"
+
+[[bin]]
+name = "vrfkit"
+path = "src/main.rs"
+
+[dependencies]
+vrf-bitio = { workspace = true }
+vrf-transform = { workspace = true }
+vrf-container = { workspace = true }
+vrf-schema = { workspace = true }
+vrf-net = { workspace = true }
+vrf-export = { workspace = true }
+vrf-frame = { workspace = true }
+vrf-movement = { workspace = true }
+vrf-decode = { workspace = true }
+thiserror = { workspace = true }
