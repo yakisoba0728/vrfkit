@@ -51,7 +51,7 @@ VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
 ..Interactions[].ReceivedInteractions[].Regions[].Damage  390    390  IDENTICAL
 ```
 
-**추출량 — 우리가 더 많습니다.** (그룹, 필드) 쌍이 vrfkit 전용 1,450개 / 양쪽 302개 / C# 전용 71개이고, C# 전용 71개 중 49개는 명명 차이입니다(C#은 `CrouchHeld`, 우리는 와이어 이름 `bCrouchHeld`). RPC도 334,641개 대 230,893개로 45% 많습니다 — C#은 디스크립터 없는 RPC를 버립니다.
+**추출량 — 우리가 더 많습니다.** (그룹, 필드) 쌍이 vrfkit 전용 1,450개 / 양쪽 302개 / C# 전용 71개이고, C# 전용 71개 중 49개는 명명 차이입니다(C#은 `CrouchHeld`, 우리는 와이어 이름 `bCrouchHeld`). RPC도 342,735개 대 230,893개로 48% 많습니다 — C#은 디스크립터 없는 RPC를 버립니다.
 
 **RPC 파라미터 — 값 일치, 그리고 기존 파서가 놓친 킬 13개 복구.** RPC 33만 개는 파라미터 페이로드가 통째로 raw였는데, 리플레이가 선언하는 파라미터 스키마 84개 그룹(`<Class>:<Function>` 경로)을 써서 풀었습니다. `tools/compare_rpc_params.py`로 대조:
 
@@ -75,11 +75,16 @@ MulticastNotifyKilledEnemy.KillerCharacter       119  132  우리가 +13
 ```
 succeeded: 215/215        failed: 0
 branches : 215  ++Ares-Core+release-13.01
-pass rate: min 100.000000%  median 100.000000%  max 100.000000%
-totals   : 136,545,822 content blocks / 98,883,979 fields / 73,742,672 RPCs
-           malformed 0        skipped bits 3,671
-elapsed  : 303s (1.41s per replay)
+pass rate: min 97.49%  median ~98.9%  max 99.99%
+totals   : 136,545,822 content blocks / 98,883,979 fields / 75,571,092 RPCs
+           malformed framing 0        unattributed 1,972,080,670 bits
 ```
+
+`malformed framing 0` 은 컨테이너·번치·콘텐츠 블록 프레이밍이 전 코퍼스에서 한 건도 어긋나지 않는다는 뜻입니다. 통과율이 100%가 아닌 이유는 **프레이밍이 아니라 귀속**입니다. 블록은 정확히 잘라내지만, 일부는 어느 `_ClassNetCache` 그룹의 것인지 확정할 수 없어 handle 폭을 모르고, 그래서 레코드로 풀지 못합니다.
+
+이 수치는 한때 100%로 적혀 있었습니다. 그건 더 정확해서가 아니라 **틀렸기 때문**입니다. 당시 코드는 그룹을 못 찾은 블록을 조용히 버리면서 아무 카운터도 올리지 않았고, 오라클은 자기가 버린 데이터 위에서 만점을 보고했습니다. 그 경로를 드러내니 한 리플레이에서 14,459블록 18,831,872비트, 코퍼스 전체로 2,276,559,577비트가 나타났습니다. 이후 액터 인스턴스 이름에서 클래스 캐시 그룹을 찾아내 3억 비트가량을 회수했고, 위 숫자가 남은 양입니다.
+
+남은 것의 경계는 명확합니다. **잔여 비트의 91.7%가 `AbilitiesAndBuffsComponent`** 이고, 리플레이가 그 클래스의 캐시 그룹을 아예 선언하지 않으므로 어떤 조회로도 닿을 수 없습니다. 나머지는 `MeleeAttackState1`~`4`(끝의 숫자가 인스턴스 접미사가 아니라 서로 다른 클래스), `RespawningWallPlate2_7`, 이름에 공백이 든 소수 항목입니다. 이 블록들도 `raw_bits` 로는 전부 남습니다.
 
 ### 오래 걸린 버그 하나
 
@@ -99,21 +104,23 @@ elapsed  : 303s (1.41s per replay)
 
 `PlayerController`는 `bReplicateMovement = false`라서 서버가 velocity를 아예 직렬화하지 않습니다 — "있지만 빈 값"이 아니라 필드가 와이어에 없습니다. 첫 번치는 `bHasPackageMapExports = false`라 경로가 아직 등록되지 않아 아키타입으로 판별할 수 없고, dynamic GUID는 0이 아닌 짝수이므로 2가 최솟값이며 리플레이가 처음 여는 dynamic 액터는 항상 리플레이 컨트롤러입니다.
 
-고친 결과: malformed 215 → 0, skipped bits 153,096 → 3,671, 그리고 리플레이당 10개씩 총 2,150개 블록이 새로 디코드됩니다.
+고친 결과: malformed 215 → 0, 그리고 리플레이당 10개씩 총 2,150개 블록이 새로 디코드됩니다. 당시 남은 미소모 비트는 3,671개까지 줄었고, 그 4건도 뒤에 나오는 handle 최소폭 문제로 밝혀져 0이 되었습니다.
 
 ## 타입 오버레이
 
 원시 비트는 항상 내보내고, 타입을 아는 필드는 `value_*` 컬럼을 **추가로** 채웁니다. 타입을 몰라도, 디코드가 실패해도 `raw_bits`는 남습니다.
 
-오버레이 테이블은 C# 디스크립터에서 기계적으로 추출합니다(`tools/extract_descriptors.py`) — 106개 그룹 929개 필드. 손으로 옮기지 않는 이유는 S-box·골든 벡터와 같습니다.
+오버레이 테이블은 C# 디스크립터에서 기계적으로 추출합니다(`tools/extract_descriptors.py`) — 123개 그룹 1,054개 필드. 손으로 옮기지 않는 이유는 S-box·골든 벡터와 같습니다.
 
 `02d4d478` 기준:
 
 ```
-Decoded OK:   240,293      Decode errors:      0
-Raw/Skip:      47,143      Not in table: 108,664
-No field name: 33,527      Coverage:       55.9%
+Decoded OK:   352,702      Decode errors:      0
+Raw/Skip:      72,519      Not in table: 530,229
+No field name: 33,529      Typed:          35.7%
 ```
+
+`Typed` 는 내보낸 1,239,406행 중 `value_*` 컬럼이 채워진 비율입니다. 분모에 RPC 파라미터가 전부 들어가서 낮게 나옵니다 — `Not in table` 530,229건의 대부분이 C# 디스크립터가 없는 RPC 파라미터와 398개 그룹입니다. 타입을 모르는 행도 `raw_bits` 는 그대로 실려 나가므로 손실이 아니라 **미해석**입니다.
 
 **디코드 에러 0**은 표본 20개 리플레이에서도 유지됩니다(커버리지 50.9~59.1%, 중앙값 55.2%). 여기까지 오는 과정에서 와이어와 C# 선언이 어긋나는 지점 세 종류를 찾아 `tools/apply_type_corrections.py`에 근거와 함께 기록했습니다.
 
@@ -186,6 +193,17 @@ XOR 처리, 그리고 S-box 테이블 자체까지.
 
 결과적으로 새 빌드를 붙이는 일은 `SeededTransform` 구현 하나다. 상수 2개와 워드 함수
 3개(`word64` / `word32` / `byte`)를 쓰면 끝이고, 나머지는 공용이다.
+
+**13.02는 실측으로 확인했다.** 코퍼스 215개는 전부 13.01이라 13.02 경로는 골든 벡터로만
+검증돼 있었는데, 로컬 클라이언트가 남긴 13.02 리플레이 2개를 실제로 통과시켰다.
+
+```
+2a09e682 (55 MB)   686,559 blocks   507,642 fields   370,896 RPCs   pass 97.96%
+43d0f434 (85 MB) 1,004,465 blocks   727,996 fields   568,226 RPCs   pass 99.18%
+```
+
+둘 다 **malformed framing 0, transform 실패 0** 이다. 13.01과 같은 수준이며, 잔여분도
+같은 귀속 문제다. 기존 파이프라인이 쓰던 C# 파서는 이 빌드를 아예 거부한다.
 
 S-box 768바이트는 빌드 간 공유되므로 **바이너리에서 변환 함수를 찾는 시그니처**로도
 쓸 수 있다.
