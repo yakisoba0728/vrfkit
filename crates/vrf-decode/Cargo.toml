@@ -1,0 +1,12 @@
+[package]
+name = "vrf-decode"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Type-aware field decoders for Unreal Engine replay primitives"
+
+[dependencies]
+vrf-bitio = { workspace = true }
+thiserror = { workspace = true }
