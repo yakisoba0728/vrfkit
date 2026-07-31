@@ -1,0 +1,17 @@
+[package]
+name = "vrf-container"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The .vrf container: replay info, header, chunk stream and Oodle decompression"
+
+[dependencies]
+vrf-bitio = { workspace = true }
+thiserror = { workspace = true }
+# Clean-room Kraken/Mermaid/Selkie/Leviathan decoder, MIT licensed.
+#
+# Deliberately NOT `oozle`, which implements the same algorithms but is
+# GPL-3.0-or-later: linking it would force this crate's licence to change.
+oozextract = "0.5.4"
