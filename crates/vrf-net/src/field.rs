@@ -292,12 +292,13 @@ mod tests {
 
     #[test]
     fn class_net_cache_zero_functions_skips() {
+        // function_count=0 means the group could not be resolved. The parser
+        // must return Err so the caller can count skipped bits honestly.
         let data = [0xFF; 4];
         let mut reader = BitReader::new(&data);
         let mut sink = RecordingSink::default();
-        let count = parse_class_net_cache(&mut reader, 0, &mut sink).unwrap();
-        assert_eq!(count, 0);
-        assert!(reader.at_end());
+        assert!(parse_class_net_cache(&mut reader, 0, &mut sink).is_err());
+        assert!(sink.rpcs.is_empty());
     }
 
     /// Capacity-1 groups must consume exactly 1 bit for the handle (the
