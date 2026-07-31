@@ -1,0 +1,13 @@
+[package]
+name = "vrf-frame"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "DemoFrame iteration: decompressed replay-data chunk → (time_ms, packet) sequence"
+
+[dependencies]
+vrf-bitio = { workspace = true }
+vrf-schema = { workspace = true }
+thiserror = { workspace = true }
