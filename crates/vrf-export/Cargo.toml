@@ -1,0 +1,16 @@
+[package]
+name = "vrf-export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Columnar (Parquet) output for decoded replay records"
+
+[dependencies]
+thiserror = { workspace = true }
+# arrow and parquet release in lockstep; keep the two majors identical or the
+# ArrowWriter types will not line up.
+arrow-array = "59"
+arrow-schema = "59"
+parquet = { version = "59", default-features = false, features = ["arrow", "zstd", "snap"] }
