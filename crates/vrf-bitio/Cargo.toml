@@ -1,0 +1,12 @@
+[package]
+name = "vrf-bitio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "LSB-first bit reader and Unreal Engine wire-format primitives for .vrf replays"
+
+[dependencies]
+
+[dev-dependencies]
