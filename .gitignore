@@ -1,0 +1,29 @@
+/target
+**/*.rs.bk
+
+# tools/probe_offset is a standalone cargo project (not a workspace member) so it
+# builds into its own target directory.
+tools/probe_offset/target/
+
+# Python bytecode from the generators in tools/.
+__pycache__/
+*.py[cod]
+
+# Working copy of the upstream C# sources, kept only so the generators in tools/
+# can be re-run. Not vendored: the generated outputs (S-box tables, golden
+# vectors) are committed instead, and README documents how to refresh them.
+/.refsrc/
+
+# Replay binaries and parsed output are large and user-specific.
+*.vrf
+/out/
+*.parquet
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Per-agent build directories used when several tasks compile in parallel.
+/target-*/

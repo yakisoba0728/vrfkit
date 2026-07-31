@@ -1,0 +1,5 @@
+# 100 columns keeps bit-layout tables and the long doc comments that explain wire
+# formats readable without wrapping mid-sentence, which matters more here than in
+# ordinary code: those comments are the format documentation.
+max_width = 100
+use_field_init_shorthand = true

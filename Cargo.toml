@@ -1,0 +1,42 @@
+﻿[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/yakihyuk0728/vrfkit"
+description = "VALORANT replay (.vrf) parser and analysis toolkit"
+
+[workspace.dependencies]
+vrf-bitio = { path = "crates/vrf-bitio", version = "0.1.0" }
+vrf-transform = { path = "crates/vrf-transform", version = "0.1.0" }
+vrf-container = { path = "crates/vrf-container", version = "0.1.0" }
+vrf-schema = { path = "crates/vrf-schema", version = "0.1.0" }
+vrf-net = { path = "crates/vrf-net", version = "0.1.0" }
+vrf-export = { path = "crates/vrf-export", version = "0.1.0" }
+vrf-frame = { path = "crates/vrf-frame", version = "0.1.0" }
+vrf-movement = { path = "crates/vrf-movement", version = "0.1.0" }
+vrf-decode = { path = "crates/vrf-decode", version = "0.1.0" }
+thiserror = "2"
+
+# The parser is throughput-bound: one replay is ~780k content blocks and ~2.4M
+# movement samples. Every decode is a short burst of shifts, rotates and table
+# lookups, so inlining across crate boundaries is worth more here than compile
+# time. `lto = "fat"` + a single codegen unit let the transform loops inline the
+# bit reader; without it the per-block call overhead is measurable.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = 1
+
+# Golden-vector tests are cheap, but the corpus tests decode whole replays.
+# Running those under an unoptimised build is needlessly slow, so give the test
+# profile real optimisation while keeping debug assertions on -- the bit reader
+# relies on `debug_assert!` to catch out-of-range widths during development.
+[profile.test]
+opt-level = 2
+
