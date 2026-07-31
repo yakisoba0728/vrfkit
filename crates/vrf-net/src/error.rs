@@ -44,6 +44,16 @@ pub enum NetError {
     /// An unsupported replay branch was encountered for payload transform.
     #[error("unsupported replay branch: {0}")]
     UnsupportedBranch(#[from] vrf_transform::UnsupportedBranch),
+
+    /// A ClassNetCache block arrived for a group whose function count is unknown.
+    ///
+    /// Distinguished from a class that genuinely has no functions: zero means the
+    /// export group could not be resolved, so the handle width is unknown and the
+    /// record stream cannot be walked at all. This is an error rather than a quiet
+    /// return so the bits are counted and the group is named, instead of the
+    /// payload disappearing with the oracle still reporting a clean run.
+    #[error("ClassNetCache block for an unresolved group: function count unknown")]
+    UnresolvedFunctionCount,
 }
 
 /// Sub-classification of partial bunch sequence errors.
