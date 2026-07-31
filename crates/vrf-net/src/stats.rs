@@ -43,6 +43,23 @@ pub struct NetStats {
     pub skipped_bits: u64,
     /// Malformed content block payloads (overrun).
     pub malformed_content_blocks: u64,
+    /// Content blocks whose payload transform or bit copy failed.
+    ///
+    /// Counted separately from [`Self::malformed_content_blocks`] because the
+    /// failure is at a different layer: the block was framed correctly but its
+    /// payload could not be turned into readable bits at all, so the whole
+    /// declared length is skipped.
+    pub transform_failures: u64,
+    /// Content blocks whose decoded RepLayout field stream failed to parse.
+    ///
+    /// The header framed and the payload decoded, but walking the handle /
+    /// payload-length pairs inside it hit an error. These matter to the oracle:
+    /// a partially wrong transform can leave block framing intact while making
+    /// the field streams inside unreadable, and counting only framing failures
+    /// would report a perfect pass rate for it.
+    pub field_stream_failures: u64,
+    /// Content blocks whose decoded ClassNetCache (RPC) stream failed to parse.
+    pub rpc_stream_failures: u64,
     /// Actor channels opened.
     pub actor_opens: u64,
     /// Actor channels closed.

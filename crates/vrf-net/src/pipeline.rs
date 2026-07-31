@@ -791,6 +791,7 @@ impl ReplicationReader {
             .decode_from(payload, bit_count, seed, scratch)
             .is_err()
         {
+            stats.transform_failures += 1;
             stats.skipped_bits += bit_count as u64;
             return;
         }
@@ -799,6 +800,7 @@ impl ReplicationReader {
         match field::parse_rep_layout(&mut field_reader, sink) {
             Ok(count) => stats.fields += count as u64,
             Err(_) => {
+                stats.field_stream_failures += 1;
                 stats.skipped_bits += field_reader.bits_remaining();
             }
         }
@@ -825,6 +827,7 @@ impl ReplicationReader {
             .decode_from(payload, bit_count, seed, scratch)
             .is_err()
         {
+            stats.transform_failures += 1;
             stats.skipped_bits += bit_count as u64;
             return;
         }
@@ -833,6 +836,7 @@ impl ReplicationReader {
         match field::parse_class_net_cache(&mut rpc_reader, function_count, sink) {
             Ok(count) => stats.rpcs += count as u64,
             Err(_) => {
+                stats.rpc_stream_failures += 1;
                 stats.skipped_bits += rpc_reader.bits_remaining();
             }
         }

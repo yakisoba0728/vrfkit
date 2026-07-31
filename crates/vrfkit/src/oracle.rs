@@ -177,6 +177,12 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
     let class_net = stats.class_net_cache_blocks;
     let malformed = stats.malformed_content_blocks;
     let deleted = stats.deleted_blocks;
+    // A block can fail at three different depths, and only counting the shallowest
+    // would overstate the verdict: framing can look fine while the payload inside
+    // is unreadable. All three are failures for oracle purposes.
+    let payload_failures =
+        stats.transform_failures + stats.field_stream_failures + stats.rpc_stream_failures;
+    let failed = malformed + payload_failures;
 
     println!();
     println!("=== Validation Oracle ===");
@@ -185,7 +191,10 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
     println!("    RepLayout:          {rep_layout}");
     println!("    ClassNetCache:      {class_net}");
     println!("    Deleted:            {deleted}");
-    println!("    Malformed:          {malformed}");
+    println!("    Malformed framing:  {malformed}");
+    println!("    Transform failed:   {}", stats.transform_failures);
+    println!("    Field stream failed:{}", stats.field_stream_failures);
+    println!("    RPC stream failed:  {}", stats.rpc_stream_failures);
     println!("  Fields emitted:       {}", stats.fields);
     println!("  RPCs emitted:         {}", stats.rpcs);
     println!("  Skipped bits:         {}", stats.skipped_bits);
@@ -195,28 +204,24 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
     println!("  Actor closes:         {}", stats.actor_closes);
     println!();
 
-    // Oracle verdict: the grammar pass rate is the fraction of content blocks
-    // (RepLayout + ClassNetCache) that didn't contribute to `malformed_content_blocks`.
-    // With a correct transform, this should be 100% or extremely close.
+    // Oracle verdict: the fraction of content blocks (RepLayout + ClassNetCache)
+    // that framed, decoded and walked cleanly. With a correct transform this
+    // should be 100%; a wrong one collapses it toward zero.
     let total_with_content = rep_layout + class_net;
     if total_with_content == 0 {
-        println!("  No content blocks found — cannot validate.");
+        println!("  No content blocks found - cannot validate.");
     } else {
-        let pass_rate = if total_with_content > 0 {
-            1.0 - (malformed as f64 / total_with_content as f64)
-        } else {
-            1.0
-        };
+        let pass_rate = 1.0 - (failed as f64 / total_with_content as f64);
         println!(
             "  ORACLE PASS RATE:     {:.6}% ({} / {} blocks passed)",
             pass_rate * 100.0,
-            total_with_content - malformed,
+            total_with_content - failed,
             total_with_content
         );
         if stats.skipped_bits > 0 {
             println!(
-                "  (skipped {} bits total — from partial-bunch leftovers or truncated blocks)",
-                stats.skipped_bits
+                "  (skipped {} bits across {} failed blocks)",
+                stats.skipped_bits, failed
             );
         }
     }
