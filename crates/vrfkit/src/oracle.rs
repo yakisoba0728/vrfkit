@@ -226,6 +226,17 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
         }
     }
 
+    // Name the payload-stage failures. The counters above say how many; these
+    // lines say which class, which is what an investigation needs.
+    let stream_failures = channel_state.stream_failures();
+    if !stream_failures.is_empty() {
+        println!();
+        println!("=== Stream failures ({} shown) ===", stream_failures.len());
+        for line in stream_failures {
+            println!("  {line}");
+        }
+    }
+
     // Diagnostic summary — always shown when events exist
     if !stats.diagnostics.is_empty() {
         println!();

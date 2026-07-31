@@ -1,4 +1,4 @@
-//! Sink implementation connecting `vrf-net` events to `vrf-export` writers.
+﻿//! Sink implementation connecting `vrf-net` events to `vrf-export` writers.
 //!
 //! # Design: no skipping
 //!
@@ -18,7 +18,7 @@ use vrf_export::{FieldRecord, MovementRecord};
 use vrf_net::content::ContentBlockHeader;
 use vrf_net::field::FieldSink;
 use vrf_net::net_guid::GuidPathSink;
-use vrf_net::pipeline::{ActorChannelState, ReplicationSink};
+use vrf_net::pipeline::{ActorChannelState, ReplicationSink, StreamFailure};
 use vrf_net::types::NetworkGuid;
 use vrf_schema::{NetGuidCache, class_net_cache_lookup_keys, replay_path_lookup_keys};
 
@@ -50,20 +50,44 @@ const KNOWN_SUBOBJECT_CLASS_PATHS: &[(&str, &str)] = &[
 ///
 /// The replay pipeline creates a fresh `ExportSink` for every packet (to
 /// satisfy borrow-checker constraints around `NetGuidCache` mutability). This
-/// struct holds the state that *must* persist across those boundaries — namely
+/// struct holds the state that *must* persist across those boundaries ??namely
 /// the archetype GUID assigned when a channel is opened, which is needed later
 /// to resolve ClassNetCache export groups when content blocks arrive.
 #[derive(Debug, Clone, Default)]
 pub struct ChannelState {
-    /// channel_index → archetype NetworkGuid.
+    /// channel_index ??archetype NetworkGuid.
     archetypes: HashMap<u32, NetworkGuid>,
+    /// One line per content block that framed and decoded but whose inner stream
+    /// could not be walked.
+    ///
+    /// Lives here rather than on the sink because the sink is rebuilt for every
+    /// packet, so anything recorded on it is lost immediately. Capped: a build
+    /// whose transform is wrong would fail on essentially every block, and the
+    /// first few dozen say everything the later million would.
+    stream_failures: Vec<String>,
 }
+
+/// How many stream-failure lines to retain. See `ChannelState::stream_failures`.
+const MAX_STREAM_FAILURE_RECORDS: usize = 32;
 
 impl ChannelState {
     /// Create an empty channel state.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Record one stream failure, up to the cap.
+    pub fn push_stream_failure(&mut self, line: String) {
+        if self.stream_failures.len() < MAX_STREAM_FAILURE_RECORDS {
+            self.stream_failures.push(line);
+        }
+    }
+
+    /// Retained stream-failure lines.
+    #[must_use]
+    pub fn stream_failures(&self) -> &[String] {
+        &self.stream_failures
     }
 }
 #[derive(Debug, Clone, Default)]
@@ -82,9 +106,9 @@ pub struct ExportStats {
 ///
 /// The sink borrows the `NetGuidCache` mutably because `vrf-net` calls
 /// `GuidPathSink::register_path` during packet processing (for package-map
-/// export bunches that declare new GUID→path mappings inline).
+/// export bunches that declare new GUID?뭦ath mappings inline).
 pub struct ExportSink<'a> {
-    /// Schema cache — mutable because in-packet path registrations need it.
+    /// Schema cache ??mutable because in-packet path registrations need it.
     pub cache: &'a mut NetGuidCache,
     /// Persistent per-channel state (archetype mappings survive across packets).
     channel_state: &'a mut ChannelState,
@@ -99,7 +123,7 @@ pub struct ExportSink<'a> {
     /// Stats.
     pub stats: ExportStats,
 
-    // ── per-content-block context (set by on_content_block) ──────────────
+    // ?? per-content-block context (set by on_content_block) ??????????????
     current_channel: u32,
     current_actor_guid: u32,
     current_group_path: String,
@@ -143,7 +167,7 @@ impl<'a> ExportSink<'a> {
         }
     }
 
-    /// Actor path resolution — mirrors `ResolveCachedActorExportGroupPath` /
+    /// Actor path resolution ??mirrors `ResolveCachedActorExportGroupPath` /
     /// `ResolveCachedActorClassPath` from the C# reference.
     ///
     /// Priority order (matching C# `ResolveActorPackageOrClassPath`):
@@ -228,7 +252,7 @@ impl<'a> ExportSink<'a> {
             return actor_path.to_owned();
         }
 
-        // Return the best candidate even if it doesn't match a group — the
+        // Return the best candidate even if it doesn't match a group ??the
         // export format requires a path, and downstream still gets the raw bits.
         combined
             .or(package_path)
@@ -289,7 +313,7 @@ impl<'a> ExportSink<'a> {
         Some(combined)
     }
 
-    /// Subobject path resolution — mirrors `ResolveSubobjectExportGroupPath` /
+    /// Subobject path resolution ??mirrors `ResolveSubobjectExportGroupPath` /
     /// `ResolveSubobjectClassPath` from C#.
     fn resolve_subobject_group_path(
         &self,
@@ -329,7 +353,7 @@ impl<'a> ExportSink<'a> {
         // Secondary: use object_net_guid for path lookup.
         if header.object_net_guid.0 != 0 {
             if let Some(obj_path) = self.cache.get_path_by_guid(header.object_net_guid.0) {
-                // Try outer path (component → owning class).
+                // Try outer path (component ??owning class).
                 if let Some(outer) = self.cache.get_outer_path(header.object_net_guid.0) {
                     for key in lookup_keys_fn(outer) {
                         if let Some(g) = self.cache.get_group_by_path(&key) {
@@ -412,11 +436,10 @@ impl<'a> ExportSink<'a> {
     ///
     /// The function count equals `NetFieldExportGroup.len()` for the matching
     /// ClassNetCache group. The C# parser uses `ReadSerializedInt(FunctionsByHandle.Length)`
-    /// where `FunctionsByHandle` is sized to `replayGroup.NetFieldExportsLength` —
-    /// i.e. the number of declared export slots in the ClassNetCache group.
+    /// where `FunctionsByHandle` is sized to `replayGroup.NetFieldExportsLength` ??    /// i.e. the number of declared export slots in the ClassNetCache group.
     ///
     /// If the group cannot be resolved we return 0, which causes the RPC parser
-    /// to skip the bits but NOT silently drop them — the caller still records
+    /// to skip the bits but NOT silently drop them ??the caller still records
     /// the raw payload.
     fn resolve_function_count(&self, header: &ContentBlockHeader, channel_index: u32) -> u32 {
         // Fast path: current_group_path was already resolved to a CNC group.
@@ -514,7 +537,7 @@ impl<'a> ExportSink<'a> {
         // Parse the RepLayout stream inside the RPC payload.
         let mut rpc_reader = reader;
 
-        // Property checksum bit (1 bit) — always present for FunctionParameters.
+        // Property checksum bit (1 bit) ??always present for FunctionParameters.
         if rpc_reader.read_bit().is_err() {
             return false;
         }
@@ -629,7 +652,7 @@ impl<'a> ExportSink<'a> {
     ///
     /// Strategy:
     /// 1. Try stripping `_ClassNetCache` from current_group_path and appending
-    ///    `:<function_name>` — this works when the CNC group matches the
+    ///    `:<function_name>` ??this works when the CNC group matches the
     ///    parameter group's class (e.g. DamageableComponent).
     /// 2. Search all registered groups for one whose path ends with
     ///    `:<function_name>`. If exactly one matches, use it (unique leaf match).
@@ -712,7 +735,7 @@ impl FieldSink for ExportSink<'_> {
                     // Build full field name: "Rounds[0].RoundNumber" etc.
                     let full_name = format!("{parent_name}{}", f.path);
 
-                    // Decode leaf fields using known handle→type mapping.
+                    // Decode leaf fields using known handle?뭪ype mapping.
                     let (vi, vf, vb, vs) = decode_array_leaf(f.handle, &f.raw_bits, f.bit_count);
 
                     self.field_records.push(FieldRecord {
@@ -851,7 +874,7 @@ impl FieldSink for ExportSink<'_> {
                 });
             }
         } else {
-            // Zero-bit RPC — just emit a marker row.
+            // Zero-bit RPC ??just emit a marker row.
             self.field_records.push(FieldRecord {
                 time_ms: self.time_ms,
                 packet_id: self.packet_id,
@@ -876,7 +899,7 @@ impl ReplicationSink for ExportSink<'_> {
     fn on_actor_open(&mut self, state: &ActorChannelState) {
         self.stats.actor_opens += 1;
         // Track archetype GUID per channel so ClassNetCache path resolution can
-        // walk archetype → outer path → class name.
+        // walk archetype ??outer path ??class name.
         if state.archetype_net_guid.is_valid() {
             self.channel_state
                 .archetypes
@@ -919,15 +942,36 @@ impl ReplicationSink for ExportSink<'_> {
     ) {
         self.stats.content_blocks += 1;
     }
+
+    /// Attach the resolved group path to a stream failure.
+    ///
+    /// The replication layer knows the bit offsets but not the names; this is the
+    /// only place both are available, and the group path is what identifies the
+    /// class to investigate. Note `function_count`: `ReadSerializedInt(1)`
+    /// consumes zero bits, so a class resolved to a one-function cache reads
+    /// every handle as 0 and desynchronises immediately -- a count of 1 next to a
+    /// failure is a strong hint the path resolution picked the wrong group.
+    fn on_stream_failure(&mut self, failure: StreamFailure) {
+        self.channel_state.push_stream_failure(format!(
+            "{:?} actor={} bits={} function_count={} consumed={} skipped={} group={}",
+            failure.kind,
+            failure.actor_net_guid.0,
+            failure.bit_count,
+            failure.function_count,
+            failure.consumed_bits,
+            failure.remaining_bits,
+            self.current_group_path,
+        ));
+    }
 }
 
-// ── Free helper functions ────────────────────────────────────────────────────
+// ?? Free helper functions ????????????????????????????????????????????????????
 
 /// Extract the class name from an archetype path by taking the leaf and
 /// stripping a `Default__` prefix if present.
 ///
 /// Example: `/Game/Characters/AggroBot/AggroBot_PC.Default__AggroBot_PC_C`
-/// → `AggroBot_PC_C`.
+/// ??`AggroBot_PC_C`.
 fn extract_class_name_from_archetype(archetype_path: &str) -> Option<&str> {
     if archetype_path.is_empty() {
         return None;
@@ -971,12 +1015,12 @@ fn resolve_known_subobject_class_path(object_path: &str) -> Option<&'static str>
 }
 
 /// Decode a leaf field from a CombatRoundReports array using the known
-/// handle→type mapping.
+/// handle?뭪ype mapping.
 ///
 /// Returns (value_i64, value_f64, value_bool, value_str). All None if the
 /// handle is not recognized or decoding fails.
 ///
-/// Handle→type mapping derived from `CombatRoundReportsDecoder`:
+/// Handle?뭪ype mapping derived from `CombatRoundReportsDecoder`:
 /// - Int32 handles: 3, 5, 19, 21, 46, 81, 96
 /// - Float handles: 18, 20, 47, 82
 /// - Bool handles: 22, 25, 48, 49, 83, 84, 103

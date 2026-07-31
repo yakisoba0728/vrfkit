@@ -56,6 +56,43 @@ pub struct ActorChannelState {
     pub open_packet_id: i32,
 }
 
+/// Which stream grammar failed to parse inside a decoded content block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamKind {
+    /// A property (RepLayout) stream.
+    RepLayout,
+    /// An RPC (ClassNetCache) stream.
+    Rpc,
+}
+
+/// Context for a content block that framed and decoded but whose inner stream
+/// could not be walked.
+///
+/// Reported to the sink rather than only counted because the layer that knows
+/// *names* is the sink: it resolved the group path and the function count. A
+/// bare counter says "one block failed"; this says which class, which is what a
+/// new game build's investigation actually needs.
+#[derive(Debug, Clone, Copy)]
+pub struct StreamFailure {
+    /// Which grammar was being parsed.
+    pub kind: StreamKind,
+    /// Actor whose channel carried the block.
+    pub actor_net_guid: NetworkGuid,
+    /// Declared payload length of the block.
+    pub bit_count: u32,
+    /// Function count used for the handle read (`Rpc` only; 0 for `RepLayout`).
+    ///
+    /// Worth reporting because a wrong value here is silently destructive:
+    /// `ReadSerializedInt(1)` consumes **zero** bits, so a class resolved to a
+    /// one-function cache reads every handle as 0 and desynchronises from the
+    /// first field onward.
+    pub function_count: u32,
+    /// Bits consumed before the failure.
+    pub consumed_bits: u64,
+    /// Bits abandoned as a result.
+    pub remaining_bits: u64,
+}
+
 /// Trait for receiving all replication events.
 ///
 /// The caller implements this to process fields, RPCs, and actor lifecycle
@@ -83,6 +120,14 @@ pub trait ReplicationSink: GuidPathSink + FieldSink {
         actor_net_guid: NetworkGuid,
         header: &ContentBlockHeader,
     );
+
+    /// A block framed and decoded, but its inner stream could not be walked.
+    ///
+    /// Defaulted to a no-op so a sink that does not care about failure context
+    /// need not implement it; the counters in [`NetStats`] are maintained either
+    /// way. Override it to attach the names the sink holds -- the resolved group
+    /// path in particular, which the replication layer does not know.
+    fn on_stream_failure(&mut self, _failure: StreamFailure) {}
 }
 
 /// The main replication reader. Drives the full pipeline for one replay.
@@ -800,8 +845,17 @@ impl ReplicationReader {
         match field::parse_rep_layout(&mut field_reader, sink) {
             Ok(count) => stats.fields += count as u64,
             Err(_) => {
+                let remaining = field_reader.bits_remaining();
+                sink.on_stream_failure(StreamFailure {
+                    kind: StreamKind::RepLayout,
+                    actor_net_guid,
+                    bit_count: bit_count as u32,
+                    function_count: 0,
+                    consumed_bits: field_reader.position(),
+                    remaining_bits: remaining,
+                });
                 stats.field_stream_failures += 1;
-                stats.skipped_bits += field_reader.bits_remaining();
+                stats.skipped_bits += remaining;
             }
         }
     }
@@ -836,8 +890,17 @@ impl ReplicationReader {
         match field::parse_class_net_cache(&mut rpc_reader, function_count, sink) {
             Ok(count) => stats.rpcs += count as u64,
             Err(_) => {
+                let remaining = rpc_reader.bits_remaining();
+                sink.on_stream_failure(StreamFailure {
+                    kind: StreamKind::Rpc,
+                    actor_net_guid,
+                    bit_count: bit_count as u32,
+                    function_count,
+                    consumed_bits: rpc_reader.position(),
+                    remaining_bits: remaining,
+                });
                 stats.rpc_stream_failures += 1;
-                stats.skipped_bits += rpc_reader.bits_remaining();
+                stats.skipped_bits += remaining;
             }
         }
     }
