@@ -53,7 +53,9 @@ python tools\compare_combat_report.py
 python tools\validate_corpus.py .\target\release\vrfkit.exe `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
 # Baseline: blocks 136,545,822  fields 98,883,979  rpcs 75,571,092
-#           malformed 0  skipped 1,972,080,670
+#           malformed 0  skipped 1,972,080,670    (~30s, runs 16-wide)
+python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
+# Expected: OK: 4 replays match the baseline
 ```
 
 ### What to do next (highest impact first)
@@ -943,10 +945,18 @@ under NO SILENT SUCCESS. Do not reopen without new measurements.
 
 Where the time actually is, if a future session wants throughput: Parquet
 writing (37%), `on_content_block` group-path resolution (12%), and
-`try_parse_rpc_params` (10%). For batch work the real win is at process
-level -- `validate_corpus.py` runs the 215 replays as 215 *sequential*
-subprocesses, and each subprocess already owns its own output, so running
-them N-wide is near-linear with no bit-identity risk at all.
+`try_parse_rpc_params` (10%).
+
+The process-level win was taken (commit ae3b83f). validate_corpus.py ran the
+215 replays as 215 *sequential* subprocesses; each already owns its own
+output and shares nothing, so running them N-wide is near-linear with no
+bit-identity risk at all:
+
+  325.4s -> 29.4s, an 11x speedup, every number byte-identical
+  (blocks 136,545,822, fields 98,883,979, rpcs 75,571,092, malformed 0,
+   skipped 1,972,080,670, pass rate min/median/max unchanged, 215/215)
+
+Default workers are cores-2 capped at 16; set VRFKIT_JOBS to override.
 
 ### 7-G. Reproduce metrics.json for other replays [DONE 2026-08-01]
 
