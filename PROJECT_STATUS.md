@@ -97,14 +97,15 @@ python tools\check_decode_errors_corpus.py .\target\release\vrfkit.exe `
 # also the only check that can catch a per-class type whose two candidate
 # readings are indistinguishable on 02d4d478 but not on some other replay.
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
-# Expected: OK: 4 replays match the baseline
-# CURRENTLY DRIFTS, and it is the INPUT that moved, not the parser. As of
-# 2026-08-02 %LOCALAPPDATA%\VALORANT\Saved\Demos holds three files named
-# 1.vrf / 2.vrf / 3.vrf, and none of the four UUID-named replays the
-# baseline pins. The three are different matches, not renames: no per-file
-# block/field/RPC triple matches any baseline entry. All three still parse
-# with malformed framing 0 (98.28% - 99.25% pass rate). Do NOT --update
-# this to make it quiet; restore the four demos or re-pin deliberately.
+# Expected: OK: 1 replays match the baseline
+# It used to pin FOUR replays living in %LOCALAPPDATA%\VALORANT\Saved\Demos,
+# which the GAME owns and rotates. On 2026-08-02 all four were gone, replaced
+# by three unrelated matches (verified: no subset of the pinned four sums to
+# the new total). The guard reported it correctly -- seven DRIFT lines naming
+# each missing and each unexpected replay -- but a baseline over a directory
+# another program writes to guards nothing. Re-pinned at one preserved 62 MB
+# demo under baseline-corpora, like the other three builds. Do not point it
+# back at Saved\Demos.
 python tools\check_export_baseline.py --baseline tools\baselines\export_02d4d478.json
 # Expected: OK ... 3 printed counters cross-check against their Parquet files.
 # The strongest single guard: it pins all 21 export counters plus every Parquet
@@ -1966,9 +1967,20 @@ NO UNSAFE
                   TABLE.RS DEPENDS ON A BRANCH THERE, NOT ON origin/main.
                   Generating from origin/main yields 680 overlay entries;
                   from local main 666; the committed table has 1,150
-                  (1,058 before 13-J added 92 across 20 groups). It is now
-                  generated from `local/pawn-descriptors` (ced9379), which
-                  branches from `local/vrfkit-descriptors` (f67ea66).
+                  (1,058 before 13-J added 92 across 20 groups).
+
+                  *** UNMERGED AS OF 2026-08-02. *** table.rs is generated
+                  from `local/pawn-descriptors` (d2b76f2), which branches
+                  from `local/vrfkit-descriptors` (f67ea66) but is NOT
+                  merged into it, because a delegate session was running
+                  against that checkout when 13-J landed. Regenerating from
+                  `local/vrfkit-descriptors` right now silently produces
+                  1,058 entries and drops the 92 that 13-J added.
+                  MERGE `local/pawn-descriptors` INTO
+                  `local/vrfkit-descriptors` AS SOON AS THAT SESSION IS
+                  DONE, then regenerate and confirm the table is unchanged.
+                  (The doc previously cited ced9379 for this branch; that
+                  commit was amended away and is unreachable.)
                   The difference is the descriptor work on
                   branch `local/vrfkit-descriptors` (fe5343a, 2026-08-02):
                   weapons, ItemSlot, PurchasedItemComponent,
@@ -2481,8 +2493,9 @@ Re-run at 13-J (2026-08-02), same list plus the new decode-error guard:
     validate_corpus.py                  215/215, malformed 0, five totals exact
     check_decode_errors_corpus.py       215/215, decode errors 0
     check_export_baseline.py            4 explained drift lines, then updated
-    check_corpus_baseline.py x3         OK (12.10, 12.11, 13.00)
-    check_corpus_baseline.py 13.02      DRIFT -- the input moved, see QUICK START
+    check_corpus_baseline.py x4         OK (12.10, 12.11, 13.00, 13.02)
+                                        13.02 re-pinned at a preserved demo
+                                        after the game rotated Saved\Demos
     compare_combat_report.py            ALL INTERESTING SHAPES MATCH
     validate_metrics_corpus.py          16/21 sections exact on all 11 replays
 
