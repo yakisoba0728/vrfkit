@@ -1399,19 +1399,62 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
         mv_vy = mv_table.column('vel_y').to_pylist()
         mv_vz = mv_table.column('vel_z').to_pylist()
 
+        # Keep only the last sub-move per (time_ms, character).
+        #
+        # Our decoder walks the marker-chained move sequence inside a
+        # replication packet and emits every sub-move, so a packet can produce
+        # several rows sharing one time_ms. That is genuinely more data --
+        # 1,687 of the 2,387 extra rows on 02d4d478 carry distinct positions,
+        # and none of the reference's rows are missing from ours -- and
+        # movement.parquet keeps all of it.
+        #
+        # The bundle cannot. valplay's posture.py requires 0 < dt before adding
+        # a distance step but updates last_sample unconditionally, so for two
+        # sub-moves A then B at the same ms it adds |A-prev|, skips the A->B
+        # leg, and continues from B. The result is a distance_m that is *lower*
+        # than the reference for every player (3.1-5.2 m on 02d4d478) -- an
+        # impossible direction for finer sampling, and simply wrong.
+        #
+        # The reference retains only the final move per packet, and dropping
+        # exactly these rows reproduces its movement_detail on 60/60 values
+        # with no rounding. So this is not an approximation: it is the shape
+        # the consumer was written against.
+        last_of_group = {}
+        for i in range(n_mv):
+            last_of_group[(mv_time[i], mv_char[i])] = i
+        keep = sorted(last_of_group.values())
+        movement_collapsed = n_mv - len(keep)
+
         with open(output_dir / "movement.ndjson", 'w', encoding='utf-8') as f:
-            for i in range(n_mv):
+            for i in keep:
+                # Every one of these is Float32 on the wire and in Parquet;
+                # widening to a Python float prints the binary artefact
+                # (349.989990234375 for what the reference shows as 349.99).
+                # position_bbox is min/max of the raw values, so it surfaced
+                # there even though the derived distances agreed either way.
                 rec = {
                     "time_ms": mv_time[i],
                     "shooter_character_net_guid": mv_char[i],
-                    "position": {"x": mv_px[i], "y": mv_py[i], "z": mv_pz[i]},
-                    "velocity": {"x": mv_vx[i], "y": mv_vy[i], "z": mv_vz[i]},
-                    "yaw": mv_yaw[i],
-                    "pitch": mv_pitch[i],
+                    "position": {
+                        "x": _f32_shortest(mv_px[i]),
+                        "y": _f32_shortest(mv_py[i]),
+                        "z": _f32_shortest(mv_pz[i]),
+                    },
+                    "velocity": {
+                        "x": _f32_shortest(mv_vx[i]),
+                        "y": _f32_shortest(mv_vy[i]),
+                        "z": _f32_shortest(mv_vz[i]),
+                    },
+                    "yaw": _f32_shortest(mv_yaw[i]),
+                    "pitch": _f32_shortest(mv_pitch[i]),
                 }
                 f.write(json.dumps(rec, separators=(',', ':'), ensure_ascii=True))
                 f.write('\n')
                 movement_written += 1
+
+        if verbose and movement_collapsed:
+            print(f"  {movement_collapsed:,} intra-packet sub-moves collapsed "
+                  f"(kept in movement.parquet)")
 
         if verbose:
             print(f"  {movement_written:,} movement rows written in {time.time()-t0:.1f}s")
