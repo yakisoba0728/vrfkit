@@ -1,7 +1,8 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Includes the replay-coverage audit through 8eb5909
-and the concurrent master audit corrections through 101c33a.
+Last updated: 2026-08-02. Includes the replay-coverage audit through 8eb5909,
+the concurrent master audit corrections through 101c33a, and the code audit
+fixes in section 12.
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -42,7 +43,9 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 238 passed, 0 failed across all crates
+# Expected: 242 passed, 0 failed across all crates
+# (this said 238 until 2026-08-02, when it was measured at 239. Sum the
+#  per-target lines; do not read the last one.)
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
@@ -69,7 +72,20 @@ python tools\check_corpus_baseline.py --baseline tools\baselines\build_1210.json
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1211.json
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1300.json
 # Expected for each older build: OK: 1 replays match the baseline
+python tools\check_export_baseline.py --baseline tools\baselines\export_02d4d478.json
+# Expected: OK: ... matches the baseline (NetGUID rows 16167, ...)
 ```
+
+The last one guards the EXPORT path; the four above it guard the VALIDATE
+path only. That distinction is why `NetGUID rows` went unread for the whole
+project: `vrfkit validate` writes no Parquet, so the oracle never prints the
+counter and validate_corpus.py's PATTERNS could not have had an entry for it.
+check_export_baseline.py pins every counter the export summary prints, plus
+each Parquet file's row count and byte size, and separately cross-checks the
+three printed counters that ARE row counts (`NetGUID rows`, `Movement rows`,
+`Actor opens + Actor closes`) against the files they name. Both halves were
+driven to failure on a deliberately broken build before being committed; see
+commit bfd0229 for the exact output of each.
 
 For a change that is supposed to alter nothing at all -- a refactor, or a
 performance change like 5-P -- the counters above are too coarse. Hash the
@@ -78,12 +94,21 @@ meaningless.
 ```powershell
 Get-ChildItem out\nested\*.parquet | Sort-Object Name |
   ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash, $_.Name }
-# 02d4d478, unchanged since before 5-P:
+# 02d4d478, re-measured 2026-08-02 at HEAD:
 #   F9D21B325B8C8F426CE758F000DBF3B5E412ABFE23CBCB862D8BCA522CA82CE5  actors.parquet
-#   2DDC81D8C3EBB58931BF9C667D0C505A608F6F73C2CB097A461EB738E087B59A  fields.parquet
+#   66E1BF6B57C712ED89E5B28AD6D770FC2E5A507583C81BAF80E1C684D1C27CDC  fields.parquet
 #   1242BBB15B29BE267BA4B0326BCBC508B5E2AC6C7CD8A1570035C335C04D9363  movement.parquet
 #   501CABC678770431D0FEC9C37C4E21ED06193BB93263313959E87865625BBA0F  net_guids.parquet
 ```
+The fields.parquet line said 2DDC81D8... and "unchanged since before 5-P"
+until 2026-08-02. Three of the four were still right; that one had been stale
+since 59700c5 (FName isHardcoded), which changed field values by design. A
+hash pinned in prose goes stale silently -- which is the argument for
+check_export_baseline.py above, where the numbers are pinned in a file a
+script reads.
+
+All four were confirmed byte-reproducible across two identical exports on
+2026-08-02, so a hash comparison here is evidence and not noise.
 manifest.json is deliberately not in that set: it records elapsed time, so it
 differs on every run by design.
 
@@ -1671,7 +1696,38 @@ NO HARDCODED NAMES IN THE PARSER
 ASCII ONLY IN CODE AND COMMENTS
   The Windows cp949 console truncates output at the first non-ASCII byte
   in a Rust format string. This is not a style rule; it is a correctness
-  constraint for the diagnostics path.
+  constraint for the diagnostics path. (Confirmed 2026-08-02: `chcp` on this
+  machine reports codepage 949.)
+
+  Enforced strictly on STRING LITERALS. 27 were fixed on 2026-08-02, of
+  which 22 were the whole of oracle.rs `print_diagnostic_event`, framed in
+  box-drawing characters. Under cp949 each of those lines truncates to two
+  spaces -- the failure diagnostic dies exactly when framing has broken and
+  it is the only thing left to read. It survived because it has never fired:
+  there are zero diagnostic events across all 215 corpus replays.
+
+  HOW TO CHECK IT, and why the obvious way is wrong. Do not grep for
+  `println!` and friends, and do not match string literals per line: a
+  multi-line literal hides on its continuation lines from both. That is
+  exactly how cli.rs's USAGE banner survived the first sweep -- an em dash on
+  the line after `const USAGE: &str = "\`, printed on every invocation with
+  no arguments, and it did truncate (`vrfkit ` then nothing). Count every
+  line containing a non-ASCII byte instead, and account for all of them:
+
+    511 lines total, of which
+    502 are comment lines,
+      5 are trailing comments on code lines,
+      3 are UTF-8 BOMs at the head of vrf-net's field.rs / lib.rs /
+        pipeline.rs (harmless to rustc, never printed -- but those three
+        files also carry `??` where an em dash used to be, so something has
+        already mangled their encoding once),
+      0 are string literals.
+
+  NOT enforced on COMMENTS, despite the name. The 502 include box-drawing
+  and em dashes; vrf-frame/src/lib.rs opens with a large ASCII-art
+  wire-layout table. They are not on any output path. If that is meant to be
+  a real rule it needs a committed check -- an unenforced rule that half the
+  codebase violates teaches readers to ignore the rule, not follow it.
 
 NO UNSAFE
   #![forbid(unsafe_code)] everywhere. Oodle decompression is the only
@@ -1725,8 +1781,20 @@ NO UNSAFE
   compare_with_csharp.py    -- structural cross-check
   analyze_coverage.py       -- field coverage analysis
   validate_corpus.py        -- full 215-replay batch validation
+  validate_metrics_corpus.py -- metrics.json parity across all 11 replays
+                               that have a C# reference bundle
+  check_corpus_baseline.py  -- pins the VALIDATE path per build
+  check_export_baseline.py  -- pins the EXPORT path (counters + Parquet
+                               shape) and cross-checks the printed row
+                               counts against the files they name
   find_skips.py             -- finds which replays still have skipped bits
   to_valplay_bundle.py      -- vrfkit Parquet -> valplay bundle adapter
+                               ALSO holds the live shot-effect blob decoder.
+                               crates/vrf-decode/src/effect.rs is a Rust
+                               implementation of the same format that nothing
+                               calls, with a different failure contract; see
+                               its module docs before assuming they are
+                               interchangeable.
 
 ### Path references
   Parser repo   : C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
@@ -1911,3 +1979,70 @@ Section 7-C contains the resolver path, exact per-variant counts and bit totals,
 and the corrected 97.283437% failure-share measurement. Commit 458f8e0 records
 the corrected documentation and the clarified function-count comments; total
 skipped bits remain exactly 1,972,080,670 before and after the audit.
+
+---
+
+## 12. Code Audit Fixes (2026-08-02)
+
+Four findings from a read-only audit of the Rust crates, plus the ASCII
+sweep. No export figure moved: all four Parquet files for 02d4d478 hash
+identically before and after the whole series, on a clean re-export, and the
+corpus totals are exact.
+
+### 12-A. Non-finite frame times [FIXED, commit e83f99f]
+
+`vrf-frame` converted `timeSeconds` with `(f64::from(t) * 1000.0).round() as
+u32` and a comment asserting the cast saturates so non-finite input "yields 0
+as the reference does". Measured: NaN -> 0, -inf -> 0, **+inf -> 4294967295**.
+ReplayEventJsonWriter.cs:194 has an explicit `float.IsFinite(seconds)` guard,
+which is now written out here. `time_seconds` is a raw `read_f32` with no
+validation, so any bit pattern is representable; one +inf frame would have
+stamped 4294967295 ms on every packet in it.
+
+Another comment on `DemoPacket::time_ms` still said "truncated", from before
+7-B changed it to round. Corrected in the same commit.
+
+### 12-B. object_net_guid filtered to None [FIXED, commit a2b8343]
+
+The sink recorded a subobject GUID as
+`Some(header.object_net_guid.0).filter(|&g| g != 0)`. The reference reads the
+field unconditionally (ContentBlockFramer.cs:436-437) and branches on
+`!header.ObjectNetGuid.IsValid` (ContentBlockPathResolver.cs:100), so it
+treats the invalid GUID as reachable. Folding it to `None` did not discard a
+zero -- `None` means "actor block" downstream, the adapter substitutes the
+actor GUID, and the block collapsed onto the actor. That is exactly the merge
+cf97ecf existed to undo, and it contradicted `FieldRecord`'s own doc comment.
+
+The case does not occur on 02d4d478 (all four hashes unchanged), and it
+cannot move any corpus counter: the change only ever replaces `None` with
+`Some(0)`, and blocks/fields/rpcs/malformed/skipped are counts.
+
+### 12-C. NetGUID row count unguarded [FIXED, commit bfd0229]
+
+See the regression-guard block in QUICK START. `check_export_baseline.py` and
+`tools/baselines/export_02d4d478.json` are new.
+
+### 12-D. vrf-decode/src/effect.rs is dead code [KEPT WITH A NOTE, commit a28072b]
+
+Nothing in Rust calls it; the live decoder is a Python port in
+`tools/to_valplay_bundle.py`. Not wired in, because the two have opposite
+failure contracts (Rust returns `Err` on a malformed blob and discards the
+array; Python breaks and returns a partial list), the consumer reads Parquet
+so wiring it in means a schema change, and the Python path currently matches
+the reference on all 2,647 shots. Not deleted, because `tools/` contains no
+test files at all -- effect.rs's eight pinned hex vectors are the repo's only
+executable specification of that wire format, on either side.
+
+The untested Python decoder is worth a follow-up. It is the live path for
+four metric sections and has zero executable tests; the Rust vectors could be
+ported to give it some.
+
+### 12-E. Non-ASCII in string literals [FIXED, commits e8f40cb and the cli.rs follow-up]
+
+27 in total, of which 22 were the whole of `print_diagnostic_event`. The
+27th was the CLI's USAGE banner, which a per-line literal scan cannot see and
+which truncates on every no-argument invocation. Detail, the enforcement
+scope, and the scan that actually works are in section 8.
+
+The audit's line numbers for `vrf-container/tests/corpus.rs` (91, 108) were
+wrong; the glyphs are on 112 and 129.

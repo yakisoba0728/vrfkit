@@ -1,0 +1,44 @@
+{
+ "replay": "C:\\Users\\yakihyuk0728\\Documents\\GitHub\\valplay\\data\\raw\\vrf\\02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf",
+ "counters": {
+  "chunks": 19,
+  "packets": 530401,
+  "export_groups": 475,
+  "content_blocks": 608020,
+  "rep_layout_blocks": 258891,
+  "class_net_cache_blocks": 349120,
+  "fields": 429633,
+  "rpcs": 342735,
+  "actor_opens": 2028,
+  "actor_closes": 1799,
+  "bunches": 530401,
+  "malformed_packets": 0,
+  "skipped_bits": 17507210,
+  "movement_rows": 1839607,
+  "net_guid_rows": 16167,
+  "overlay_decoded_ok": 356871,
+  "overlay_decode_errors": 0,
+  "overlay_raw_skip": 68350,
+  "overlay_not_in_table": 530229,
+  "overlay_no_field_name": 33529,
+  "overlay_rows_offered": 988979
+ },
+ "parquet": {
+  "fields": {
+   "rows": 1240444,
+   "bytes": 13163732
+  },
+  "movement": {
+   "rows": 1839607,
+   "bytes": 30695141
+  },
+  "actors": {
+   "rows": 3827,
+   "bytes": 87544
+  },
+  "net_guids": {
+   "rows": 16167,
+   "bytes": 153606
+  }
+ }
+}

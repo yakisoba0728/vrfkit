@@ -1,5 +1,30 @@
 //! Decoder for the Valorant shot-effect RepLayoutDynamicArray blobs.
 //!
+//! # THIS IS NOT THE LIVE DECODE PATH
+//!
+//! Nothing in the Rust pipeline calls `decode_effect_floats`,
+//! `decode_effect_objects` or `decode_effect_vectors`. Their only callers are
+//! this module's own tests. The decoder that actually produces shot data is a
+//! Python port in `tools/to_valplay_bundle.py`
+//! (`_decode_effect_elements` and friends), which reads the raw bits back out
+//! of `fields.parquet` after export.
+//!
+//! **The two are not interchangeable, and this one must not be swapped in
+//! without measuring.** They agree on well-formed input but their failure
+//! contracts are opposites: on a malformed blob this module returns `Err` and
+//! discards the whole array, while the Python port breaks out of its loop and
+//! returns the elements it had already decoded. The Python path currently
+//! matches the C# reference on all 2,647 shots in `02d4d478`, so a swap would
+//! have to prove no blob in the corpus takes the divergent branch -- and the
+//! consumer reads Parquet, so wiring this in also means new columns and a
+//! schema change. That is a feature, not a cleanup.
+//!
+//! It is kept rather than deleted because its tests are the repo's only
+//! executable specification of this wire format: eight pinned hex vectors
+//! lifted from real packets, with values checked against the C# reference.
+//! `tools/` contains no test files, so deleting this would leave the format
+//! specified by prose alone.
+//!
 //! # Purpose
 //!
 //! Four metric sections in the valplay analytics pipeline (`weapons`,

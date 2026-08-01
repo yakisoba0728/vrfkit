@@ -319,25 +319,25 @@ fn print_skip_breakdown(events: &[DiagnosticEvent]) {
 
 /// Print full details for one diagnostic event.
 fn print_diagnostic_event(index: usize, ev: &DiagnosticEvent) {
-    println!("  ┌── Diagnostic #{index} ──");
-    println!("  │ Reason:              {:?}", ev.reason);
-    println!("  │ packet_id:           {}", ev.packet_id);
-    println!("  │ bunch_in_packet:     {}", ev.bunch_index_in_packet);
-    println!("  │ global_bunch_index:  {}", ev.global_bunch_index);
-    println!("  │ channel_bunch_index: {}", ev.channel_bunch_index);
-    println!("  │ channel_index:       {}", ev.channel_index);
-    println!("  │ actor_net_guid:      {}", ev.actor_net_guid);
+    println!("  +-- Diagnostic #{index} --");
+    println!("  | Reason:              {:?}", ev.reason);
+    println!("  | packet_id:           {}", ev.packet_id);
+    println!("  | bunch_in_packet:     {}", ev.bunch_index_in_packet);
+    println!("  | global_bunch_index:  {}", ev.global_bunch_index);
+    println!("  | channel_bunch_index: {}", ev.channel_bunch_index);
+    println!("  | channel_index:       {}", ev.channel_index);
+    println!("  | actor_net_guid:      {}", ev.actor_net_guid);
     if let Some(ref path) = ev.actor_path {
-        println!("  │ actor_path:          {path}");
+        println!("  | actor_path:          {path}");
     }
-    println!("  │ archetype_net_guid:  {}", ev.archetype_net_guid);
+    println!("  | archetype_net_guid:  {}", ev.archetype_net_guid);
     if let Some(ref path) = ev.class_path {
-        println!("  │ class_path:          {path}");
+        println!("  | class_path:          {path}");
     }
-    println!("  │ bunch_flags:");
+    println!("  | bunch_flags:");
     let f = &ev.bunch_flags;
     println!(
-        "  │   open={} close={} reliable={} partial={} partial_init={} partial_final={} pkg_map={} must_mapped={} dormant={}",
+        "  |   open={} close={} reliable={} partial={} partial_init={} partial_final={} pkg_map={} must_mapped={} dormant={}",
         f.b_open,
         f.b_close,
         f.b_reliable,
@@ -348,13 +348,13 @@ fn print_diagnostic_event(index: usize, ev: &DiagnosticEvent) {
         f.b_has_must_be_mapped_guids,
         f.b_dormant
     );
-    println!("  │ payload_bit_count:   {}", ev.payload_bit_count);
-    println!("  │ consumed_bits:       {}", ev.consumed_bits);
-    println!("  │ remaining_bits:      {}", ev.remaining_bits);
+    println!("  | payload_bit_count:   {}", ev.payload_bit_count);
+    println!("  | consumed_bits:       {}", ev.consumed_bits);
+    println!("  | remaining_bits:      {}", ev.remaining_bits);
     if let Some(ref hdr) = ev.content_block_header {
-        println!("  │ content_block_header:");
+        println!("  | content_block_header:");
         println!(
-            "  │   has_rep_layout={} is_actor={} object_net_guid={} is_stably_named={} is_deleted={} class_net_guid={} outer_net_guid={} delete_flags={}",
+            "  |   has_rep_layout={} is_actor={} object_net_guid={} is_stably_named={} is_deleted={} class_net_guid={} outer_net_guid={} delete_flags={}",
             hdr.has_rep_layout,
             hdr.is_actor,
             hdr.object_net_guid,
@@ -366,9 +366,9 @@ fn print_diagnostic_event(index: usize, ev: &DiagnosticEvent) {
         );
     }
     if let Some(bits) = ev.content_bits {
-        println!("  │ content_bits:        {bits}");
+        println!("  | content_bits:        {bits}");
     }
-    println!("  │ block_in_bunch:      {}", ev.block_index_in_bunch);
-    println!("  │ bits_skipped:        {}", ev.bits_skipped);
-    println!("  └────────────────────");
+    println!("  | block_in_bunch:      {}", ev.block_index_in_bunch);
+    println!("  | bits_skipped:        {}", ev.bits_skipped);
+    println!("  +--------------------");
 }

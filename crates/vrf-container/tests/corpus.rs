@@ -109,7 +109,7 @@ fn parse_all_vrf_files() {
     }
 
     // Print summary
-    eprintln!("═══ VRF Corpus Test Results ═══");
+    eprintln!("=== VRF Corpus Test Results ===");
     eprintln!("Total .vrf files: {total}");
     eprintln!("Info+Header parse OK: {info_ok}/{total}");
     eprintln!("Branch distribution:");
@@ -126,7 +126,7 @@ fn parse_all_vrf_files() {
             eprintln!("  {file}: {err}");
         }
     }
-    eprintln!("═══════════════════════════════");
+    eprintln!("===============================");
 
     // The test passes if all preambles parsed successfully
     assert_eq!(

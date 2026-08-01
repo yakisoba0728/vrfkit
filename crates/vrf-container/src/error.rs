@@ -77,7 +77,7 @@ pub enum ContainerError {
     SizeMismatch { size: i32, memory_size: i32 },
 
     /// The Oodle archive header needs at least 8 bytes but the chunk is smaller.
-    #[error("compressed chunk too small for Oodle header: SizeInBytes={size}, need ≥ 8")]
+    #[error("compressed chunk too small for Oodle header: SizeInBytes={size}, need >= 8")]
     OodleHeaderTooSmall { size: i32 },
 
     /// The decompressed size in the Oodle header doesn't match MemorySizeInBytes.
