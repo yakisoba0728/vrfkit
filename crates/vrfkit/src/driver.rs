@@ -421,3 +421,62 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A writer that fails must never be reported as a finished file.
+    ///
+    /// Moving the Parquet writers onto threads moved their errors off the
+    /// `?` path, which is exactly the shape of a silent success. This drives the
+    /// failure deliberately: the writer returns an error and drops its receiver,
+    /// the producing side sees a send failure, and `finish` must surface the
+    /// writer's own error rather than either the send failure or `Ok`.
+    #[test]
+    fn a_failed_writer_thread_is_reported_not_swallowed() {
+        let mut writer = WriterThread::<u8>::spawn("test", |rx| {
+            // Take one batch, then fail -- the shape of a Parquet codec error.
+            let _ = rx.recv();
+            Err(ExportError::Usage("writer failed".into()))
+        });
+
+        // Keep shipping until the broken channel is observed, or until enough
+        // batches have gone in to guarantee it would have been.
+        let mut saw_send_failure = false;
+        for _ in 0..(WRITER_QUEUE_DEPTH + 4) {
+            let mut batch = vec![0u8; WRITER_BATCH_ROWS];
+            if writer.append(&mut batch).is_err() {
+                saw_send_failure = true;
+                break;
+            }
+        }
+
+        let err = writer
+            .finish()
+            .expect_err("a failed writer must not report success");
+        assert!(
+            err.to_string().contains("writer failed"),
+            "finish must surface the writer's own error, got: {err}"
+        );
+        // Not asserted as required: whether the producer noticed first is a
+        // race. What must hold is that finish reports the failure either way.
+        let _ = saw_send_failure;
+    }
+
+    /// A panicking writer thread must also be an error. `JoinHandle::join`
+    /// returns `Err` on panic and it would be easy to discard.
+    ///
+    /// The panic message this prints on stderr during `cargo test` is expected.
+    #[test]
+    fn a_panicking_writer_thread_is_reported_not_swallowed() {
+        let writer = WriterThread::<u8>::spawn("test", |_rx| panic!("writer died"));
+        let err = writer
+            .finish()
+            .expect_err("a panicking writer must not report success");
+        assert!(
+            err.to_string().contains("panicked"),
+            "finish must name the panic, got: {err}"
+        );
+    }
+}
