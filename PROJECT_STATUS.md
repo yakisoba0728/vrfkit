@@ -257,6 +257,7 @@ ValorantReplayParser : clean, on branch local/vrfkit-descriptors at f67ea66.
 ### Commit list
 
 ```
+b5b74db fix(tools): parse category overrides safely
 b10467b fix(tools): respect descriptor category overrides
 a0ea2b4 chore: enforce ASCII Rust sources
 b68baaa fix(decode): complete descriptor handle fallback
@@ -352,7 +353,7 @@ vrfkit/
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 246 tests, measured at b10467b (243 regular targets plus 3 doctests).
+Total: 246 tests, measured at b5b74db (243 regular targets plus 3 doctests).
 The earlier 242 figure omitted one existing test; Task B then added three.
 DO NOT trust the per-crate rows above: they were
 taken excluding doc-tests for some crates and including them for others, so
@@ -2331,7 +2332,7 @@ live Python decoder, adds two independently expected C# reference-bundle cases,
 and pins Python's partial-list malformed-input contract. All 12 pass. A
 deliberately corrupted byte produced exit 1; restoring it produced exit 0.
 
-### 14-B. Untyped-row investigation and descriptor extraction (e1eb220, b68baaa)
+### 14-B. Untyped-row investigation and descriptor extraction (e1eb220, b68baaa, b10467b, b5b74db)
 
 Every count below uses the explicit denominator: 871,595 rows with every
 `value_*` column null, out of 1,240,444 total fields.parquet rows on 02d4d478.
@@ -2371,6 +2372,17 @@ effective `HasFlag(Agent)` filter. This prevents three Ability subclasses on
 current master's pawn-descriptor branch from receiving fabricated runtime
 ClassNetCaches. Unknown categories and unsupported override syntax now fail
 loudly. The f67 input remains byte-identical to the tracked 1,100-entry table.
+
+Fix round 3 (b5b74db) closes the parser boundary exposed by review. A
+same-length C# code view masks comments and literal bodies before class and
+category discovery, including nested interpolated expressions and braces in
+comments. Qualified and `global::` category type/member names are supported;
+real unknown or unsupported overrides still fail loudly. Regression tests pin
+qualified Ability suppression, `Agent | Ability`, `All`, comment/string
+decoys, and class-boundary braces. The complete Python tool suite is 13/13.
+Both live generations retain 29 real Agent caches and exclude the same three
+phantoms; the corrected/rustfmt f67 output remains byte-identical to the
+tracked table (SHA-256 `1E9BF29DA6B1B1618CEED8637FBB2628DBEC160976B228039B52228BDAA2DE69`).
 
 Fresh 02d4d478 export measurement:
 
@@ -2438,7 +2450,7 @@ cargo test --workspace                  243 regular + 3 doctests, 0 failed
 cargo clippy --workspace --all-targets  clean with -D warnings
 cargo fmt --check                       clean
 cargo build --release                   exit 0
-Python descriptor/adapter tests          10/10
+Python descriptor/adapter tests          13/13
 effect decoder guard                     12/12
 ASCII guard                              61/61 tracked Rust files
 validate_corpus.py (13.01)              215/215; malformed 0
@@ -2475,11 +2487,12 @@ Current master depends on a separate clean C# worktree at
 `local/pawn-descriptors@d2b76f2`. It is a descendant of f67ea66 and contributes
 92 name entries across 20 ability groups that do not overlap Task B's 42 new
 name entries. After obtaining merge authority, preserve master's fixed
-build_1302 baseline and decode-error guard. First preserve b10467b, which
-applies the nearest explicit category override and prevents three phantom
+build_1302 baseline and decode-error guard. Preserve b10467b and b5b74db:
+together they apply the nearest explicit category override, safely discover
+qualified overrides outside comments/literals, and prevent three phantom
 Ability ClassNetCaches. Then run that extractor against the d2b76f2 worktree,
 followed by type corrections and rustfmt. A temporary clean generation with
-b10467b produced exactly 1,192 names / 172 groups / Raw 164 / Skip 164 / Typed
+b5b74db produced exactly 1,192 names / 172 groups / Raw 164 / Skip 164 / Typed
 864 / 84 handle aliases, retained all 29 real runtime Agent caches, and omitted
 the three phantom paths. Regenerate -- never hand-merge -- the tracked table.
 
