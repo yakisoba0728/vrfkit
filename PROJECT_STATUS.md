@@ -87,10 +87,11 @@ What is actually left:
   data behind it. Check whether the data is merely unexported before
   treating it as a naming problem; that is what cf97ecf turned out to be.
 
-**7-F. Parallelization** -- optional, and only worth doing if measurement
-  says the time is where 7-F assumes it is.
-
-**7-C** is a measured ceiling. Do not spend time there.
+**7-C** is a measured ceiling. Do not spend time there. **7-F** is closed the
+same way: the slice it proposed to parallelise is 3.4% of an export, and the
+rest of what it called "decode" is order-dependent. Its timing breakdown is
+the useful part -- it names Parquet writing (37%) and group-path resolution
+(12%) as where the time actually goes.
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -859,12 +860,93 @@ DRIFT lines and exit 1.
 This work also uncovered a worse problem -- see the malformed-counter note
 in section 4.
 
-### 7-F. Parallelization [OPTIONAL PERFORMANCE]
+### 7-F. Parallelization [CLOSED 2026-08-01 -- MEASURED, NOT WORTH IT]
 
-Content block headers and their declared bit lengths are plaintext (before
-the transform). Framing can stay sequential while transform+decode goes
-wide. For the current 1.4s/replay speed this is not urgent, but for a
-production pipeline ingesting hundreds of new replays per day it matters.
+The premise was that framing could stay sequential while "transform+decode"
+went wide. The framing observation is correct -- headers and declared bit
+lengths really are plaintext -- but the payoff is not there: the transform
+is 3.4% of an export, and the decode half cannot go wide at all. No code
+changed; the measurement is the deliverable.
+
+Measured on 02d4d478, release build, warm file cache, median of three
+runs, on a 24-core i9-13900KS:
+
+```
+vrfkit export    2.60 s
+vrfkit validate  1.48 s
+```
+
+Note which subcommand is which. `validate` runs the identical container +
+DemoFrame + replication + sink path and omits only the Parquet writers, so
+the 1.12 s gap IS the Parquet write. The "1.4s/replay" this section used
+to quote is a `validate` figure; an export is 1.8x that, and the two were
+being compared as if they were the same number.
+
+Per-slice breakdown, from a temporary instrumented build (Instant timers
+around each slice, reverted before commit). The instrumented total was
+2.83 s against 2.60 s clean, so roughly 8% of timer overhead is spread
+across these rows; the shares are of the instrumented total:
+
+```
+  oodle decompress            148 ms    5.2%
+  DemoFrame iteration          21 ms    0.7%
+  process_packet             1350 ms   47.7%
+    read_packet (bunches)     115 ms    4.1%
+    payload transform          97 ms    3.4%   <-- all 7-F can parallelise
+    on_content_block          347 ms   12.3%   (group path resolution)
+    field/rpc parse           681 ms   24.1%
+      try_parse_rpc_params    272 ms    9.6%
+      movement decode         167 ms    5.9%
+      apply_overlay            62 ms    2.2%
+      resolve_field_name       30 ms    1.1%
+      raw_bits copy            20 ms    0.7%
+      record push              21 ms    0.7%
+  drain -> Parquet           1045 ms   36.9%
+    fields.parquet            570 ms   20.1%
+    movement.parquet          450 ms   15.9%
+  writer finish                31 ms    1.1%
+  net_guids write               6 ms    0.2%
+```
+
+The transform slice is 867,835,037 bits over 608,011 blocks, about
+1.1 GB/s. It is genuinely pure -- the seed is
+`seed_for(bit_count, actor_net_guid)` and nothing else -- so it is the one
+slice that could be handed to workers.
+
+Why the decode half cannot. Content blocks are not independent:
+
+- `handle_channel_open` (pipeline.rs, three `internal_load_object` calls)
+  passes the sink through, and `register_path` writes to the NetGuidCache.
+  That is a phase-2 cache mutation, in stream order, on the actor-spawn
+  path every replay exercises -- 2,028 opens on 02d4d478. Package-map
+  export bunches would mutate it too but never fire on this replay
+  (`exported_guids` is 0), so the spawn path is the load-bearing one.
+- `on_actor_open` writes `ChannelState::archetypes`, which
+  `on_content_block` reads to resolve the group path.
+- That resolved group path selects the export group whose `num_exports`
+  becomes `function_count`. Section 9 records why this is destructive to
+  get wrong: the handle read is `ReadSerializedInt(max(num_exports, 2))`,
+  so a block decoded against a stale cache reads its handles at a
+  different bit width and desynchronises from its first field onward.
+
+A block's meaning therefore depends on every earlier block. Only the
+transform is order-free.
+
+Ceiling: perfect N-way parallelism over the transform alone saves at most
+3.4% of an export and about 6.5% of a validate. Against that: a rayon
+dependency, per-worker scratch buffers, a gather step, and a bit-identity
+risk. The counter totals would survive reordering -- `skipped_bits` is a
+u64 sum and addition commutes -- but the ordered records would not: the
+`DiagnosticEvent` vector behind `validate --diagnostics`, and which 32
+lines survive the first-32-wins stream-failure cap. Both are load-bearing
+under NO SILENT SUCCESS. Do not reopen without new measurements.
+
+Where the time actually is, if a future session wants throughput: Parquet
+writing (37%), `on_content_block` group-path resolution (12%), and
+`try_parse_rpc_params` (10%). For batch work the real win is at process
+level -- `validate_corpus.py` runs the 215 replays as 215 *sequential*
+subprocesses, and each subprocess already owns its own output, so running
+them N-wide is near-linear with no bit-identity risk at all.
 
 ### 7-G. Reproduce metrics.json for other replays [DONE 2026-08-01]
 
@@ -1207,12 +1289,18 @@ This reduced the corpus pass rate from an inflated 100% to an honest
 that every discarded bit is counted and the class is named, which is what
 allows the gaps to be investigated and closed.
 
-### No parallelization yet
-The current pipeline is sequential within a replay. Adding rayon-based
-parallelism over content blocks would require either (a) making the oracle
-counters atomic or (b) collecting per-block results and merging. The gain
-at 1.4s/replay is marginal for batch work but could matter for a streaming
-pipeline. Deferred because the correctness work is more urgent.
+### No parallelization within a replay (measured, closed)
+The pipeline is sequential within a replay and stays that way. This entry
+used to name the blocker as atomic oracle counters; that was wrong, and it
+made the problem sound mechanical. The real blocker is that a content
+block's resolved group path -- and therefore its `function_count` and the
+bit width of its handle read -- depends on cache and channel state mutated
+by earlier blocks in the same phase-2 walk. Only the payload transform is
+pure, and it is 3.4% of an export (97 ms of 2.83 s instrumented). The
+tradeoff is now a measured one rather than a deferral: the gain is capped
+below what a rayon dependency and the reordering risk cost. See 7-F for
+the full per-slice breakdown and for the process-level alternative that
+does pay off.
 
 ### Blob decoders in sink.rs vs vrf-decode
 The struct blob decoders (RoundResults etc.) are wired in sink.rs rather
