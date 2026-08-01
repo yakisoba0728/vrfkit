@@ -51,6 +51,7 @@ use crate::error::CliError;
 use crate::manifest;
 use crate::sink::ChannelState;
 use crate::sink::ExportSink;
+use crate::sink::RecordBuffers;
 
 /// A packet descriptor collected from DemoFrame iteration.
 /// Stores byte offset + length into the decompressed chunk buffer.
@@ -200,6 +201,8 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
 
     // Reusable packet descriptor buffer (avoids per-chunk allocation).
     let mut packet_descs: Vec<PacketDesc> = Vec::with_capacity(4096);
+    // Reusable per-packet record buffers; see `RecordBuffers`.
+    let mut buffers = RecordBuffers::default();
     let mut movement_rows: u64 = 0;
     let mut overlay_stats = OverlayStats::default();
     let mut error_report = OverlayErrorReport::default();
@@ -230,28 +233,33 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
             let pkt_id = total_packets;
             total_packets += 1;
 
-            let mut sink = ExportSink::new(&mut cache, &mut channel_state);
-            sink.time_ms = desc.time_ms;
-            sink.packet_id = pkt_id;
+            // Scoped so the sink's borrow of `buffers` ends before they are
+            // drained. The buffers outlive the sink; that is the point.
+            {
+                let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut buffers);
+                sink.time_ms = desc.time_ms;
+                sink.packet_id = pkt_id;
 
-            repl_reader.process_packet(pkt_data, pkt_id as i32, &mut sink);
+                repl_reader.process_packet(pkt_data, pkt_id as i32, &mut sink);
+
+                // Accumulate overlay stats.
+                overlay_stats.decoded_ok += sink.stats.overlay.decoded_ok;
+                overlay_stats.decoded_err += sink.stats.overlay.decoded_err;
+                overlay_stats.raw_or_skip += sink.stats.overlay.raw_or_skip;
+                overlay_stats.not_in_table += sink.stats.overlay.not_in_table;
+                overlay_stats.no_field_name += sink.stats.overlay.no_field_name;
+                error_report.merge_from(&sink.stats.overlay.error_report);
+            }
 
             // Hand field records to the fields writer thread.
-            fields.append(&mut sink.field_records)?;
+            fields.append(&mut buffers.fields)?;
             // Hand movement records to the movement writer thread.
-            movement_rows += sink.movement_records.len() as u64;
-            movement.append(&mut sink.movement_records)?;
+            movement_rows += buffers.movement.len() as u64;
+            movement.append(&mut buffers.movement)?;
             // Drain actor lifecycle records to writer.
-            for record in sink.actor_records.drain(..) {
+            for record in buffers.actors.drain(..) {
                 actor_writer.push(record)?;
             }
-            // Accumulate overlay stats.
-            overlay_stats.decoded_ok += sink.stats.overlay.decoded_ok;
-            overlay_stats.decoded_err += sink.stats.overlay.decoded_err;
-            overlay_stats.raw_or_skip += sink.stats.overlay.raw_or_skip;
-            overlay_stats.not_in_table += sink.stats.overlay.not_in_table;
-            overlay_stats.no_field_name += sink.stats.overlay.no_field_name;
-            error_report.merge_from(&sink.stats.overlay.error_report);
         }
 
         chunks_processed += 1;

@@ -47,13 +47,6 @@ const KNOWN_SUBOBJECT_CLASS_PATHS: &[(&str, &str)] = &[
     ),
 ];
 
-/// Persistent per-channel state that must survive across packets and chunks.
-///
-/// The replay pipeline creates a fresh `ExportSink` for every packet (to
-/// satisfy borrow-checker constraints around `NetGuidCache` mutability). This
-/// struct holds the state that *must* persist across those boundaries ??namely
-/// the archetype GUID assigned when a channel is opened, which is needed later
-/// to resolve ClassNetCache export groups when content blocks arrive.
 /// Memo for `ExportSink::find_rpc_param_group_path`.
 ///
 /// That lookup is a pure function of (content-block group path, function name,
@@ -73,6 +66,13 @@ struct RpcParamGroupMemo {
     by_group: HashMap<String, HashMap<String, Option<Arc<str>>>>,
 }
 
+/// Persistent per-channel state that must survive across packets and chunks.
+///
+/// The replay pipeline creates a fresh `ExportSink` for every packet (to
+/// satisfy borrow-checker constraints around `NetGuidCache` mutability). This
+/// struct holds the state that *must* persist across those boundaries ??namely
+/// the archetype GUID assigned when a channel is opened, which is needed later
+/// to resolve ClassNetCache export groups when content blocks arrive.
 #[derive(Debug, Clone, Default)]
 pub struct ChannelState {
     /// channel_index ??archetype NetworkGuid.
@@ -123,6 +123,29 @@ pub struct ExportStats {
     pub array: ArrayDecodeStats,
 }
 
+/// The record buffers a sink fills for one packet.
+///
+/// These live outside the sink and are lent to it. The sink is rebuilt for each
+/// of a replay's ~530 k packets, so a `Vec` allocated in its constructor is
+/// allocated (and freed) half a million times; that construct-and-drop cost
+/// measured at ~290 ms of a 1.79 s export, larger than the whole movement
+/// decoder. The buffers are empty at the end of every packet, so keeping their
+/// capacity across packets costs one allocation for the entire run.
+///
+/// [`ExportSink::new`] clears them, so a sink always starts empty no matter what
+/// the previous holder did. That is what stops a caller which never drains them
+/// -- the validation oracle is one -- from accumulating every record in the
+/// replay.
+#[derive(Debug, Default)]
+pub struct RecordBuffers {
+    /// Field records to be drained by the driver.
+    pub fields: Vec<FieldRecord>,
+    /// Movement records to be drained by the driver.
+    pub movement: Vec<MovementRecord>,
+    /// Actor lifecycle records to be drained by the driver.
+    pub actors: Vec<ActorRecord>,
+}
+
 /// The export sink. Receives decoded events from `vrf-net` and produces records
 /// for the Parquet writers.
 ///
@@ -138,12 +161,8 @@ pub struct ExportSink<'a> {
     pub time_ms: u32,
     /// Current packet index.
     pub packet_id: u32,
-    /// Buffered field records to be drained by the driver.
-    pub field_records: Vec<FieldRecord>,
-    /// Buffered movement records to be drained by the driver.
-    pub movement_records: Vec<MovementRecord>,
-    /// Buffered actor lifecycle records to be drained by the driver.
-    pub actor_records: Vec<ActorRecord>,
+    /// Output buffers for this packet. See [`RecordBuffers`].
+    records: &'a mut RecordBuffers,
     /// Stats.
     pub stats: ExportStats,
 
@@ -156,15 +175,25 @@ pub struct ExportSink<'a> {
 }
 
 impl<'a> ExportSink<'a> {
-    pub fn new(cache: &'a mut NetGuidCache, channel_state: &'a mut ChannelState) -> Self {
+    /// Build a sink for one packet over caller-owned record buffers.
+    ///
+    /// The buffers are cleared here rather than trusted to arrive empty: that is
+    /// what makes it safe to lend the same buffers to every packet regardless of
+    /// whether the caller drains them.
+    pub fn new(
+        cache: &'a mut NetGuidCache,
+        channel_state: &'a mut ChannelState,
+        records: &'a mut RecordBuffers,
+    ) -> Self {
+        records.fields.clear();
+        records.movement.clear();
+        records.actors.clear();
         Self {
             cache,
             channel_state,
             time_ms: 0,
             packet_id: 0,
-            field_records: Vec::with_capacity(256),
-            movement_records: Vec::with_capacity(256),
-            actor_records: Vec::new(),
+            records,
             stats: ExportStats::default(),
             current_channel: 0,
             current_actor_guid: 0,
@@ -707,7 +736,7 @@ impl<'a> ExportSink<'a> {
         value_bool: Option<bool>,
         value_str: Option<String>,
     ) {
-        self.field_records.push(FieldRecord {
+        self.records.fields.push(FieldRecord {
             time_ms: self.time_ms,
             packet_id: self.packet_id,
             channel_index: self.current_channel,
@@ -954,7 +983,7 @@ impl<'a> ExportSink<'a> {
                 None => (None, None, None, None),
             };
 
-            self.field_records.push(FieldRecord {
+            self.records.fields.push(FieldRecord {
                 time_ms: self.time_ms,
                 packet_id: self.packet_id,
                 channel_index: self.current_channel,
@@ -1110,7 +1139,7 @@ impl FieldSink for ExportSink<'_> {
                     // Decode leaf fields using known handle?뭪ype mapping.
                     let (vi, vf, vb, vs) = decode_array_leaf(f.handle, &f.raw_bits, f.bit_count);
 
-                    self.field_records.push(FieldRecord {
+                    self.records.fields.push(FieldRecord {
                         time_ms: self.time_ms,
                         packet_id: self.packet_id,
                         channel_index: self.current_channel,
@@ -1160,7 +1189,7 @@ impl FieldSink for ExportSink<'_> {
             None => (None, None, None, None),
         };
 
-        self.field_records.push(FieldRecord {
+        self.records.fields.push(FieldRecord {
             time_ms: self.time_ms,
             packet_id: self.packet_id,
             channel_index: self.current_channel,
@@ -1192,7 +1221,7 @@ impl FieldSink for ExportSink<'_> {
             let time_ms = self.time_ms;
             let packet_id = self.packet_id;
             let _ = vrf_movement::decode_movement_rpc(&mut rpc_reader, |mv| {
-                self.movement_records.push(vrf_export::MovementRecord {
+                self.records.movement.push(vrf_export::MovementRecord {
                     time_ms,
                     packet_id,
                     character_net_guid: mv.shooter_character_net_guid,
@@ -1207,7 +1236,7 @@ impl FieldSink for ExportSink<'_> {
                 });
             });
             // Don't store raw bits for movement RPCs (saves memory on 2.4M records).
-            self.field_records.push(FieldRecord {
+            self.records.fields.push(FieldRecord {
                 time_ms: self.time_ms,
                 packet_id: self.packet_id,
                 channel_index: self.current_channel,
@@ -1242,7 +1271,7 @@ impl FieldSink for ExportSink<'_> {
                     let _ = rc.copy_bits_to(&mut buf, bit_count as u64);
                     Some(buf)
                 };
-                self.field_records.push(FieldRecord {
+                self.records.fields.push(FieldRecord {
                     time_ms: self.time_ms,
                     packet_id: self.packet_id,
                     channel_index: self.current_channel,
@@ -1261,7 +1290,7 @@ impl FieldSink for ExportSink<'_> {
             }
         } else {
             // Zero-bit RPC ??just emit a marker row.
-            self.field_records.push(FieldRecord {
+            self.records.fields.push(FieldRecord {
                 time_ms: self.time_ms,
                 packet_id: self.packet_id,
                 channel_index: self.current_channel,
@@ -1336,7 +1365,7 @@ impl ReplicationSink for ExportSink<'_> {
             None => (None, None, None),
         };
 
-        self.actor_records.push(ActorRecord {
+        self.records.actors.push(ActorRecord {
             time_ms: self.time_ms,
             packet_id: self.packet_id,
             channel_index: state.channel_index,
@@ -1382,7 +1411,7 @@ impl ReplicationSink for ExportSink<'_> {
             .and_then(|g| self.cache.get_path_by_guid(g.0))
             .map(|s| s.to_owned());
 
-        self.actor_records.push(ActorRecord {
+        self.records.actors.push(ActorRecord {
             time_ms: self.time_ms,
             packet_id: self.packet_id,
             channel_index,
