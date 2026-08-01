@@ -284,6 +284,103 @@ internal static class AgentClassNetCacheDescriptors
             },
         )
 
+    def test_runtime_agent_cache_respects_explicit_non_agent_category_override(self):
+        output = self.run_generator(
+            {
+                "GenericAgentDescriptor.cs": r'''
+public abstract class GenericAgentDescriptor : ExportGroupDescriptor<GenericAgentDescriptor>
+{
+    public override ExportCategory Categories => ExportCategory.Agent;
+    protected override void Configure() { AddProperty(x => x.Owner).ObjectNetGuid(); }
+}
+''',
+                "AlphaAgentDescriptor.cs": r'''
+public sealed class AlphaAgentDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Characters/Alpha/Alpha_PC.Alpha_PC_C";
+}
+''',
+                "HunterDronePawnDescriptor.cs": r'''
+public sealed class HunterDronePawnDescriptor : GenericAgentDescriptor
+{
+    public override string Path =>
+        "/Game/Characters/Hunter/Drone/Pawn_Hunter_Drone.Pawn_Hunter_Drone_C";
+    public override ExportCategory Categories => ExportCategory.Ability;
+}
+''',
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    private const string KillFunctionName = "MulticastNotifyKilledEnemy";
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors)
+    {
+        return agentDescriptors
+            .Select(agent => new ClassNetCacheDescriptor(
+                agent.Path + "_ClassNetCache", [CreateKillRpc()]))
+            .ToArray();
+    }
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = KillFunctionName,
+    };
+}
+''',
+            }
+        )
+
+        self.assertEqual(
+            {
+                (group, field, field_type.strip())
+                for group, field, field_type in ENTRY_RE.findall(output)
+                if group.endswith("_ClassNetCache")
+            },
+            {
+                (
+                    "/Game/Characters/Alpha/Alpha_PC.Alpha_PC_C_ClassNetCache",
+                    "MulticastNotifyKilledEnemy",
+                    "FieldType::Skip",
+                ),
+            },
+        )
+
+    def test_unknown_category_override_fails_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "UnknownCategoryDescriptor.cs": r'''
+public sealed class UnknownCategoryDescriptor : ExportGroupDescriptor<UnknownCategoryDescriptor>
+{
+    public override string Path => "/test/unknown";
+    public override ExportCategory Categories => ExportCategory.Telepathy;
+    protected override void Configure() { AddProperty(x => x.Owner).ObjectNetGuid(); }
+}
+'''
+            }
+        )
+
+        self.assertIn("UnknownCategoryDescriptor", error)
+        self.assertIn("unknown ExportCategory Telepathy", error)
+
+    def test_malformed_category_override_fails_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "MalformedCategoryDescriptor.cs": r'''
+public sealed class MalformedCategoryDescriptor : ExportGroupDescriptor<MalformedCategoryDescriptor>
+{
+    public override string Path => "/test/malformed";
+    public override ExportCategory Categories
+    {
+        get => ExportCategory.Ability;
+    }
+    protected override void Configure() { AddProperty(x => x.Owner).ObjectNetGuid(); }
+}
+'''
+            }
+        )
+
+        self.assertIn("MalformedCategoryDescriptor", error)
+        self.assertIn("unsupported ExportCategory override", error)
+
     def test_runtime_cache_factory_missing_method_fails_loudly(self):
         error = self.run_generator_expecting_failure(
             {

@@ -74,6 +74,32 @@ CLASS_RE = re.compile(
     r'(?::\s*(\w+(?:<[^>]+>)?))?'
 )
 
+EXPORT_CATEGORY_NAMES = {
+    "None",
+    "Movement",
+    "Ability",
+    "Gunplay",
+    "Agent",
+    "GameState",
+    "Inventory",
+    "Economy",
+    "Effects",
+    "Visibility",
+    "Debug",
+    "All",
+}
+CATEGORY_OVERRIDE_MARKER_RE = re.compile(
+    r'\boverride\s+ExportCategory\s+Categories\b'
+)
+CATEGORY_OVERRIDE_RE = re.compile(
+    r'\boverride\s+ExportCategory\s+Categories\s*=>\s*'
+    r'(?P<expression>[^;]+)\s*;'
+)
+CATEGORY_EXPRESSION_RE = re.compile(
+    r'\s*ExportCategory\.\w+'
+    r'(?:\s*\|\s*ExportCategory\.\w+)*\s*'
+)
+
 # Regex for AddProperty with explicit export name
 ADD_PROP_NAMED_RE = re.compile(
     r'AddProperty\(\s*"(?P<name>[^"]+)"'
@@ -454,6 +480,41 @@ def extract_parameterless_method_body(source: str, method_name: str) -> str | No
     return source[body_start + 1:pos - 1]
 
 
+def extract_category_override(
+    class_name: str, class_body: str
+) -> frozenset[str] | None:
+    """Parse a class's explicit category flags, rejecting unsupported forms."""
+    markers = list(CATEGORY_OVERRIDE_MARKER_RE.finditer(class_body))
+    if not markers:
+        return None
+
+    overrides = list(CATEGORY_OVERRIDE_RE.finditer(class_body))
+    if (
+        len(markers) != 1
+        or len(overrides) != 1
+        or markers[0].start() != overrides[0].start()
+    ):
+        raise SystemExit(
+            f"{class_name}: unsupported ExportCategory override; "
+            "expected an expression joined with |"
+        )
+
+    expression = overrides[0].group("expression")
+    if CATEGORY_EXPRESSION_RE.fullmatch(expression) is None:
+        raise SystemExit(
+            f"{class_name}: unsupported ExportCategory override expression "
+            f"{expression.strip()!r}"
+        )
+
+    categories = frozenset(re.findall(r'ExportCategory\.(\w+)', expression))
+    unknown = sorted(categories - EXPORT_CATEGORY_NAMES)
+    if unknown:
+        raise SystemExit(
+            f"{class_name}: unknown ExportCategory {', '.join(unknown)}"
+        )
+    return categories
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
         raise SystemExit(__doc__)
@@ -470,7 +531,7 @@ def main(argv: list[str]) -> int:
     class_paths: dict[str, str] = {}        # class_name -> path
     class_fields: dict[str, list[tuple[str, str, int | None]]] = {}
     class_bases: dict[str, str] = {}        # class_name -> base_class_name
-    agent_category_roots: set[str] = set()
+    class_category_overrides: dict[str, frozenset[str]] = {}
     # ClassNetCache function names -> Skip entries
     cnc_functions: dict[str, list[str]] = {}  # class_name -> function names
     runtime_cnc_specs: list[tuple[str, str]] = []  # (path suffix, function name)
@@ -569,12 +630,9 @@ def main(argv: list[str]) -> int:
             body_start, body_end = find_class_body_range(source, cm.start())
             class_body = source[body_start:body_end]
 
-            if re.search(
-                r'override\s+ExportCategory\s+Categories\s*=>\s*'
-                r'ExportCategory\.Agent\b',
-                class_body,
-            ):
-                agent_category_roots.add(class_name)
+            category_override = extract_category_override(class_name, class_body)
+            if category_override is not None:
+                class_category_overrides[class_name] = category_override
 
             # Extract Path declarations within this class body
             path_match = PATH_RE.search(class_body)
@@ -719,16 +777,17 @@ def main(argv: list[str]) -> int:
             entries.append((path, func_name, "FieldType::Skip"))
             skip_count += 1
 
-    def descends_from_any(cls: str, roots: set[str]) -> bool:
+    def has_effective_agent_category(cls: str) -> bool:
         visited: set[str] = set()
         current = cls
         while current not in visited:
             visited.add(current)
+            categories = class_category_overrides.get(current)
+            if categories is not None:
+                return "Agent" in categories or "All" in categories
             base = class_bases.get(current)
             if base is None:
                 return False
-            if base in roots:
-                return True
             current = base
         return False
 
@@ -739,7 +798,7 @@ def main(argv: list[str]) -> int:
     # into the generator.
     for suffix, function_name in sorted(set(runtime_cnc_specs)):
         for class_name, path in sorted(class_paths.items()):
-            if not descends_from_any(class_name, agent_category_roots):
+            if not has_effective_agent_category(class_name):
                 continue
             cache_path = path + suffix
             groups_seen.add(cache_path)
