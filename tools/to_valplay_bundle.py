@@ -98,6 +98,21 @@ RAW_BLOB_PREFERRED = {
 }
 
 
+# Replicated PROPERTIES whose decoded value is a vector. The parser renders a
+# decoded vector as the compact "(x,y,z)" string, which is what lands in
+# value_str; the reference emits {x, y, z}. The RPC path already converts its
+# vectors (DAMAGE_VECTOR_PARAMS below) but the property path never did, so
+# these shipped as strings.
+#
+# Measured on 02d4d478: this is the complete set -- a scan for fields the
+# reference emits as {x,y,z} while we emit "(x,y,z)" finds only this one,
+# 9 occurrences. Add to it rather than matching the string shape generally:
+# a value that merely LOOKS like a vector is not evidence that it is one.
+VECTOR_PROPERTIES = frozenset({
+    "ReplicatedGravityDirection",
+})
+
+
 # Damage RPC parameters that carry an FVector_NetQuantize* payload. The C#
 # call sites are DamageParameters.cs:50 and
 # MulticastNotifyDamagePointParameters.cs:40-46.
@@ -764,7 +779,10 @@ def _build_shot_event(
         "location": loc_obj,
         "rotation": rot_obj,
         "ammo_remaining": ammo,
-        "num_projectiles": num_proj or 1,
+        # Absent means absent. The reference emits null on 172 of 2,647
+        # shots; defaulting to 1 also rewrote a genuine 0, and one consumer
+        # (compute_metrics.py:1560) reads the field without its own default.
+        "num_projectiles": num_proj,
         "random_seed": _f32_shortest(random_seed)
         if isinstance(random_seed, float) else random_seed,
         "tracer_option": tracer_opt,
@@ -1101,8 +1119,13 @@ def _normalize_rpc_param(rpc_name: str, param: str, value, is_raw: bool) -> dict
             result[out_name] = value
             return result
 
-        # DeathMontageEffectOverride* blobs: pass through
-        if param.startswith("DeathMontageEffect") and is_raw:
+        # DeathMontageEffectOverride and ...Context are genuine blobs and the
+        # reference labels them with exactly these TypeNames. A startswith
+        # match also swallowed DeathMontageEffectOverrideIsQueued, which is a
+        # 1-bit bool: 632 events shipped it as a blob with an invented
+        # TypeName where the reference emits plain false.
+        if param in ("DeathMontageEffectOverride",
+                     "DeathMontageEffectOverrideContext") and is_raw:
             if isinstance(value, dict):
                 value["TypeName"] = param
             result[out_name] = value
@@ -1311,15 +1334,21 @@ def _build_actor_events(export_dir: Path, actor_first: dict, actor_last: dict,
 
         for i in range(len(actors_table)):
             if a_event[i] == 'open':
-                loc_x = a_sx[i] if a_sx[i] is not None else 0
-                loc_y = a_sy[i] if a_sy[i] is not None else 0
-                loc_z = a_sz[i] if a_sz[i] is not None else 0
                 # Spawn coordinates are Float32 on the wire and in the Parquet
                 # column; widening them to Python floats would print the binary
                 # artefact instead of the value the reference shows.
-                loc_x = _f32_shortest(loc_x)
-                loc_y = _f32_shortest(loc_y)
-                loc_z = _f32_shortest(loc_z)
+                #
+                # A missing coordinate stays missing. 93 opens carry no spawn
+                # data (static actors), and substituting {0,0,0} made them
+                # indistinguishable from a real spawn at the origin -- the
+                # reference emits null. There are zero genuine (0,0,0) spawns,
+                # so the fabrication was undetectable by inspection.
+                has_loc = a_sx[i] is not None or a_sy[i] is not None or a_sz[i] is not None
+                location = _vec3(
+                    _f32_shortest(a_sx[i]) if a_sx[i] is not None else 0,
+                    _f32_shortest(a_sy[i]) if a_sy[i] is not None else 0,
+                    _f32_shortest(a_sz[i]) if a_sz[i] is not None else 0,
+                ) if has_loc else None
                 class_path = a_class[i] if a_class[i] is not None else ""
                 if class_path:
                     # First open wins: a GUID can be reused after a close, but
@@ -1335,7 +1364,7 @@ def _build_actor_events(export_dir: Path, actor_first: dict, actor_last: dict,
                     "actor_net_guid": a_guid[i],
                     "replication_class_path": _to_package_path(class_path),
                     "archetype_path": archetype,
-                    "location": {"x": loc_x, "y": loc_y, "z": loc_z},
+                    "location": location,
                 }
                 events.append((a_pid[i], a_time[i], event))
             else:
@@ -1419,6 +1448,11 @@ def _build_property_events(cols: _FieldColumns, prop_groups: dict):
             # Normalize boolean field names (strip 'b' prefix)
             is_bool = col_bool[ri] is not None
             fn = _normalize_prop_field_name(fn, is_bool)
+
+            if fn in VECTOR_PROPERTIES and isinstance(value, str):
+                parsed_vec = _parse_vector_or_none(value)
+                if parsed_vec is not None:
+                    value = parsed_vec
 
             # Parse the field path and set in nested structure
             parts = _parse_field_path(fn)

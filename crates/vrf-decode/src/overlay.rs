@@ -216,7 +216,25 @@ pub fn apply_overlay(
         }
     };
 
-    let field_type = match table.lookup(group_path, fname) {
+    // Fall back to the `b`-prefixed spelling of the same field.
+    //
+    // The C# descriptors bind a property to its handle number and carry a name
+    // only as a label, so a descriptor that spells a boolean
+    // `bDeathMontageEffectOverrideIsQueued` still matches a wire field the
+    // replay declares as `DeathMontageEffectOverrideIsQueued`. Our table is
+    // keyed on the name, so that spelling difference makes the lookup miss and
+    // the field stays raw -- 581 rows on 02d4d478, shipped as an undecoded
+    // blob where the reference has a plain bool.
+    //
+    // Narrow by construction: this only fires when the direct lookup already
+    // missed, and it can only hit an entry that the C# author spelled with the
+    // Unreal boolean prefix. Measured across all 1,054 entries and every
+    // undecoded row on 02d4d478, exactly one field resolves this way and it is
+    // the correct one.
+    let field_type = match table
+        .lookup(group_path, fname)
+        .or_else(|| table.lookup(group_path, &format!("b{fname}")))
+    {
         Some(ft) => ft,
         None => {
             stats.not_in_table += 1;

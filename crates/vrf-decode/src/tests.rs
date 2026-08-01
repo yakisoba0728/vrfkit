@@ -585,6 +585,35 @@ mod overlay_tests {
     }
 
     #[test]
+    fn overlay_falls_back_to_the_b_prefixed_boolean_name() {
+        // The C# descriptors bind by handle and treat the name as a label, so
+        // one spells a boolean `bDeathMontageEffectOverrideIsQueued` while the
+        // replay declares it without the prefix. A name-keyed lookup misses,
+        // and the field stayed raw on 581 rows.
+        let entries: &[OverlayEntry] = &[OverlayEntry {
+            group_path: "/test",
+            field_name: "bIsQueued",
+            field_type: FieldType::Bool,
+        }];
+        let table = OverlayTable::new(entries);
+        let mut stats = OverlayStats::default();
+        let data = [0x01u8];
+        let result = apply_overlay(
+            &table,
+            "/test",
+            Some("IsQueued"),
+            Some(&data),
+            1,
+            &mut stats,
+        );
+        assert_eq!(
+            result.and_then(|r| r.value_bool),
+            Some(true),
+            "the unprefixed wire name must resolve to the b-prefixed entry",
+        );
+    }
+
+    #[test]
     fn lookup_returns_none_for_unknown() {
         let table = OverlayTable::new(&OVERLAY_TABLE);
         let ft = table.lookup("nonexistent", "field");
