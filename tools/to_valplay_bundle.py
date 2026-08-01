@@ -613,6 +613,29 @@ def _parse_location(val) -> dict:
     return parsed if parsed is not None else {"x": 0, "y": 0, "z": 0}
 
 
+def _f32_shortest(value):
+    """Shortest decimal that round-trips through float32.
+
+    actors.parquet stores spawn coordinates as Float32. Widening one to a
+    Python float exposes the binary artefact -- 2382.2f becomes
+    2382.199951171875 -- while the C# reference serializes the float itself,
+    which System.Text.Json writes with float (not double) round-trip
+    precision: "2382.2".
+
+    Reproducing that means finding the fewest significant digits that still
+    round-trip as a float32, which is exactly what a shortest-round-trip
+    float formatter does.
+    """
+    if value is None:
+        return None
+    packed = _struct.unpack("f", _struct.pack("f", value))[0]
+    for digits in range(1, 10):
+        candidate = float(f"{packed:.{digits}g}")
+        if _struct.unpack("f", _struct.pack("f", candidate))[0] == packed:
+            return int(candidate) if candidate.is_integer() else candidate
+    return int(packed) if float(packed).is_integer() else packed
+
+
 def _vec3(x, y, z) -> dict:
     """Build an {x, y, z} dict, emitting integral components as ints.
 
@@ -897,6 +920,30 @@ def _group_path_to_class(gp: str) -> str:
     return gp
 
 
+def _to_package_path(class_path: str) -> str:
+    """Drop the `.ClassName_C` suffix, leaving the UE package path.
+
+    actors.parquet carries the full object path
+    ("/Game/Characters/Hunter/Hunter_PC.Hunter_PC_C") but the C# reference
+    emits actor_spawned.replication_class_path as the package path alone
+    ("/Game/Characters/Hunter/Hunter_PC"), and valplay's own docstrings
+    document that as the spawn shape.
+
+    The distinction is invisible to consumers that split on "." -- which is
+    why weapon_stats was already correct -- but ability_usage.top_classes and
+    ability_detail.by_ability take `path.split("/")[-1]` verbatim, so with the
+    suffix attached every ability key read as "Foo.Foo_C" instead of "Foo".
+
+    Verified against the reference on 02d4d478: after stripping, every shared
+    path matches with zero count mismatches.
+    """
+    slash = class_path.rfind("/")
+    tail = class_path[slash + 1:]
+    if "." not in tail:
+        return class_path
+    return class_path[: slash + 1] + tail.split(".", 1)[0]
+
+
 def _group_path_to_archetype(gp: str) -> str:
     """Derive a Default__X_PC_C archetype path from the group_path."""
     # e.g. '/Game/Characters/Wushu/Wushu_PC.Wushu_PC_C'
@@ -1048,17 +1095,26 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
                 loc_x = a_sx[i] if a_sx[i] is not None else 0
                 loc_y = a_sy[i] if a_sy[i] is not None else 0
                 loc_z = a_sz[i] if a_sz[i] is not None else 0
+                # Spawn coordinates are Float32 on the wire and in the Parquet
+                # column; widening them to Python floats would print the binary
+                # artefact instead of the value the reference shows.
+                loc_x = _f32_shortest(loc_x)
+                loc_y = _f32_shortest(loc_y)
+                loc_z = _f32_shortest(loc_z)
                 class_path = a_class[i] if a_class[i] is not None else ""
                 if class_path:
                     # First open wins: a GUID can be reused after a close, but
                     # the shot events that reference it belong to its first life.
                     guid_class.setdefault(a_guid[i], class_path)
                 archetype = a_arch[i] if a_arch[i] is not None else _group_path_to_archetype(class_path)
+                # guid_class above keeps the full object path (weapon lookup
+                # matches on it); the event carries the package path the
+                # reference emits.
                 event = {
                     "type": "actor_spawned",
                     "time_ms": a_time[i],
                     "actor_net_guid": a_guid[i],
-                    "replication_class_path": class_path,
+                    "replication_class_path": _to_package_path(class_path),
                     "archetype_path": archetype,
                     "location": {"x": loc_x, "y": loc_y, "z": loc_z},
                 }
