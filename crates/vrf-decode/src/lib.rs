@@ -48,6 +48,9 @@
 
 mod array;
 mod decode;
+/// Shot-effect blob decoder. **Not wired into the pipeline** -- the live
+/// decoder is a Python port in `tools/to_valplay_bundle.py` with a different
+/// failure contract. See the module docs before calling any of it.
 pub mod effect;
 mod overlay;
 pub mod structs;
