@@ -427,10 +427,13 @@ def _build_shot_event(
     time_ms, packet_id, actor_net_guid, channel_index,
     scalar_params: dict, float_blob, object_blob, vector_blob,
     tag_table: dict, equippable_lookup=None, fire_mode_lookup=None,
-) -> dict | None:
+) -> dict:
     """Build a valorant_shot_received event from decoded RPC params.
 
-    Returns None if this is not a gun-shot event (no FiringState tags).
+    Always returns an event. Effects with no firing state -- server-world
+    effects rather than weapon shots -- come back with a null equippable and
+    fire_mode "unknown", which is how the reference emits them and what
+    valplay's "unknown" weapon bucket exists to receive.
     """
     # Decode blobs
     floats = {}  # tag_name -> float_value
@@ -461,9 +464,21 @@ def _build_shot_event(
                 name = tag_table.get(tag_idx, str(tag_idx))
                 vectors[name] = val
 
-    # Only emit as a shot if FiringState data is present
-    if "FiringState.FiringPlayerState" not in objects:
-        return None
+    # Events with no firing state are emitted too, not filtered out.
+    #
+    # 172 of 02d4d478's 2,647 effect RPCs carry no FiringPlayerState, no
+    # attack vectors and no weapon -- they are server-world effects
+    # (source_id = DedicatedServerWorldSourceID), not weapon shots. Dropping
+    # them looked cleaner and was the wrong call: valplay's weapons section
+    # has an "unknown" bucket and weapon_stats has a
+    # shots_without_equippable diagnostic, both built precisely to surface
+    # these. Filtering them here hid information the consumer was designed to
+    # report, which is the same silent-drop mistake the parser invariants
+    # exist to prevent.
+    #
+    # Every downstream section that would be distorted by them already guards
+    # on firing_player_state or attack_vectors, so they land in the buckets
+    # meant for them rather than polluting any metric.
 
     # Extract scalar params from the RPC payload
     location = scalar_params.get("Location")
@@ -1331,18 +1346,20 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
 
         # Build valorant_shot_received for shot RPCs
         if rpc_name == "ReplayPlayContinuousEffectAtLocation":
-            if float_blob is not None or object_blob is not None:
-                channel = col_time[row_indices[0]]  # approximate
-                shot_event = _build_shot_event(
-                    ms, pid, actor, 0,
-                    payload, float_blob, object_blob, vector_blob,
-                    tag_table, equippable_lookup, fire_mode_lookup,
-                )
-                if shot_event is not None:
-                    events.append((pid, ms, shot_event))
-                    shot_count += 1
-                    if shot_event["shot"]["equippable"] is not None:
-                        resolved_weapon_count += 1
+            # No blob guard: 7 of 02d4d478's 2,647 invocations carry only
+            # scalar params and an undecoded EffectContainer. They are still
+            # effect events the reference emits, and requiring a blob dropped
+            # them entirely rather than letting them reach the "unknown"
+            # bucket built for exactly this case.
+            shot_event = _build_shot_event(
+                ms, pid, actor, 0,
+                payload, float_blob, object_blob, vector_blob,
+                tag_table, equippable_lookup, fire_mode_lookup,
+            )
+            events.append((pid, ms, shot_event))
+            shot_count += 1
+            if shot_event["shot"]["equippable"] is not None:
+                resolved_weapon_count += 1
             # Still emit as rpc_received too (some downstream might need it)
 
         # Normalize the RPC function name to match C# parser output
