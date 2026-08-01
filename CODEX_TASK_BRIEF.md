@@ -32,8 +32,10 @@ tests                236 passing, clippy 0 warnings, fmt clean
 13.01 corpus         215/215 parse, malformed framing 0
 13.02 demos          4/4 parse, malformed framing 0
 oracle pass rate     97.49% - 99.68% (median 99.32%)
-metrics parity       16 of 21 sections byte-identical to the C# reference
-                     on ALL 11 replays that have a reference bundle
+metrics parity       15 of 20 metric sections byte-identical to the C#
+                     reference on ALL 11 replays with a reference bundle
+                     (the harness prints 16/21; one of those keys is `note`,
+                     a fixed provenance string that cannot fail)
 ```
 
 The 5 sections that differ do so because vrfkit carries **more** data than
@@ -166,6 +168,7 @@ python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # Metrics parity across all 11 replays with a reference bundle
 python tools\validate_metrics_corpus.py --jobs 3
 # sections exact on ALL : 16 / 21     <- must not regress
+#   (15 real metric sections; `note` is a constant string)
 ```
 
 If you touch `tools/to_valplay_bundle.py`, regenerate before checking parity:
@@ -243,9 +246,13 @@ This work parallelises well. Do it.
 
 ## 7. The tasks
 
-Three, independent. Do them in whatever order suits parallelisation. If one
-turns out to be blocked on something only the user can supply (replay files),
-say so and proceed with the others rather than stalling.
+Two live (A and B); C is withdrawn -- see below. If a task turns out to be
+blocked on something only the user can supply (replay files), say so and
+proceed with the other rather than stalling.
+
+TASK C being withdrawn is itself the lesson this brief keeps making: its
+premise was written down confidently, never measured, and was false. Section
+5 exists because that keeps happening here.
 
 ---
 
@@ -332,57 +339,37 @@ unrecognised build fails loudly.
 
 ---
 
-### TASK C — The MeleeAttackState variants
+### TASK C — WITHDRAWN. Do not work on this.
 
-**Identified, never attempted. Read the caution carefully — its premise has
-the shape of the claims that turned out wrong.**
+This task asked you to recover the ~5% of unattributed bits that
+PROJECT_STATUS 7-C attributes to `MeleeAttackState1/2/3/4`.
 
-`PROJECT_STATUS` section 7-C says ~5% of unattributed bits are
-`MeleeAttackState1/2/3/4`, and:
+**An audit measured it after this brief was written and the premise is
+false.** MeleeAttackState contributes **zero** failing blocks across all 215
+replays. `/Script/ShooterGame.MeleeAttackStateComponent_ClassNetCache` IS
+declared in the schema, the existing digit-stripping resolution already
+reaches it, and it emits 473 field rows on 02d4d478. There is nothing to
+recover.
 
-> The MeleeAttackState variants are tractable: if
-> `MeleeAttackState1_C_ClassNetCache` etc. are added to the schema lookup
-> logic, those would be recovered.
+7-C's whole breakdown was wrong, because it could not be derived from any
+committed tool -- `MAX_STREAM_FAILURE_RECORDS` in
+`crates/vrfkit/src/sink.rs` caps the diagnostic at 32 lines, so the
+percentages had been eyeballed from a truncated sample. Re-derived with the
+cap raised, and cross-checked against the oracle's own totals:
 
-The same section also says:
+```
+                             7-C said   02d4d478   corpus
+  AbilitiesAndBuffsComponent   91.7%      98.61%    97.28%
+  MeleeAttackState1/2/3/4      ~5%         0.00%     0.00%   (0 blocks)
+  RespawningWallPlate2_7       ~2%         0.02%     0.005%
+  PatchVolume                  unlisted    0.66%     1.55%   (2nd largest)
+```
 
-> digit suffix is a class variant, not an instance suffix; each has a
-> distinct function table
-
-And `crates/vrf-schema/src/cache.rs:361` currently **strips trailing digits**
-(`trim_end_matches(char::is_ascii_digit)`), so `MeleeAttackState1` would
-resolve to `MeleeAttackState`. If each variant genuinely has a distinct
-function table, that stripping is either already producing a wrong
-`function_count`, or these blocks are failing loudly instead. **Those are
-very different situations and the document does not distinguish them.**
-
-Relevant finding from the 7-H investigation:
-`MeleeAttackStateComponent_ClassNetCache` is reachable from **five distinct
-object names**. Instance name to class is many-to-one, so no string rule can
-be correct in general.
-
-Steps, in this order:
-
-1. **Measure before designing.** Dump the actual failing blocks: instance
-   names, block counts, bit counts. Then check whether the schema declares
-   `MeleeAttackState1_C_ClassNetCache` (or similar) **at all** — search every
-   declared export group, the way the `AbilitiesAndBuffs` check in 7-C was
-   done. If the groups are not declared, this is the same dead end as
-   `AbilitiesAndBuffsComponent` and the task closes with a measurement.
-2. **Establish current behaviour.** Does the digit-stripping fallback fire
-   for these names today? If so, what group does it land on, and is that
-   group's `num_exports` the same as the variant's real one? A wrong
-   `function_count` changes the handle read width and desynchronises the
-   stream from its first field — PROJECT_STATUS section 9 explains why.
-3. **Only then** decide whether a fix exists that does not violate NO
-   HARDCODED NAMES. A rule derived from what the replay declares is fine; a
-   list of names in a Rust crate is an automatic fail.
-4. Report the corpus skipped-bit total before and after. It should drop if
-   you recover blocks, or provably not move.
-
-Deliverable: either a fix with the measured skipped-bit delta, or a
-"not solvable without hardcoding" recorded with evidence. Both are good. A
-heuristic that works on one replay is not.
+If you want a task in this area, the useful one is **making that breakdown
+derivable**: the 32-line cap means nobody can reproduce these numbers from a
+committed tool, which is why a wrong breakdown survived. That is a small,
+well-defined change to the diagnostics path. Confirm with the main session
+before starting it.
 
 ---
 
