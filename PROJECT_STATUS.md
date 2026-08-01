@@ -1,6 +1,6 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Reflects commit e7414d9 (32nd commit, master).
+Last updated: 2026-08-01. Reflects commit 059713e (34th commit, master).
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -33,7 +33,7 @@ Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf  (4 files)
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 232 passed, 0 failed across all crates
+# Expected: 233 passed, 0 failed across all crates
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
@@ -131,8 +131,8 @@ analytics pipeline runs unchanged on our data.
 
 ```
 branch       : master
-commits      : 32
-tests        : 232 passing, 0 failed
+commits      : 34
+tests        : 233 passing, 0 failed
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
 working tree : clean
@@ -182,7 +182,7 @@ vrfkit/
     vrf-frame       -- DemoFrame iteration (3 tests)
     vrf-schema      -- dynamic field schema from replay wire (47 tests)
     vrf-net         -- Unreal replication pipeline, no skip path (31 tests)
-    vrf-decode      -- primitive decoders, nested arrays, struct blobs (52 tests)
+    vrf-decode      -- primitive decoders, nested arrays, struct blobs (53 tests)
     vrf-movement    -- remote-character update protocol (5 tests)
     vrf-export      -- columnar Parquet writers (18 tests)
     vrfkit          -- CLI: inspect / validate / export (0 tests; the driver is
@@ -190,7 +190,7 @@ vrfkit/
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 232 tests. Counts measured per crate on 2026-08-01; the previous
+Total: 233 tests. Counts measured per crate on 2026-08-01; the previous
 breakdown in this document was wrong for six of the ten crates even though
 its total happened to be right.
 
@@ -226,7 +226,8 @@ movement rows      : 1,839,607
 actors.parquet rows:   3,827  (2028 opens + 1799 closes)
 net_guids.parquet  :  16,167  (14,480 carry an outer GUID)
 decode errors      :       0
-typed (value_*)    :    35.7%  (35.7% of 1,239,406 fields.parquet rows)
+typed (value_*)    :    36.0%  (356,290 decoded, up from 35.7% / 353,334
+                                after the 7-J and geometry type corrections)
 oracle pass rate   :  98.95%
 ```
 
@@ -801,9 +802,27 @@ flag, which made every multi-byte value odd when dynamic NetGUIDs must be
 even.
 
 Generalisable lesson: any C# field with a custom .Decode(...) is invisible to
-the extractor and silently becomes Raw. `Equippable` was the only such
-decoder in use, but a future one would fail the same way, and Raw looks
-deliberate rather than unknown. Worth an audit if new descriptors land.
+the extractor and silently becomes Raw, and Raw reads as a deliberate choice
+rather than an unknown.
+
+AUDITED 2026-08-01 (commit 059713e). Every .Decode() call site in the C#
+descriptors was checked. EquippableUsed was not the only casualty -- five
+damage geometry fields hit the same trap while vrf-decode already implemented
+their exact quantization, and all five are now typed:
+
+  DamageOrigin                      VectorNetQuantize100
+  DamageImpactLocation              VectorNetQuantize
+  DamageImpactBoneRelativeLocation  VectorNetQuantize
+  DamageDirection                   VectorNetQuantizeNormal
+  DamageImpactNormal                VectorNetQuantizeNormal
+
+Unlike EquippableUsed these were not producing wrong values, just undecoded,
+so no metric section moved. Verified against the reference on 258 damage
+records: all five vectors identical on every one.
+
+The remaining 153 Raw entries are genuinely raw -- RawPayload("...") blob
+types (TArray<FEffectDataFloat>, FTransform, ...) that the struct and effect
+blob decoders handle downstream. Re-run the audit when new descriptors land.
 
 The original investigation notes follow.
 
@@ -876,6 +895,14 @@ NO SILENT SUCCESS
   A block whose group cannot be resolved fails loudly (function_count=0
   returns Err, counted in rpc_stream_failures). Never guess a capacity to
   make the number look better; that is silent corruption.
+
+A CUSTOM C# DECODER MEANS THE TYPE IS UNKNOWN, NOT RAW
+  extract_descriptors.py cannot see through .Decode(...) in the C#
+  descriptors, so any field with a custom decoder lands in table.rs as
+  FieldType::Raw. That is indistinguishable from a field we deliberately
+  keep raw. Two real bugs came from this (7-J and the damage geometry
+  fields). When new descriptors land, diff the .Decode() call sites against
+  the Raw entries in table.rs before trusting them.
 
 GENERATED FILES ONLY VIA GENERATORS
   crates/vrf-decode/src/table.rs    -- only via tools/extract_descriptors.py
