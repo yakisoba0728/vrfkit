@@ -7,6 +7,10 @@ Section 7-A was corrected on 2026-08-01 after its premise was disproved by
 measurement, then implemented and verified at 100%. See
 NEXT_STEPS_FINDINGS.md for the evidence trail.
 
+Section 7-H was likewise disproved by measurement on 2026-08-01 -- but unlike
+7-A it has no implementation on the other side. It is closed NOT SOLVABLE, with
+no parser change, and section 8 carries the invariant it produced.
+
 ---
 
 ## QUICK START FOR THE NEXT SESSION
@@ -85,9 +89,11 @@ What is actually left:
 **7-E. 13.02 corpus guard** -- the transform works on two local 13.02 demos
   but nothing pins it. A future transform change could break 13.02 silently.
 
-**7-H. Instance-named component groups** -- still open, but check whether the
-  data is merely unexported before treating it as a naming problem; that is
-  what cf97ecf turned out to be.
+**7-H. Instance-named component groups** -- CLOSED NOT SOLVABLE 2026-08-01.
+  The export-gap check that fixed cf97ecf was run and came back negative, and
+  so did every other structural route. The class of a stably-named subobject
+  is never on the wire. See 7-H for the five measurements. Do not reopen this
+  without new input data (checkpoint chunks are the only unexamined region).
 
 **7-I** is a parity decision, not a defect. **7-C** is a measured ceiling --
 do not spend time there.
@@ -140,7 +146,7 @@ analytics pipeline runs unchanged on our data.
 
 ```
 branch       : master
-commits      : 46
+commits      : 47
 tests        : 236 passing, 0 failed
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
@@ -850,11 +856,13 @@ replay fd816a35 had no .vrf and implied it was the only reference bundle.
 Eleven others have both a bundle and a .vrf; only fd816a35 is missing its
 source. tools/validate_metrics_corpus.py now runs all eleven -- see 6-A.
 
-### 7-H. Instance-named component groups [MEDIUM IMPACT, DESIGN WORK]
+### 7-H. Instance-named component groups [NOT SOLVABLE FROM REPLAY DATA]
 
 Several component groups arrive under an actor instance name and never reach
 their declared class group, so their fields stay unnamed. The bits are
-captured -- no-skip-path holds -- but no field_name is attached.
+captured -- no-skip-path holds -- but no field_name is attached. 33,529 of
+429,633 field rows in 02d4d478 (7.8%) are affected; the export's
+"No field name" counter is the headline number for this gap.
 
 Top unnamed group_paths in 02d4d478's fields.parquet:
 ```
@@ -870,26 +878,122 @@ Top unnamed group_paths in 02d4d478's fields.parquet:
   464  AresAttributeSet_2
 ```
 
-This is NOT a mechanical extension of resolve_cnc_for_instance_name
-(cache.rs:301). That function strips _SEGMENT stems and tries
-stem_ClassNetCache / stemComponent_ClassNetCache / stem_C_ClassNetCache.
-No stem of "InventoryComponent" produces "AresInventory" -- the class carries
-an "Ares" prefix the instance name does not have. Resolving it needs
-structure the replay provides (most likely the subobject's outer chain in
-guid_to_outer, leading to the owning actor's class) rather than string
-manipulation.
+INVESTIGATED AND CLOSED 2026-08-01. The premise stated here previously --
+"resolving it needs structure the replay provides, most likely the subobject's
+outer chain in guid_to_outer, leading to the owning actor's class" -- was
+disproved by measurement, the same way 7-A's premise was. The owning actor's
+class is the CHARACTER class (Terra_PC_C), not the component's class
+(AresInventory); the outer chain cannot produce the latter.
 
-7-A does NOT depend on this. It matters for ammo-level detail in weapon_stats
-and for posture / fire-mode refinement.
+Root cause, from crates/vrf-net/src/content.rs: `read_content_block_header`
+returns as soon as `is_stably_named` is set, BEFORE `classNetGuid` is read.
+A default subobject is name-stable, so its class is never transmitted. Unreal's
+own receiver recovers it by resolving the name inside the already-spawned
+outer actor and calling `Object->GetClass()` -- that is asset data (the owning
+class's CDO), not replay data.
 
-Still open, but narrower than it looks. A separate subobject problem that
-LOOKED like this one turned out to be an export gap, not a resolution gap:
-content blocks describing a subobject carry its GUID, vrf-net parsed it, and
-the sink discarded it, so every ItemSlot on a character collapsed onto the
-actor GUID. Fixed in commit cf97ecf by adding fields.object_net_guid, which
-made ability_detail and objective_detail EXACT. Before treating any remaining
-"component" gap as a naming problem, check whether the data is simply not
-being exported.
+Five measurements, all on 02d4d478 unless noted:
+
+  1. HEADER BITS. Instrumented `on_content_block` and dumped every subobject
+     block. All of them are `is_stably_named = true, class_net_guid = 0`:
+     InventoryComponent 5342 blocks, MagazineAmmo 3642, CalloutRegionTracker
+     1837, ReserveAmmo 1112, VisionComponent 680, AresAttributeSet_2 76,
+     ZoomStateMachine 4255 RepLayout + 70 ClassNetCache. Not one block for
+     these objects ever carried a class GUID.
+
+  2. NO EXPORT GAP (the cf97ecf check, run and negative). Grouped every
+     `object_net_guid` in fields.parquet by the set of group_paths it appears
+     under. ZERO object GUIDs appear under BOTH an unnamed instance-name path
+     and a resolved class path. There is no earlier class-bearing block to
+     memoize from, so a per-object `object_net_guid -> group` cache -- which
+     would go beyond C#, whose cache is keyed on ClassNetGuid only -- has
+     nothing to learn from.
+
+  3. OUTER CHAIN TERMINATES. GUID 582 = "InventoryComponent", outer 576; GUID
+     576 is a dynamic actor GUID with no path and no outer. Same shape for all
+     40 InventoryComponent GUIDs. The chain ends at a pathless actor.
+
+  4. NO CLASS GUID EXISTS. Only one GUID carries a literal /Script path --
+     GUID 15 = "/Script/ShooterGame" -- because UE exports an object's leaf
+     name plus its outer GUID, not its full path, so class objects appear as
+     bare leaves parented to it. GUID 15 has exactly 19 children --
+     DefaultPlayspace, Default__OwnerExclusivePlayerInfo,
+     RoundBasedAFKDetectionComponent, AresAttributeSet, ItemSlot,
+     MultiItemSlot, ShooterCharacterHitRegDebugComponent,
+     AutoEquipTransitionContext, NetworkedRandomNumberGeneratorComponent,
+     PurchasedItemComponent, AresEquippableDataTracker, GameStateHUDConfig,
+     AbilityTrackingDelegateComponent, TeamRoleComponent,
+     Default__FootstepsComponent, AnimTriggeredStateContinueTransitionContext,
+     ActorListTransitionContext, Default__FiringStateComponent,
+     TransformTransitionContext. AresInventory is not among them. A class
+     object is assigned a NetGUID only when it is referenced on the wire, and
+     these classes never are.
+
+  5. NETWORK CHECKSUM IS ABSENT. `internal_load_object` reads and discards a
+     `NetworkChecksum` when `ExportFlags` bit 2 is set. That checksum is
+     `GetClassNetworkChecksum(Obj->GetClass())` and would be an exact,
+     replay-declared class token. It is never sent: across 16,648 GUID export
+     records in 02d4d478 the flags histogram is {1: 3440, 3: 13208} -- only
+     HasPath and HasPath|NoLoad, bit 2 never set, 0 checksums. Confirmed on a
+     second replay (03c60af4): 6,857 records, {1: 2696, 3: 4161}, 0 checksums.
+     Even if present it would need a (checksum -> class path) pairing, and
+     measurement 4 shows the only source of such pairings does not contain
+     AresInventory.
+
+Two near-misses, both recorded so they are not re-litigated:
+
+  HANDLE-RANGE COINCIDENCE -- NOT A MECHANISM. The declared group
+  /Script/ShooterGame.AresInventory has max populated handle 31 and
+  InventoryComponent's unnamed rows have max handle 31;
+  /Script/ShooterGame.AresAttributeSet has max populated handle 285 and
+  AresAttributeSet_2 has max handle 285. Consistency is not a declaration.
+  Turning it into a rule means searching 475 groups for one whose handle set
+  is a superset of the observed handles -- that is guessing a group to make a
+  number look better, which NO SILENT SUCCESS exists to forbid. Worse, on the
+  RepLayout path a wrong group has no failure signal (see below), so the
+  corruption would be silent.
+
+  CNC-DERIVED REPLAYOUT PATH -- MEASURED AND DECLINED. Running
+  `resolve_cnc_for_instance_name` on the unnamed RepLayout paths and stripping
+  `_ClassNetCache` from any hit recovers 156 of the 33,529 rows (0.47%), and
+  they are Switch_BlackMarket_2 (103) and WindowShieldA1 (53) -- static
+  ACTORS, 7-C territory, not 7-H components. It resolves none of the ten
+  offenders above. Declined on top of the low yield because of an asymmetry
+  that matters generally: on the ClassNetCache path a wrong group desyncs
+  loudly through function_count, but RepLayout handles are IntPacked and
+  independent of group capacity, so a wrong group there silently mislabels
+  fields and nothing fails.
+
+INSTANCE NAME -> CLASS IS MANY-TO-ONE, so no string rule can be correct even
+in principle. Demonstrated from replay data alone, on groups that DO resolve:
+/Script/ShooterGame.MeleeAttackStateComponent_ClassNetCache is reached from
+five distinct object names (MeleeAttackState1/2/3/4/_Alt);
+GrenadeExplodeIndicator_C_ClassNetCache from three; and
+DamageableComponent_ClassNetCache from two ("Damageable" and
+"DamageHandlerComponent") -- the second only because it is one of the four
+entries in KNOWN_SUBOBJECT_CLASS_PATHS, i.e. hardcoded. MagazineAmmo and
+ReserveAmmo are likewise two names for what the declared schema offers only
+one candidate class for (/Script/ShooterGame.AmmoComponent).
+
+The C# reference does not solve this either: ResolveSubobjectClassPath returns
+null when ClassNetGuid is invalid, except for its 4-entry
+KnownSubobjectClassPaths dictionary. That dictionary is the hardcoding this
+project's invariant forbids, and vrfkit mirrors it only to preserve parity.
+
+SCOPE OF THE CLAIM. All of the above is measured over ReplayData chunks, which
+is everything vrfkit ingests (driver.rs skips every chunk whose type is not
+ReplayData). 02d4d478 also has 18 Checkpoint chunks that are never parsed.
+UDemoNetDriver::SerializeGuidCache writes (NetGUID, OuterGUID, PathName,
+NetworkChecksum) for every ObjectLookup entry there, so a checkpoint reader is
+the ONLY unexamined place a class token could still live. It is unlikely to
+help -- ObjectLookup holds only GUIDs that were actually assigned, and
+measurement 4 shows these classes were never referenced, so they were never
+assigned one -- but it is the one honest caveat on "the replay does not
+declare it".
+
+7-A does not depend on this, and no metric section does: the affected fields
+are ammo-level detail in weapon_stats and posture / fire-mode refinement, none
+of which currently feed a section that is not already exact.
 
 ### 7-I. Verify the 2,647 vs 2,475 shot gap [SMALL, VALIDATION HYGIENE]
 
@@ -1069,6 +1173,16 @@ A CUSTOM C# DECODER MEANS THE TYPE IS UNKNOWN, NOT RAW
   keep raw. Two real bugs came from this (7-J and the damage geometry
   fields). When new descriptors land, diff the .Decode() call sites against
   the Raw entries in table.rs before trusting them.
+
+A STABLY-NAMED SUBOBJECT'S CLASS IS NOT ON THE WIRE
+  read_content_block_header returns as soon as is_stably_named is set, before
+  classNetGuid is read, so default subobjects (InventoryComponent,
+  MagazineAmmo, ZoomStateMachine, ...) never declare their class. Unreal
+  recovers it by resolving the name inside the already-spawned outer actor and
+  reading Object->GetClass() -- asset data, not replay data. No amount of
+  outer-chain walking, leaf matching, or checksum recovery substitutes for it
+  (7-H documents all five routes and why each fails). Treat "this component's
+  fields are unnamed" as expected, not as a bug to be closed by a name rule.
 
 GENERATED FILES ONLY VIA GENERATORS
   crates/vrf-decode/src/table.rs    -- only via tools/extract_descriptors.py
