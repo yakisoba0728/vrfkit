@@ -497,6 +497,29 @@ mod overlay_tests {
     }
 
     #[test]
+    fn equippable_used_is_an_object_net_guid() {
+        // The C# descriptor attaches a custom decoder
+        // (DamageParameters.cs:51 -> ValorantPayloadDecoders.Equippable), which
+        // extract_descriptors.py cannot see through, so it lands in table.rs as
+        // Raw. That decoder is exactly archive.ReadIntPacked(), i.e. our
+        // ObjectNetGuid. Leaving it Raw forces consumers to guess the encoding;
+        // the adapter guessed a fixed 16-bit LE integer and produced values that
+        // were never valid NetGUIDs. tools/apply_type_corrections.py restores
+        // the real type.
+        let table = OverlayTable::new(&OVERLAY_TABLE);
+        for group in [
+            "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Base",
+            "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Point",
+        ] {
+            assert_eq!(
+                table.lookup(group, "EquippableUsed"),
+                Some(FieldType::ObjectNetGuid),
+                "EquippableUsed must decode as a net GUID in {group}",
+            );
+        }
+    }
+
+    #[test]
     fn lookup_returns_none_for_unknown() {
         let table = OverlayTable::new(&OVERLAY_TABLE);
         let ft = table.lookup("nonexistent", "field");

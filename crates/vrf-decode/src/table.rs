@@ -4386,7 +4386,7 @@ pub static OVERLAY_TABLE: [OverlayEntry; 1054] = [
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Base",
         field_name: "EquippableUsed",
-        field_type: FieldType::Raw,
+        field_type: FieldType::ObjectNetGuid,
     },
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Base",
@@ -4546,7 +4546,7 @@ pub static OVERLAY_TABLE: [OverlayEntry; 1054] = [
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Point",
         field_name: "EquippableUsed",
-        field_type: FieldType::Raw,
+        field_type: FieldType::ObjectNetGuid,
     },
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Point",

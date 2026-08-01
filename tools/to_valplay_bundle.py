@@ -1271,23 +1271,32 @@ def _normalize_rpc_param(rpc_name: str, param: str, value, is_raw: bool) -> dict
         if param == "RegionalDamage" and not is_raw:
             value = REGIONAL_DAMAGE_MAP.get(value, f"regional_damage__unknown_{value}")
 
-        # EquippableUsed: raw blob -> {NetGuid: int} structure
-        if param == "EquippableUsed" and is_raw:
-            # The EquippableUsed is a net GUID packed in 16 bits
-            # Try to decode as a simple int
-            if isinstance(value, dict) and "Data" in value:
-                raw_bytes = base64.b64decode(value["Data"])
-                if len(raw_bytes) >= 2:
-                    # Little-endian uint16 net GUID
-                    net_guid = int.from_bytes(raw_bytes[:2], 'little')
-                    result[out_name] = {
-                        "NetGuid": net_guid,
-                        "Name": None,
-                        "ClassPath": None,
-                        "Category": "unknown",
-                    }
-                    return result
-            result[out_name] = value
+        # EquippableUsed: net GUID -> the C# ValorantEquippable shape.
+        #
+        # Name/ClassPath stay null and Category stays "unknown" because that is
+        # what the C# parser emits: its resolver looks the GUID up in the
+        # NetGuidCache path table, and weapon instances are dynamic actors that
+        # never register a path there. valplay resolves the gun downstream from
+        # actor_spawned instead (_actorindex.build_actor_class_index), so
+        # filling these in here would diverge from the reference for no gain.
+        #
+        # This used to read the raw bits as a fixed little-endian uint16, which
+        # was wrong twice over: the field is IntPacked (8/16/24 bits wide
+        # depending on the value), and the low bit of the first byte is
+        # IntPacked's continuation flag, so every multi-byte value came out odd
+        # and could never be a valid dynamic NetGUID. The overlay now types the
+        # field as ObjectNetGuid, so the parser hands us the decoded integer.
+        if param == "EquippableUsed":
+            if isinstance(value, int) and not is_raw:
+                result[out_name] = {
+                    "NetGuid": value,
+                    "Name": None,
+                    "ClassPath": None,
+                    "Category": "unknown",
+                }
+            else:
+                # Undecodable: pass the bits through rather than guessing.
+                result[out_name] = value
             return result
 
         # LifeChangeEvents: keep as blob

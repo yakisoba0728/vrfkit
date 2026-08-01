@@ -117,6 +117,42 @@ def main():
             count += 1
     content = "    OverlayEntry {".join(blocks)
 
+    # Fix: Raw -> ObjectNetGuid for EquippableUsed on both damage RPCs.
+    #
+    # Not a wire/declaration mismatch like the others above -- the declaration
+    # is simply invisible to the extractor. DamageParameters.cs:51 attaches a
+    # custom decoder:
+    #
+    #   AddPropertyHandle(7, x => x.EquippableUsed, ...)
+    #       .Decode(ValorantPayloadDecoders.Equippable)
+    #
+    # and that decoder (ValorantPayloadDecoders.cs:158) is exactly
+    #
+    #   var netGuid = archive.ReadIntPacked();
+    #
+    # which is what FieldType::ObjectNetGuid already implements. Because
+    # extract_descriptors.py cannot see through .Decode(...), the field lands
+    # here as Raw, and every consumer has to guess the encoding.
+    #
+    # Verified on 02d4d478 across all 632 occurrences: read as IntPacked the
+    # values are 116 distinct and 100% even -- the engine requires dynamic
+    # NetGUIDs to be even (IsDynamic => (Value & 1) == 0) -- and 114 of 115
+    # resolve to a weapon class path in actors.parquet. The bits are 8, 16 or
+    # 24 wide depending on the value, so any fixed-width read is wrong by
+    # construction.
+    blocks = content.split("    OverlayEntry {")
+    for i, block in enumerate(blocks):
+        if i == 0:
+            continue
+        if "DamageableComponent:MulticastNotifyDamage_" not in block:
+            continue
+        if 'field_name: "EquippableUsed"' not in block:
+            continue
+        if "FieldType::Raw" in block:
+            blocks[i] = block.replace("FieldType::Raw", "FieldType::ObjectNetGuid")
+            count += 1
+    content = "    OverlayEntry {".join(blocks)
+
     TABLE_RS.write_text(content, encoding="utf-8")
     print(f"Applied {count} type corrections to {TABLE_RS}")
     return 0
