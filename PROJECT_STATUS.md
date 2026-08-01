@@ -1,7 +1,92 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Reflects commit de24d6d (24th commit, master).
-All numbers come from direct tool runs in this session, not estimates.
+Last updated: 2026-08-01. Reflects commit ed4415f (25th commit, master).
+All numbers come from direct tool runs in the previous session, not estimates.
+
+---
+
+## QUICK START FOR THE NEXT SESSION
+
+Read this section first. Everything else is supporting detail.
+
+### Where things are
+```
+Parser (Rust)  : C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
+C# reference   : C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser
+                 HAS USER'S UNCOMMITTED WORK -- 17 entries in git status.
+                 Never commit, stash, reset, or modify anything there.
+                 If you need to instrument it: add ONE clean file, run, then
+                 git checkout -- <that file>  and verify status is still 17.
+valplay        : C:\Users\yakihyuk0728\Documents\GitHub\valplay
+                 Never modify. Run its scripts by absolute path only.
+Corpus (.vrf)  : C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf
+                 215 files, all ++Ares-Core+release-13.01
+Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf  (4 files)
+```
+
+### Verify the build before touching anything
+```powershell
+cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
+$env:CARGO_TARGET_DIR = $null
+cargo test 2>&1 | Select-String "test result"
+# Expected: 228 passed, 0 failed across all crates
+cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
+# Expected: no output (exit 0)
+cargo fmt --check
+# Expected: exit 0
+```
+
+### Regression guard (run after any non-trivial change)
+```powershell
+cargo build --release -p vrfkit
+.\target\release\vrfkit.exe export `
+  "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf\02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf" `
+  --out out\nested
+# Must NOT change: content blocks 608020, fields 429633, RPCs 342735,
+#                  movement 1839607, decode errors 0
+python tools\compare_combat_report.py
+# Must print: ALL INTERESTING SHAPES MATCH
+python tools\validate_corpus.py .\target\release\vrfkit.exe `
+  "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
+# Baseline: blocks 136,545,822  fields 98,883,979  rpcs 75,571,092
+#           malformed 0  skipped 1,972,080,670
+```
+
+### What to do next (highest impact first)
+See Section 7 for full detail. The single most valuable next task is:
+
+**7-A. Equippable (weapon) identity resolution** -- No Rust change needed.
+  actors.parquet now exists with class_path per actor.
+  The shot EffectContainer carries a net GUID; join it to actors.parquet
+  to get the weapon class path, then map class path -> display name.
+  Unlocks 4 metric sections: weapons, weapon_stats, spray_control, posture.
+  Estimated effort: 1-2 hours in to_valplay_bundle.py.
+
+After that: 1ms timing alignment (Section 7-B) closes 5-6 more sections.
+
+### State of out/ directory (gitignored, safe to regenerate)
+```
+out\baseline\             -- regression baseline Parquet (do NOT delete)
+out\nested\               -- latest export of 02d4d478
+out\valplay_bundle\       -- latest adapter output + metrics.json
+```
+To regenerate everything from scratch:
+```powershell
+Remove-Item out\nested -Recurse -Force -EA SilentlyContinue
+Remove-Item out\valplay_bundle -Recurse -Force -EA SilentlyContinue
+cargo build --release -p vrfkit
+.\target\release\vrfkit.exe export <vrf path> --out out\nested
+python tools\to_valplay_bundle.py out\nested
+python "C:\...\valplay\pipeline\metrics\compute_metrics.py" `
+       (Resolve-Path out\valplay_bundle\02d4d478-...).Path
+```
+
+### Key invariant (never break)
+Every content block emits (group_path, handle, name, bit_count, raw_bits)
+even when nothing is known. Overlay is additive. A block whose group is
+unresolved returns Err (counted, named) -- never Ok with a guessed capacity.
+The oracle's honesty matters more than its pass rate.
+
 
 ---
 
