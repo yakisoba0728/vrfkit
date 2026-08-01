@@ -23,10 +23,17 @@ Read this section first. Everything else is supporting detail.
 ```
 Parser (Rust)  : C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 C# reference   : C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser
-                 HAS USER'S UNCOMMITTED WORK -- 17 entries in git status.
-                 Never commit, stash, reset, or modify anything there.
-                 If you need to instrument it: add ONE clean file, run, then
-                 git checkout -- <that file>  and verify status is still 17.
+                 Tree is CLEAN, on branch local/vrfkit-descriptors (f67ea66).
+                 The "17 uncommitted entries" warning that stood here until
+                 2026-08-02 is obsolete: that work is committed as fe5343a.
+                 `main` MUST STAY AT 2d2e05e. That is the commit the reference
+                 bundles were built from -- they stamp parser_version
+                 1.0.0+2d2e05e8 -- so moving it invalidates every comparison
+                 figure in this document. Do not merge the branch into main,
+                 and do not pull.
+                 Changing a descriptor there is allowed ON THE BRANCH, with
+                 primary-source proof and the test that pins it (see 13-C).
+                 Regenerating table.rs requires that branch checked out.
 valplay        : C:\Users\yakihyuk0728\Documents\GitHub\valplay
                  Never modify. Run its scripts by absolute path only.
 Corpus (.vrf)  : C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf
@@ -43,9 +50,9 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 242 passed, 0 failed across all crates
-# (this said 238 until 2026-08-02, when it was measured at 239. Sum the
-#  per-target lines; do not read the last one.)
+# Expected: 242 passed, 0 failed across all crates.
+# Sum the per-target lines; the last line is one target, not the total.
+# This figure has been stale twice. Re-measure before quoting it.
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
@@ -68,6 +75,12 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 #           malformed 0  skipped 1,972,080,670    (~30s, runs 16-wide)
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # Expected: OK: 4 replays match the baseline
+python tools\check_export_baseline.py --baseline tools\baselines\export_02d4d478.json
+# Expected: OK ... 3 printed counters cross-check against their Parquet files.
+# The strongest single guard: it pins all 21 export counters plus every Parquet
+# file's rows AND bytes, and caught every counter move this session before
+# anything else did. On DRIFT, explain each line before passing --update. The
+# point is that a silent change is impossible, not that the numbers are sacred.
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1210.json
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1211.json
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1300.json
@@ -207,19 +220,23 @@ the constant provenance `note` run unchanged on our data.
 
 ---
 
-## 2. Repository State (2026-08-01)
+## 2. Repository State (2026-08-02)
 
 ```
-branch       : master
-commits      : 65 (git log --oneline | wc -l). The "56" this line used to
-               carry did not match the log; re-measure it rather than
-               incrementing it
-tests        : 238 passing, 0 failed
+branch       : master (the only branch; no remote, no worktrees, no stashes)
+commits      : run `git rev-list --count HEAD`. No number is written here
+               on purpose: the two that were had both gone stale, and this
+               one would be wrong the moment the line was committed
+tests        : 242 passing, 0 failed
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
 working tree : clean
-valplay repo : 0 modified files (user's uncommitted work untouched)
-ValorantReplayParser : 0 modified files (instrumentation always reverted)
+valplay repo : 0 modified files (never written to; scripts run by absolute
+               path, and compute_metrics.py is always pointed at a directory
+               under vrfkit's out/ so it cannot write metrics.json into it)
+ValorantReplayParser : clean, on branch local/vrfkit-descriptors at f67ea66.
+               main untouched at 2d2e05e -- the commit the reference bundles
+               were built from. Do not move it (QUICK START says why)
 ```
 
 ### Commit list
