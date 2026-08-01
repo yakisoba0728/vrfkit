@@ -1044,6 +1044,734 @@ internal static class AgentClassNetCacheDescriptors
             },
         )
 
+    def test_commented_raw_wrapper_does_not_reclassify_live_typed_call(self):
+        output = self.run_generator(
+            {
+                "LiveTypedDescriptor.cs": r'''
+/*
+private void AddValue(uint handle, Expression<Func<object, object>> property) =>
+    AddPropertyHandle(handle, property, ExportCategory.GameState).Decode(RawPayload("old"));
+*/
+public sealed class LiveTypedDescriptor : ExportGroupDescriptor<LiveTypedDescriptor>
+{
+    public override string Path => "/test/live-typed";
+    protected override void Configure()
+    {
+        AddProperty(x => x.KnownValue).UInt32();
+        AddValue(7, x => x.TypedValue).UInt32();
+    }
+
+    private PropertyDescriptor AddValue(
+        uint handle,
+        Expression<Func<LiveTypedDescriptor, uint>> property) =>
+        AddPropertyHandle(handle, property, ExportCategory.GameState);
+}
+'''
+            }
+        )
+
+        self.assertEqual(
+            {
+                (group, field, field_type.strip())
+                for group, field, field_type in ENTRY_RE.findall(output)
+            },
+            {
+                ("/test/live-typed", "KnownValue", "FieldType::UInt32"),
+            },
+        )
+        self.assertEqual(HANDLE_ENTRY_RE.findall(output), [])
+
+    def test_raw_wrapper_name_does_not_leak_to_unrelated_class(self):
+        output = self.run_generator(
+            {
+                "RawWrapperOwner.cs": r'''
+public abstract class RawWrapperOwner<T> : ExportGroupDescriptor<T>
+{
+    protected void AddValue(
+        uint handle,
+        Expression<Func<T, ValorantRawPayload?>> property) =>
+        AddPropertyHandle(handle, property, ExportCategory.Effects).Decode(RawPayload("raw"));
+}
+''',
+                "UnrelatedDescriptor.cs": r'''
+public sealed class UnrelatedDescriptor : ExportGroupDescriptor<UnrelatedDescriptor>
+{
+    public override string Path => "/test/unrelated";
+    protected override void Configure()
+    {
+        AddProperty(x => x.KnownValue).UInt32();
+        AddValue(7, x => x.TypedValue).UInt32();
+    }
+}
+''',
+            }
+        )
+
+        self.assertEqual(
+            {
+                (group, field, field_type.strip())
+                for group, field, field_type in ENTRY_RE.findall(output)
+            },
+            {
+                ("/test/unrelated", "KnownValue", "FieldType::UInt32"),
+            },
+        )
+        self.assertEqual(HANDLE_ENTRY_RE.findall(output), [])
+
+    def test_commented_raw_wrapper_call_is_not_emitted(self):
+        output = self.run_generator(
+            {
+                "RawBaseDescriptor.cs": r'''
+public abstract class RawBaseDescriptor<T> : ExportGroupDescriptor<T>
+{
+    protected void AddRaw(
+        uint handle,
+        Expression<Func<T, ValorantRawPayload?>> property,
+        string typeName) =>
+        AddPropertyHandle(handle, property, ExportCategory.Effects).Decode(RawPayload(typeName));
+}
+''',
+                "LiveRawDescriptor.cs": r'''
+public sealed class LiveRawDescriptor : RawBaseDescriptor<LiveRawDescriptor>
+{
+    public override string Path => "/test/live-raw";
+    protected override void Configure()
+    {
+        AddRaw(7, x => x.LivePayload, "LivePayload");
+        /*
+        AddRaw(99, x => x.CommentedPayload, "CommentedPayload");
+        */
+    }
+}
+''',
+            }
+        )
+
+        self.assertEqual(
+            {
+                (group, field, field_type.strip())
+                for group, field, field_type in ENTRY_RE.findall(output)
+            },
+            {
+                ("/test/live-raw", "LivePayload", "FieldType::Raw"),
+            },
+        )
+        self.assertEqual(
+            {
+                (group, int(handle), field)
+                for group, handle, field in HANDLE_ENTRY_RE.findall(output)
+            },
+            {("/test/live-raw", 7, "LivePayload")},
+        )
+
+    def test_property_type_syntax_inside_trivia_is_ignored(self):
+        output = self.run_generator(
+            {
+                "TriviaDescriptor.cs": r'''
+public sealed class TriviaDescriptor : ExportGroupDescriptor<TriviaDescriptor>
+{
+    public override string Path => "/test/trivia";
+    protected override void Configure()
+    {
+        AddProperty(x => x.CommentDecode /* .Decode( */).UInt32();
+        AddProperty(x => x.CommentSerialized /* .SerializedInt(999) */).UInt32();
+        AddProperty("Literal).Decode(", x => x.LiteralValue).UInt32();
+    }
+}
+'''
+            }
+        )
+
+        self.assertEqual(
+            {
+                (group, field, field_type.strip())
+                for group, field, field_type in ENTRY_RE.findall(output)
+            },
+            {
+                ("/test/trivia", "CommentDecode", "FieldType::UInt32"),
+                ("/test/trivia", "CommentSerialized", "FieldType::UInt32"),
+                ("/test/trivia", "Literal).Decode(", "FieldType::UInt32"),
+            },
+        )
+
+    def test_property_name_syntax_inside_comments_is_ignored(self):
+        output = self.run_generator(
+            {
+                "NameTriviaDescriptor.cs": r'''
+public sealed class NameTriviaDescriptor : ExportGroupDescriptor<NameTriviaDescriptor>
+{
+    public override string Path => "/test/name-trivia";
+    protected override void Configure()
+    {
+        AddProperty(/* AddProperty("Wrong") */ x => x.Right).UInt32();
+        AddProperty(/* z => z.Decoy */ x => x.Live).UInt32();
+        AddPropertyHandle(
+            7,
+            /* AddPropertyHandle(8, "WrongHandle", ExportCategory.Debug) */
+            x => x.RightHandle,
+            ExportCategory.Debug).UInt32();
+    }
+}
+'''
+            }
+        )
+
+        self.assertEqual(
+            {
+                (group, field, field_type.strip())
+                for group, field, field_type in ENTRY_RE.findall(output)
+            },
+            {
+                ("/test/name-trivia", "Right", "FieldType::UInt32"),
+                ("/test/name-trivia", "Live", "FieldType::UInt32"),
+                ("/test/name-trivia", "RightHandle", "FieldType::UInt32"),
+            },
+        )
+        self.assertEqual(
+            {
+                (group, int(handle), field)
+                for group, handle, field in HANDLE_ENTRY_RE.findall(output)
+            },
+            {("/test/name-trivia", 7, "RightHandle")},
+        )
+
+    def test_escaped_raw_wrapper_call_emits_literal_handle(self):
+        output = self.run_generator(
+            {
+                "EscapedRawBase.cs": r'''
+public abstract class EscapedRawBase<T> : ExportGroupDescriptor<T>
+{
+    protected void @AddRaw(
+        uint handle,
+        Expression<Func<T, ValorantRawPayload?>> property,
+        string typeName) =>
+        AddPropertyHandle(handle, property, ExportCategory.Effects).Decode(RawPayload(typeName));
+}
+''',
+                "EscapedRawDescriptor.cs": r'''
+public sealed class EscapedRawDescriptor : EscapedRawBase<EscapedRawDescriptor>
+{
+    public override string Path => "/test/escaped-raw";
+    protected override void Configure()
+    {
+        @AddRaw(7, @x => @x.@Payload, "Payload");
+    }
+}
+''',
+            }
+        )
+
+        self.assertEqual(
+            {
+                (group, field, field_type.strip())
+                for group, field, field_type in ENTRY_RE.findall(output)
+            },
+            {("/test/escaped-raw", "Payload", "FieldType::Raw")},
+        )
+        self.assertEqual(
+            {
+                (group, int(handle), field)
+                for group, handle, field in HANDLE_ENTRY_RE.findall(output)
+            },
+            {("/test/escaped-raw", 7, "Payload")},
+        )
+
+    def test_runtime_factory_resolves_within_owning_class(self):
+        output = self.run_generator(
+            {
+                "GenericAgentDescriptor.cs": r'''
+public abstract class GenericAgentDescriptor : ExportGroupDescriptor<GenericAgentDescriptor>
+{
+    public override ExportCategory Categories => ExportCategory.Agent;
+}
+''',
+                "LiveAgentDescriptor.cs": r'''
+public sealed class LiveAgentDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Agents/Live.Live_C";
+}
+''',
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class UnrelatedRpcFactory
+{
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = "WrongRpc",
+    };
+}
+
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors)
+    {
+        return agentDescriptors
+            .Select(agent => new ClassNetCacheDescriptor(
+                agent.Path + "_ClassNetCache", [CreateKillRpc()]))
+            .ToArray();
+    }
+
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = "RightRpc",
+    };
+}
+''',
+            }
+        )
+
+        self.assertEqual(
+            self.runtime_cache_entries(output),
+            {
+                (
+                    "/Game/Agents/Live.Live_C_ClassNetCache",
+                    "RightRpc",
+                    "FieldType::Skip",
+                ),
+            },
+        )
+
+    def test_runtime_factory_constant_resolves_within_owning_class(self):
+        output = self.run_generator(
+            {
+                "GenericAgentDescriptor.cs": r'''
+public abstract class GenericAgentDescriptor : ExportGroupDescriptor<GenericAgentDescriptor>
+{
+    public override ExportCategory Categories => ExportCategory.Agent;
+}
+''',
+                "LiveAgentDescriptor.cs": r'''
+public sealed class LiveAgentDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Agents/Live.Live_C";
+}
+''',
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    private const string RpcName = "RightRpc";
+
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors)
+    {
+        return agentDescriptors
+            .Select(agent => new ClassNetCacheDescriptor(
+                agent.Path + "_ClassNetCache", [CreateKillRpc()]))
+            .ToArray();
+    }
+
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = RpcName,
+    };
+}
+
+internal static class UnrelatedConstants
+{
+    private const string RpcName = "WrongRpc";
+}
+''',
+            }
+        )
+
+        self.assertEqual(
+            self.runtime_cache_entries(output),
+            {
+                (
+                    "/Game/Agents/Live.Live_C_ClassNetCache",
+                    "RightRpc",
+                    "FieldType::Skip",
+                ),
+            },
+        )
+
+    def test_runtime_factory_name_expression_fails_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors) =>
+        agentDescriptors.Select(agent => new ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache", [CreateKillRpc()])).ToArray();
+
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = "Right" + "Rpc",
+    };
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
+        self.assertIn("unsupported RpcDescriptor.Name initializer", error)
+
+    def test_runtime_factory_constant_expression_fails_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    private const string RpcName = "Right" + "Rpc";
+
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors) =>
+        agentDescriptors.Select(agent => new ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache", [CreateKillRpc()])).ToArray();
+
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = RpcName,
+    };
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
+        self.assertIn("unsupported constant RpcName initializer", error)
+
+    def test_runtime_factory_uses_only_returned_descriptor_name(self):
+        output = self.run_generator(
+            {
+                "GenericAgentDescriptor.cs": r'''
+public abstract class GenericAgentDescriptor : ExportGroupDescriptor<GenericAgentDescriptor>
+{
+    public override ExportCategory Categories => ExportCategory.Agent;
+}
+''',
+                "LiveAgentDescriptor.cs": r'''
+public sealed class LiveAgentDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Agents/Live.Live_C";
+}
+''',
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors) =>
+        agentDescriptors.Select(agent => new ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache", [CreateKillRpc()])).ToArray();
+
+    private static RpcDescriptor CreateKillRpc()
+    {
+        OtherDescriptor BuildDiagnostic() => new OtherDescriptor
+        {
+            Name = "WrongRpc",
+        };
+
+        _ = BuildDiagnostic;
+        return new RpcDescriptor
+        {
+            Name = "RightRpc",
+        };
+    }
+}
+''',
+            }
+        )
+
+        self.assertEqual(
+            self.runtime_cache_entries(output),
+            {
+                (
+                    "/Game/Agents/Live.Live_C_ClassNetCache",
+                    "RightRpc",
+                    "FieldType::Skip",
+                ),
+            },
+        )
+
+    def test_nested_local_constant_does_not_shadow_owning_class_constant(self):
+        output = self.run_generator(
+            {
+                "GenericAgentDescriptor.cs": r'''
+public abstract class GenericAgentDescriptor : ExportGroupDescriptor<GenericAgentDescriptor>
+{
+    public override ExportCategory Categories => ExportCategory.Agent;
+}
+''',
+                "LiveAgentDescriptor.cs": r'''
+public sealed class LiveAgentDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Agents/Live.Live_C";
+}
+''',
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    private const string RpcName = "RightRpc";
+
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors) =>
+        agentDescriptors.Select(agent => new ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache", [CreateKillRpc()])).ToArray();
+
+    private static RpcDescriptor CreateKillRpc()
+    {
+        void BuildDiagnostic()
+        {
+            const string RpcName = "WrongRpc";
+            _ = RpcName;
+        }
+
+        _ = BuildDiagnostic;
+        return new RpcDescriptor { Name = RpcName };
+    }
+}
+''',
+            }
+        )
+
+        self.assertEqual(
+            self.runtime_cache_entries(output),
+            {
+                (
+                    "/Game/Agents/Live.Live_C_ClassNetCache",
+                    "RightRpc",
+                    "FieldType::Skip",
+                ),
+            },
+        )
+
+    def test_local_runtime_factory_shadow_fails_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors)
+    {
+        RpcDescriptor CreateKillRpc() => new RpcDescriptor
+        {
+            Name = "LocalRpc",
+        };
+
+        return agentDescriptors.Select(agent => new ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache", [CreateKillRpc()])).ToArray();
+    }
+
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = "ClassRpc",
+    };
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
+        self.assertIn("local factory shadows", error)
+
+    def test_multiple_or_trailing_runtime_factories_fail_loudly(self):
+        factory_lists = ("[FirstRpc(), SecondRpc()]", "[FirstRpc(),]")
+        for factory_list in factory_lists:
+            with self.subTest(factory_list=factory_list):
+                error = self.run_generator_expecting_failure(
+                    {
+                        "AgentClassNetCacheDescriptors.cs": rf'''
+internal static class AgentClassNetCacheDescriptors
+{{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors) =>
+        agentDescriptors.Select(agent => new ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache", {factory_list})).ToArray();
+
+    private static RpcDescriptor FirstRpc() => new RpcDescriptor {{ Name = "First" }};
+    private static RpcDescriptor SecondRpc() => new RpcDescriptor {{ Name = "Second" }};
+}}
+'''
+                    }
+                )
+
+                self.assertIn("runtime ClassNetCache", error)
+                self.assertIn("unsupported factory list", error)
+
+    def test_escaped_runtime_descriptor_type_is_discovered(self):
+        output = self.run_generator(
+            {
+                "GenericAgentDescriptor.cs": r'''
+public abstract class GenericAgentDescriptor : ExportGroupDescriptor<GenericAgentDescriptor>
+{
+    public override ExportCategory Categories => ExportCategory.Agent;
+}
+''',
+                "LiveAgentDescriptor.cs": r'''
+public sealed class LiveAgentDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Agents/Live.Live_C";
+}
+''',
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors) =>
+        agentDescriptors.Select(agent => new @ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache", [CreateKillRpc()])).ToArray();
+
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = "RightRpc",
+    };
+}
+''',
+            }
+        )
+
+        self.assertEqual(
+            self.runtime_cache_entries(output),
+            {
+                (
+                    "/Game/Agents/Live.Live_C_ClassNetCache",
+                    "RightRpc",
+                    "FieldType::Skip",
+                ),
+            },
+        )
+
+    def test_duplicate_runtime_factory_in_owning_class_fails_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors)
+    {
+        return agentDescriptors
+            .Select(agent => new ClassNetCacheDescriptor(
+                agent.Path + "_ClassNetCache", [CreateKillRpc()]))
+            .ToArray();
+    }
+
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = "FirstRpc",
+    };
+
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = "SecondRpc",
+    };
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
+        self.assertIn("ambiguous", error)
+
+    def test_multiple_runtime_factory_names_fail_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors)
+    {
+        return agentDescriptors
+            .Select(agent => new ClassNetCacheDescriptor(
+                agent.Path + "_ClassNetCache", [CreateKillRpc()]))
+            .ToArray();
+    }
+
+    private static RpcDescriptor CreateKillRpc() => UseFirst
+        ? new RpcDescriptor { Name = "FirstRpc" }
+        : new RpcDescriptor { Name = "SecondRpc" };
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
+        self.assertIn("ambiguous RpcDescriptor", error)
+
+    def test_escaped_nested_class_is_discovered_and_scoped(self):
+        output = self.run_generator(
+            {
+                "OuterDescriptor.cs": r'''
+public abstract class @BaseDescriptor : ExportGroupDescriptor<@BaseDescriptor>
+{
+    protected override void Configure()
+    {
+        AddProperty(x => x.InheritedValue).UInt32();
+    }
+}
+
+public sealed class OuterDescriptor : BaseDescriptor
+{
+    public override string Path => "/outer";
+    protected override void Configure()
+    {
+        AddProperty(x => x.OuterValue).UInt32();
+    }
+
+    public sealed class @NestedDescriptor : @BaseDescriptor
+    {
+        public override string Path => "/nested";
+        protected override void Configure()
+        {
+            AddProperty(x => x.NestedSecret).UInt32();
+        }
+    }
+}
+'''
+            }
+        )
+
+        self.assertEqual(
+            {
+                (group, field, field_type.strip())
+                for group, field, field_type in ENTRY_RE.findall(output)
+            },
+            {
+                ("/outer", "InheritedValue", "FieldType::UInt32"),
+                ("/outer", "OuterValue", "FieldType::UInt32"),
+                ("/nested", "InheritedValue", "FieldType::UInt32"),
+                ("/nested", "NestedSecret", "FieldType::UInt32"),
+            },
+        )
+
+    def test_unrelated_path_and_factory_arguments_do_not_create_runtime_cache(self):
+        output = self.run_generator(
+            {
+                "GenericAgentDescriptor.cs": r'''
+public abstract class GenericAgentDescriptor : ExportGroupDescriptor<GenericAgentDescriptor>
+{
+    public override ExportCategory Categories => ExportCategory.Agent;
+}
+''',
+                "LiveAgentDescriptor.cs": r'''
+public sealed class LiveAgentDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Agents/Live.Live_C";
+}
+''',
+                "AgentDiagnostics.cs": r'''
+internal static class AgentDiagnostics
+{
+    public static void Audit(GenericAgentDescriptor agent)
+    {
+        Log(agent.Path + "_Audit_ClassNetCache", [CreateAuditRpc()]);
+    }
+
+    private static RpcDescriptor CreateAuditRpc() => new RpcDescriptor
+    {
+        Name = "AuditRpc",
+    };
+}
+''',
+            }
+        )
+
+        self.assertEqual(self.runtime_cache_entries(output), set())
+
     def test_literal_property_handles_emit_handle_metadata(self):
         output = self.run_generator(
             {

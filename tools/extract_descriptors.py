@@ -37,6 +37,15 @@ import sys
 from pathlib import Path
 from collections import Counter
 
+CSHARP_IDENTIFIER = r'[A-Za-z_]\w*'
+CSHARP_IDENTIFIER_TOKEN = rf'@?{CSHARP_IDENTIFIER}'
+
+
+def normalize_csharp_identifier(identifier: str) -> str:
+    """Return the semantic name of a regular or escaped C# identifier."""
+    return identifier[1:] if identifier.startswith("@") else identifier
+
+
 # Known primitive type method names -> Rust FieldType variant
 PRIMITIVE_TYPES = {
     "Int32": "FieldType::Int32",
@@ -70,8 +79,20 @@ PATH_RE = re.compile(
 
 # Regex for class declaration with base class
 CLASS_RE = re.compile(
-    r'(?:public|internal)\s+(?:sealed\s+)?class\s+(\w+)\s*'
-    r'(?::\s*(\w+(?:<[^>]+>)?))?'
+    rf'(?:public|internal)\s+(?:sealed\s+)?class\s+@?({CSHARP_IDENTIFIER})\s*'
+    rf'(?::\s*({CSHARP_IDENTIFIER_TOKEN}(?:<[^>]+>)?))?'
+)
+
+# Find every public/internal descriptor class in a file. The optional ``@``
+# sits outside the name capture so all dictionaries use the semantic C# name.
+MULTI_CLASS_RE = re.compile(
+    rf'(?:public|internal)\s+(?:sealed\s+)?(?:abstract\s+)?class\s+'
+    rf'@?({CSHARP_IDENTIFIER})'
+    r'(?:<[^>]+>)?\s*'
+    r'(?::\s*([\w@.<>,\s]+?))?'
+    r'(?:\s+where\s+[^\{]+?)?'
+    r'\s*\{',
+    re.DOTALL,
 )
 
 EXPORT_CATEGORY_NAMES = {
@@ -182,7 +203,7 @@ ADD_FUNCTION_RE = re.compile(
 # helper's name into the extractor.
 RAW_WRAPPER_DEF_RE = re.compile(
     r'(?:public|internal|protected|private)\s+(?:static\s+)?void\s+'
-    r'(?P<name>\w+)\s*\([^)]*\)\s*=>\s*'
+    rf'@?(?P<name>{CSHARP_IDENTIFIER})\s*\([^)]*\)\s*=>\s*'
     r'AddPropertyHandle\([^;]+\)\s*\.Decode\(',
     re.DOTALL,
 )
@@ -199,11 +220,13 @@ def extract_class_info(source: str) -> tuple[str | None, str | None]:
     m = CLASS_RE.search(source)
     if not m:
         return (None, None)
-    class_name = m.group(1)
+    class_name = normalize_csharp_identifier(m.group(1))
     base = m.group(2)
     # Strip generic parameter
     if base and "<" in base:
         base = base.split("<")[0]
+    if base:
+        base = normalize_csharp_identifier(base)
     return (class_name, base)
 
 
@@ -224,130 +247,151 @@ def extract_fields_from_block(
     # Join continuation lines: if a line starts with AddProperty but does not
     # end with ';', concatenate subsequent lines until we see one ending with ';'.
     raw_lines = block.splitlines()
-    statements: list[str] = []
-    current: list[str] = []
+    code_lines = csharp_code_view(block).splitlines()
+    statements: list[tuple[str, str]] = []
+    current_raw: list[str] = []
+    current_code: list[str] = []
     in_statement = False
-    for raw_line in raw_lines:
-        stripped = raw_line.strip()
+    for raw_line, code_line in zip(raw_lines, code_lines):
+        code_stripped = code_line.strip()
         starts_raw_wrapper = any(
-            re.match(rf'{re.escape(name)}\s*\(', stripped)
+            re.match(rf'@?{re.escape(name)}\s*\(', code_stripped)
             for name in raw_wrapper_names
         )
-        if stripped.startswith("AddProperty") or starts_raw_wrapper:
+        if code_stripped.startswith("AddProperty") or starts_raw_wrapper:
             in_statement = True
-            current = [stripped]
-            if stripped.endswith(";"):
-                statements.append(" ".join(current))
+            live_start = len(code_line) - len(code_line.lstrip())
+            current_raw = [raw_line[live_start:]]
+            current_code = [code_line[live_start:]]
+            if code_stripped.endswith(";"):
+                statements.append((
+                    "\n".join(current_raw),
+                    "\n".join(current_code),
+                ))
                 in_statement = False
-                current = []
+                current_raw = []
+                current_code = []
         elif in_statement:
-            current.append(stripped)
-            if stripped.endswith(";"):
-                statements.append(" ".join(current))
+            current_raw.append(raw_line)
+            current_code.append(code_line)
+            if code_stripped.endswith(";"):
+                statements.append((
+                    "\n".join(current_raw),
+                    "\n".join(current_code),
+                ))
                 in_statement = False
-                current = []
+                current_raw = []
+                current_code = []
     # Flush any incomplete statement
-    if current:
-        statements.append(" ".join(current))
+    if current_raw:
+        statements.append(("\n".join(current_raw), "\n".join(current_code)))
 
-    for line in statements:
+    for raw_line, code_line in statements:
 
         raw_wrapper = next(
             (
                 name
                 for name in raw_wrapper_names
-                if re.match(rf'{re.escape(name)}\s*\(', line)
+                if re.match(rf'@?{re.escape(name)}\s*\(', code_line)
             ),
             None,
         )
         if raw_wrapper is not None:
-            name = _extract_lambda_field_name(line)
+            name = _extract_lambda_field_name(code_line)
             if name:
                 fields.append(
                     (
                         name,
                         "FieldType::Raw",
-                        _extract_literal_handle(line, raw_wrapper),
+                        _extract_literal_handle(code_line, raw_wrapper),
                     )
                 )
             continue
 
         # Check for SerializedInt with parameter
-        sm = SERIALIZED_INT_RE.search(line)
+        sm = SERIALIZED_INT_RE.search(code_line)
         if sm:
             max_val = sm.group(1)
-            name = _extract_field_name(line)
+            name = _extract_field_name(raw_line, code_line)
             if name:
                 fields.append((
                     name,
                     f"FieldType::SerializedInt {{ max: {max_val} }}",
-                    _extract_literal_handle(line),
+                    _extract_literal_handle(code_line),
                 ))
             continue
 
         # Check for ByteArray with parameter
-        bm = BYTE_ARRAY_RE.search(line)
+        bm = BYTE_ARRAY_RE.search(code_line)
         if bm:
             max_bytes = bm.group(1)
-            name = _extract_field_name(line)
+            name = _extract_field_name(raw_line, code_line)
             if name:
                 fields.append((
                     name,
                     f"FieldType::ByteArray {{ max_bytes: {max_bytes} }}",
-                    _extract_literal_handle(line),
+                    _extract_literal_handle(code_line),
                 ))
             continue
 
         # Check for ReplicatedMovement with quantization
-        rm = REP_MOVEMENT_RE.search(line)
+        rm = REP_MOVEMENT_RE.search(code_line)
         if rm:
             quant = rm.group("quant")
             rust_quant = ("RotatorQuantization::ByteComponents"
                           if quant == "ByteComponents"
                           else "RotatorQuantization::ShortComponents")
-            name = _extract_field_name(line)
+            name = _extract_field_name(raw_line, code_line)
             if name:
                 fields.append((
                     name,
                     f"FieldType::RepMovement {{ rotation: {rust_quant} }}",
-                    _extract_literal_handle(line),
+                    _extract_literal_handle(code_line),
                 ))
             continue
 
         # Simple ReplicatedMovement()
-        if REP_MOVEMENT_DEFAULT_RE.search(line):
-            name = _extract_field_name(line)
+        if REP_MOVEMENT_DEFAULT_RE.search(code_line):
+            name = _extract_field_name(raw_line, code_line)
             if name:
                 fields.append((
                     name,
                     "FieldType::RepMovement { rotation: RotatorQuantization::ShortComponents }",
-                    _extract_literal_handle(line),
+                    _extract_literal_handle(code_line),
                 ))
             continue
 
         # RepLayoutDynamicArray<T>() -- treated as Raw (opaque TArray)
-        if REP_LAYOUT_DYN_ARRAY_RE.search(line):
-            name = _extract_field_name(line)
+        if REP_LAYOUT_DYN_ARRAY_RE.search(code_line):
+            name = _extract_field_name(raw_line, code_line)
             if name:
-                fields.append((name, "FieldType::Raw", _extract_literal_handle(line)))
+                fields.append((
+                    name,
+                    "FieldType::Raw",
+                    _extract_literal_handle(code_line),
+                ))
             continue
 
         # Check for Decode(...) -- custom/raw
-        if DECODE_RE.search(line):
-            name = _extract_field_name(line)
+        if DECODE_RE.search(code_line):
+            name = _extract_field_name(raw_line, code_line)
             if name:
-                fields.append((name, "FieldType::Raw", _extract_literal_handle(line)))
+                fields.append((
+                    name,
+                    "FieldType::Raw",
+                    _extract_literal_handle(code_line),
+                ))
             continue
 
         # Try simple primitive type
-        type_name = _extract_type_name(line)
+        type_name = _extract_type_name(code_line)
         if type_name and type_name in PRIMITIVE_TYPES:
-            name = _extract_field_name(line)
+            name = _extract_field_name(raw_line, code_line)
             if name:
                 fields.append((
                     name,
                     PRIMITIVE_TYPES[type_name],
-                    _extract_literal_handle(line),
+                    _extract_literal_handle(code_line),
                 ))
             continue
 
@@ -391,38 +435,97 @@ def extract_called_cnc_helper_functions(
     return names
 
 
-def _extract_field_name(line: str) -> str | None:
-    """Extract the export name from an AddProperty line.
+def _skip_csharp_trivia(source: str, position: int) -> int:
+    """Skip whitespace and comments from an aligned raw-source position."""
+    while position < len(source):
+        if source[position].isspace():
+            position += 1
+            continue
+        if source.startswith("//", position):
+            newline = source.find("\n", position + 2)
+            return len(source) if newline == -1 else _skip_csharp_trivia(
+                source, newline + 1
+            )
+        if source.startswith("/*", position):
+            closing = source.find("*/", position + 2)
+            if closing == -1:
+                return len(source)
+            position = closing + 2
+            continue
+        break
+    return position
 
-    Handles both single-line and joined multi-line statements.
-    """
-    # Try named variant first: AddProperty("ExportName", ...)
-    m = re.search(r'AddProperty\w*\(\s*"([^"]+)"', line)
-    if m:
-        return m.group(1)
-    # Try handle variant with explicit string name:
-    # AddPropertyHandle(N, "ExportName", ...)
-    m = re.search(r'AddPropertyHandle\(\s*' + HANDLE_ARG + r'\s*,\s*"([^"]+)"', line)
-    if m:
-        return m.group(1)
-    # Try handle variant with lambda:
-    # AddPropertyHandle(N, x => x.Name, ...)
-    m = re.search(
-        r'AddPropertyHandle\(\s*' + HANDLE_ARG + r'\s*,\s*\w+\s*=>\s*(?:\w+\.)?(\w+)', line
-    )
-    if m:
-        return m.group(1)
-    # Try lambda variant: AddProperty(x => x.Name, ...) or AddProperty(x => x.Name)
-    m = re.search(r'AddProperty\(\s*\w+\s*=>\s*(?:\w+\.)?(\w+)', line)
-    if m:
-        return m.group(1)
+
+def _parse_csharp_string_literal(
+    source: str, position: int
+) -> tuple[str, int] | None:
+    """Parse a plain/verbatim string at ``position`` after C# trivia."""
+    position = _skip_csharp_trivia(source, position)
+    if source.startswith('@"', position):
+        cursor = position + 2
+        value: list[str] = []
+        while cursor < len(source):
+            if source.startswith('""', cursor):
+                value.append('"')
+                cursor += 2
+            elif source[cursor] == '"':
+                return "".join(value), cursor + 1
+            else:
+                value.append(source[cursor])
+                cursor += 1
+        return None
+    if position >= len(source) or source[position] != '"':
+        return None
+
+    cursor = position + 1
+    while cursor < len(source):
+        if source[cursor] == "\\":
+            cursor += 2
+        elif source[cursor] == '"':
+            return source[position + 1:cursor], cursor + 1
+        else:
+            cursor += 1
     return None
 
 
+def _extract_field_name(
+    raw_line: str, code_line: str | None = None
+) -> str | None:
+    """Extract a live explicit export name or semantic lambda property leaf."""
+    if code_line is None:
+        code_line = csharp_code_view(raw_line)
+
+    invocation = re.match(
+        rf'@?(?P<method>AddProperty\w*)\s*\(', code_line
+    )
+    if invocation is not None:
+        argument_start = invocation.end()
+        if invocation.group("method") == "AddPropertyHandle":
+            comma = code_line.find(",", argument_start)
+            if comma != -1:
+                argument_start = comma + 1
+        literal = _parse_csharp_string_literal(raw_line, argument_start)
+        if literal is not None:
+            value, literal_end = literal
+            next_token = _skip_csharp_trivia(raw_line, literal_end)
+            if (
+                next_token == len(raw_line)
+                or raw_line[next_token] in ",)"
+            ):
+                return value
+
+    return _extract_lambda_field_name(code_line)
+
+
 def _extract_lambda_field_name(line: str) -> str | None:
-    """Extract the property leaf from any helper invocation containing a lambda."""
-    match = re.search(r'\w+\s*=>\s*(?:\w+\.)?(\w+)', line)
-    return match.group(1) if match else None
+    """Extract and normalize a live lambda's optional escaped property leaf."""
+    match = re.search(
+        rf'@?{CSHARP_IDENTIFIER}\s*=>\s*'
+        rf'(?:@?{CSHARP_IDENTIFIER}\s*\.\s*)?'
+        rf'@?(?P<name>{CSHARP_IDENTIFIER})',
+        line,
+    )
+    return match.group("name") if match else None
 
 
 def _extract_literal_handle(
@@ -430,7 +533,7 @@ def _extract_literal_handle(
 ) -> int | None:
     """Return a handle declaration's leading decimal argument, if present."""
     match = re.match(
-        rf'{re.escape(declaration_name)}\s*\(\s*(\d+)\s*,', line
+        rf'@?{re.escape(declaration_name)}\s*\(\s*(\d+)\s*,', line
     )
     return int(match.group(1)) if match else None
 
@@ -468,16 +571,21 @@ def find_class_body_range(source: str, class_start: int) -> tuple[int, int]:
 def extract_parameterless_method_body(
     source: str, method_name: str, code_view: str | None = None
 ) -> str | None:
-    """Return a live parameterless method's block or expression body."""
+    """Return the unique live parameterless method's block or expression body."""
     if code_view is None:
         code_view = csharp_code_view(source)
     declaration_re = re.compile(
         rf'\b(?:public|internal|protected|private)\s+(?:static\s+)?'
-        rf'[\w.<>,?\[\]]+\s+{re.escape(method_name)}\s*\(\s*\)\s*'
+        rf'[\w@.<>,?\[\]]+\s+@?{re.escape(method_name)}\s*\(\s*\)\s*'
     )
-    declaration = declaration_re.search(code_view)
-    if declaration is None:
+    declarations = list(declaration_re.finditer(code_view))
+    if not declarations:
         return None
+    if len(declarations) != 1:
+        raise ValueError(
+            f"ambiguous method declaration ({len(declarations)} matches)"
+        )
+    declaration = declarations[0]
 
     body_start = declaration.end()
     if code_view.startswith("=>", body_start):
@@ -724,9 +832,23 @@ def direct_member_code_view(source: str) -> str:
 
 NESTED_TYPE_RE = re.compile(
     r'\b(?:class|struct|interface|enum|record(?:\s+(?:class|struct))?)\s+'
-    r'[A-Za-z_]\w*(?:\s*<[^>{}]*>)?[^;{}]*\{',
+    rf'{CSHARP_IDENTIFIER_TOKEN}(?:\s*<[^>{{}}]*>)?[^;{{}}]*\{{',
     re.DOTALL,
 )
+
+
+def find_innermost_type_body_range(
+    code_view: str, position: int
+) -> tuple[int, int] | None:
+    """Return the innermost class/record/struct body containing ``position``."""
+    candidates: list[tuple[int, int]] = []
+    for declaration in NESTED_TYPE_RE.finditer(code_view):
+        body_start, body_end = find_class_body_range(
+            code_view, declaration.start()
+        )
+        if body_start <= position < body_end:
+            candidates.append((body_start, body_end))
+    return max(candidates, key=lambda body_range: body_range[0], default=None)
 
 
 def mask_nested_type_bodies(source: str) -> str:
@@ -782,6 +904,118 @@ def extract_category_override(
     return categories
 
 
+def parse_supported_string_expression(
+    raw_expression: str, code_expression: str
+) -> tuple[str, str] | None:
+    """Parse exactly one literal or semantic identifier, excluding prefixes."""
+    code_value = code_expression.strip()
+    constant = re.fullmatch(
+        rf'@?(?P<name>{CSHARP_IDENTIFIER})', code_value
+    )
+    if constant is not None:
+        return "constant", constant.group("name")
+    if code_value:
+        return None
+
+    literal = _parse_csharp_string_literal(raw_expression, 0)
+    if literal is None:
+        return None
+    value, literal_end = literal
+    if _skip_csharp_trivia(raw_expression, literal_end) != len(raw_expression):
+        return None
+    return "literal", value
+
+
+def extract_returned_rpc_name_initializer(
+    factory_body: str,
+) -> tuple[str, str]:
+    """Return the exhaustive Name initializer of one returned RpcDescriptor."""
+    factory_view = csharp_code_view(factory_body)
+    object_shape = (
+        r'new\s+(?:@?RpcDescriptor\s*(?:\(\s*\))?|\(\s*\))\s*\{'
+    )
+    returned_re = re.compile(rf'\breturn\s+{object_shape}')
+    candidates = list(returned_re.finditer(factory_view))
+    if not candidates:
+        expression = re.match(rf'\s*{object_shape}', factory_view)
+        if expression is not None:
+            candidates = [expression]
+    if len(candidates) != 1:
+        all_initializers = list(re.finditer(object_shape, factory_view))
+        if len(all_initializers) > 1:
+            raise ValueError(
+                f"ambiguous RpcDescriptor initializer "
+                f"({len(all_initializers)} matches)"
+            )
+        raise ValueError("returned RpcDescriptor initializer not found")
+
+    _, initializer_end = find_class_body_range(
+        factory_view, candidates[0].start()
+    )
+    opening_brace = factory_view.find("{", candidates[0].start())
+    if opening_brace == -1 or initializer_end < opening_brace:
+        raise ValueError("returned RpcDescriptor initializer not found")
+    initializer_source = factory_body[opening_brace + 1:initializer_end]
+    initializer_view = direct_member_code_view(initializer_source)
+    name_markers = list(
+        re.finditer(r'(?<!\w)@?Name\s*=', initializer_view)
+    )
+    if not name_markers:
+        raise ValueError("RpcDescriptor.Name not found in returned initializer")
+    if len(name_markers) != 1:
+        raise ValueError(
+            f"ambiguous RpcDescriptor.Name ({len(name_markers)} matches)"
+        )
+
+    value_start = name_markers[0].end()
+    value_end = initializer_view.find(",", value_start)
+    if value_end == -1:
+        value_end = len(initializer_view)
+    parsed = parse_supported_string_expression(
+        initializer_source[value_start:value_end],
+        initializer_view[value_start:value_end],
+    )
+    if parsed is None:
+        raise ValueError("unsupported RpcDescriptor.Name initializer")
+    return parsed
+
+
+def resolve_direct_string_constant(
+    owning_source: str, owning_member_view: str, constant_name: str
+) -> str:
+    """Resolve one exhaustive direct-member const string initializer."""
+    declaration_re = re.compile(
+        rf'\bconst\s+string\s+@?(?P<name>{CSHARP_IDENTIFIER})\s*='
+        r'(?P<initializer>[^;]*);',
+        re.DOTALL,
+    )
+    declarations = [
+        declaration
+        for declaration in declaration_re.finditer(owning_member_view)
+        if declaration.group("name") == constant_name
+    ]
+    if not declarations:
+        raise ValueError(
+            f"RpcDescriptor.Name constant {constant_name} could not be resolved"
+        )
+    if len(declarations) != 1:
+        raise ValueError(
+            f"RpcDescriptor.Name constant {constant_name} is ambiguous "
+            f"({len(declarations)} matches)"
+        )
+
+    initializer_start, initializer_end = declarations[0].span("initializer")
+    parsed = parse_supported_string_expression(
+        owning_source[initializer_start:initializer_end],
+        owning_member_view[initializer_start:initializer_end],
+    )
+    if parsed is None or parsed[0] != "literal":
+        raise ValueError(
+            f"unsupported constant {constant_name} initializer"
+        )
+    return parsed[1]
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
         raise SystemExit(__doc__)
@@ -803,88 +1037,152 @@ def main(argv: list[str]) -> int:
     cnc_functions: dict[str, list[str]] = {}  # class_name -> function names
     runtime_cnc_specs: list[tuple[str, str]] = []  # (path suffix, function name)
 
-    # Multi-class regex: find ALL class declarations in a file.
-    # Handles generic type parameters (<T>) and optional `where` constraint
-    # clauses that appear between the base-class list and the opening brace.
-    MULTI_CLASS_RE = re.compile(
-        r'(?:public|internal)\s+(?:sealed\s+)?(?:abstract\s+)?class\s+(\w+)'
-        r'(?:<[^>]+>)?\s*'
-        r'(?::\s*([\w.<>,\s]+?))?'
-        r'(?:\s+where\s+[^\{]+?)?'
-        r'\s*\{',
-        re.DOTALL,
-    )
-
     cs_files = sorted(src_dir.rglob("*.cs"))
     sources = []
     for cs_file in cs_files:
         source = cs_file.read_text(encoding="utf-8-sig")
         sources.append((cs_file, source, csharp_code_view(source)))
-    raw_wrapper_names = {
-        match.group("name")
-        for _, source, _ in sources
-        for match in RAW_WRAPPER_DEF_RE.finditer(source)
-    }
+
+    # Build inheritance and live raw-wrapper ownership before parsing fields so
+    # a derived descriptor can use wrappers declared in any source file while
+    # an unrelated class with a same-named method cannot inherit that meaning.
+    raw_wrapper_names_by_class: dict[str, set[str]] = {}
+    for _, source, code_view in sources:
+        for class_match in MULTI_CLASS_RE.finditer(code_view):
+            class_name = class_match.group(1)
+            raw_base = class_match.group(2)
+            if raw_base:
+                base_class = raw_base.strip().split("<")[0].strip()
+                base_class = base_class.split(",")[0].strip()
+                class_bases[class_name] = normalize_csharp_identifier(
+                    base_class
+                )
+
+            body_start, body_end = find_class_body_range(
+                code_view, class_match.start()
+            )
+            class_body = source[body_start:body_end]
+            member_view = direct_member_code_view(class_body)
+            wrapper_names = {
+                match.group("name")
+                for match in RAW_WRAPPER_DEF_RE.finditer(member_view)
+            }
+            if wrapper_names:
+                raw_wrapper_names_by_class.setdefault(class_name, set()).update(
+                    wrapper_names
+                )
+
+    def effective_raw_wrapper_names(class_name: str) -> set[str]:
+        names: set[str] = set()
+        visited: set[str] = set()
+        current = class_name
+        while current not in visited:
+            visited.add(current)
+            names.update(raw_wrapper_names_by_class.get(current, set()))
+            base = class_bases.get(current)
+            if base is None:
+                break
+            current = base
+        return names
 
     # Runtime-created ClassNetCaches do not have descriptor classes or literal
     # paths. Discover the constructor shape, resolve its RpcDescriptor.Name,
     # and later apply it to descriptor paths in the Agent category.
     runtime_cache_re = re.compile(
-        r'\w+\.Path\s*\+\s*"(?P<suffix>[^"]+)"\s*,\s*'
-        r'\[\s*(?P<factory>\w+)\s*\(\s*\)\s*\]',
+        rf'\bnew\s+'
+        rf'(?:(?:global\s*::\s*)?(?:{CSHARP_IDENTIFIER_TOKEN}\s*\.\s*)*)'
+        rf'@?ClassNetCacheDescriptor\s*\(\s*'
+        rf'{CSHARP_IDENTIFIER_TOKEN}\s*\.\s*@?Path\s*\+\s*'
+        r'"(?P<suffix>[^"]+)"\s*,\s*'
+        r'\[(?P<factories>[^\]]*)\]',
         re.DOTALL,
     )
-    const_string_re = re.compile(
-        r'\bconst\s+string\s+(?P<name>\w+)\s*=\s*"(?P<value>[^"]+)"'
+    factory_call_re = re.compile(
+        rf'\s*@?(?P<factory>{CSHARP_IDENTIFIER})\s*\(\s*\)\s*'
     )
     for _, source, code_view in sources:
-        constants = {
-            match.group("name"): match.group("value")
-            for match in const_string_re.finditer(source)
-            if code_view[match.start()] != " "
-        }
         for runtime_match in runtime_cache_re.finditer(source):
-            factory_name = runtime_match.group("factory")
-            factory_start, factory_end = runtime_match.span("factory")
-            if (
-                code_view[runtime_match.start()] == " "
-                or code_view[factory_start:factory_end] != factory_name
-            ):
+            if code_view[runtime_match.start()] == " ":
                 continue
-            factory_body = extract_parameterless_method_body(
-                source, factory_name, code_view
+            factories_start, factories_end = runtime_match.span("factories")
+            factory_call = factory_call_re.fullmatch(
+                code_view[factories_start:factories_end]
             )
+            if factory_call is None:
+                raise SystemExit(
+                    "runtime ClassNetCache: unsupported factory list "
+                    f"{runtime_match.group('factories').strip()!r}"
+                )
+            factory_name = factory_call.group("factory")
+
+            owning_range = find_innermost_type_body_range(
+                code_view, runtime_match.start()
+            )
+            if owning_range is None:
+                raise SystemExit(
+                    f"runtime ClassNetCache factory {factory_name}: "
+                    "owning type not found"
+                )
+            owning_start, owning_end = owning_range
+            owning_source = source[owning_start:owning_end]
+            owning_code_view = csharp_code_view(owning_source)
+            owning_member_view = direct_member_code_view(owning_source)
+
+            relative_runtime_start = runtime_match.start() - owning_start
+            containing_blocks: list[tuple[int, int]] = []
+            for index, character in enumerate(owning_member_view):
+                if character != "{":
+                    continue
+                block_start, block_end = find_class_body_range(
+                    owning_member_view, index
+                )
+                if block_start <= relative_runtime_start < block_end:
+                    containing_blocks.append((block_start, block_end))
+            if containing_blocks:
+                method_start, method_end = max(
+                    containing_blocks, key=lambda body_range: body_range[0]
+                )
+                local_factory_re = re.compile(
+                    rf'\b[\w@.<>,?\[\]]+\s+@?{re.escape(factory_name)}'
+                    r'\s*\(\s*\)\s*(?:=>|\{)'
+                )
+                if local_factory_re.search(
+                    owning_code_view[method_start:method_end]
+                ):
+                    raise SystemExit(
+                        f"runtime ClassNetCache factory {factory_name}: "
+                        "local factory shadows direct member"
+                    )
+
+            try:
+                factory_body = extract_parameterless_method_body(
+                    owning_source, factory_name, owning_member_view
+                )
+            except ValueError as error:
+                raise SystemExit(
+                    f"runtime ClassNetCache factory {factory_name}: {error}"
+                ) from error
             if factory_body is None:
                 raise SystemExit(
                     f"runtime ClassNetCache factory {factory_name}: "
                     "method body not found"
                 )
-            name_re = re.compile(
-                r'\bName\s*=\s*(?:"(?P<literal>[^"]+)"|(?P<constant>\w+))',
-            )
-            factory_view = csharp_code_view(factory_body)
-            name_match = next(
-                (
-                    match
-                    for match in name_re.finditer(factory_body)
-                    if factory_view[match.start()] != " "
-                ),
-                None,
-            )
-            if name_match is None:
-                raise SystemExit(
-                    f"runtime ClassNetCache factory {factory_name}: "
-                    "RpcDescriptor.Name not found in method body"
+            try:
+                initializer_kind, initializer_value = (
+                    extract_returned_rpc_name_initializer(factory_body)
                 )
-            function_name = name_match.group("literal")
-            if function_name is None:
-                function_name = constants.get(name_match.group("constant"))
-            if function_name is None:
-                constant_name = name_match.group("constant")
+                if initializer_kind == "literal":
+                    function_name = initializer_value
+                else:
+                    function_name = resolve_direct_string_constant(
+                        owning_source,
+                        owning_member_view,
+                        initializer_value,
+                    )
+            except ValueError as error:
                 raise SystemExit(
-                    f"runtime ClassNetCache factory {factory_name}: "
-                    f"RpcDescriptor.Name constant {constant_name} could not be resolved"
-                )
+                    f"runtime ClassNetCache factory {factory_name}: {error}"
+                ) from error
             runtime_cnc_specs.append(
                 (runtime_match.group("suffix"), function_name)
             )
@@ -893,19 +1191,6 @@ def main(argv: list[str]) -> int:
 
         # Find all class declarations in this file
         class_matches = list(MULTI_CLASS_RE.finditer(code_view))
-
-        for cm in class_matches:
-            class_name = cm.group(1)
-            raw_base = cm.group(2)
-            if raw_base:
-                # Strip generic params: "WeaponEquippableDescriptor<Foo>" -> "WeaponEquippableDescriptor"
-                base_class = raw_base.strip().split("<")[0].strip()
-                # Handle comma-separated bases: take the first one
-                base_class = base_class.split(",")[0].strip()
-                class_bases[class_name] = base_class
-
-        # Build class positions with body ranges
-        class_positions = [(cm.start(), cm.group(1)) for cm in class_matches]
 
         # Extract Path for each class (find Path declarations and associate
         # with the class whose body contains them)
@@ -916,6 +1201,7 @@ def main(argv: list[str]) -> int:
             class_body_code_view = code_view[body_start:body_end]
             member_view = direct_member_code_view(class_body)
             scoped_class_body = mask_nested_type_bodies(class_body)
+            raw_wrapper_names = effective_raw_wrapper_names(class_name)
 
             category_override = extract_category_override(class_name, class_body)
             if category_override is not None:
