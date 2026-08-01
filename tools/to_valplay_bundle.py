@@ -11,17 +11,10 @@ grouped by (packet_id, actor_net_guid, group_path) into export_group_received
 events. RPCs (group_path contains '_ClassNetCache') are grouped by
 (packet_id, actor_net_guid, group_path, handle) into rpc_received events.
 
-KNOWN GAPS (documented, not invented):
-- valorant_shot_received: vrfkit does not decode the EffectContainer blob from
-  ClientPlayOneShotEffectAtLocation RPCs into typed shot data. Affects:
-  weapons, shot_rays, spray_control, posture, and shot denominators in
-  weapon_stats.
-- actor_spawned location: inferred from first field appearance; location data
-  is available only for actors that appear in movement.parquet or have a known
-  spawn position from other fields.
-- LifeChangeEvents: raw blob only; HP values not decoded into typed output.
-- TeamEconomy sub-fields (LoadoutValue/AverageLoadoutValue): raw blob only.
-- RoundResults sub-fields: raw blob only.
+Shot data: ReplayPlayContinuousEffectAtLocation RPCs carry FloatValues,
+ObjectValues, VectorValues blobs. These are decoded in Python using the
+gameplay tag table from the manifest, and emitted as valorant_shot_received
+events matching the C# parser's output format.
 
 Usage:
     python tools/to_valplay_bundle.py <vrfkit_export_dir> [-o <output_dir>]
@@ -45,6 +38,480 @@ try:
     import pyarrow.compute as pc
 except ImportError:
     sys.exit("pyarrow is required: pip install pyarrow")
+
+import struct as _struct
+
+
+# ---------------------------------------------------------------------------
+# Effect blob decoder (Python port of the Rust vrf-decode/src/effect.rs logic)
+# ---------------------------------------------------------------------------
+class _BitReader:
+    """Minimal bit-level reader for UE4 IntPacked, f32, f64."""
+
+    def __init__(self, data: bytes, bit_len: int):
+        self._data = data
+        self._bit_len = bit_len
+        self._pos = 0
+
+    def at_end(self) -> bool:
+        return self._pos >= self._bit_len
+
+    def bits_remaining(self) -> int:
+        return max(0, self._bit_len - self._pos)
+
+    def read_bit(self) -> int:
+        if self._pos >= self._bit_len:
+            raise EOFError
+        byte_idx = self._pos >> 3
+        bit_idx = self._pos & 7
+        self._pos += 1
+        return (self._data[byte_idx] >> bit_idx) & 1
+
+    def read_bits(self, n: int) -> int:
+        val = 0
+        for i in range(n):
+            val |= self.read_bit() << i
+        return val
+
+    def read_int_packed(self) -> int:
+        """Read a UE4 IntPacked value (7-bit variable-length, LSB first)."""
+        value = 0
+        shift = 0
+        while True:
+            if self._pos + 8 > self._bit_len:
+                raise EOFError
+            byte_val = self.read_bits(8)
+            has_more = byte_val & 1
+            value |= (byte_val >> 1) << shift
+            shift += 7
+            if not has_more:
+                break
+            if shift > 35:
+                raise ValueError("IntPacked overflow")
+        return value
+
+    def read_f32(self) -> float:
+        bits = self.read_bits(32)
+        return _struct.unpack('<f', _struct.pack('<I', bits))[0]
+
+    def read_f64(self) -> float:
+        lo = self.read_bits(32)
+        hi = self.read_bits(32)
+        raw = lo | (hi << 32)
+        return _struct.unpack('<d', _struct.pack('<Q', raw))[0]
+
+    def skip_bits(self, n: int):
+        self._pos += n
+        if self._pos > self._bit_len:
+            self._pos = self._bit_len
+
+
+def _decode_effect_floats(data: bytes, bit_count: int):
+    """Decode FloatValues blob -> list of (tag_index, value) tuples."""
+    r = _BitReader(data, bit_count)
+    try:
+        count = r.read_int_packed()
+    except (EOFError, ValueError):
+        return []
+    if count > 256 or count == 0:
+        return []
+    elements = [(None, None)] * count
+    while not r.at_end():
+        try:
+            enc_idx = r.read_int_packed()
+        except (EOFError, ValueError):
+            break
+        if enc_idx == 0:
+            if r.bits_remaining() == 8:
+                try:
+                    r.read_int_packed()
+                except (EOFError, ValueError):
+                    pass
+            break
+        idx = enc_idx - 1
+        if idx >= count:
+            break
+        tag = None
+        val = None
+        while not r.at_end():
+            try:
+                enc_h = r.read_int_packed()
+            except (EOFError, ValueError):
+                break
+            if enc_h == 0:
+                break
+            handle = enc_h - 1
+            try:
+                payload_bits = r.read_int_packed()
+            except (EOFError, ValueError):
+                break
+            if payload_bits > r.bits_remaining():
+                break
+            start = r._pos
+            if handle == 7:
+                try:
+                    tag = r.read_int_packed()
+                except (EOFError, ValueError):
+                    pass
+            elif handle == 8:
+                try:
+                    val = r.read_f32()
+                except (EOFError, ValueError):
+                    pass
+            consumed = r._pos - start
+            if consumed < payload_bits:
+                r.skip_bits(payload_bits - consumed)
+        elements[idx] = (tag, val)
+    return elements
+
+
+def _decode_effect_objects(data: bytes, bit_count: int):
+    """Decode ObjectValues blob -> list of (tag_index, net_guid) tuples."""
+    r = _BitReader(data, bit_count)
+    try:
+        count = r.read_int_packed()
+    except (EOFError, ValueError):
+        return []
+    if count > 256 or count == 0:
+        return []
+    elements = [(None, None)] * count
+    while not r.at_end():
+        try:
+            enc_idx = r.read_int_packed()
+        except (EOFError, ValueError):
+            break
+        if enc_idx == 0:
+            if r.bits_remaining() == 8:
+                try:
+                    r.read_int_packed()
+                except (EOFError, ValueError):
+                    pass
+            break
+        idx = enc_idx - 1
+        if idx >= count:
+            break
+        tag = None
+        val = None
+        while not r.at_end():
+            try:
+                enc_h = r.read_int_packed()
+            except (EOFError, ValueError):
+                break
+            if enc_h == 0:
+                break
+            handle = enc_h - 1
+            try:
+                payload_bits = r.read_int_packed()
+            except (EOFError, ValueError):
+                break
+            if payload_bits > r.bits_remaining():
+                break
+            start = r._pos
+            if handle == 15:
+                try:
+                    tag = r.read_int_packed()
+                except (EOFError, ValueError):
+                    pass
+            elif handle == 16:
+                try:
+                    val = r.read_int_packed()
+                except (EOFError, ValueError):
+                    pass
+            consumed = r._pos - start
+            if consumed < payload_bits:
+                r.skip_bits(payload_bits - consumed)
+        elements[idx] = (tag, val)
+    return elements
+
+
+def _decode_effect_vectors(data: bytes, bit_count: int):
+    """Decode VectorValues blob -> list of (tag_index, (x,y,z)) tuples."""
+    r = _BitReader(data, bit_count)
+    try:
+        count = r.read_int_packed()
+    except (EOFError, ValueError):
+        return []
+    if count > 256 or count == 0:
+        return []
+    elements = [(None, None)] * count
+    while not r.at_end():
+        try:
+            enc_idx = r.read_int_packed()
+        except (EOFError, ValueError):
+            break
+        if enc_idx == 0:
+            if r.bits_remaining() == 8:
+                try:
+                    r.read_int_packed()
+                except (EOFError, ValueError):
+                    pass
+            break
+        idx = enc_idx - 1
+        if idx >= count:
+            break
+        tag = None
+        val = None
+        while not r.at_end():
+            try:
+                enc_h = r.read_int_packed()
+            except (EOFError, ValueError):
+                break
+            if enc_h == 0:
+                break
+            handle = enc_h - 1
+            try:
+                payload_bits = r.read_int_packed()
+            except (EOFError, ValueError):
+                break
+            if payload_bits > r.bits_remaining():
+                break
+            start = r._pos
+            if handle == 11:
+                try:
+                    tag = r.read_int_packed()
+                except (EOFError, ValueError):
+                    pass
+            elif handle == 12:
+                try:
+                    x = r.read_f64()
+                    y = r.read_f64()
+                    z = r.read_f64()
+                    val = (x, y, z)
+                except (EOFError, ValueError):
+                    pass
+            consumed = r._pos - start
+            if consumed < payload_bits:
+                r.skip_bits(payload_bits - consumed)
+        elements[idx] = (tag, val)
+    return elements
+
+
+def _build_tag_table(manifest: dict) -> dict:
+    """Build tag_index -> tag_name from the manifest's gameplay tag group."""
+    groups = manifest.get("net_field_export_groups", [])
+    for g in groups:
+        if g.get("path") == "NetworkGameplayTagNodeIndex":
+            return {f["handle"]: f["name"] for f in g.get("fields", [])}
+    return {}
+
+
+def _build_shot_event(
+    time_ms, packet_id, actor_net_guid, channel_index,
+    scalar_params: dict, float_blob, object_blob, vector_blob,
+    tag_table: dict,
+) -> dict | None:
+    """Build a valorant_shot_received event from decoded RPC params.
+
+    Returns None if this is not a gun-shot event (no FiringState tags).
+    """
+    # Decode blobs
+    floats = {}  # tag_name -> float_value
+    objects = {}  # tag_name -> net_guid
+    vectors = {}  # tag_name -> (x,y,z)
+
+    if float_blob is not None:
+        raw_bytes = float_blob if isinstance(float_blob, bytes) else b''
+        bit_count = len(raw_bytes) * 8
+        for (tag_idx, val) in _decode_effect_floats(raw_bytes, bit_count):
+            if tag_idx is not None and val is not None:
+                name = tag_table.get(tag_idx, str(tag_idx))
+                floats[name] = val
+
+    if object_blob is not None:
+        raw_bytes = object_blob if isinstance(object_blob, bytes) else b''
+        bit_count = len(raw_bytes) * 8
+        for (tag_idx, val) in _decode_effect_objects(raw_bytes, bit_count):
+            if tag_idx is not None and val is not None:
+                name = tag_table.get(tag_idx, str(tag_idx))
+                objects[name] = val
+
+    if vector_blob is not None:
+        raw_bytes = vector_blob if isinstance(vector_blob, bytes) else b''
+        bit_count = len(raw_bytes) * 8
+        for (tag_idx, val) in _decode_effect_vectors(raw_bytes, bit_count):
+            if tag_idx is not None and val is not None:
+                name = tag_table.get(tag_idx, str(tag_idx))
+                vectors[name] = val
+
+    # Only emit as a shot if FiringState data is present
+    if "FiringState.FiringPlayerState" not in objects:
+        return None
+
+    # Extract scalar params from the RPC payload
+    location = scalar_params.get("Location")
+    rotation = scalar_params.get("Rotation")
+    # Fallback: Location/Rotation may arrive as unnamed params "248"/"249"
+    if location is None:
+        raw248 = scalar_params.get("248")
+        if isinstance(raw248, dict) and "Data" in raw248:
+            raw_bytes = base64.b64decode(raw248["Data"])
+            if len(raw_bytes) >= 24:
+                x = _struct.unpack_from('<d', raw_bytes, 0)[0]
+                y = _struct.unpack_from('<d', raw_bytes, 8)[0]
+                z = _struct.unpack_from('<d', raw_bytes, 16)[0]
+                location = {"x": round(x, 2), "y": round(y, 2), "z": round(z, 2)}
+    if rotation is None:
+        raw249 = scalar_params.get("249")
+        if isinstance(raw249, dict) and "Data" in raw249:
+            raw_bytes = base64.b64decode(raw249["Data"])
+            bit_count_rot = raw249.get("BitCount", len(raw_bytes) * 8)
+            rotation = _decode_rotation_short(raw_bytes, bit_count_rot)
+    effect_id = scalar_params.get("EffectID")
+    source_id = scalar_params.get("SourceID")
+    start_time = scalar_params.get("StartMovementTime")
+    is_local = scalar_params.get("bLocalEffect") or scalar_params.get("LocalEffect")
+    is_transient = scalar_params.get("bTransient") or scalar_params.get("Transient")
+    wait_on = scalar_params.get("WaitOnReplicationActor")
+    alliance = scalar_params.get("AllianceFilter")
+
+    # Parse location/rotation from value_str compact format if needed
+    loc_obj = _parse_location(location)
+    rot_obj = _parse_rotation(rotation)
+
+    # Build attack vectors
+    attack_vectors = []
+    for i in range(1, 16):
+        key = f"FiringState.AttackVector.{i}"
+        if key in vectors:
+            x, y, z = vectors[key]
+            attack_vectors.append({"x": x, "y": y, "z": z})
+
+    # Determine fire_mode from YawSwitch / BurstShotNumber
+    burst = floats.get("FiringState.BurstShotNumber")
+    yaw_switch = floats.get("FiringState.YawSwitch")
+    if yaw_switch is not None and yaw_switch != 0:
+        fire_mode = "alternate"
+    elif burst is not None and burst > 0:
+        fire_mode = "alternate"
+    else:
+        fire_mode = "primary"
+
+    # Ammo
+    ammo = floats.get("FiringState.AmmoRemaining")
+    if ammo is not None:
+        ammo = int(ammo)
+
+    num_proj = floats.get("FiringState.NumProjectiles")
+    if num_proj is not None:
+        num_proj = int(num_proj)
+
+    random_seed = floats.get("FiringState.RandomSeed")
+    tracer_opt = floats.get("FiringState.TracerOption")
+    if tracer_opt is not None:
+        tracer_opt = int(tracer_opt) if tracer_opt == int(tracer_opt) else tracer_opt
+
+    firing_player = objects.get("FiringState.FiringPlayerState")
+    firing_state = objects.get("FiringState.FiringState")
+
+    # Alliance filter string
+    alliance_str = None
+    if alliance is not None:
+        if isinstance(alliance, int):
+            alliance_map = {0: "alliance_self", 1: "alliance_ally",
+                           2: "alliance_enemy", 3: "alliance_any", 4: "alliance_any"}
+            alliance_str = alliance_map.get(alliance, f"alliance_{alliance}")
+        else:
+            alliance_str = str(alliance)
+
+    shot = {
+        "effect_id": effect_id,
+        "start_movement_time": start_time,
+        "source_id": source_id,
+        "is_local_effect": bool(is_local) if is_local is not None else False,
+        "is_transient": bool(is_transient) if is_transient is not None else True,
+        "wait_on_replication_actor": wait_on or 0,
+        "alliance_filter": alliance_str or "alliance_any",
+        "location": loc_obj,
+        "rotation": rot_obj,
+        "ammo_remaining": ammo,
+        "num_projectiles": num_proj or 1,
+        "random_seed": random_seed,
+        "tracer_option": tracer_opt,
+        "burst_shot_number": floats.get("FiringState.BurstShotNumber"),
+        "yaw_switch": yaw_switch,
+        "firing_player_state": firing_player,
+        "firing_state": firing_state,
+        "attack_vectors": attack_vectors if attack_vectors else [],
+        "effect_equippable": None,
+        "equippable": None,  # Resolved downstream by _actorindex.py
+        "fire_mode": fire_mode,
+        "fire_mode_evidence": "firing-state:FiringState",
+    }
+
+    return {
+        "type": "valorant_shot_received",
+        "time_ms": time_ms,
+        "packet_id": packet_id,
+        "actor_net_guid": actor_net_guid,
+        "object_net_guid": actor_net_guid,
+        "channel": channel_index,
+        "shot": shot,
+    }
+
+
+def _parse_location(val) -> dict:
+    """Parse a Location value into {x, y, z}."""
+    if val is None:
+        return {"x": 0, "y": 0, "z": 0}
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, str):
+        # Compact vector format: "(x,y,z)"
+        s = val.strip("()")
+        parts = s.split(",")
+        if len(parts) == 3:
+            try:
+                return {"x": round(float(parts[0]), 2),
+                        "y": round(float(parts[1]), 2),
+                        "z": round(float(parts[2]), 2)}
+            except ValueError:
+                pass
+    return {"x": 0, "y": 0, "z": 0}
+
+
+def _parse_rotation(val) -> dict:
+    """Parse a Rotation value into {pitch, yaw, roll}."""
+    if val is None:
+        return {"pitch": 0, "yaw": 0, "roll": 0}
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, str):
+        # Compact rotator format: "rot(pitch,yaw,roll)"
+        s = val
+        if s.startswith("rot(") and s.endswith(")"):
+            s = s[4:-1]
+        else:
+            s = s.strip("()")
+        parts = s.split(",")
+        if len(parts) == 3:
+            try:
+                return {"pitch": float(parts[0]),
+                        "yaw": float(parts[1]),
+                        "roll": float(parts[2])}
+            except ValueError:
+                pass
+    return {"pitch": 0, "yaw": 0, "roll": 0}
+
+
+def _decode_rotation_short(data: bytes, bit_count: int) -> dict:
+    """Decode a UE4 RotationShort from raw bits.
+
+    Wire format: for each of pitch/yaw/roll:
+      1 bit: is_non_zero
+      if non_zero: 16 bits LE unsigned -> degrees = value * 360 / 65536
+    """
+    r = _BitReader(data, bit_count)
+    result = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
+    for axis in ("pitch", "yaw", "roll"):
+        try:
+            is_non_zero = r.read_bit()
+            if is_non_zero:
+                val = r.read_bits(16)
+                degrees = val * 360.0 / 65536.0
+                result[axis] = degrees
+        except (EOFError, ValueError):
+            break
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +759,7 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
         print("Grouping rows into events...")
 
     # Track actor first/last appearance for actor_spawned/actor_closed
+    # (fallback when actors.parquet is absent).
     actor_first = {}  # actor_net_guid -> (time_ms, packet_id, group_path)
     actor_last = {}   # actor_net_guid -> (time_ms, packet_id)
 
@@ -330,29 +798,70 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
 
     events = []  # (packet_id, time_ms, event_dict)
 
-    # 1. actor_spawned events (inferred from first appearance)
-    for actor, (ms, pid, gp) in actor_first.items():
-        class_path = _group_path_to_class(gp)
-        archetype = _group_path_to_archetype(gp)
-        event = {
-            "type": "actor_spawned",
-            "time_ms": ms,
-            "actor_net_guid": actor,
-            "replication_class_path": class_path,
-            "archetype_path": archetype,
-            "location": {"x": 0, "y": 0, "z": 0},
-        }
-        events.append((pid, ms, event))
+    # 1 & 2. actor_spawned and actor_closed events from actors.parquet
+    #         (authoritative: carries class/archetype/location from spawn data)
+    actors_path = export_dir / "actors.parquet"
+    if actors_path.exists():
+        actors_table = pq.read_table(actors_path)
+        a_time = actors_table.column('time_ms').to_pylist()
+        a_pid = actors_table.column('packet_id').to_pylist()
+        a_chan = actors_table.column('channel_index').to_pylist()
+        a_guid = actors_table.column('actor_net_guid').to_pylist()
+        a_event = actors_table.column('event').to_pylist()
+        a_class = actors_table.column('class_path').cast('string').to_pylist()
+        a_arch = actors_table.column('archetype_path').cast('string').to_pylist()
+        a_sx = actors_table.column('spawn_x').to_pylist()
+        a_sy = actors_table.column('spawn_y').to_pylist()
+        a_sz = actors_table.column('spawn_z').to_pylist()
 
-    # 2. actor_closed events (inferred from last appearance)
-    for actor, (ms, pid) in actor_last.items():
-        event = {
-            "type": "actor_closed",
-            "time_ms": ms,
-            "actor_net_guid": actor,
-        }
-        # Use a packet_id just after the last to ensure ordering
-        events.append((pid + 1, ms, event))
+        for i in range(len(actors_table)):
+            if a_event[i] == 'open':
+                loc_x = a_sx[i] if a_sx[i] is not None else 0
+                loc_y = a_sy[i] if a_sy[i] is not None else 0
+                loc_z = a_sz[i] if a_sz[i] is not None else 0
+                class_path = a_class[i] if a_class[i] is not None else ""
+                archetype = a_arch[i] if a_arch[i] is not None else _group_path_to_archetype(class_path)
+                event = {
+                    "type": "actor_spawned",
+                    "time_ms": a_time[i],
+                    "actor_net_guid": a_guid[i],
+                    "replication_class_path": class_path,
+                    "archetype_path": archetype,
+                    "location": {"x": loc_x, "y": loc_y, "z": loc_z},
+                }
+                events.append((a_pid[i], a_time[i], event))
+            else:
+                event = {
+                    "type": "actor_closed",
+                    "time_ms": a_time[i],
+                    "actor_net_guid": a_guid[i],
+                }
+                events.append((a_pid[i], a_time[i], event))
+
+        if verbose:
+            print(f"  {len(actors_table):,} actor lifecycle events from actors.parquet")
+    else:
+        # Fallback: infer from first/last field appearance (legacy behavior)
+        for actor, (ms, pid, gp) in actor_first.items():
+            class_path = _group_path_to_class(gp)
+            archetype = _group_path_to_archetype(gp)
+            event = {
+                "type": "actor_spawned",
+                "time_ms": ms,
+                "actor_net_guid": actor,
+                "replication_class_path": class_path,
+                "archetype_path": archetype,
+                "location": {"x": 0, "y": 0, "z": 0},
+            }
+            events.append((pid, ms, event))
+
+        for actor, (ms, pid) in actor_last.items():
+            event = {
+                "type": "actor_closed",
+                "time_ms": ms,
+                "actor_net_guid": actor,
+            }
+            events.append((pid + 1, ms, event))
 
     # 3. export_group_received events (replicated properties)
     for (pid, actor, gp), row_indices in prop_groups.items():
@@ -413,12 +922,20 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
         events.append((pid, ms, event))
 
     # 4. rpc_received events
+    # Build gameplay tag table for effect blob decoding
+    tag_table = _build_tag_table(manifest)
+    shot_count = 0
+
     for (pid, actor, gp, handle), row_indices in rpc_groups.items():
         ms = col_time[row_indices[0]]
 
         # Determine RPC name from first field_name
         rpc_name = None
         payload = {}
+        # Collect raw blobs for effect decoding
+        float_blob = None
+        object_blob = None
+        vector_blob = None
         for ri in row_indices:
             fn = col_fn[ri]
             if fn is None:
@@ -433,6 +950,14 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
                 col_i64[ri], col_f64[ri], col_bool[ri], col_str[ri],
                 col_raw[ri], col_bits[ri]
             )
+            # Collect raw blobs for shot events
+            if name == "ReplayPlayContinuousEffectAtLocation" and is_raw and col_raw[ri] is not None:
+                if param == "FloatValues":
+                    float_blob = bytes(col_raw[ri])
+                elif param == "ObjectValues":
+                    object_blob = bytes(col_raw[ri])
+                elif param == "VectorValues":
+                    vector_blob = bytes(col_raw[ri])
             if value is None and not is_raw:
                 continue
             # Map parameter names to match C# parser output
@@ -443,6 +968,20 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
 
         if rpc_name is None:
             continue
+
+        # Build valorant_shot_received for shot RPCs
+        if rpc_name == "ReplayPlayContinuousEffectAtLocation":
+            if float_blob is not None or object_blob is not None:
+                channel = col_time[row_indices[0]]  # approximate
+                shot_event = _build_shot_event(
+                    ms, pid, actor, 0,
+                    payload, float_blob, object_blob, vector_blob,
+                    tag_table,
+                )
+                if shot_event is not None:
+                    events.append((pid, ms, shot_event))
+                    shot_count += 1
+            # Still emit as rpc_received too (some downstream might need it)
 
         # Normalize the RPC function name to match C# parser output
         function_name = _normalize_rpc_name(rpc_name)
@@ -458,6 +997,7 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
 
     if verbose:
         print(f"  {len(events):,} total events built in {time.time()-t0:.1f}s")
+        print(f"  {shot_count:,} valorant_shot_received events")
 
     # ---- Sort by (packet_id, time_ms) and write ----
     t0 = time.time()
