@@ -65,24 +65,56 @@ EXPECTED += [
 
 GROUP_RE = re.compile(r'group_path: "([^"]+)"')
 FIELD_RE = re.compile(r'field_name: "([^"]+)"')
-TYPE_RE = re.compile(r"field_type: (FieldType::.*?)(?:,\s*\n\s*\}|\s*\n\s*\},)", re.S)
+TYPE_MARKER = "field_type:"
+
+
+def _field_type_of(block: str) -> str | None:
+    """The `field_type` value of one `OverlayEntry { ... }` block.
+
+    Brace-counted rather than pattern-matched. Two things defeat a regex here,
+    and both are live:
+
+    * several field types contain their own braces
+      (`VectorNetQuantize { scale: 100 }`), so a non-greedy match truncates;
+    * the table exists in TWO layouts -- one entry per line as
+      extract_descriptors.py emits it, and the rustfmt'd multi-line form that
+      gets committed. A pattern anchored on a newline works on one and
+      silently matches nothing on the other.
+
+    That second case is not hypothetical: the first version of this function
+    required a newline, so it reported all 25 corrections missing on a
+    freshly generated table -- exactly when this script is supposed to run.
+
+    The block has already had its opening `OverlayEntry {` consumed, so the
+    first unmatched `}` is the one that closes the entry.
+    """
+    start = block.find(TYPE_MARKER)
+    if start == -1:
+        return None
+    start += len(TYPE_MARKER)
+    depth = 0
+    for i, ch in enumerate(block[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            if depth == 0:
+                return " ".join(block[start:i].rstrip().rstrip(",").split())
+            depth -= 1
+    return None
 
 
 def parse_entries(content: str):
     """Yield (group_path, field_name, field_type) for every OverlayEntry.
 
-    Split per `OverlayEntry {` block rather than matching one regex across the
-    whole entry. A single regex has to stop somewhere, and several field types
-    contain their own braces (`VectorNetQuantize { scale: 100 }`) or a nested
-    enum path, so it truncates them. Splitting first makes the extraction
-    brace-safe and independent of whether the file is one-line or rustfmt'd.
+    Split per `OverlayEntry {` block first so each lookup is scoped to one
+    entry and cannot bleed into its neighbour.
     """
     for block in content.split("    OverlayEntry {")[1:]:
         group = GROUP_RE.search(block)
         field = FIELD_RE.search(block)
-        ftype = TYPE_RE.search(block)
+        ftype = _field_type_of(block)
         if group and field and ftype:
-            yield group.group(1), field.group(1), " ".join(ftype.group(1).split())
+            yield group.group(1), field.group(1), ftype
 
 
 def verify(content: str) -> list[str]:
