@@ -1,25 +1,49 @@
 //! Integration test: parse all .vrf files in the corpus directory.
 //!
-//! Skipped when the corpus path does not exist (CI environments without data).
+//! The corpus lives outside the repo and is machine-local, so this test
+//! returns early when it is absent. That early return used to be invisible:
+//! the test reported as PASSING on any machine without the corpus, which
+//! meant its whole body was an untaken branch everywhere but one
+//! workstation, and `cargo test`'s green count silently included it.
+//!
+//! Two things make it honest now. The path is read from `VRFKIT_CORPUS`
+//! rather than hardcoded to one user's home directory, and setting
+//! `VRFKIT_REQUIRE_CORPUS=1` turns the skip into a failure -- so a machine
+//! that is SUPPOSED to have the corpus can say so and be held to it. The
+//! skip message names both, so anyone reading the output knows the coverage
+//! was not taken and how to take it.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use vrf_container::{ChunkIterator, ChunkType, decompress_replay_data, parse_preamble};
 
-const VRF_DIR: &str = r"C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf";
+/// Fallback used when `VRFKIT_CORPUS` is unset. Convenience for the machine
+/// this project is developed on, not a requirement.
+const DEFAULT_VRF_DIR: &str = r"C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf";
 
-fn corpus_available() -> bool {
-    Path::new(VRF_DIR).is_dir()
+fn corpus_dir() -> PathBuf {
+    std::env::var_os("VRFKIT_CORPUS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_VRF_DIR))
 }
 
 #[test]
 fn parse_all_vrf_files() {
-    if !corpus_available() {
-        eprintln!("SKIP: corpus directory not found at {VRF_DIR}");
+    let corpus = corpus_dir();
+    if !corpus.is_dir() {
+        let message = format!(
+            "corpus directory not found at {}; set VRFKIT_CORPUS to point at one",
+            corpus.display()
+        );
+        assert!(
+            std::env::var_os("VRFKIT_REQUIRE_CORPUS").is_none(),
+            "VRFKIT_REQUIRE_CORPUS is set but {message}"
+        );
+        eprintln!("SKIP (body not executed): {message}");
         return;
     }
 
-    let dir = Path::new(VRF_DIR);
+    let dir: &Path = &corpus;
     let mut total = 0u32;
     let mut info_ok = 0u32;
     let mut branches: std::collections::HashMap<String, u32> = std::collections::HashMap::new();

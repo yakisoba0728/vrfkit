@@ -112,6 +112,29 @@ DAMAGE_VECTOR_PARAMS = frozenset({
 
 # RegionalDamage enum mapping: vrfkit stores as int, valplay expects string.
 #
+# EAresAlliance.cs. Verbatim from the enum, not inferred:
+#
+#   AllianceAlly = 0, AllianceEnemy = 1, AllianceNeutral = 2,
+#   AllianceAny = 3, AllianceCount = 4, AllianceMax = 5
+#
+# This map previously read {0: "alliance_self", 1: "alliance_ally",
+# 2: "alliance_enemy", 3: "alliance_any", 4: "alliance_any"} -- shifted by
+# one, with an "alliance_self" that is not in the enum at all. Ordinal 1
+# occurs 30 times on 02d4d478 and was reported as "ally" where the reference
+# says "enemy"; ordinal 3 was right only by coincidence.
+#
+# This is the same defect as the RegionalDamage swap fixed in e7414d9, in the
+# same file, and it was not checked at the time. When one enum map turns out
+# to be shifted, check the others.
+ALLIANCE_MAP = {
+    0: "alliance_ally",
+    1: "alliance_enemy",
+    2: "alliance_neutral",
+    3: "alliance_any",
+    4: "alliance_count",
+    5: "alliance_max",
+}
+
 # EAresRegionalDamage.cs. The ordinals are the C# enum's, not an invention:
 #
 #   RegionalDamage_Normal         = 0
@@ -719,9 +742,7 @@ def _build_shot_event(
     alliance_str = None
     if alliance is not None:
         if isinstance(alliance, int):
-            alliance_map = {0: "alliance_self", 1: "alliance_ally",
-                           2: "alliance_enemy", 3: "alliance_any", 4: "alliance_any"}
-            alliance_str = alliance_map.get(alliance, f"alliance_{alliance}")
+            alliance_str = ALLIANCE_MAP.get(alliance, f"alliance_unknown_{alliance}")
         else:
             alliance_str = str(alliance)
 
@@ -732,7 +753,10 @@ def _build_shot_event(
         "is_local_effect": bool(is_local) if is_local is not None else False,
         "is_transient": bool(is_transient) if is_transient is not None else True,
         "wait_on_replication_actor": wait_on or 0,
-        "alliance_filter": alliance_str or "alliance_any",
+        # Absent means absent. The reference emits null on 101 of 02d4d478's
+        # 2,647 effects; defaulting to "alliance_any" collapsed two distinct
+        # input states into one output.
+        "alliance_filter": alliance_str,
         "location": loc_obj,
         "rotation": rot_obj,
         "ammo_remaining": ammo,
