@@ -1322,9 +1322,20 @@ impl ReplicationSink for ExportSink<'_> {
                 .insert(state.channel_index, state.archetype_net_guid);
         }
 
-        // Resolve class_path: for dynamic actors the outer path of the
-        // archetype GUID gives the class. For static actors the actor GUID
-        // path itself is the class.
+        // Resolve class_path from the archetype GUID's outer path.
+        //
+        // A static actor has no archetype: NewActorSerializer.cs:29 returns
+        // before reading the spawn block for anything that is not dynamic, so
+        // the reference leaves both ReplicationClassPath and ArchetypePath
+        // null. This used to fall back to the actor GUID's own path, on the
+        // stated premise that "for static actors the actor GUID path itself is
+        // the class". It is not -- that path is the level's instance name.
+        // 27 opens on 02d4d478 shipped `Ascent_C_0`, `AresWorldSettings`,
+        // `WindowShieldA1` and the like as replication class paths.
+        //
+        // Nothing is lost by dropping it: all 27 paths are byte-identical to
+        // the `path` column net_guids.parquet already carries for the same
+        // GUID, so a consumer that wants the instance name can join for it.
         let class_path = if state.archetype_net_guid.is_valid() {
             let outer = self
                 .cache
@@ -1336,10 +1347,6 @@ impl ReplicationSink for ExportSink<'_> {
                 .map(|s| s.to_owned());
             let combined = self.create_combined_candidate(outer.as_deref(), arch_path.as_deref());
             combined.or(outer)
-        } else if state.actor_net_guid.is_valid() {
-            self.cache
-                .get_path_by_guid(state.actor_net_guid.0)
-                .map(|s| s.to_owned())
         } else {
             None
         };

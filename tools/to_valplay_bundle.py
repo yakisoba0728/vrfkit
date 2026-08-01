@@ -1368,12 +1368,17 @@ def _build_actor_events(export_dir: Path, actor_first: dict, actor_last: dict,
                     _f32_shortest(a_sy[i]) if a_sy[i] is not None else 0,
                     _f32_shortest(a_sz[i]) if a_sz[i] is not None else 0,
                 ) if has_loc else None
-                class_path = a_class[i] if a_class[i] is not None else ""
+                class_path = a_class[i]
                 if class_path:
                     # First open wins: a GUID can be reused after a close, but
                     # the shot events that reference it belong to its first life.
                     guid_class.setdefault(a_guid[i], class_path)
-                archetype = a_arch[i] if a_arch[i] is not None else _group_path_to_archetype(class_path)
+                # A static actor has no archetype and no class, and the
+                # reference emits null for both. Deriving "Default__" + the leaf
+                # of an empty class path produced the literal string
+                # "Default__" for all 27 of them -- a value that looks like an
+                # archetype and identifies nothing.
+                archetype = a_arch[i]
                 # guid_class above keeps the full object path (weapon lookup
                 # matches on it); the event carries the package path the
                 # reference emits.
@@ -1381,7 +1386,7 @@ def _build_actor_events(export_dir: Path, actor_first: dict, actor_last: dict,
                     "type": "actor_spawned",
                     "time_ms": a_time[i],
                     "actor_net_guid": a_guid[i],
-                    "replication_class_path": _to_package_path(class_path),
+                    "replication_class_path": _to_package_path(class_path) if class_path else None,
                     "archetype_path": archetype,
                     "location": location,
                 }
