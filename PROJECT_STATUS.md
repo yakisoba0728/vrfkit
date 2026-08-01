@@ -1731,8 +1731,29 @@ NO UNSAFE
 ### Path references
   Parser repo   : C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
   C# reference  : C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser
-                  HAS USER'S UNCOMMITTED WORK (17 entries). Never modify.
                   Instrumentation: only in clean files, always reverted.
+
+                  TABLE.RS DEPENDS ON A BRANCH THERE, NOT ON origin/main.
+                  Generating from origin/main yields 680 overlay entries;
+                  from local main 666; the committed table has 1,054.
+                  The 374-entry difference is the descriptor work on
+                  branch `local/vrfkit-descriptors` (fe5343a, 2026-08-02):
+                  weapons, ItemSlot, PurchasedItemComponent,
+                  OwnerExclusivePlayerInfo, EquippablePickup, TimedBomb
+                  and the effect manager. Credits, purchases,
+                  inventory-slot identity and shot effect data all rest
+                  on it.
+
+                  Check out that branch before running
+                  extract_descriptors.py. Generating from main and
+                  shipping the result would silently cut typed coverage
+                  by a third -- apply_type_corrections.py now fails
+                  loudly if that happens, which is how this was found.
+
+                  That work was uncommitted until 2026-08-02, so the
+                  table was reproducible on one machine only. A backup
+                  of the pre-commit state is under
+                  Documents/vrp-uncommitted-backup/20260802-011146.
   valplay       : C:\Users\yakihyuk0728\Documents\GitHub\valplay
                   Never modify.
   Corpus        : valplay\data\raw\vrf  (215 x .vrf, all 13.01)
