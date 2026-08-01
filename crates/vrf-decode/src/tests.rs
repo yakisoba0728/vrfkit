@@ -669,6 +669,31 @@ mod overlay_tests {
     }
 
     #[test]
+    fn overlay_uses_an_explicit_property_handle_when_the_wire_name_is_missing() {
+        let entries: &[OverlayEntry] = &[OverlayEntry {
+            group_path: "/test",
+            field_name: "Health",
+            field_type: FieldType::Int32,
+        }];
+        let handle_entries: &[OverlayHandleEntry] = &[OverlayHandleEntry {
+            group_path: "/test",
+            handle: 9,
+            field_name: "Health",
+        }];
+        let table = OverlayTable::with_handles(entries, handle_entries);
+        let mut stats = OverlayStats::default();
+        let data = 100i32.to_le_bytes();
+
+        let result =
+            apply_overlay_with_handle(&table, "/test", None, 9, Some(&data), 32, &mut stats);
+
+        assert_eq!(result.and_then(|value| value.value_i64), Some(100));
+        assert_eq!(stats.decoded_ok, 1);
+        assert_eq!(stats.no_field_name, 0);
+        assert_eq!(stats.not_in_table, 0);
+    }
+
+    #[test]
     fn overlay_keeps_direct_name_lookup_ahead_of_the_handle_fallback() {
         let entries: &[OverlayEntry] = &[
             OverlayEntry {

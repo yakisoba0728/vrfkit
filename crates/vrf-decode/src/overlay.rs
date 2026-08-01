@@ -288,14 +288,6 @@ fn apply_overlay_inner(
     bit_count: u32,
     stats: &mut OverlayStats,
 ) -> Option<OverlayResult> {
-    let fname = match field_name {
-        Some(n) => n,
-        None => {
-            stats.no_field_name += 1;
-            return None;
-        }
-    };
-
     // Fall back to the `b`-prefixed spelling of the same field.
     //
     // The C# descriptors bind a property to its handle number and carry a name
@@ -311,17 +303,30 @@ fn apply_overlay_inner(
     // Unreal boolean prefix. Measured across all 1,054 entries and every
     // undecoded row on 02d4d478, exactly one field resolves this way and it is
     // the correct one.
-    let field_type = match table
-        .lookup(group_path, fname)
-        .or_else(|| table.lookup(group_path, &format!("b{fname}")))
+    let resolved = field_name
+        .and_then(|name| {
+            table
+                .lookup(group_path, name)
+                .or_else(|| table.lookup(group_path, &format!("b{name}")))
+                .map(|field_type| (field_type, name))
+        })
         .or_else(|| {
             handle
                 .and_then(|value| table.lookup_handle(group_path, value))
-                .and_then(|descriptor_name| table.lookup(group_path, descriptor_name))
-        }) {
-        Some(ft) => ft,
+                .and_then(|descriptor_name| {
+                    table
+                        .lookup(group_path, descriptor_name)
+                        .map(|field_type| (field_type, field_name.unwrap_or(descriptor_name)))
+                })
+        });
+    let (field_type, diagnostic_name) = match resolved {
+        Some(resolved) => resolved,
         None => {
-            stats.not_in_table += 1;
+            if field_name.is_none() {
+                stats.no_field_name += 1;
+            } else {
+                stats.not_in_table += 1;
+            }
             return None;
         }
     };
@@ -347,7 +352,7 @@ fn apply_overlay_inner(
             stats.decoded_err += 1;
             stats.error_report.record(
                 group_path,
-                fname,
+                diagnostic_name,
                 field_type,
                 bit_count,
                 DecodeErrorKind::ZeroBits,
@@ -407,7 +412,7 @@ fn apply_overlay_inner(
             };
             stats
                 .error_report
-                .record(group_path, fname, field_type, bit_count, kind);
+                .record(group_path, diagnostic_name, field_type, bit_count, kind);
             Some(OverlayResult {
                 value_i64: None,
                 value_f64: None,

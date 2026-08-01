@@ -20,7 +20,9 @@ HANDLE_ENTRY_RE = re.compile(
 
 
 class ExtractDescriptorsTests(unittest.TestCase):
-    def run_generator(self, sources: dict[str, str]) -> str:
+    def run_generator_process(
+        self, sources: dict[str, str]
+    ) -> tuple[subprocess.CompletedProcess[str], str | None]:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source_root = root / "Replay.Valorant"
@@ -38,8 +40,19 @@ class ExtractDescriptorsTests(unittest.TestCase):
                 text=True,
                 encoding="utf-8",
             )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            return output.read_text(encoding="utf-8")
+            output_text = output.read_text(encoding="utf-8") if output.exists() else None
+            return result, output_text
+
+    def run_generator(self, sources: dict[str, str]) -> str:
+        result, output = self.run_generator_process(sources)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNotNone(output)
+        return output or ""
+
+    def run_generator_expecting_failure(self, sources: dict[str, str]) -> str:
+        result, _ = self.run_generator_process(sources)
+        self.assertNotEqual(result.returncode, 0, "generator unexpectedly succeeded")
+        return result.stderr
 
     def test_add_raw_wrapper_calls_emit_all_eleven_raw_fields(self):
         output = self.run_generator(
@@ -270,6 +283,63 @@ internal static class AgentClassNetCacheDescriptors
                 ),
             },
         )
+
+    def test_runtime_cache_factory_missing_method_fails_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors)
+    {
+        return agentDescriptors
+            .Select(agent => new ClassNetCacheDescriptor(
+                agent.Path + "_ClassNetCache", [CreateKillRpc()]))
+            .ToArray();
+    }
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
+        self.assertIn("method body", error)
+
+    def test_runtime_cache_factory_name_is_bounded_to_its_method(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors)
+    {
+        return agentDescriptors
+            .Select(agent => new ClassNetCacheDescriptor(
+                agent.Path + "_ClassNetCache", [CreateKillRpc()]))
+            .ToArray();
+    }
+
+    private static RpcDescriptor CreateKillRpc()
+    {
+        return new RpcDescriptor
+        {
+            FunctionExportPath = "/Script/ShooterGame.Agent:MulticastNotifyKilledEnemy",
+        };
+    }
+
+    private static RpcDescriptor UnrelatedRpc() => new RpcDescriptor
+    {
+        Name = "MustNotBeCaptured",
+    };
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
+        self.assertIn("RpcDescriptor.Name", error)
 
     def test_literal_property_handles_emit_handle_metadata(self):
         output = self.run_generator(

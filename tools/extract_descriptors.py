@@ -419,6 +419,41 @@ def find_class_body_range(source: str, class_start: int) -> tuple[int, int]:
     return (brace_pos + 1, pos - 1)
 
 
+def extract_parameterless_method_body(source: str, method_name: str) -> str | None:
+    """Return only the named parameterless method's block or expression body."""
+    declaration_re = re.compile(
+        rf'\b(?:public|internal|protected|private)\s+(?:static\s+)?'
+        rf'[\w.<>,?\[\]]+\s+{re.escape(method_name)}\s*\(\s*\)\s*'
+    )
+    declaration = declaration_re.search(source)
+    if declaration is None:
+        return None
+
+    body_start = declaration.end()
+    if source.startswith("=>", body_start):
+        expression_start = body_start + 2
+        expression_end = source.find(";", expression_start)
+        if expression_end == -1:
+            return None
+        return source[expression_start:expression_end]
+
+    if body_start >= len(source) or source[body_start] != "{":
+        return None
+
+    depth = 1
+    pos = body_start + 1
+    while pos < len(source) and depth > 0:
+        if source[pos] == "{":
+            depth += 1
+        elif source[pos] == "}":
+            depth -= 1
+        pos += 1
+
+    if depth != 0:
+        return None
+    return source[body_start + 1:pos - 1]
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
         raise SystemExit(__doc__)
@@ -481,25 +516,33 @@ def main(argv: list[str]) -> int:
         }
         for runtime_match in runtime_cache_re.finditer(source):
             factory_name = runtime_match.group("factory")
-            factory_match = re.search(
-                rf'\b{re.escape(factory_name)}\s*\(\s*\)', source
-            )
-            if factory_match is None:
-                continue
-            factory_tail = source[factory_match.end():]
+            factory_body = extract_parameterless_method_body(source, factory_name)
+            if factory_body is None:
+                raise SystemExit(
+                    f"runtime ClassNetCache factory {factory_name}: "
+                    "method body not found"
+                )
             name_match = re.search(
                 r'\bName\s*=\s*(?:"(?P<literal>[^"]+)"|(?P<constant>\w+))',
-                factory_tail,
+                factory_body,
             )
             if name_match is None:
-                continue
+                raise SystemExit(
+                    f"runtime ClassNetCache factory {factory_name}: "
+                    "RpcDescriptor.Name not found in method body"
+                )
             function_name = name_match.group("literal")
             if function_name is None:
                 function_name = constants.get(name_match.group("constant"))
-            if function_name is not None:
-                runtime_cnc_specs.append(
-                    (runtime_match.group("suffix"), function_name)
+            if function_name is None:
+                constant_name = name_match.group("constant")
+                raise SystemExit(
+                    f"runtime ClassNetCache factory {factory_name}: "
+                    f"RpcDescriptor.Name constant {constant_name} could not be resolved"
                 )
+            runtime_cnc_specs.append(
+                (runtime_match.group("suffix"), function_name)
+            )
 
     for cs_file, source in sources:
 
