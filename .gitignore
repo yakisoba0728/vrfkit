@@ -27,3 +27,7 @@ Thumbs.db
 
 # Per-agent build directories used when several tasks compile in parallel.
 /target-*/
+
+# Agent worktrees created by the Claude Code harness. Transient scratch
+# checkouts of this same repo; never part of a commit.
+/.claude/
