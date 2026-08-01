@@ -35,12 +35,18 @@ C# reference   : C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser
                  regenerate the bundles, or pull.
                  Changing a descriptor there is allowed ON THE BRANCH, with
                  primary-source proof and the test that pins it (see 13-C).
-                 Regenerating table.rs requires that branch checked out.
+                 This delegate branch's table was generated from that branch.
+                 Current master also depends on local/pawn-descriptors at
+                 d2b76f2 in the separate clean VRP-pawn-descriptors worktree.
+                 During integration, use the feature branch's generator with
+                 that newer C# worktree or 92 master entries disappear.
 valplay        : C:\Users\yakihyuk0728\Documents\GitHub\valplay
                  Never modify. Run its scripts by absolute path only.
 Corpus (.vrf)  : C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf
                  215 files, all ++Ares-Core+release-13.01
-Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf  (4 files)
+Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf
+                 Game-owned rotating input; currently 3 files named 1/2/3.vrf.
+                 Never point a baseline at this directory.
 Older fixtures : C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser\tests\Test.Integration\Replays
                  One source fixture each for 12.10, 12.11, and 13.00.
                  READ ONLY; do not run baselines from this repository.
@@ -80,7 +86,9 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 # Baseline: blocks 136,545,822  fields 98,883,979  rpcs 75,571,092
 #           malformed 0  skipped 1,972,080,670    (~30s, runs 16-wide)
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
-# Expected: OK: 4 replays match the baseline
+# This delegate branch predates master fix 3a4b04, so its old JSON reports the
+# Saved\Demos input-set mismatch. Current master pins one stable copied replay
+# under baseline-corpora and passes 1/1. Preserve that file during integration.
 python tools\check_export_baseline.py --baseline tools\baselines\export_02d4d478.json
 # Expected: OK ... 3 printed counters cross-check against their Parquet files.
 # The strongest single guard: it pins all 21 export counters plus every Parquet
@@ -146,7 +154,7 @@ Verify it yourself:
 python tools\validate_metrics_corpus.py --jobs 3
 # Expected: sections exact on ALL   : 16 / 21
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
-# Expected: OK: 4 replays match the baseline
+# Expected after integrating current master's 3a4b04: OK, 1 stable replay.
 ```
 
 No section is BLOCKED. Most differences reflect data the C# parser drops:
@@ -249,6 +257,7 @@ ValorantReplayParser : clean, on branch local/vrfkit-descriptors at f67ea66.
 ### Commit list
 
 ```
+b10467b fix(tools): respect descriptor category overrides
 a0ea2b4 chore: enforce ASCII Rust sources
 b68baaa fix(decode): complete descriptor handle fallback
 e1eb220 fix(decode): preserve explicit descriptor handles
@@ -343,7 +352,7 @@ vrfkit/
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 246 tests, measured at a0ea2b4 (243 regular targets plus 3 doctests).
+Total: 246 tests, measured at b10467b (243 regular targets plus 3 doctests).
 The earlier 242 figure omitted one existing test; Task B then added three.
 DO NOT trust the per-crate rows above: they were
 taken excluding doc-tests for some crates and including them for others, so
@@ -2355,6 +2364,13 @@ runtime agent-cache entries. Current generated output is 152 groups / 1,100
 name entries: Raw 164, Skip 154, Typed 782, plus 84 separately sorted
 explicit-handle aliases. No prior name key was deleted or type-changed.
 
+Fix round 2 (b10467b) makes an explicit descriptor category override take
+precedence over an inherited Agent category, matching the C# catalog's
+effective `HasFlag(Agent)` filter. This prevents three Ability subclasses on
+current master's pawn-descriptor branch from receiving fabricated runtime
+ClassNetCaches. Unknown categories and unsupported override syntax now fail
+loudly. The f67 input remains byte-identical to the tracked 1,100-entry table.
+
 Fresh 02d4d478 export measurement:
 
 ```text
@@ -2421,6 +2437,9 @@ cargo test --workspace                  243 regular + 3 doctests, 0 failed
 cargo clippy --workspace --all-targets  clean with -D warnings
 cargo fmt --check                       clean
 cargo build --release                   exit 0
+Python descriptor/adapter tests          10/10
+effect decoder guard                     12/12
+ASCII guard                              61/61 tracked Rust files
 validate_corpus.py (13.01)              215/215; malformed 0
   totals                                blocks 136,545,822
                                         fields 98,883,979
@@ -2446,9 +2465,31 @@ binary against that current master baseline passes 1/1 with malformed 0.
 
 While this isolated worktree was active, master advanced independently from
 the merge base 9865c29 to f7bcdb9. The delegate did not merge, rebase, or
-cherry-pick it. Master includes additional ability-descriptor and baseline/doc
-changes, so integration must regenerate the combined descriptor table and
-re-measure the combined export rather than adding the two branches' counters
-arithmetically. At final verification, the C# repository was clean at
-`local/vrfkit-descriptors@f67ea66` with main still `2d2e05e`; valplay was clean
-at `main@4578a5a`.
+cherry-pick it. A read-only merge audit finds conflicts in PROJECT_STATUS.md,
+table.rs, and export_02d4d478.json. Neither version of the two generated/data
+files should be selected manually.
+
+Current master depends on a separate clean C# worktree at
+`C:\Users\yakihyuk0728\Documents\GitHub\VRP-pawn-descriptors`, branch
+`local/pawn-descriptors@d2b76f2`. It is a descendant of f67ea66 and contributes
+92 name entries across 20 ability groups that do not overlap Task B's 42 new
+name entries. After obtaining merge authority, preserve master's fixed
+build_1302 baseline and decode-error guard. First preserve b10467b, which
+applies the nearest explicit category override and prevents three phantom
+Ability ClassNetCaches. Then run that extractor against the d2b76f2 worktree,
+followed by type corrections and rustfmt. A temporary clean generation with
+b10467b produced exactly 1,192 names / 172 groups / Raw 164 / Skip 164 / Typed
+864 / 84 handle aliases, retained all 29 real runtime Agent caches, and omitted
+the three phantom paths. Regenerate -- never hand-merge -- the tracked table.
+
+Then build a combined release and re-measure the export baseline. Counter
+arithmetic is only a sanity check; Parquet ZSTD bytes, hash, typed-row count,
+and final baseline must not be predicted or added across branches. Re-run the
+215-replay decode-error guard, corpus validation, 02d4 export, all baselines,
+combat comparison, and 11-replay metrics before resolving the documentation
+conflicts with measured combined values.
+
+At final delegate verification, the primary C# repository was clean at
+`local/vrfkit-descriptors@f67ea66`, the separate pawn-descriptor worktree was
+clean at d2b76f2, C# main remained `2d2e05e`, and valplay was clean at
+`main@4578a5a`.
