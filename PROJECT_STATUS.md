@@ -202,10 +202,14 @@ its total happened to be right.
 succeeded          : 215 / 215
 failed             : 0
 
-oracle pass rate
-  min              : 97.49%  (worst file, attribution failures)
-  median           : ~98.9%
-  max              : 99.99%
+oracle pass rate  (measured 2026-08-01 from validate_corpus.py output;
+                   the median and max previously recorded here, ~98.9% and
+                   99.99%, were never measured and were both wrong -- the
+                   tool also reports "below 99.99%: 215", i.e. no replay
+                   reaches 99.99%)
+  min              : 97.487010%  (936a0967-7a14-46bf-ab7e-b33f7e228cc4.vrf)
+  median           : 99.323286%
+  max              : 99.681958%
 
 corpus totals
   content blocks   : 136,545,822
