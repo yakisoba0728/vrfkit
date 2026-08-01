@@ -1,6 +1,7 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Reflects commit ef9a521 (56th commit, master).
+Last updated: 2026-08-01. Includes the delegated coverage audit through
+commit 458f8e0 on branch codex/remaining-items.
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -30,6 +31,10 @@ valplay        : C:\Users\yakihyuk0728\Documents\GitHub\valplay
 Corpus (.vrf)  : C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf
                  215 files, all ++Ares-Core+release-13.01
 Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf  (4 files)
+Older fixtures : C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser\tests\Test.Integration\Replays
+                 One source fixture each for 12.10, 12.11, and 13.00.
+                 READ ONLY; do not run baselines from this repository.
+Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 ```
 
 ### Verify the build before touching anything
@@ -60,11 +65,17 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 #           malformed 0  skipped 1,972,080,670    (~30s, runs 16-wide)
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # Expected: OK: 4 replays match the baseline
+python tools\check_corpus_baseline.py --baseline tools\baselines\build_1210.json
+python tools\check_corpus_baseline.py --baseline tools\baselines\build_1211.json
+python tools\check_corpus_baseline.py --baseline tools\baselines\build_1300.json
+# Expected for each older build: OK: 1 replays match the baseline
 ```
 
 ### What to do next (highest impact first)
-See Section 7 for full detail, and NEXT_STEPS_FINDINGS.md for the measured
-evidence behind the 7-A correction.
+See Section 7 for full detail, NEXT_STEPS_FINDINGS.md for the measured
+evidence behind the 7-A correction, and Section 11 for the replay-coverage
+audit. Non-Bomb mode coverage remains input-blocked and unmeasured: supply a
+mode-labelled non-Bomb replay before making any claim about it.
 
 7-A, 7-B, 7-D, 7-E, 7-G, 7-I, 7-J and 7-K are all DONE. **16 of 21 metric
 sections are byte-identical to the C# reference on all 11 cross-validated
@@ -72,9 +83,9 @@ replays**, up from 3 sections on 1 replay at the start of the session.
 
 Verify it yourself:
 ```powershell
-python toolsalidate_metrics_corpus.py --jobs 3
+python tools\validate_metrics_corpus.py --jobs 3
 # Expected: sections exact on ALL   : 16 / 21
-python tools\check_corpus_baseline.py --baseline toolsaselinesuild_1302.json
+python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # Expected: OK: 4 replays match the baseline
 ```
 
@@ -278,8 +289,9 @@ corpus totals
                                    9cb7a24; the value is genuinely 0, and a
                                    counter that stops printing now warns
                                    instead of reading as zero.
-  unattributed bits: 1,972,080,670 (~246 MB, 91.7% is AbilitiesAndBuffsComponent)
-                     That 91.7% is a share of the FAILURES, not of the
+  unattributed bits: 1,972,080,670 (~246 MB; 97.283437% is
+                     AbilitiesAndBuffsComponent)
+                     That 97.283437% is a share of the FAILURES, not of the
                      replay. Per replay it is ~2.1% of bits and ~1.05% of
                      blocks, and no metric depends on it -- see 7-C.
 ```
@@ -310,6 +322,26 @@ Earlier measurement of two of them:
 43d0f434  85 MB 1,004,465 blocks  malformed 0  transform 0  pass 99.18%
 ```
 The C# parser that valplay currently uses REJECTS 13.02 replays outright.
+
+Older supported builds (one machine-local fixture per build, pinned by
+tools/check_corpus_baseline.py):
+
+```
+build  blocks  malformed  fields  RPCs   skipped  oracle pass rate
+12.10  13,679          0   7,924  9,605   12,915       99.203158%
+12.11   6,505          0   4,700  3,593   11,052       98.478094%
+13.00   8,859          0   4,558  5,722   18,104       98.679309%
+```
+
+All three inspect and validate with exit 0. Full export also reaches exit 0 and
+writes complete output files, retaining all raw bits, but it is not decode-clean:
+the builds report 9, 18, and 19 FName SourceID decode errors respectively. These
+decode gaps are recorded, not hidden by the zero malformed count.
+
+The adjacent 12.08 C# fixture is intentionally unsupported. A real end-to-end
+`validate` run exits 1, names `++Ares-Core+release-12.08`, and lists the known
+branches. This confirms that an unknown build fails loudly rather than silently
+selecting a transform.
 
 
 ---
@@ -406,15 +438,17 @@ MulticastNotifyDamage_Point: 580 to 581 records, all 581 distinct by
 (packet, time, actor, value) -- not a duplicate, a genuinely recovered
 event the C# parser discards.
 
-Remaining 91.7% of unattributed bits: AbilitiesAndBuffsComponent, for
-which the replay declares no cache group. No lookup can reach it.
+An uncapped corpus audit later measured 97.283437% of unattributed bits as
+AbilitiesAndBuffsComponent, for which the replay declares no cache group.
+No lookup can reach it; see the corrected breakdown in 7-C.
 
 ### 5-E. README correction (commit 7c2faa1)
 
 README still claimed 100.000000% pass rate with 3,671 skipped bits.
-Corrected to measured 97.49%-99.99% range with 1,972,080,670 unattributed
-bits, plus an explanation that framing is exact everywhere and the shortfall
-is attribution rather than parsing.
+Corrected to an honest non-100% range with 1,972,080,670 unattributed bits,
+plus an explanation that framing is exact everywhere and the shortfall is
+attribution rather than parsing. The final uncapped corpus measurement is
+97.487010%-99.681958%, with median 99.323286%.
 
 Also corrected: overlay figures (106 groups/929 fields -> 123/1054),
 RPC comparison (334,641 -> 342,735 vs C# 230,893), typed coverage.
@@ -741,7 +775,7 @@ Section 6 used to rest on 02d4d478 alone. Eleven replays have BOTH a source
 was cross-validated was wrong; fd816a35 is simply the one whose .vrf is
 missing.
 
-    python toolsalidate_metrics_corpus.py --jobs 3
+    python tools\validate_metrics_corpus.py --jobs 3
 
 runs the full pipeline over all eleven and prints a section x replay matrix.
 
@@ -859,16 +893,17 @@ by N". Check how many values match before inferring a constant offset.
 ### 7-C. Unattributed ClassNetCache blocks [NO CURRENT IMPACT, BOUNDED]
 
 Read the proportion before the raw number, because the raw number misleads.
-"1,972,080,670 bits" and "91.7% AbilitiesAndBuffsComponent" both sound
-alarming and have been quoted that way in this document; measured against
-what we DO read, on 02d4d478:
+"1,972,080,670 bits" and the old "91.7% AbilitiesAndBuffsComponent" figure
+both sound alarming and have been quoted that way in this document; measured
+against what we DO read, on 02d4d478:
 
     named and decoded   822,744,224 bits   97.9%
     unattributed         17,507,210 bits    2.1%
     blocks failed             6,365 of 608,020   1.05%
 
-The 91.7% is a share OF THE FAILURES, not of the replay. Roughly one block
-in a hundred.
+The old 91.7% was intended as a share OF THE FAILURES, not of the replay;
+the uncapped current measurement is 97.283437%, reported below. Either way,
+the replay-level proportion is roughly one block in a hundred.
 
 WHAT IT COSTS TODAY: nothing measurable. All 21 metric sections compute
 without it, 16 of them byte-identical to the C# reference on 11 replays, and
@@ -962,7 +997,7 @@ same sections was spawn coordinates: Float32 widened to Python float printed
 Done in commit 9cb7a24. tools/check_corpus_baseline.py pins per-file and
 total oracle figures in JSON and fails on any difference:
 
-    python tools\check_corpus_baseline.py --baseline toolsaselinesuild_1302.json
+    python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 
 tools/baselines/build_1302.json covers the four local 13.02 demos --
 blocks 3,117,920, fields 2,279,512, rpcs 1,713,576, malformed 0,
@@ -1541,3 +1576,91 @@ than as a layer in vrf-decode, because they need access to the resolved
 group path to know which blob format to apply. A cleaner architecture would
 pass the group path through to vrf-decode, but that would require changing
 the decode trait signature. Current approach works; refactoring is optional.
+
+---
+
+## 11. Delegate Coverage Audit (2026-08-01)
+
+This audit addressed the three input-coverage and resolver questions left in
+CODEX_TASK_BRIEF.md. Search and measurements were read-only except for copying
+three fixtures into vrfkit-owned machine-local baseline directories and adding
+their generated JSON baselines. The dirty C# reference repository and valplay
+were not modified.
+
+### 11-A. Non-Bomb mode coverage [INPUT-BLOCKED, UNMEASURED]
+
+Recursive searches of all three scopes below found the same four physical
+replays and no additional `.vrf` files:
+
+```
+%LOCALAPPDATA%\VALORANT\Saved\Demos   4
+%LOCALAPPDATA%\VALORANT\Saved         4
+%LOCALAPPDATA%\VALORANT               4
+```
+
+All four are 13.02, inspect/export/validate successfully, have malformed,
+transform, and field-stream failures of zero, and exactly reproduce the pinned
+build_1302 totals in section 4. Their runtime schemas and emitted replay events
+contain BombGameState, BombPlayerState, BombDestination, TimedBomb, and spike
+plant/defuse/explosion evidence.
+
+That is positive evidence for Bomb mechanics, not a reliable official playlist
+label. The replay header's `game_specific_data` contains serializedVersion and
+playerLoadouts but no mode, queue, or playlist key, and modes such as Spike Rush,
+Swiftplay, or Premier may reuse Bomb assets. The CLI has no independent game-mode
+detector. Therefore the defensible inventory is the task brief's four Bomb-labelled
+inputs and **zero mode-labelled non-Bomb inputs**.
+
+No non-Bomb baseline was created and no claim about non-Bomb parsing is made.
+To close this item, supply at least one replay per desired non-Bomb mode together
+with a trustworthy external mode label; then run inspect, validate, full export,
+and a mode-specific baseline on those inputs.
+
+### 11-B. Older supported builds [DONE]
+
+A wider search found one unique source fixture for every previously unmeasured
+supported build under the read-only C# integration-test directory:
+
+| Build | Source filename | Bytes | SHA-256 |
+|---|---|---:|---|
+| 12.10 | `9f8b32c5-c243-41ec-bbbb-832582edf652.12_10.vrf` | 525,616 | `A4CE1B72F9BDF99492162013C1C909E6994A0D22BEF1899E687FDE71FBC86606` |
+| 12.11 | `5c673443-5bdc-4576-b416-aab3f62471a5.12_11.vrf` | 410,628 | `7A7A5492DDF286BB04413DA96F0D3B216F91150E8174A3A4397493529E17EBDD` |
+| 13.00 | `12974d2b-848f-490d-80ba-5f03a033c2d5.13_00.vrf` | 431,908 | `FD49091DD43171BB060EB6BBAE50ED6677AA1077344572C5BF65F0C6FE2B4C1A` |
+
+The search covered valplay data, Documents, Downloads, Desktop, VALORANT Saved,
+and 34 user-profile directories named archive/archives/backup/backups, including
+archive member listings without extraction. It enumerated 236 physical `.vrf`
+files, 226 unique SHA-256 values; all 236 inspect successfully. One directory,
+`%LOCALAPPDATA%\Temp\WinSAT`, was inaccessible. The 215-file valplay corpus is
+entirely 13.01; the four Saved demos are 13.02; the Downloads replay duplicates a
+13.01 valplay input.
+
+One hash-verified copy of each old fixture now lives under:
+
+```
+%LOCALAPPDATA%\vrfkit\baseline-corpora\build_1210
+%LOCALAPPDATA%\vrfkit\baseline-corpora\build_1211
+%LOCALAPPDATA%\vrfkit\baseline-corpora\build_1300
+```
+
+Commit 8f7375e adds `tools/baselines/build_1210.json`, `build_1211.json`, and
+`build_1300.json`. Each positive guard passes 1/1. Each guard was also pointed at
+the wrong build corpus and observed to report seven DRIFT differences with exit
+1, proving that the guards detect change rather than merely run.
+
+The nearby real 12.08 fixture provides the unknown-build negative case. Unit
+tests already cover the selector and ReplicationReader constructor; the real CLI
+run additionally proves the process boundary rejects it loudly with exit 1 and
+the unsupported branch name. No fallback transform is selected.
+
+### 11-C. MeleeAttackState resolver premise [DISPROVED; ALREADY DONE]
+
+The proposed missing resolver work was already implemented. All five instance
+names reach the one replay-declared shared ClassNetCache, all measured rows emit,
+and an uncapped 215-replay failure aggregation contains zero MeleeAttackState
+blocks and zero MeleeAttackState bits. No parser rule or hardcoded name was added.
+
+Section 7-C contains the resolver path, exact per-variant counts and bit totals,
+and the corrected 97.283437% failure-share measurement. Commit 458f8e0 records
+the corrected documentation and the clarified function-count comments; total
+skipped bits remain exactly 1,972,080,670 before and after the audit.

@@ -75,7 +75,7 @@ MulticastNotifyKilledEnemy.KillerCharacter       119  132  우리가 +13
 ```
 succeeded: 215/215        failed: 0
 branches : 215  ++Ares-Core+release-13.01
-pass rate: min 97.49%  median ~98.9%  max 99.99%
+pass rate: min 97.487010%  median 99.323286%  max 99.681958%
 totals   : 136,545,822 content blocks / 98,883,979 fields / 75,571,092 RPCs
            malformed framing 0        unattributed 1,972,080,670 bits
 ```
@@ -84,7 +84,7 @@ totals   : 136,545,822 content blocks / 98,883,979 fields / 75,571,092 RPCs
 
 이 수치는 한때 100%로 적혀 있었습니다. 그건 더 정확해서가 아니라 **틀렸기 때문**입니다. 당시 코드는 그룹을 못 찾은 블록을 조용히 버리면서 아무 카운터도 올리지 않았고, 오라클은 자기가 버린 데이터 위에서 만점을 보고했습니다. 그 경로를 드러내니 한 리플레이에서 14,459블록 18,831,872비트, 코퍼스 전체로 2,276,559,577비트가 나타났습니다. 이후 액터 인스턴스 이름에서 클래스 캐시 그룹을 찾아내 3억 비트가량을 회수했고, 위 숫자가 남은 양입니다.
 
-남은 것의 경계는 명확합니다. **잔여 비트의 91.7%가 `AbilitiesAndBuffsComponent`** 이고, 리플레이가 그 클래스의 캐시 그룹을 아예 선언하지 않으므로 어떤 조회로도 닿을 수 없습니다. 나머지는 `MeleeAttackState1`~`4`(끝의 숫자가 인스턴스 접미사가 아니라 서로 다른 클래스), `RespawningWallPlate2_7`, 이름에 공백이 든 소수 항목입니다. 이 블록들도 `raw_bits` 로는 전부 남습니다.
+남은 것의 경계는 명확합니다. 제한 없이 집계한 전체 실패 비트의 **97.283437%가 `AbilitiesAndBuffsComponent`** 이고, 리플레이가 그 클래스의 캐시 그룹을 아예 선언하지 않으므로 어떤 조회로도 닿을 수 없습니다. `MeleeAttackState1`~`4`와 `_Alt`는 기존 스키마 기반 resolver가 공유 `MeleeAttackStateComponent_ClassNetCache`로 이미 해석하며, 전 코퍼스 실패 블록과 비트가 모두 0입니다. 남은 미귀속 블록들도 `raw_bits`로는 전부 보존됩니다.
 
 ### 오래 걸린 버그 하나
 
@@ -195,14 +195,16 @@ XOR 처리, 그리고 S-box 테이블 자체까지.
 3개(`word64` / `word32` / `byte`)를 쓰면 끝이고, 나머지는 공용이다.
 
 **13.02는 실측으로 확인했다.** 코퍼스 215개는 전부 13.01이라 13.02 경로는 골든 벡터로만
-검증돼 있었는데, 로컬 클라이언트가 남긴 13.02 리플레이 2개를 실제로 통과시켰다.
+검증돼 있었는데, 로컬 클라이언트가 남긴 13.02 리플레이 4개를 실제로 통과시켰다.
 
 ```
 2a09e682 (55 MB)   686,559 blocks   507,642 fields   370,896 RPCs   pass 97.96%
 43d0f434 (85 MB) 1,004,465 blocks   727,996 fields   568,226 RPCs   pass 99.18%
+5fbbeb4a (67 MB)   797,976 blocks   574,132 fields   428,640 RPCs   pass 98.71%
+6c791012 (52 MB)   628,920 blocks   469,742 fields   345,814 RPCs   pass 99.33%
 ```
 
-둘 다 **malformed framing 0, transform 실패 0** 이다. 13.01과 같은 수준이며, 잔여분도
+네 파일 모두 **malformed framing 0, transform 실패 0** 이다. 13.01과 같은 수준이며, 잔여분도
 같은 귀속 문제다. 기존 파이프라인이 쓰던 C# 파서는 이 빌드를 아예 거부한다.
 
 S-box 768바이트는 빌드 간 공유되므로 **바이너리에서 변환 함수를 찾는 시그니처**로도
