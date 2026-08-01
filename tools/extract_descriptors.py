@@ -84,20 +84,19 @@ ADD_PROP_LAMBDA_RE = re.compile(
     r'\.(?P<type>\w+)\('
 )
 
-# AddPropertyHandle with explicit handle
-ADD_PROP_HANDLE_RE = re.compile(
-    r'AddPropertyHandle\(\s*(?P<handle>\d+)\s*,\s*\w+\s*=>\s*\w+\.(?P<name>\w+)'
-    r'[^)]*\)'
-    r'\.(?P<type>\w+)\('
-)
-
-# AddPropertyHandle with explicit handle AND explicit string export name.
-# Pattern: AddPropertyHandle(handle, "ExportName", x => x.Prop, ...).Type(...)
-ADD_PROP_HANDLE_NAMED_RE = re.compile(
-    r'AddPropertyHandle\(\s*(?P<handle>\d+)\s*,\s*"(?P<name>[^"]+)"'
-    r'[^)]*\)'
-    r'\.(?P<type>\w+)\('
-)
+# The handle argument of AddPropertyHandle.
+#
+# Usually a literal, but a descriptor may factor a run of handles into a helper
+# that takes the first one: MulticastNotifyDamageBaseParameters.cs:24 declares
+# AddDeathFields(uint firstHandle) and calls it as AddDeathFields(32), so its
+# six statements read `firstHandle` and `firstHandle + 5`.
+#
+# Requiring a literal here made those six invisible. The table is keyed on
+# (group_path, field_name) and never reads the handle, so the value does not
+# need resolving -- only the shape has to be recognised. The trailing comma in
+# every caller is what keeps this from swallowing a lambda: `x => x.Prop` has
+# no comma after `x`.
+HANDLE_ARG = r'(?:\d+|[A-Za-z_]\w*(?:\s*\+\s*\d+)?)'
 
 # SerializedInt(maxValue: N) or SerializedInt(N)
 SERIALIZED_INT_RE = re.compile(
@@ -276,21 +275,16 @@ def _extract_field_name(line: str) -> str | None:
         return m.group(1)
     # Try handle variant with explicit string name:
     # AddPropertyHandle(N, "ExportName", ...)
-    m = re.search(r'AddPropertyHandle\(\s*\d+\s*,\s*"([^"]+)"', line)
+    m = re.search(r'AddPropertyHandle\(\s*' + HANDLE_ARG + r'\s*,\s*"([^"]+)"', line)
     if m:
         return m.group(1)
     # Try handle variant with lambda:
     # AddPropertyHandle(N, x => x.Name, ...)
-    m = re.search(r'AddPropertyHandle\(\s*(?:\d+\s*,\s*)?(?:\w+\s*=>\s*)?(?:\w+\.)?(\w+)', line)
-    if m and m.group(1) not in ('AddPropertyHandle',):
-        # Validate: should be after the open-paren args
-        # Skip cases where we accidentally matched a keyword
-        candidate = m.group(1)
-        # For AddPropertyHandle(N, x => x.Prop, ...) the first capture after
-        # digits and lambda would be the property name
-        m2 = re.search(r'AddPropertyHandle\(\s*\d+\s*,\s*\w+\s*=>\s*(?:\w+\.)?(\w+)', line)
-        if m2:
-            return m2.group(1)
+    m = re.search(
+        r'AddPropertyHandle\(\s*' + HANDLE_ARG + r'\s*,\s*\w+\s*=>\s*(?:\w+\.)?(\w+)', line
+    )
+    if m:
+        return m.group(1)
     # Try lambda variant: AddProperty(x => x.Name, ...) or AddProperty(x => x.Name)
     m = re.search(r'AddProperty\(\s*\w+\s*=>\s*(?:\w+\.)?(\w+)', line)
     if m:
