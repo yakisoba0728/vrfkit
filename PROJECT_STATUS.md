@@ -1,6 +1,6 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Reflects commit cf97ecf (41st commit, master).
+Last updated: 2026-08-01. Reflects commit 3d37c68 (46th commit, master).
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -60,31 +60,37 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 See Section 7 for full detail, and NEXT_STEPS_FINDINGS.md for the measured
 evidence behind the 7-A correction.
 
-7-A, 7-B, 7-D and 7-J are all DONE. 12 of 20 metric sections are now
-byte-identical to the C# reference, up from 3 at the start of the session,
-and no section is BLOCKED.
+7-A, 7-B, 7-D, 7-G, 7-J and 7-K are all DONE. **15 of 21 metric sections are
+byte-identical to the C# reference on all 11 cross-validated replays**, up
+from 3 sections on 1 replay at the start of the session.
 
-  EXACT: ability_detail, ability_usage, economy, objective, objective_detail,
-         players, rounds, shot_rays, side_winrate, spray_control, ultimate
-         (+ note)
+Verify it yourself:
+```powershell
+python toolsalidate_metrics_corpus.py --jobs 3
+# Expected: sections exact on ALL   : 15 / 21
+```
 
-What is left is mostly decisions and validation breadth rather than defects:
+No section is BLOCKED, and **no section differs for a reason that is not
+understood**. The six that differ all do so because we carry data the C#
+parser does not:
 
-**7-K. Movement sample count** -- the last difference with no confirmed
-  explanation. We emit 1,839,607 samples against the reference's 1,837,220.
-  The claim that the extra 2,387 are "intermediate move frames" was never
-  verified. This is the only thing standing between movement_summary /
-  movement_detail / posture and parity.
+  combat / kast / tactical  13 MulticastNotifyKilledEnemy RPCs from
+                            character 576 that the C# parser never emits
+  economy_detail            496 of 496 purchase buyers resolved vs its 151
+  weapons / weapon_stats    172 server-world effects it bins as "unknown",
+                            plus one damage record commit 6e6d544 recovers
 
-**7-G. Validate on replays other than 02d4d478** -- every figure in this
-  document rests on one replay. This is now the highest-value work for
-  confidence, because it is what makes the other numbers trustworthy.
+What is actually left:
 
-**7-I** is classified and is not a defect: the 172 events are server-world
-effects with no firing state, correctly excluded by our filter. Only decide
-whether to emit them for byte-parity.
+**7-E. 13.02 corpus guard** -- the transform works on two local 13.02 demos
+  but nothing pins it. A future transform change could break 13.02 silently.
 
-**7-C** is a measured ceiling, not a task. Do not spend time there.
+**7-H. Instance-named component groups** -- still open, but check whether the
+  data is merely unexported before treating it as a naming problem; that is
+  what cf97ecf turned out to be.
+
+**7-I** is a parity decision, not a defect. **7-C** is a measured ceiling --
+do not spend time there.
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -134,7 +140,7 @@ analytics pipeline runs unchanged on our data.
 
 ```
 branch       : master
-commits      : 41
+commits      : 46
 tests        : 236 passing, 0 failed
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
@@ -146,48 +152,51 @@ ValorantReplayParser : 0 modified files (instrumentation always reverted)
 ### Commit list
 
 ```
-cf97ecf  feat(export, tools): carry the subobject GUID through to the bundle
-fc24b63  fix(tools): emit spawn paths and coordinates in the reference's shapes
-bea59d9  fix(tools): stop rounding shot locations to two decimals
-bff712a  fix(frame): round frame timestamps like the reference instead of truncating
-50fc3ab  docs: correct the oracle pass-rate median and max to measured values
-9b99017  docs: record the custom-decoder audit and promote its lesson to an invariant
-059713e  feat(decode, tools): decode the damage geometry vectors
-2764428  docs: close 7-J, and reclassify 7-B as the largest remaining gap
-e7414d9  fix(tools): correct the RegionalDamage enum ordinals
-90a50e1  fix(decode, tools): type EquippableUsed as a net GUID (7-J)
-0869b3c  docs: reconcile the combat row and sharpen the 7-J handoff notes
-c2a3f4d  docs: record the 7-A outcome and the two gaps its verification exposed
-1f3afe4  fix(tools): classify fire mode from the firing-state name, not ammo counters
-b258dfd  feat(tools): resolve weapon identity for every shot
-47849d2  feat(export): write net_guids.parquet with the NetGUID containment chain
-391ee2e  docs: correct section 7-A after measurement disproved its premise
-21003aa  docs: add quick-start section to PROJECT_STATUS.md for next session
-ed4415f  docs: PROJECT_STATUS.md -- full session record, remaining work and tradeoffs
-de24d6d  feat(decode, tools): decode shot EffectContainer blob and emit valorant_shot_received
-cc5dabd  feat(decode): decode RoundResults, TeamEconomy and RoundInfos struct blobs
-df20d5b  feat(export): write actors.parquet with channel open and close events
-b6947ee  feat(tools): adapter that feeds vrfkit output to the existing metrics pipeline
-7c2faa1  docs: correct the README figures the honesty fix invalidated
-6e6d544  feat(schema): resolve ClassNetCache groups from actor instance names
-00dce40  test(net): update the zero-function case left stale by the loud-failure change
-29b2936  fix(net): stop dropping ClassNetCache blocks for unresolved groups
-90727ed  fix(net): clamp the ClassNetCache handle read to a minimum of two
-b531724  feat(oracle): name the class behind every payload-stage failure
-bb797d2  fix(oracle): count payload-stage failures in the pass rate
-0c2df40  docs: README with measured cross-parser comparison
-070a953  test(tools): cross-parser verification harnesses
-721f954  feat(cli): vrfkit inspect / validate / export
-9ded7ae  feat(export): columnar Parquet output
-157ed72  feat(movement): decode the remote-character update protocol
-29aae8a  feat(decode): primitive decoders, nested arrays and a type overlay
-f742245  feat(net): Unreal replication, framed with no skip path
-33c4355  feat(schema): receive the replay's own dynamic field schema
-5a634ae  feat(frame): DemoFrame iteration between container and replication
-6f3cbcc  feat(container): .vrf container, chunk stream and Oodle decompression
-8be1abc  feat(transform): five per-build payload transforms, golden-verified
-7f3377d  feat(bitio): LSB-first bit reader and Unreal wire primitives
-2df595d  chore: cargo workspace scaffolding and licensing
+3d37c68 fix(tools): collapse intra-packet sub-moves and stop printing f32 artefacts
+38ca3fe feat(tools): cross-validate metrics against every available reference bundle
+279770a docs: close 7-B and 7-D, and record what their premises got wrong
+cf97ecf feat(export, tools): carry the subobject GUID through to the bundle
+fc24b63 fix(tools): emit spawn paths and coordinates in the reference's shapes
+bea59d9 fix(tools): stop rounding shot locations to two decimals
+bff712a fix(frame): round frame timestamps like the reference instead of truncating
+50fc3ab docs: correct the oracle pass-rate median and max to measured values
+9b99017 docs: record the custom-decoder audit and promote its lesson to an invariant
+059713e feat(decode, tools): decode the damage geometry vectors
+2764428 docs: close 7-J, and reclassify 7-B as the largest remaining gap
+e7414d9 fix(tools): correct the RegionalDamage enum ordinals
+90a50e1 fix(decode, tools): type EquippableUsed as a net GUID (7-J)
+0869b3c docs: reconcile the combat row and sharpen the 7-J handoff notes
+c2a3f4d docs: record the 7-A outcome and the two gaps its verification exposed
+1f3afe4 fix(tools): classify fire mode from the firing-state name, not ammo counters
+b258dfd feat(tools): resolve weapon identity for every shot
+47849d2 feat(export): write net_guids.parquet with the NetGUID containment chain
+391ee2e docs: correct section 7-A after measurement disproved its premise
+21003aa docs: add quick-start section to PROJECT_STATUS.md for next session
+ed4415f docs: PROJECT_STATUS.md -- full session record, remaining work and tradeoffs
+de24d6d feat(decode, tools): decode shot EffectContainer blob and emit valorant_shot_received
+cc5dabd feat(decode): decode RoundResults, TeamEconomy and RoundInfos struct blobs
+df20d5b feat(export): write actors.parquet with channel open and close events
+b6947ee feat(tools): adapter that feeds vrfkit output to the existing metrics pipeline
+7c2faa1 docs: correct the README figures the honesty fix invalidated
+6e6d544 feat(schema): resolve ClassNetCache groups from actor instance names
+00dce40 test(net): update the zero-function case left stale by the loud-failure change
+29b2936 fix(net): stop dropping ClassNetCache blocks for unresolved groups
+90727ed fix(net): clamp the ClassNetCache handle read to a minimum of two
+b531724 feat(oracle): name the class behind every payload-stage failure
+bb797d2 fix(oracle): count payload-stage failures in the pass rate
+0c2df40 docs: README with measured cross-parser comparison
+070a953 test(tools): cross-parser verification harnesses
+721f954 feat(cli): vrfkit inspect / validate / export
+9ded7ae feat(export): columnar Parquet output
+157ed72 feat(movement): decode the remote-character update protocol
+29aae8a feat(decode): primitive decoders, nested arrays and a type overlay
+f742245 feat(net): Unreal replication, framed with no skip path
+33c4355 feat(schema): receive the replay's own dynamic field schema
+5a634ae feat(frame): DemoFrame iteration between container and replication
+6f3cbcc feat(container): .vrf container, chunk stream and Oodle decompression
+8be1abc feat(transform): five per-build payload transforms, golden-verified
+7f3377d feat(bitio): LSB-first bit reader and Unreal wire primitives
+2df595d chore: cargo workspace scaffolding and licensing
 ```
 
 ---
@@ -529,6 +538,44 @@ Both fixes verified against the reference: 116 distinct GUIDs all even,
 by_weapon identical for all 23 weapons, region_source byte-identical.
 
 
+### 5-N. Movement, cross-validation, and three corrected claims
+
+Cross-validation (commit 38ca3fe) changed what could be claimed at all.
+Eleven replays have a reference bundle AND a source .vrf, not one, and
+running all of them showed the 02d4d478 figures generalise exactly -- the
+same section set is byte-identical on every replay. It also crashed on
+1d898bfb, exposing a sparse-array padding bug one replay could never have
+shown.
+
+Movement (commit 3d37c68): the "+2,387 intermediate frames" note was hiding
+a real defect. posture.distance_m was LOW for 10 of 10 players, which finer
+sampling cannot cause. Our intra-packet sub-moves share a time_ms and defeat
+posture.py's `0 < dt` guard, so a leg of every duplicated pair was dropped.
+See 7-K.
+
+Three documented claims were audited and two needed correcting:
+
+  combat kill timeline   CONFIRMED, but the framing was wrong. "132 kills vs
+                         119" reads as the C# parser undercounting kills. It
+                         does not -- both bundles report combat_report_credits
+                         132 and identical per_player kills. Only the
+                         MulticastNotifyKilledEnemy stream is affected, and
+                         all 13 extras are corroborated by lethal damage RPCs
+                         in the reference's own bundle.
+  kast                   CONFIRMED exactly as documented, 3 players +1.
+  tactical               "3 players differ" was wrong: 8 of 10 differ, and it
+                         is a reshuffle rather than a gain -- first_bloods and
+                         first_deaths net to zero.
+  combat.per_player      Numbers right, wording wrong. The 21 non-exact
+                         fields are not "JSON float precision"; they are
+                         genuine numeric differences from float32
+                         accumulation, all under float32 epsilon.
+
+Causation for the kill-derived claims was established by injecting the 13
+RPCs into a copy of the reference bundle and re-running valplay's own
+compute_metrics: the unmodified copy reproduces the reference, the injected
+copy reproduces ours.
+
 ---
 
 ## 6. metrics.json Reproduction Status (02d4d478 vs reference)
@@ -561,44 +608,85 @@ shot_rays        EXACT        after 7-B plus dropping coordinate rounding
 spray_control    EXACT        69 cells, 2304 shots, zero differing cells
 ability_usage    EXACT        after emitting package paths and f32-shortest
                               spawn coordinates
-ability_detail   EXACT        after carrying the subobject GUID (cf97ecf);
-                              attribution.spawns_by_source had been reading
-                              item_slot 10 against the reference's 118
+ability_detail   EXACT        after carrying the subobject GUID (cf97ecf)
 objective_detail EXACT        same cause as ability_detail
-tactical         OURS BETTER  3 players differ; vrfkit recovered 13 kill RPCs
-kast             OURS BETTER  3 players +1 KAST round; same root cause
-economy_detail   OURS BETTER  credits and loadout now identical for all 10
-                              players. Differs only on purchases: we resolve
-                              496 of 496 PurchasedItemComponent buyers, the
-                              reference 151. All 496 buyers are real player
-                              states and all 496 item classes resolve; the
+movement_detail  EXACT        after collapsing intra-packet sub-moves
+movement_summary EXACT        same, plus f32-shortest coordinates
+posture          EXACT        same; distance_m had been LOW for 10/10
+                              players, see 7-K
+combat           OURS BETTER  two keys differ. kill_timeline_check: we carry
+                              13 MulticastNotifyKilledEnemy RPCs the C#
+                              parser never emits, all from character 576,
+                              each corroborated by a lethal damage RPC in
+                              the REFERENCE's own bundle at the same ms.
+                              per_player: 249/270 byte-exact; the other 21
+                              are the four damage-sum fields, differing by
+                              at most 3.59e-8 relative -- under float32
+                              epsilon. Every other field is exactly equal
+kast             OURS BETTER  exactly 3 players +1 KAST round, caused by
+                              the same 13 kills (proven by injecting them
+                              into the reference bundle and reproducing our
+                              output exactly)
+tactical         OURS BETTER  8 of 10 players differ, not 3. It is a
+                              reshuffle, not a gain: first_bloods and
+                              first_deaths net to zero, trade_kills +7,
+                              traded_deaths +5
+economy_detail   OURS BETTER  credits and loadout identical for all 10
+                              players. We resolve 496 of 496
+                              PurchasedItemComponent buyers, the reference
+                              151. All 496 buyers are real player states,
+                              all 496 item classes resolve, and the
                               reference's set is a strict subset
-weapons          MINOR        all 19 weapons + shot counts identical; the
-                              reference additionally carries "unknown": 172
-                              (7-I) and reports distinct_weapons 20 vs our 19
-weapon_stats     MATCH*       by_weapon identical for all 23 weapons;
+weapons          OURS BETTER  all 19 weapons + shot counts identical; the
+                              reference additionally bins 172 server-world
+                              effects as "unknown" (7-I)
+weapon_stats     OURS BETTER  by_weapon identical for all 23 weapons;
                               region_source and hp_tracking byte-identical.
-                              Differs only on `excluded`: +1 recovered damage
-                              record and 7-I's 172
-movement_summary MINOR        1,839,607 vs 1,837,220 samples (+2387 rows) --
-                              under investigation, see 7-K
-movement_detail  MINOR        per-character floats; same row-count origin
-posture          MINOR        by_weapon EXACT for all 10 players; remaining
-                              deltas are distance_m / movement_samples, from
-                              the same row-count difference
+                              Differs only on `excluded`: the +1 recovered
+                              damage record and 7-I's 172
 ---------------------------------------------------------------------------
 ```
 
-EXACT: identical Python object equality. 12 of 20 metric sections.
-MATCH*: every key identical except the one named, and it is understood.
+EXACT: identical Python object equality. 14 of 20 metric sections here,
+       and the same 14 on all 11 cross-validated replays (section 6-A).
 OURS BETTER: our value is more complete/correct than the C# reference.
-MINOR: correct data, cosmetic naming or sample-count difference.
 BLOCKED: the data is present but a named defect prevents it being used.
-         No section is currently BLOCKED.
+         No section is BLOCKED, and no section differs for a reason that is
+         not understood. Every remaining difference is a case where we carry
+         data the C# parser does not.
 
 Scoreboard metrics that Tracker.gg validated (K/D/A, ADR, HS%, KAST,
 FK/FD, MK, rank): reproduced exactly for all 10 players from vrfkit data.
 
+
+
+### 6-A. Cross-validation across every available reference bundle
+
+Section 6 used to rest on 02d4d478 alone. Eleven replays have BOTH a source
+.vrf and a C# reference metrics.json -- the claim in 7-G that only fd816a35
+was cross-validated was wrong; fd816a35 is simply the one whose .vrf is
+missing.
+
+    python toolsalidate_metrics_corpus.py --jobs 3
+
+runs the full pipeline over all eleven and prints a section x replay matrix.
+
+Result (2026-08-01): **15 of 21 sections byte-identical on all 11 replays** --
+the same set measured on 02d4d478, so those figures generalise.
+
+  ability_detail  ability_usage  economy      movement_detail
+  movement_summary  objective    objective_detail  players
+  posture         rounds         shot_rays    side_winrate
+  spray_control   ultimate       (+ note)
+
+The six that vary do so per replay in the expected direction: kast and
+tactical are EXACT on the replays where the C# parser missed nothing (7 and
+8 of 11 respectively), and differ only where we recover kills it dropped.
+combat, economy_detail, weapons and weapon_stats differ on every replay,
+always because we carry more.
+
+This is also what found the sparse-array crash: 1d898bfb produced no metrics
+at all until the padding fix. One replay could not have surfaced it.
 
 ---
 
@@ -755,13 +843,12 @@ the transform). Framing can stay sequential while transform+decode goes
 wide. For the current 1.4s/replay speed this is not urgent, but for a
 production pipeline ingesting hundreds of new replays per day it matters.
 
-### 7-G. Reproduce metrics.json for a replay other than 02d4d478
+### 7-G. Reproduce metrics.json for other replays [DONE 2026-08-01]
 
-The Tracker.gg cross-validation was done on fd816a35, but that replay's
-.vrf does not exist in data/raw/vrf (only the parsed bundle). Validation
-on 02d4d478 is strong (270 comparisons, 0 mismatches for scoreboard
-metrics) but it is still one replay. Running the adapter on 3-4 more
-replays and spot-checking K/D/A would raise confidence.
+Done in commit 38ca3fe. This section claimed the Tracker.gg cross-validation
+replay fd816a35 had no .vrf and implied it was the only reference bundle.
+Eleven others have both a bundle and a .vrf; only fd816a35 is missing its
+source. tools/validate_metrics_corpus.py now runs all eleven -- see 6-A.
 
 ### 7-H. Instance-named component groups [MEDIUM IMPACT, DESIGN WORK]
 
@@ -925,6 +1012,36 @@ Two traps for whoever picks this up:
 
 Our total is 625 vs the reference's 631; the six-record gap should be
 explained as part of the same investigation.
+
+### 7-K. Intra-packet sub-moves [DONE 2026-08-01]
+
+Fixed in commit 3d37c68. Opened when movement_summary / movement_detail /
+posture were the last sections differing for an unverified reason: a note
+said we emit 2,387 more samples than the reference because "vrfkit captures
+intermediate move frames".
+
+Measured, that phrasing was directionally right and materially incomplete.
+The extras are not extra frames in time -- every one lands on a
+(time_ms, packet_id, character) triple the reference already has. Our
+decoder walks the marker-chained move sequence inside a packet and emits
+each sub-move; the reference keeps only the last. 1,687 of the 2,387 carry
+distinct positions (genuine intermediate detail), the other 700 are adjacent
+wire-level resends. Zero reference rows are missing from ours.
+
+The part the note missed: posture.distance_m was WRONG, low for 10 of 10
+players by 3.1-5.2 m. posture.py requires 0 < dt before adding a distance
+step but updates last_sample unconditionally, so two sub-moves at the same
+ms make it add the first leg and silently discard the second. A shorter
+distance cannot come from finer sampling, which is what made it findable.
+
+movement.parquet still carries every sub-move. Only the bundle collapses to
+the last per (time_ms, character), which is the shape the consumer was
+written against: dropping exactly those rows reproduces the reference's
+movement_detail on 60/60 values with no rounding.
+
+Lesson: "we emit more rows than the reference" is not self-evidently
+harmless. Check the direction of every derived metric -- a value that moved
+the way extra data cannot move it is the tell.
 
 ---
 
