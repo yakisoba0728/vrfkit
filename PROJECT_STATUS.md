@@ -1,10 +1,11 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Reflects commit 21003aa (26th commit, master).
+Last updated: 2026-08-01. Reflects commit 1f3afe4 (30th commit, master).
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
-measurement. See NEXT_STEPS_FINDINGS.md for the evidence.
+measurement, then implemented and verified at 100%. See
+NEXT_STEPS_FINDINGS.md for the evidence trail.
 
 ---
 
@@ -32,7 +33,7 @@ Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf  (4 files)
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 228 passed, 0 failed across all crates
+# Expected: 231 passed, 0 failed across all crates
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
@@ -46,7 +47,7 @@ cargo build --release -p vrfkit
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf\02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf" `
   --out out\nested
 # Must NOT change: content blocks 608020, fields 429633, RPCs 342735,
-#                  movement 1839607, decode errors 0
+#                  movement 1839607, NetGUID rows 16167, decode errors 0
 python tools\compare_combat_report.py
 # Must print: ALL INTERESTING SHAPES MATCH
 python tools\validate_corpus.py .\target\release\vrfkit.exe `
@@ -57,20 +58,29 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 
 ### What to do next (highest impact first)
 See Section 7 for full detail, and NEXT_STEPS_FINDINGS.md for the measured
-evidence behind the 7-A correction. The single most valuable next task is:
+evidence behind the 7-A correction.
 
-**7-A. Equippable (weapon) identity resolution** -- verified route, 100% hit.
-  shot.firing_state -> NetGuidCache outer chain -> equippable actor GUID
-  -> actors.parquet class_path -> display name.
-  Needs one small Rust export addition (the netguid -> path/outer table is
-  computed today but never written out), then adapter work.
-  Verified on 02d4d478: 2,475 / 2,475 shots resolve, class_path identical
-  to the C# reference on every one.
-  Unlocks 4 metric sections: weapons, weapon_stats, spray_control, posture.
+7-A is DONE (commits 47849d2, b258dfd, 1f3afe4): every shot resolves to a
+weapon, 2,475 / 2,475, names identical to the C# reference. spray_control is
+now EXACT and posture's by_weapon is exact for all 10 players.
+
+The highest-value remaining task surfaced while verifying it:
+
+**7-J. EquippableUsed.NetGuid decodes wrong** [HIGH]
+  weapon_stats reports 0 hits / 0 damage / 0 kills. Every one of our 115
+  values is ODD and resolves to no actor; all 115 of the reference's are
+  EVEN and 114 resolve to a weapon class path. Dynamic NetGUIDs must be
+  even (section 9), so we are producing something that is not a valid GUID.
+  A decode bug in one RPC parameter, not a resolution problem.
 
 After that: 1ms timing alignment (Section 7-B) makes 5-6 more sections
-byte-exact -- but note those sections are already numerically correct, so
-7-B is cosmetic parity, not new capability.
+byte-exact -- but those sections are already numerically correct, so 7-B is
+cosmetic parity, not new capability. Note it also accounts for the 1-RPM
+delta now visible in weapons.
+
+7-I is classified and is not a defect: the 172 events are server-world
+effects with no firing state, correctly excluded by our filter. Only decide
+whether to emit them for byte-parity.
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -109,7 +119,7 @@ this parser never discards: every field emits (group_path, handle, name,
 bit_count, raw_bits) even when nothing is known about the type.
 
 Primary outputs: fields.parquet, movement.parquet, actors.parquet,
-manifest.json -- all written by `vrfkit export`. A Python adapter
+net_guids.parquet, manifest.json -- all written by `vrfkit export`. A Python adapter
 (tools/to_valplay_bundle.py) converts these into the bundle shape that
 valplay's compute_metrics.py already consumes, so the validated 21-section
 analytics pipeline runs unchanged on our data.
@@ -120,8 +130,8 @@ analytics pipeline runs unchanged on our data.
 
 ```
 branch       : master
-commits      : 26
-tests        : 228 passing, 0 failed
+commits      : 30
+tests        : 231 passing, 0 failed
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
 working tree : clean
@@ -166,19 +176,22 @@ f742245  feat(net): Unreal replication, framed with no skip path
 vrfkit/
   crates/
     vrf-bitio       -- LSB-first bit reader, UE wire primitives (22 tests)
-    vrf-transform   -- per-build payload transforms, golden-verified (31 tests)
-    vrf-container   -- .vrf container, chunk stream, Oodle decompression (1 test)
-    vrf-frame       -- DemoFrame iteration (0 unit tests, covered by integration)
-    vrf-schema      -- dynamic field schema from replay wire (51 tests)
+    vrf-transform   -- per-build payload transforms, golden-verified (22 tests)
+    vrf-container   -- .vrf container, chunk stream, Oodle decompression (32 tests)
+    vrf-frame       -- DemoFrame iteration (3 tests)
+    vrf-schema      -- dynamic field schema from replay wire (47 tests)
     vrf-net         -- Unreal replication pipeline, no skip path (31 tests)
-    vrf-decode      -- primitive decoders, nested arrays, struct blobs (46 tests)
+    vrf-decode      -- primitive decoders, nested arrays, struct blobs (51 tests)
     vrf-movement    -- remote-character update protocol (5 tests)
-    vrf-export      -- columnar Parquet writers (16 tests)
-    vrfkit          -- CLI: inspect / validate / export (5 tests)
+    vrf-export      -- columnar Parquet writers (18 tests)
+    vrfkit          -- CLI: inspect / validate / export (0 tests; the driver is
+                       covered by the regression guard, not unit tests)
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 228 tests.
+Total: 231 tests. Counts measured per crate on 2026-08-01; the previous
+breakdown in this document was wrong for six of the ten crates even though
+its total happened to be right.
 
 ---
 
@@ -210,6 +223,7 @@ fields emitted     : 429,633
 RPCs emitted       : 342,735
 movement rows      : 1,839,607
 actors.parquet rows:   3,827  (2028 opens + 1799 closes)
+net_guids.parquet  :  16,167  (14,480 carry an outer GUID)
 decode errors      :       0
 typed (value_*)    :    35.7%  (35.7% of 1,239,406 fields.parquet rows)
 oracle pass rate   :  98.95%
@@ -386,6 +400,79 @@ shot_rays.ray_count: 2,475/2,475 exact. aim_deviation identical.
 
 Weapon identity (equippable resolution) is NOT done yet -- see Section 7.
 
+### 5-J. 7-A premise disproved by measurement (commit 391ee2e)
+
+Section 7-A claimed the shot EffectContainer carries the equippable net GUID
+and that the join needed no Rust change. Both were checked against real data
+before any code was written:
+
+  effect_equippable set on   0 of 2,647 reference shots
+  firing_state GUIDs matching 0 of 2,475 actors.parquet rows
+
+Reading the C# resolver (ValorantShotEventEnricher.cs:123) showed three
+tiers, and the one 7-A described is the one that never fires. Tier 2 walks
+the FiringState GUID's outer chain to the owning equippable.
+
+A temporary instrumented build (added, run, reverted; export totals
+unchanged) proved tier 2 before committing to it:
+
+  firing_state GUIDs in guid_to_outer : 175 / 175
+  shots resolving to a weapon         : 2,475 / 2,475
+  class_path equal to the reference   : 2,475 / 2,475
+
+A first scoring pass showed 28 mismatches; counting join-key collisions
+found exactly 28 (time_ms, actor_net_guid) keys carrying two shots with
+different weapons in the same millisecond. The mismatches were the join, not
+the resolution.
+
+Also measured here: 0 of 475 declared export groups mention
+AbilitiesAndBuffs, converting 7-C's ceiling from assumption to fact.
+
+### 5-K. net_guids.parquet and weapon identity (commits 47849d2, b258dfd)
+
+NetGuidCache::net_guid_entries plus a NetGuidWriter export the containment
+chain the parser had always computed and thrown away. 16,167 rows for
+02d4d478, sorted by net_guid for byte-reproducibility.
+
+The adapter walks that chain per shot, consulting actors.parquet (channel
+opens) and net_guids.parquet (every registered GUID) at each hop because the
+two cover different populations -- the weapon is in the first, its
+FiringState only in the second.
+
+tools/extract_equippables.py generates the display-name table from the C#
+resolver's Define() list rather than anyone retyping 24 paths. It stays on
+the Python side so the parser's no-hardcoded-names invariant holds.
+
+Result: 2,475 / 2,475 shots resolved, weapon name and category counts
+identical to the reference across all 19 weapons.
+
+### 5-L. Fire mode classified from the firing-state name (commit 1f3afe4)
+
+Found while checking whether the four target sections actually improved.
+The adapter had inferred alternate fire from FiringState.BurstShotNumber
+being non-zero. That counter indexes shots within any spray, so every
+full-auto shot after the first was labelled alternate -- 1,462 of 2,475 --
+and fire_mode_evidence was a hardcoded string.
+
+The cost was invisible until weapon identity landed: spray_control drops
+alternate-fire shots outright, so it was scoring 1,013 shots instead of
+2,304 without anything looking wrong.
+
+The real signal is the firing-state subobject's name, which net_guids.parquet
+now carries. Reproducing ValorantShotFireModeResolver gives every bucket
+identical to the reference (2273 / 130 / 31 / 22 / 19) and makes
+spray_control EXACT.
+
+Lesson worth keeping: the aggregate weapon counts matched perfectly while a
+second field was wrong in a way that silently halved a downstream section.
+Verifying the thing you built is not the same as verifying the sections it
+was supposed to unblock.
+
+Follow-on items surfaced during verification, both new sections:
+7-J (EquippableUsed.NetGuid decodes wrong, blocks weapon_stats) and
+7-I (172 events the reference emits and we do not, now classified as
+server-world effects rather than dropped shots).
+
 
 ---
 
@@ -403,6 +490,9 @@ Section          Status       Notes
 players          EXACT        10 players, PUUID/character/tier identical
 side_winrate     EXACT        byte-identical after struct blob fix
 economy          EXACT        byte-identical after struct blob fix
+combat.per_player            270/270 within float32 epsilon (249 byte-exact,
+                              21 differ only in JSON float precision, worst
+                              relative delta 3.6e-8)
 combat           MATCH*       per_player 270/270 exact; kill_timeline_check
                               differs because OURS IS MORE COMPLETE
                               (132 kills vs ref 119; ref missing char-576)
@@ -421,10 +511,15 @@ ability_usage    MINOR        spawn counts correct; class names differ
 objective_detail MINOR        18 rounds correct; timing off 1ms
 economy_detail   MINOR        18 rounds, correct credits; weapon display names
 ability_detail   MINOR        events correct; timing off 1ms
-weapons          BLOCKED      shots 2475 but all "unknown" weapon
-weapon_stats     BLOCKED      same equippable resolution gap
-spray_control    BLOCKED      requires weapon name to group
-posture          BLOCKED      requires equippable identity
+spray_control    EXACT        69 cells, 2304 shots, zero differing cells
+weapons          MINOR        all 19 weapons + shot counts identical; two
+                              deltas: ref carries "unknown": 172 (7-I), and
+                              Sheriff/Ghost rpm_estimated differ by 1 (7-B)
+weapon_stats     BLOCKED      shots/pellets identical; hits/damage/kills 0
+                              -- blocked by 7-J, not by weapon identity
+posture          MINOR        by_weapon EXACT for all 10 players; remaining
+                              deltas are distance_m / movement_samples, the
+                              pre-existing movement row-count difference
 ---------------------------------------------------------------------------
 ```
 
@@ -442,9 +537,25 @@ FK/FD, MK, rank): reproduced exactly for all 10 players from vrfkit data.
 
 ## 7. What Remains and Why (named gaps, ordered by impact)
 
-### 7-A. Equippable (weapon actor) identity resolution [HIGHEST IMPACT]
+### 7-A. Equippable (weapon actor) identity resolution [DONE 2026-08-01]
 
-Blocks: weapons, weapon_stats, spray_control, posture (4 metric sections).
+Implemented in commits 47849d2 (net_guids.parquet), b258dfd (adapter) and
+1f3afe4 (fire mode, found while verifying the sections this unblocked).
+
+  shots with a resolved weapon : 2,475 / 2,475  (100.00%)
+  weapon name + category counts: identical to the C# reference for all
+                                 19 weapons, zero differences
+
+Section outcomes:
+  spray_control  EXACT
+  posture        by_weapon EXACT for all 10 players
+  weapons        shot counts identical; differs only by the reference's
+                 "unknown": 172 bucket (7-I) and a 1-RPM delta on two
+                 weapons (7-B)
+  weapon_stats   still zero hits/damage/kills -- blocked by 7-J, which is
+                 unrelated to weapon identity
+
+Historical detail follows, kept because the premise correction matters.
 
 CORRECTED 2026-08-01. The earlier version of this section said the shot
 EffectContainer carries the equippable net GUID and that the join needed no
@@ -603,6 +714,65 @@ Classify the 172: pull their source_id / fire_mode_evidence from the
 reference events.ndjson and determine whether they are gun shots we drop or
 ability/melee effects that were never gun shots.
 
+CLASSIFIED 2026-08-01, and it is NOT a defect. All 172 carry
+source_id = "DedicatedServerWorldSourceID" and fire_mode_evidence = None,
+i.e. no firing state at all. They are server-world effects, not weapon
+shots -- which is exactly why the reference cannot resolve an equippable for
+them either and files them under "unknown".
+
+Our adapter filters on FiringState.FiringPlayerState being present, which
+excludes them correctly. The only consequence is cosmetic: the reference's
+weapons.shots_by_weapon carries an "unknown": 172 bucket and reports
+distinct_weapons 20 where we report 19.
+
+Decide whether to emit them for byte-parity or keep the cleaner output. If
+kept, this stops being a gap and becomes a documented divergence.
+
+### 7-J. MulticastNotifyDamage EquippableUsed.NetGuid decodes wrong [HIGH]
+
+Blocks: weapon_stats hits / regions / damage / kills (all report 0).
+
+Found 2026-08-01 while verifying 7-A. weapon_stats resolves the gun behind
+each hit from MulticastNotifyDamage_*.EquippableUsed.NetGuid. Our values do
+not match the reference and resolve to nothing:
+
+```
+                distinct  total   range          overlap with ref
+  reference     115       631     0 - 35,346     --
+  ours          115       625     961 - 61,261   0
+```
+
+The structure is right and the entity set is right: 115 distinct on both
+sides, and the per-entity frequencies line up in rank order (42, 40, 30, 19,
+16, 16 on both). Only the GUID *values* differ, and not one of ours appears
+in the reference. The payload key set is otherwise byte-identical, so this
+is isolated to how the object-reference field itself is read.
+
+Two measurements pin it down:
+
+```
+                        lands in actors.parquet     parity
+  reference             114 / 115                   115 even, 0 odd
+  ours                    1 / 115                     0 even, 115 odd
+```
+
+Section 9 records the engine rule: IsDynamic => IsValid && (Value & 1) == 0.
+Weapon instances are dynamic actors, so a correct GUID here must be EVEN.
+Every one of ours is ODD, and they resolve to no actor. The reference's are
+all even and 114 of 115 resolve to a weapon class path.
+
+So we are not mis-mapping a correct GUID; we are producing a value that is
+not a valid dynamic NetGUID at all. Start from how the object-reference RPC
+parameter is read (a missing shift or an off-by-one-bit read is the shape
+that matches) and compare against the C# ValorantPayloadDecoders path.
+
+The rank-order pairing between the two value sets is NOT evidence of a
+transform: the implied ratios are 1.41 / 1.71 / 1.82 / 3.97, and two entities
+tie at 16 occurrences, so the pairing is not even well defined.
+
+Our total is 625 vs the reference's 631; the six-record gap should be
+explained as part of the same investigation.
+
 ---
 
 ## 8. Design Invariants (do not break)
@@ -626,7 +796,16 @@ GENERATED FILES ONLY VIA GENERATORS
   crates/vrf-decode/src/table.rs    -- only via tools/extract_descriptors.py
   crates/vrf-transform/src/sbox.rs  -- only via tools/extract_sboxes.py
   crates/vrf-transform/tests/data/golden_vectors.rs -- only via tools/extract_golden.py
+  tools/equippable_table.py         -- only via tools/extract_equippables.py
+                                       (check staleness: --check)
   Hand-editing these is how subtle bugs enter.
+
+NO HARDCODED NAMES IN THE PARSER
+  The Rust crates emit class paths, never display names. Weapon display
+  names ("Vandal") exist nowhere in the wire format -- the game ships them
+  as client assets -- so a table is unavoidable, but it lives in the Python
+  adapter (tools/equippable_table.py) where labelling is a presentation
+  concern. Moving it into a Rust crate would break this invariant.
 
 ASCII ONLY IN CODE AND COMMENTS
   The Windows cp949 console truncates output at the first non-ASCII byte
@@ -676,6 +855,7 @@ NO UNSAFE
 
 ### Tools directory
   extract_sboxes.py      -- generates sbox.rs
+  extract_equippables.py -- generates equippable_table.py (weapon names)
   extract_golden.py      -- generates golden_vectors.rs
   extract_descriptors.py -- generates table.rs (type overlay)
   apply_type_corrections.py -- wire/declaration mismatches

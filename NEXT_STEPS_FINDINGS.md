@@ -1,5 +1,28 @@
 # 7-A Re-scoping: verified findings
 
+**OUTCOME: implemented and verified.** Carried out in commits 47849d2
+(net_guids.parquet), b258dfd (adapter) and 1f3afe4 (fire mode). Every shot in
+02d4d478 resolves to a weapon -- 2,475 / 2,475 -- with names and categories
+identical to the C# reference across all 19 weapons. A1 was confirmed
+unnecessary, as predicted here.
+
+spray_control is now EXACT; posture's by_weapon is exact for all 10 players.
+
+Verifying the unblocked sections turned up a second bug this document did not
+anticipate: fire_mode was inferred from BurstShotNumber, mislabelling 1,462 of
+2,475 shots as alternate fire, which spray_control silently discards. The same
+net_guids.parquet chain fixed it. Tracked as 5-L in PROJECT_STATUS.
+
+Two follow-on items are tracked in PROJECT_STATUS as 7-J (EquippableUsed
+.NetGuid decodes wrong, blocking weapon_stats) and 7-I (172 events the
+reference emits and we do not -- classified as server-world effects with no
+firing state, so not a defect).
+
+This document is kept as the evidence trail for why the original 7-A was
+wrong and how the replacement was proved before any code was written.
+
+---
+
 Written 2026-08-01. Supersedes PROJECT_STATUS.md section 7-A.
 Every number below comes from a direct tool run against real data, not an estimate.
 
