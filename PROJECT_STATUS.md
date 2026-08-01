@@ -137,10 +137,12 @@ No section is BLOCKED. Most differences reflect data the C# parser drops:
   economy_detail            496 of 496 purchase buyers resolved vs its 151
   weapon_stats              one damage record commit 6e6d544 recovers
 
-Tactical remains an open interpretation question: five values are higher in
-the reference, including one opening_duels_won difference with its denominator
-conserved. Section 6 records the exact replay/value pairs. Do not describe all
-five varying sections as understood or as monotonic gains.
+Tactical's root cause is now named -- a one-character typo in the C# Gekko
+descriptor, section 13-C -- but five of its values are still higher in the
+reference, including one opening_duels_won difference with its denominator
+conserved. The mechanism is a non-monotonic kill-timeline derivation, not a
+data-volume gain. Section 6 records the exact replay/value pairs. Do not
+describe all five varying sections as understood or as monotonic gains.
 
 What is actually left: **nothing in section 7 is open.** Every item is either
 done, or closed with a measurement showing it cannot or should not be done.
@@ -313,7 +315,8 @@ vrfkit/
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 238 tests, measured. DO NOT trust the per-crate rows above: they were
+Total: 242 tests, measured (238 before section 12's three new guards and
+section 13's one). DO NOT trust the per-crate rows above: they were
 taken excluding doc-tests for some crates and including them for others, so
 they do not sum to the total. Known wrong even before 5-P: vrf-frame is 5 not
 3, vrf-export is 19 not 18 (0 unit + 17 integration + 2 doc). Re-measure per
@@ -517,7 +520,8 @@ plus an explanation that framing is exact everywhere and the shortfall is
 attribution rather than parsing. The final uncapped corpus measurement is
 97.487010%-99.681958%, with median 99.323286%.
 
-Also corrected: overlay figures (106 groups/929 fields -> 123/1054),
+Also corrected: overlay figures (106 groups/929 fields -> 123/1054; the
+table is 1,058 entries as of section 13-C/13-D),
 RPC comparison (334,641 -> 342,735 vs C# 230,893), typed coverage.
 
 First-ever measurement of 13.02 replays documented here: two local demos
@@ -1803,8 +1807,8 @@ NO UNSAFE
 
                   TABLE.RS DEPENDS ON A BRANCH THERE, NOT ON origin/main.
                   Generating from origin/main yields 680 overlay entries;
-                  from local main 666; the committed table has 1,054.
-                  The 374-entry difference is the descriptor work on
+                  from local main 666; the committed table has 1,058.
+                  The difference is the descriptor work on
                   branch `local/vrfkit-descriptors` (fe5343a, 2026-08-02):
                   weapons, ItemSlot, PurchasedItemComponent,
                   OwnerExclusivePlayerInfo, EquippablePickup, TimedBomb
@@ -2046,3 +2050,159 @@ scope, and the scan that actually works are in section 8.
 
 The audit's line numbers for `vrf-container/tests/corpus.rs` (91, 108) were
 wrong; the glyphs are on 112 and 129.
+
+---
+
+## 13. Data-Loss Fixes (2026-08-02)
+
+Five places where a value the wire carries, and the parse recovers, was lost,
+mangled or invented on the way out. None of them was a parsing failure -- every
+one was a serialization or lookup decision downstream of a correct decode,
+which is why the corpus totals never moved and no counter ever complained.
+
+### 13-A. A cleared optional bit means "default", not "absent" [FIXED, 2637808]
+
+`ArchiveVectorReaders.ReadOptionalQuantizedVector` returns `defaultVector` when
+the leading bit is clear -- `(0,0,0)` for spawn location and velocity, `(1,1,1)`
+for scale (`NewActorSerializer.cs:56-72`). vrfkit returned `None`, collapsing
+that into the genuinely-absent case: a static actor never enters the spawn block
+at all, so its location is unknown, while a dynamic actor with the bit clear has
+a known location of exactly the origin.
+
+On 02d4d478 that is **66 actors** -- game state, player state, surrender-vote
+and mission actors, which really do sit at the origin -- reported as having no
+location alongside the **27** that truly have none. All 2,028 `actor_spawned`
+locations now match the reference key-for-key, including the 27/66 split.
+
+This one is worth remembering as a process failure, not just a bug. The
+preceding commit had changed the *adapter* to stop fabricating `{0,0,0}`, on the
+stated premise that "there are zero genuine (0,0,0) spawns". The premise was
+never checked against the reference; it is false. That change traded 66 wrong
+values for 66 wrong nulls and cost `ability_detail` and `ability_usage` their
+EXACT status -- 16/21 fell to 14/21 with nothing in the test suite noticing.
+Fixing the parser instead restored both. **A claim about what the data contains
+is not established by the code that produces it.**
+
+### 13-B. ReplicatedMovement shipped a debug string [FIXED, 2637808]
+
+`FRepMovement` decodes all eight members correctly. Its `Display` wrote
+`mov(loc=..,rot=..,vel=..)`, which has nowhere to put
+`simulated_physics_sleep` or `server_physics_handle`, so they were dropped;
+`value_str` is one column and there is no struct column to hold them.
+14,377 rows on 02d4d478 shipped that string where the reference
+(`ReplayJsonNormalizer.cs:255`) emits an eight-member object.
+
+Now serialized as a JSON object with the reference's member names and order.
+Joined against the reference on (time_ms, group path, actor GUID, object GUID):
+8,610 shared keys, zero reference-only, **all eight members agree on every
+one**. 551 more that we decode and the reference does not emit. 5,216 stay raw
+because 17 ability/projectile classes have no `RepMovement` entry in the
+generated table -- the reference emits nothing for those either.
+
+Both recovered members are `false`/`0` throughout this replay, so no new value
+is recovered here. What changed is that they are representable at all.
+
+Both `RepMovement` tests now assert the whole string. Substring assertions could
+not see the members carrying no data, which is exactly where the loss was.
+
+### 13-C. Gekko's descriptor path had a one-character typo [FIXED, f67ea66 + 4f78f6d]
+
+`AggrobotAgentDescriptor` declared `/Game/Characters/Aggrobot/Aggrobot_PC...`;
+the replays declare `AggroBot` -- capital B. Riot mixes casing inside Gekko's
+own content (`Ability_Aggrobot_C_ExplodeyPatch` really is lowercase; the
+character directory and asset are not) and the descriptor picked the wrong one.
+Lookup is ordinal (`DescriptorCatalogIndex.cs:7`, `BoundExportStore.cs:5`), so
+the class bound nothing.
+
+Gekko is the only agent whose descriptor string differed from the replay string.
+`AgentClassNetCacheDescriptors.cs:14` builds each agent's cache path as
+`agent.Path + "_ClassNetCache"` and registers exactly one function, which is why
+only `MulticastNotifyKilledEnemy` was lost among that actor's RPCs -- every
+other one resolves through subobject class paths that do not depend on the
+character path. The larger half of the loss was Gekko's replicated character
+property group, unbound for the whole match.
+
+**The reference's own export summary reported it all along**: AggroBot is the
+sole `was_decoded: false` among the match's eight agent classes.
+
+Fixed at source on `local/vrfkit-descriptors` (f67ea66), together with the test
+that pinned the typo (`ValorantDescriptorsTests.cs:16`). Regenerating moves
+3,605 rows off "not in table": 528 decode to typed values, 3,077 resolve to
+fields the descriptor declares Raw or Skip.
+
+This is the named root cause behind the `tactical`/`kast` divergence recorded in
+section 6. It does not make those sections converge -- the published reference
+bundles were built by the parser *with* the typo, so they are still missing
+Gekko's kills, and clutch derivation is not monotonic in kill count. Do not
+pursue parity there; regenerating the reference bundles would invalidate every
+comparison figure in this document.
+
+### 13-D. The extractor could not read a factored handle run [FIXED, 4f78f6d]
+
+`AddPropertyHandle`'s handle argument had to be a literal. A descriptor may
+instead factor a run of handles into a helper that takes the first one:
+`MulticastNotifyDamageBaseParameters.cs:24` declares
+`AddDeathFields(uint firstHandle)` and calls it as `AddDeathFields(32)`, so its
+six statements read `firstHandle` and `firstHandle + 5`.
+
+The table is keyed on `(group_path, field_name)` and never reads the handle, so
+the value needs no resolving -- only the shape has to be recognised. The
+trailing comma every caller writes is what stops the looser pattern swallowing a
+lambda: `x => x.Prop` has no comma after `x`.
+
+`MulticastNotifyDamage_Base` regains four fields its `_Point` twin -- which
+spells the same handles inline -- has had all along. All 51 invocations now
+decode `KillsForKiller`, `KillsForVictim`, `DeathAnimMontage` and
+`DeathMontageEffectOverrideIsQueued`, and all 51 events match the reference on
+all four with zero events on either side the other lacks.
+
+Four module-level regexes encoding the old literal-only assumption were dead
+code. Removed -- left in place they invite putting the assumption back.
+
+### 13-E. `payload: null` meant two different things [FIXED, 2637808]
+
+An RPC row whose `field_name` carries no dot is the function itself, not one of
+its parameters. Usually that means a zero-parameter RPC and there is nothing to
+carry -- but 608 rows on 02d4d478 arrive with the whole parameter block as
+undecoded bits, because the descriptor bound no property handles for that
+function. They were dropped, so "no parameters at all" and "parameters we could
+not read" were indistinguishable downstream.
+
+Now keyed under the function's own name, using the same `{BitCount, Data}` blob
+shape as every other raw payload. The reference emits none of these functions
+(they sit in its 241 unbound groups), so there is no key to match; this is a
+vrfkit-only convention. Null RPC payloads 230,160 -> 229,552.
+
+Measured, not assumed: **zero** of those rows carry a decoded value. An earlier
+note called them "608 real values dropped"; they are 608 undecoded blobs.
+
+### 13-F. What is still untyped, and why it is not a bug
+
+30 `ReplicatedGravityDirection` rows across four classes with **no descriptor on
+either side**: `Smonk_PostDeath_PC` (14), `Pawn_Hunter_E_Drone` (8),
+`Pawn_Aggrobot_SeekerNade` (6), `Pawn_Aggrobot_RollyPolly` (2). The reference
+decodes none of them. Writing those descriptors is new upstream work, not a fix.
+
+5,216 `ReplicatedMovement` rows stay raw for the same reason, across 17
+ability/projectile classes.
+
+### 13-G. Verification run for this session
+
+    cargo test --workspace              242 passed, 0 failed
+    cargo clippy -- -D warnings         clean
+    cargo fmt --check                   clean
+    validate_corpus.py                  215/215, malformed 0, five totals exact
+    check_export_baseline.py            OK, 3 counters cross-check their files
+    check_corpus_baseline.py x4         OK (12.10, 12.11, 13.00, 13.02)
+    validate_metrics_corpus.py          16/21 sections exact on all 11 replays
+
+The export baseline was updated twice in this session -- both times because the
+guard caught a counter move unprompted, and both times the move was explained
+before the baseline was rewritten. Row counts never changed; only byte sizes and
+overlay counters did.
+
+### 13-H. Stale figure corrected
+
+The C# repo's "17 uncommitted entries" figure in the brief is stale. That work
+was committed as fe5343a; the tree is now clean at f67ea66 on
+`local/vrfkit-descriptors`, with `main` still untouched.
