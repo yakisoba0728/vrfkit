@@ -113,6 +113,23 @@ VECTOR_PROPERTIES = frozenset({
 })
 
 
+# Replicated PROPERTIES the parser renders as a JSON object in value_str.
+#
+# Every other decoded type fits a scalar or the compact "(x,y,z)" string, but
+# FRepMovement is an eight-member struct with nowhere to live in a single
+# column, so vrf-decode writes it as JSON (types.rs, FRepMovement's Display).
+# The reference emits the same eight members as a real object
+# (ReplayJsonNormalizer.cs:255), so the adapter's job is just to parse it back.
+#
+# Listed by name rather than sniffed with `value.startswith("{")`: a string
+# that merely looks like JSON is not evidence that it is a movement struct.
+# ReplicatedMovement is the only field with FieldType::RepMovement in the
+# generated table (7 entries, all this name).
+JSON_OBJECT_PROPERTIES = frozenset({
+    "ReplicatedMovement",
+})
+
+
 # Damage RPC parameters that carry an FVector_NetQuantize* payload. The C#
 # call sites are DamageParameters.cs:50 and
 # MulticastNotifyDamagePointParameters.cs:40-46.
@@ -1338,11 +1355,13 @@ def _build_actor_events(export_dir: Path, actor_first: dict, actor_last: dict,
                 # column; widening them to Python floats would print the binary
                 # artefact instead of the value the reference shows.
                 #
-                # A missing coordinate stays missing. 93 opens carry no spawn
-                # data (static actors), and substituting {0,0,0} made them
-                # indistinguishable from a real spawn at the origin -- the
-                # reference emits null. There are zero genuine (0,0,0) spawns,
-                # so the fabrication was undetectable by inspection.
+                # A missing coordinate stays missing. Only static actors reach
+                # here with no spawn data at all -- 27 opens on 02d4d478 --
+                # because the parser now writes the wire's (0,0,0) default for
+                # a dynamic actor whose location bit is clear rather than
+                # dropping it (pipeline.rs, read_optional_quantized_vector).
+                # Substituting {0,0,0} here would put those 27 back among the
+                # 66 that really do spawn at the origin.
                 has_loc = a_sx[i] is not None or a_sy[i] is not None or a_sz[i] is not None
                 location = _vec3(
                     _f32_shortest(a_sx[i]) if a_sx[i] is not None else 0,
@@ -1453,6 +1472,11 @@ def _build_property_events(cols: _FieldColumns, prop_groups: dict):
                 parsed_vec = _parse_vector_or_none(value)
                 if parsed_vec is not None:
                     value = parsed_vec
+            elif fn in JSON_OBJECT_PROPERTIES and isinstance(value, str):
+                # No try/except: the parser writes this column, so a value that
+                # will not parse is a parser bug and must stop the run rather
+                # than quietly ship the raw string downstream.
+                value = json.loads(value)
 
             # Parse the field path and set in nested structure
             parts = _parse_field_path(fn)
@@ -1526,7 +1550,23 @@ def _build_rpc_events(cols: _FieldColumns, rpc_groups: dict, shot_ctx: _ShotCont
             if rpc_name is None:
                 rpc_name = name
             if param is None:
-                # Zero-param RPC or just the function name row
+                # The row is the function itself, not one of its parameters.
+                # Usually that means a zero-parameter RPC and there is nothing
+                # to carry -- but 608 rows on 02d4d478 arrive with the whole
+                # parameter block as undecoded bits, because the descriptor
+                # bound no property handles for that function. Dropping them
+                # made "payload: null" mean two different things: no parameters
+                # at all, and parameters we could not read.
+                #
+                # Keyed under the function's own name. The reference emits none
+                # of these functions (they sit in its 241 unbound groups), so
+                # there is no key to match -- this is a vrfkit-only convention.
+                value, is_raw = _get_value(
+                    col_i64[ri], col_f64[ri], col_bool[ri], col_str[ri],
+                    col_raw[ri], col_bits[ri]
+                )
+                if is_raw:
+                    payload[name] = value
                 continue
             value, is_raw = _get_value(
                 col_i64[ri], col_f64[ri], col_bool[ri], col_str[ri],

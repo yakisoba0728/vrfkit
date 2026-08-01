@@ -373,12 +373,21 @@ mod vector {
             bit_count,
         )
         .unwrap();
+        // Assert the whole string, not substrings: the members that carry no
+        // data here (angular_velocity, the two counters) are exactly the ones a
+        // substring check cannot notice going missing.
         match result {
-            DecodedValue::Str(s) => {
-                assert!(s.starts_with("mov(loc="), "got: {s}");
-                assert!(s.contains("rot(0,0,0)"), "got: {s}");
-                assert!(s.contains("vel=(10,-2,3)"), "got: {s}");
-            }
+            DecodedValue::Str(s) => assert_eq!(
+                s,
+                concat!(
+                    r#"{"linear_velocity":{"x":10,"y":-2,"z":3},"#,
+                    r#""angular_velocity":null,"#,
+                    r#""location":{"x":1.23,"y":-4.56,"z":7.89},"#,
+                    r#""rotation":{"pitch":0,"yaw":0,"roll":0},"#,
+                    r#""simulated_physics_sleep":false,"rep_physics":false,"#,
+                    r#""server_frame":0,"server_physics_handle":0}"#
+                )
+            ),
             _ => panic!("expected Str"),
         }
     }
@@ -427,11 +436,20 @@ mod vector {
             bit_count,
         )
         .unwrap();
+        // server_physics_handle=456 is asserted here for the same reason: the
+        // old compact form had no slot for it at all, so no test could see it.
         match result {
-            DecodedValue::Str(s) => {
-                assert!(s.contains("angvel="), "got: {s}");
-                assert!(s.contains("sf=123"), "got: {s}");
-            }
+            DecodedValue::Str(s) => assert_eq!(
+                s,
+                concat!(
+                    r#"{"linear_velocity":{"x":10,"y":-2,"z":3},"#,
+                    r#""angular_velocity":{"x":-4,"y":5,"z":-6},"#,
+                    r#""location":{"x":1.23,"y":-4.56,"z":7.89},"#,
+                    r#""rotation":{"pitch":90,"yaw":180,"roll":270},"#,
+                    r#""simulated_physics_sleep":true,"rep_physics":true,"#,
+                    r#""server_frame":123,"server_physics_handle":456}"#
+                )
+            ),
             _ => panic!("expected Str"),
         }
     }
@@ -472,8 +490,10 @@ mod vector {
         .unwrap();
         match result {
             DecodedValue::Str(s) => {
-                // Should contain rotation ~90,180,270
-                assert!(s.contains("rot(90,180,270)"), "got: {s}");
+                assert!(
+                    s.contains(r#""rotation":{"pitch":90,"yaw":180,"roll":270}"#),
+                    "got: {s}"
+                );
             }
             _ => panic!("expected Str"),
         }

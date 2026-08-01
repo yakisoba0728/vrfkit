@@ -607,14 +607,14 @@ impl ReplicationReader {
         state.archetype_net_guid = net_guid::internal_load_object(payload, false, 0, sink)?;
         // Level
         state.level_guid = net_guid::internal_load_object(payload, false, 0, sink)?;
-        // Location
-        state.spawn_location = read_optional_quantized_vector(payload, 10)?;
+        // Location -- defaults to the origin, not to absent.
+        state.spawn_location = read_optional_quantized_vector(payload, 10, ORIGIN)?;
         // Rotation
         if payload.read_bit()? {
             state.spawn_rotation = Some(read_rotation_short(payload)?);
         }
-        // Scale
-        state.spawn_scale = read_optional_quantized_vector(payload, 10)?;
+        // Scale -- defaults to unit scale, not to the origin.
+        state.spawn_scale = read_optional_quantized_vector(payload, 10, UNIT_SCALE)?;
         // Velocity -- only serialized when the actor class has
         // bReplicateMovement == true. PlayerController actors (the
         // BaseReplayController in VALORANT) set this to false, so their spawn
@@ -631,7 +631,7 @@ impl ReplicationReader {
             || sink.pc_guids.contains(&state.actor_net_guid.0)
             || state.actor_net_guid.0 == 2;
         if !is_pc {
-            state.spawn_velocity = read_optional_quantized_vector(payload, 10)?;
+            state.spawn_velocity = read_optional_quantized_vector(payload, 10, ORIGIN)?;
         }
         Ok(())
     }
@@ -920,12 +920,38 @@ impl ReplicationReader {
 ///     [else]                     ??3x f64
 ///   [else] ??3x f64
 /// ```
+/// Default spawn location and velocity when the wire omits them.
+const ORIGIN: crate::types::FVector = crate::types::FVector {
+    x: 0.0,
+    y: 0.0,
+    z: 0.0,
+};
+
+/// Default spawn scale when the wire omits it.
+const UNIT_SCALE: crate::types::FVector = crate::types::FVector {
+    x: 1.0,
+    y: 1.0,
+    z: 1.0,
+};
+
+/// A clear leading bit does not mean "absent" -- it means "take the default".
+/// `ArchiveVectorReaders.ReadOptionalQuantizedVector` returns `defaultVector`
+/// there, and `NewActorSerializer.cs:56-72` passes (0,0,0) for location and
+/// velocity and (1,1,1) for scale.
+///
+/// Returning `None` instead collapsed that case into the genuinely-absent one:
+/// a static actor never enters the spawn block at all, so its location is
+/// unknown, while a dynamic actor with the bit clear has a known location of
+/// exactly (0,0,0). On 02d4d478 that is 66 actors -- game state, player state,
+/// vote and mission actors, which really do sit at the origin -- reported as
+/// having no location alongside the 27 that truly have none.
 fn read_optional_quantized_vector(
     reader: &mut BitReader<'_>,
     scale_factor: i32,
+    default: crate::types::FVector,
 ) -> Result<Option<crate::types::FVector>> {
     if !reader.read_bit()? {
-        return Ok(None);
+        return Ok(Some(default));
     }
 
     if reader.read_bit()? {

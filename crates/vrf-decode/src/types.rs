@@ -131,19 +131,54 @@ pub struct FRepMovement {
     pub server_physics_handle: u32,
 }
 
+/// Writes an [`FVector`] as `{"x":..,"y":..,"z":..}`.
+///
+/// [`FVector`]'s own `Display` is the compact `(x,y,z)` form; a vector nested
+/// inside a `ReplicatedMovement` object needs the named-member shape instead,
+/// so this cannot reuse it.
+fn write_vector_json(f: &mut fmt::Formatter<'_>, v: &FVector) -> fmt::Result {
+    write!(f, "{{\"x\":{},\"y\":{},\"z\":{}}}", v.x, v.y, v.z)
+}
+
+/// `ReplicatedMovement` serializes as a JSON object, not the compact form the
+/// other types use.
+///
+/// The compact form cannot carry the whole struct. `simulated_physics_sleep`
+/// and `server_physics_handle` have nowhere to go in a `loc/rot/vel` triple,
+/// and `value_str` is a single string column -- there is no struct column to
+/// put them in. So they were dropped: 14,377 rows on 02d4d478 shipped a
+/// human-readable string where the reference (ReplayJsonNormalizer.cs:255)
+/// emits an eight-member object, and two of those members were simply gone.
+///
+/// Member names and order follow the reference exactly. Every component is
+/// finite by construction -- vectors are an integer quotient of an integer
+/// scale factor, rotator axes an integer multiple of 360/65536 or 360/256 --
+/// so no component can render as `NaN` or `inf` and break the JSON.
 impl fmt::Display for FRepMovement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("{\"linear_velocity\":")?;
+        write_vector_json(f, &self.linear_velocity)?;
+        f.write_str(",\"angular_velocity\":")?;
+        match self.angular_velocity {
+            Some(ref av) => write_vector_json(f, av)?,
+            None => f.write_str("null")?,
+        }
+        f.write_str(",\"location\":")?;
+        write_vector_json(f, &self.location)?;
         write!(
             f,
-            "mov(loc={},rot={},vel={}",
-            self.location, self.rotation, self.linear_velocity
+            ",\"rotation\":{{\"pitch\":{},\"yaw\":{},\"roll\":{}}}",
+            self.rotation.pitch, self.rotation.yaw, self.rotation.roll
         )?;
-        if let Some(ref av) = self.angular_velocity {
-            write!(f, ",angvel={av}")?;
-        }
-        if self.server_frame != 0 {
-            write!(f, ",sf={}", self.server_frame)?;
-        }
-        write!(f, ")")
+        write!(
+            f,
+            ",\"simulated_physics_sleep\":{},\"rep_physics\":{}",
+            self.simulated_physics_sleep, self.rep_physics
+        )?;
+        write!(
+            f,
+            ",\"server_frame\":{},\"server_physics_handle\":{}}}",
+            self.server_frame, self.server_physics_handle
+        )
     }
 }

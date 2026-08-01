@@ -41,7 +41,7 @@
 //! | RotationShort | 3×(1+16) max | `value_str` (compact) |
 //! | RotationByte | 3×(1+8) max | `value_str` (compact) |
 //! | Transform | 4×32 + 3×32 + 3×32 = 320 | `value_str` (compact) |
-//! | RepMovement | variable | `value_str` (compact) |
+//! | RepMovement | variable | `value_str` (JSON object, 8 members) |
 //! | RepLayoutDynamicArray | variable | *Raw* (not decoded) |
 
 #![forbid(unsafe_code)]
