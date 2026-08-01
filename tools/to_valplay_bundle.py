@@ -58,6 +58,69 @@ from equippable_table import EQUIPPABLE_BY_PATH  # noqa: E402
 # what keeps a malformed self-referential chain from hanging the adapter.
 MAX_OUTER_DEPTH = 16
 
+# Substrings that mark a firing state as the weapon's secondary fire cycle.
+# Copied from ValorantShotFireModeResolver.AlternateMarkers; matched
+# case-insensitively against every object path on the FiringState outer chain.
+#
+# The distinction matters because spray_control drops alternate-fire shots
+# outright: ADS and burst cycles have a different recoil pattern, so mixing
+# them into a spray would compare shots that were never part of one.
+ALTERNATE_FIRE_MARKERS = (
+    "altfire",
+    "zoomedfire",
+    "zoomedfiring",
+    "firingstateburst",
+    "burstfiringstate",
+    "burstmode",
+)
+
+
+def _has_alternate_marker(value) -> bool:
+    if not value:
+        return False
+    lowered = str(value).lower()
+    return any(marker in lowered for marker in ALTERNATE_FIRE_MARKERS)
+
+
+def _resolve_fire_mode(firing_state_guid, source_id, guid_outer, guid_path):
+    """Classify a shot as primary / alternate fire.
+
+    Returns ``(fire_mode, evidence)``, mirroring ValorantShotFireModeResolver.
+
+    The signal is the *name* of the firing-state subobject: a gun replicates
+    "FiringState" for its primary cycle and "ZoomedFiringState",
+    "FiringStateBurst" etc. for its secondary one. Neither the ammo counters
+    nor burst_shot_number carry this -- burst_shot_number just indexes shots
+    within any spray, so treating a non-zero value as "alternate" (as this
+    adapter previously did) misclassified 1,462 of 2,475 shots on 02d4d478.
+
+    "unknown" when no path resolves: those are effects with no firing state at
+    all, not shots whose mode we failed to determine.
+    """
+    if _has_alternate_marker(source_id):
+        return "alternate", f"source:{source_id}"
+
+    paths = []
+    current = firing_state_guid
+    for _ in range(MAX_OUTER_DEPTH):
+        if not current:
+            break
+        path = guid_path.get(current)
+        if path and path.strip():
+            paths.append(path)
+        nxt = guid_outer.get(current)
+        if nxt is None or nxt == current:
+            break
+        current = nxt
+
+    if not paths:
+        return "unknown", None
+
+    evidence = "firing-state:" + " -> ".join(paths)
+    if any(_has_alternate_marker(p) for p in paths):
+        return "alternate", evidence
+    return "primary", evidence
+
 
 def _resolve_equippable(net_guid, guid_outer, guid_path, guid_class):
     """Walk a GUID's outer chain to the equippable actor that contains it.
@@ -363,7 +426,7 @@ def _build_tag_table(manifest: dict) -> dict:
 def _build_shot_event(
     time_ms, packet_id, actor_net_guid, channel_index,
     scalar_params: dict, float_blob, object_blob, vector_blob,
-    tag_table: dict, equippable_lookup=None,
+    tag_table: dict, equippable_lookup=None, fire_mode_lookup=None,
 ) -> dict | None:
     """Build a valorant_shot_received event from decoded RPC params.
 
@@ -441,15 +504,8 @@ def _build_shot_event(
             x, y, z = vectors[key]
             attack_vectors.append({"x": x, "y": y, "z": z})
 
-    # Determine fire_mode from YawSwitch / BurstShotNumber
     burst = floats.get("FiringState.BurstShotNumber")
     yaw_switch = floats.get("FiringState.YawSwitch")
-    if yaw_switch is not None and yaw_switch != 0:
-        fire_mode = "alternate"
-    elif burst is not None and burst > 0:
-        fire_mode = "alternate"
-    else:
-        fire_mode = "primary"
 
     # Ammo
     ammo = floats.get("FiringState.AmmoRemaining")
@@ -482,6 +538,12 @@ def _build_shot_event(
                 "category": category,
                 "class_path": class_path,
             }
+
+    # Fire mode comes from the same chain: the firing-state subobject's own name.
+    if fire_mode_lookup is not None:
+        fire_mode, fire_mode_evidence = fire_mode_lookup(firing_state, source_id)
+    else:
+        fire_mode, fire_mode_evidence = "unknown", None
 
     # Alliance filter string
     alliance_str = None
@@ -516,7 +578,7 @@ def _build_shot_event(
         "effect_equippable": None,
         "equippable": equippable,
         "fire_mode": fire_mode,
-        "fire_mode_evidence": "firing-state:FiringState",
+        "fire_mode_evidence": fire_mode_evidence,
     }
 
     return {
@@ -1020,6 +1082,9 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
     def equippable_lookup(firing_state_guid):
         return _resolve_equippable(firing_state_guid, guid_outer, guid_path, guid_class)
 
+    def fire_mode_lookup(firing_state_guid, source_id):
+        return _resolve_fire_mode(firing_state_guid, source_id, guid_outer, guid_path)
+
     for (pid, actor, gp, handle), row_indices in rpc_groups.items():
         ms = col_time[row_indices[0]]
 
@@ -1070,7 +1135,7 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
                 shot_event = _build_shot_event(
                     ms, pid, actor, 0,
                     payload, float_blob, object_blob, vector_blob,
-                    tag_table, equippable_lookup,
+                    tag_table, equippable_lookup, fire_mode_lookup,
                 )
                 if shot_event is not None:
                     events.append((pid, ms, shot_event))
