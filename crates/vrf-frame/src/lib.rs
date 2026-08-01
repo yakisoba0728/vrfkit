@@ -95,8 +95,9 @@ const MAX_FSTRING_BYTES: i64 = 1024 * 1024;
 
 /// A single packet extracted from the DemoFrame stream.
 ///
-/// `time_ms` is derived from the frame's `timeSeconds` field (converted
-/// `* 1000` and truncated to u32 — matching the C# parser's practice).
+/// `time_ms` is derived from the frame's `timeSeconds` field: scaled by 1000
+/// in f64, rounded half away from zero, and 0 when `timeSeconds` is not
+/// finite. All three match the C# reference; see the conversion site.
 #[derive(Debug, Clone)]
 pub struct DemoPacket<'a> {
     /// Time of the enclosing DemoFrame, in milliseconds.
@@ -135,14 +136,25 @@ pub fn iter_demo_frames(
         let _current_level_index = reader.read_i32().map_err(FrameError::bit)?;
         let time_seconds = reader.read_f32().map_err(FrameError::bit)?;
         // Mirror the reference exactly (ReplayEventJsonWriter.cs:194):
-        //   (long)Math.Round(seconds * 1000d, MidpointRounding.AwayFromZero)
-        // Both halves matter. Promoting to f64 before scaling avoids rounding
-        // the product to the nearest f32 first, and rounding rather than
-        // truncating is what keeps timestamps aligned -- truncation put every
-        // frame whose fractional millisecond was >= 0.5 one millisecond early.
-        // Rust's f64::round is already half-away-from-zero, and the `as u32`
-        // cast saturates, so non-finite input yields 0 as the reference does.
-        let time_ms = (f64::from(time_seconds) * 1000.0).round() as u32;
+        //   float.IsFinite(seconds)
+        //     ? (long)Math.Round(seconds * 1000d, MidpointRounding.AwayFromZero)
+        //     : 0
+        // All three parts matter. Promoting to f64 before scaling avoids
+        // rounding the product to the nearest f32 first, and rounding rather
+        // than truncating is what keeps timestamps aligned -- truncation put
+        // every frame whose fractional millisecond was >= 0.5 one millisecond
+        // early. Rust's f64::round is already half-away-from-zero.
+        //
+        // The finiteness test has to be written out. `as u32` saturates, which
+        // happens to give 0 for NaN and -inf but gives u32::MAX for +inf --
+        // the opposite end of the range from what the reference produces. That
+        // is reachable: `time_seconds` is a raw read_f32 over replay bytes with
+        // no validation, so any bit pattern can arrive here.
+        let time_ms = if time_seconds.is_finite() {
+            (f64::from(time_seconds) * 1000.0).round() as u32
+        } else {
+            0
+        };
 
         // ── ExportData ────────────────────────────────────────────────────
         read_export_data(&mut reader, cache)?;
@@ -404,6 +416,23 @@ mod tests {
             checked += 1;
         }
         assert_eq!(checked, 2000);
+    }
+
+    #[test]
+    fn non_finite_time_seconds_yields_zero_like_the_reference() {
+        // ReplayEventJsonWriter.cs:194 guards the conversion explicitly:
+        //   float.IsFinite(seconds)
+        //     ? (long)Math.Round(seconds * 1000d, MidpointRounding.AwayFromZero)
+        //     : 0
+        //
+        // `time_seconds` is a raw read_f32 with no validation, so every bit
+        // pattern -- including the quiet-NaN and infinity encodings -- is
+        // representable in a replay. Relying on the `as u32` cast to stand in
+        // for that guard only works for two of the three: the cast saturates,
+        // so +inf lands on u32::MAX rather than 0.
+        assert_eq!(time_ms_of(f32::NAN), 0, "NaN");
+        assert_eq!(time_ms_of(f32::NEG_INFINITY), 0, "-inf");
+        assert_eq!(time_ms_of(f32::INFINITY), 0, "+inf");
     }
 
     #[test]
