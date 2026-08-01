@@ -38,8 +38,9 @@ metrics parity       15 of 20 metric sections byte-identical to the C#
                      a fixed provenance string that cannot fail)
 ```
 
-The 5 sections that differ do so because vrfkit carries **more** data than
-the C# parser, not less. Every difference is named and understood.
+Most differences in the 5 varying sections reflect data vrfkit carries and the
+C# parser drops. Tactical is not fully explained: five values are higher in the
+reference, including an opening-duels outcome with its denominator conserved.
 
 `PROJECT_STATUS.md` is the project's record. Read it after this file — but
 see section 5 first, because its prose is reliable and its **figures are
@@ -91,10 +92,12 @@ tools/         Python generators, the valplay adapter, verification harnesses
 From `PROJECT_STATUS.md` section 8. These are load-bearing: breaking one
 silently corrupts downstream output without any test failing.
 
-**NO SKIP PATH.** Every field emits `(group_path, handle, name, bit_count,
-raw_bits)` even when nothing is known about it. The overlay is additive:
-typed values fill `value_*` columns, failure leaves them null with raw bits
-intact.
+**NO SKIP PATH FOR WALKABLE FIELDS.** Every field inside a walkable block emits
+`(group_path, handle, name, bit_count, raw_bits)` even when its type is unknown.
+The overlay is additive: typed values fill `value_*` columns, decode failure
+leaves them null with raw bits intact. An unresolved ClassNetCache block cannot
+be walked and emits no rows; it must fail loudly and its source `.vrf` must be
+retained for future reinterpretation.
 
 **NO SILENT SUCCESS.** A block whose group cannot be resolved fails loudly
 (`function_count = 0` returns `Err`, counted and named). Never guess a
@@ -209,8 +212,9 @@ Rules that fall out of this. Apply them:
    arithmetically impossible, therefore findable.
 4. **"We emit more rows than the reference" is not self-evidently harmless.**
    It broke a downstream distance calculation.
-5. **A share of the failures is not a share of the whole.** 7-C's "91.7%" is
-   91.7% of the unattributed bits, which are 2.1% of the replay.
+5. **A share of the failures is not a share of the whole.** 7-C's old "91.7%"
+   was an incorrect estimate of the unattributed-bit share; the uncapped value
+   is 97.283437%. Those unattributed bits are only about 2.1% of the replay.
 6. **Prefer a cheap discriminating check over inspecting values.** One bug
    was diagnosed in two queries: parity (all our values odd, all the
    reference's even — dynamic NetGUIDs must be even) and "does it resolve to
@@ -275,7 +279,7 @@ its design. The question here is purely whether the **parser** holds.
 Steps:
 
 1. Non-Bomb replays land in `%LOCALAPPDATA%\VALORANT\Saved\Demos`. If none
-   are present, **ask the user to supply them and move on to B and C** — do
+   are present, **ask the user to supply them and move on to B** — do
    not stall, and do not fabricate a substitute.
 2. For each replay obtained, run `vrfkit validate`. The bar: does it parse,
    is malformed framing 0, what is the oracle pass rate, does the branch

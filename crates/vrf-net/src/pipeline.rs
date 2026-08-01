@@ -82,10 +82,10 @@ pub struct StreamFailure {
     pub bit_count: u32,
     /// Function count used for the handle read (`Rpc` only; 0 for `RepLayout`).
     ///
-    /// Worth reporting because a wrong value here is silently destructive:
-    /// `ReadSerializedInt(1)` consumes **zero** bits, so a class resolved to a
-    /// one-function cache reads every handle as 0 and desynchronises from the
-    /// first field onward.
+    /// Worth reporting because a wrong non-zero value can select the wrong
+    /// serialized-int width and desynchronise the stream. The RPC parser clamps
+    /// counts to at least 2, so declared counts 1 and 2 use the same wire width;
+    /// zero remains the explicit unresolved-group sentinel.
     pub function_count: u32,
     /// Bits consumed before the failure.
     pub consumed_bits: u64,

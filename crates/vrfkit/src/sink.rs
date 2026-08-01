@@ -1468,10 +1468,10 @@ impl ReplicationSink for ExportSink<'_> {
     ///
     /// The replication layer knows the bit offsets but not the names; this is the
     /// only place both are available, and the group path is what identifies the
-    /// class to investigate. Note `function_count`: `ReadSerializedInt(1)`
-    /// consumes zero bits, so a class resolved to a one-function cache reads
-    /// every handle as 0 and desynchronises immediately -- a count of 1 next to a
-    /// failure is a strong hint the path resolution picked the wrong group.
+    /// class to investigate. Note `function_count`: zero names an unresolved
+    /// group, while a wrong non-zero count can still select the wrong handle
+    /// width. Counts 1 and 2 both use the parser's required minimum of 2 and are
+    /// therefore not distinguishable from this diagnostic alone.
     fn on_stream_failure(&mut self, failure: StreamFailure) {
         self.channel_state.push_stream_failure(format!(
             "{:?} actor={} bits={} function_count={} consumed={} skipped={} group={}",

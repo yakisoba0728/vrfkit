@@ -1,6 +1,7 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Reflects commit ef9a521 (56th commit, master).
+Last updated: 2026-08-01. Includes the replay-coverage audit through 8eb5909
+and the concurrent master audit corrections through 101c33a.
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -30,6 +31,10 @@ valplay        : C:\Users\yakihyuk0728\Documents\GitHub\valplay
 Corpus (.vrf)  : C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf
                  215 files, all ++Ares-Core+release-13.01
 Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf  (4 files)
+Older fixtures : C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser\tests\Test.Integration\Replays
+                 One source fixture each for 12.10, 12.11, and 13.00.
+                 READ ONLY; do not run baselines from this repository.
+Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 ```
 
 ### Verify the build before touching anything
@@ -60,6 +65,10 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 #           malformed 0  skipped 1,972,080,670    (~30s, runs 16-wide)
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # Expected: OK: 4 replays match the baseline
+python tools\check_corpus_baseline.py --baseline tools\baselines\build_1210.json
+python tools\check_corpus_baseline.py --baseline tools\baselines\build_1211.json
+python tools\check_corpus_baseline.py --baseline tools\baselines\build_1300.json
+# Expected for each older build: OK: 1 replays match the baseline
 ```
 
 For a change that is supposed to alter nothing at all -- a refactor, or a
@@ -79,12 +88,14 @@ manifest.json is deliberately not in that set: it records elapsed time, so it
 differs on every run by design.
 
 ### What to do next (highest impact first)
-See Section 7 for full detail, and NEXT_STEPS_FINDINGS.md for the measured
-evidence behind the 7-A correction.
+See Section 7 for full detail, NEXT_STEPS_FINDINGS.md for the measured
+evidence behind the 7-A correction, and Section 11 for the replay-coverage
+audit. Non-Bomb mode coverage remains input-blocked and unmeasured: supply a
+mode-labelled non-Bomb replay before making any claim about it.
 
-7-A, 7-B, 7-D, 7-E, 7-G, 7-I, 7-J and 7-K are all DONE. **16 of 21 metric
-sections are byte-identical to the C# reference on all 11 cross-validated
-replays**, up from 3 sections on 1 replay at the start of the session.
+7-A, 7-B, 7-D, 7-E, 7-G, 7-I, 7-J and 7-K are all DONE. The harness reports
+**16 of 21 keys byte-identical on all 11 cross-validated replays**; excluding
+the constant provenance `note`, the honest metric count is 15 of 20.
 
 Verify it yourself:
 ```powershell
@@ -94,14 +105,17 @@ python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # Expected: OK: 4 replays match the baseline
 ```
 
-No section is BLOCKED, and **no section differs for a reason that is not
-understood**. The five that differ all do so because we carry data the C#
-parser does not:
+No section is BLOCKED. Most differences reflect data the C# parser drops:
 
-  combat / kast / tactical  13 MulticastNotifyKilledEnemy RPCs from
+  combat / kast             13 MulticastNotifyKilledEnemy RPCs from
                             character 576 that the C# parser never emits
   economy_detail            496 of 496 purchase buyers resolved vs its 151
   weapon_stats              one damage record commit 6e6d544 recovers
+
+Tactical remains an open interpretation question: five values are higher in
+the reference, including one opening_duels_won difference with its denominator
+conserved. Section 6 records the exact replay/value pairs. Do not describe all
+five varying sections as understood or as monotonic gains.
 
 What is actually left: **nothing in section 7 is open.** Every item is either
 done, or closed with a measurement showing it cannot or should not be done.
@@ -119,9 +133,6 @@ done, or closed with a measurement showing it cannot or should not be done.
        class of a stably-named subobject is never on the wire. Five
        measurements in 7-H. Do not reopen without new input data --
        checkpoint chunks are the only unexamined region.
-
-The five metric sections that still differ from the C# reference all differ
-because we carry data it does not, and each is named above.
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -141,10 +152,11 @@ python "C:\...\valplay\pipeline\metrics\compute_metrics.py" `
 ```
 
 ### Key invariant (never break)
-Every content block emits (group_path, handle, name, bit_count, raw_bits)
-even when nothing is known. Overlay is additive. A block whose group is
-unresolved returns Err (counted, named) -- never Ok with a guessed capacity.
-The oracle's honesty matters more than its pass rate.
+Every field inside a walkable block emits (group_path, handle, name, bit_count,
+raw_bits), even when its type is unknown. Overlay is additive. An unresolved
+ClassNetCache block cannot be walked and emits no Parquet rows; it returns Err
+and its skipped bits are counted and named, never hidden behind a guessed
+capacity. Keep the source `.vrf` if future reinterpretation may be needed.
 
 
 ---
@@ -155,15 +167,16 @@ A from-scratch Rust VALORANT replay (.vrf) parser in a NEW repository
 (C:\Users\yakihyuk0728\Documents\GitHub\vrfkit), built to replace the
 C# parser (ValorantReplayParser, MIT) that the valplay Python analytics
 pipeline depends on. The C# parser discards roughly 26% of content blocks
-because it abandons any bunch whose payload has no registered descriptor;
-this parser never discards: every field emits (group_path, handle, name,
-bit_count, raw_bits) even when nothing is known about the type.
+because it abandons any bunch whose payload has no registered descriptor.
+vrfkit preserves every field it can walk, including raw bits for unknown
+types; an unresolved ClassNetCache block is instead counted as a loud stream
+failure and emits no field/RPC rows.
 
 Primary outputs: fields.parquet, movement.parquet, actors.parquet,
 net_guids.parquet, manifest.json -- all written by `vrfkit export`. A Python adapter
 (tools/to_valplay_bundle.py) converts these into the bundle shape that
-valplay's compute_metrics.py already consumes, so the validated 21-section
-analytics pipeline runs unchanged on our data.
+valplay's compute_metrics.py already consumes, so its 20 metric sections plus
+the constant provenance `note` run unchanged on our data.
 
 ---
 
@@ -317,8 +330,9 @@ corpus totals
                                    9cb7a24; the value is genuinely 0, and a
                                    counter that stops printing now warns
                                    instead of reading as zero.
-  unattributed bits: 1,972,080,670 (~246 MB, 91.7% is AbilitiesAndBuffsComponent)
-                     That 91.7% is a share of the FAILURES, not of the
+  unattributed bits: 1,972,080,670 (~246 MB; 97.283437% is
+                     AbilitiesAndBuffsComponent)
+                     That 97.283437% is a share of the FAILURES, not of the
                      replay. Per replay it is ~2.1% of bits and ~1.05% of
                      blocks, and no metric depends on it -- see 7-C.
 ```
@@ -349,6 +363,27 @@ Earlier measurement of two of them:
 43d0f434  85 MB 1,004,465 blocks  malformed 0  transform 0  pass 99.18%
 ```
 The C# parser that valplay currently uses REJECTS 13.02 replays outright.
+
+Older supported builds (one machine-local fixture per build, pinned by
+tools/check_corpus_baseline.py):
+
+```
+build  blocks  malformed  fields  RPCs   skipped  oracle pass rate
+12.10  13,679          0   7,924  9,605   12,915       99.203158%
+12.11   6,505          0   4,700  3,593   11,052       98.478094%
+13.00   8,859          0   4,558  5,722   18,104       98.679309%
+```
+
+All three inspect and validate with exit 0. Full export also reaches exit 0 and
+writes its output files, but it is not decode-clean: the builds report 9, 18,
+and 19 FName SourceID decode errors respectively. Walkable rows retain raw bits;
+unresolved ClassNetCache streams remain counted as skipped bits and emit no row.
+These gaps are recorded, not hidden by the zero malformed count.
+
+The adjacent 12.08 C# fixture is intentionally unsupported. A real end-to-end
+`validate` run exits 1, names `++Ares-Core+release-12.08`, and lists the known
+branches. This confirms that an unknown build fails loudly rather than silently
+selecting a transform.
 
 
 ---
@@ -445,15 +480,17 @@ MulticastNotifyDamage_Point: 580 to 581 records, all 581 distinct by
 (packet, time, actor, value) -- not a duplicate, a genuinely recovered
 event the C# parser discards.
 
-Remaining 91.7% of unattributed bits: AbilitiesAndBuffsComponent, for
-which the replay declares no cache group. No lookup can reach it.
+An uncapped corpus audit later measured 97.283437% of unattributed bits as
+AbilitiesAndBuffsComponent, for which the replay declares no cache group.
+No lookup can reach it; see the corrected breakdown in 7-C.
 
 ### 5-E. README correction (commit 7c2faa1)
 
 README still claimed 100.000000% pass rate with 3,671 skipped bits.
-Corrected to measured 97.49%-99.99% range with 1,972,080,670 unattributed
-bits, plus an explanation that framing is exact everywhere and the shortfall
-is attribution rather than parsing.
+Corrected to an honest non-100% range with 1,972,080,670 unattributed bits,
+plus an explanation that framing is exact everywhere and the shortfall is
+attribution rather than parsing. The final uncapped corpus measurement is
+97.487010%-99.681958%, with median 99.323286%.
 
 Also corrected: overlay figures (106 groups/929 fields -> 123/1054),
 RPC comparison (334,641 -> 342,735 vs C# 230,893), typed coverage.
@@ -469,8 +506,9 @@ and re-applied edits using the write tool only.
 
 tools/to_valplay_bundle.py: reads vrfkit export (fields.parquet,
 movement.parquet, manifest.json) and writes a bundle that valplay's
-compute_metrics.py consumes unchanged. Reusing the 21 validated metric
-sections is the point; reimplementing would discard the validation.
+compute_metrics.py consumes unchanged. Reusing the 20 validated metric
+sections plus its constant provenance note is the point; reimplementing would
+discard the validation.
 
 Result: combat.per_player reproduces EXACTLY -- 27 fields x 10 players =
 270 comparisons, 0 mismatches. K/D/A/ADR/HS%/wallbangs/multikill/kd/
@@ -921,18 +959,19 @@ missing.
 
 runs the full pipeline over all eleven and prints a section x replay matrix.
 
-Result (2026-08-01): **16 of 21 sections byte-identical on all 11 replays** --
-the same set measured on 02d4d478, so those figures generalise.
+Result (2026-08-01): the harness reports **16 of 21 keys byte-identical on all
+11 replays**. One is the constant provenance `note`, so 15 of 20 real metric
+sections are exact across all 11.
 
   ability_detail  ability_usage  economy      movement_detail
   movement_summary  objective    objective_detail  players
   posture         rounds         shot_rays    side_winrate
   spray_control   ultimate       weapons      (+ note)
 
-The five that vary do so per replay in the expected direction: kast,
-tactical and weapon_stats are EXACT on the replays where the C# parser
-missed nothing, and differ only where we recover data it dropped. combat and
-economy_detail differ on every replay, always because we carry more.
+The five that vary are combat, economy_detail, kast, tactical, and weapon_stats.
+Most differences align with data we recover and the C# parser drops, but five
+tactical values are reference-higher and their mechanism is not established;
+the correction and exact values above supersede the earlier direction claim.
 
 This is also what found the sparse-array crash: 1d898bfb produced no metrics
 at all until the padding fix. One replay could not have surfaced it.
@@ -1035,22 +1074,23 @@ by N". Check how many values match before inferring a constant offset.
 ### 7-C. Unattributed ClassNetCache blocks [NO CURRENT IMPACT, BOUNDED]
 
 Read the proportion before the raw number, because the raw number misleads.
-"1,972,080,670 bits" and "91.7% AbilitiesAndBuffsComponent" both sound
-alarming and have been quoted that way in this document; measured against
-what we DO read, on 02d4d478:
+"1,972,080,670 bits" and the old "91.7% AbilitiesAndBuffsComponent" figure
+both sound alarming and have been quoted that way in this document; measured
+against what we DO read, on 02d4d478:
 
     named and decoded   822,744,224 bits   97.9%
     unattributed         17,507,210 bits    2.1%
     blocks failed             6,365 of 608,020   1.05%
 
-The 91.7% is a share OF THE FAILURES, not of the replay. Roughly one block
-in a hundred.
+The old 91.7% was intended as a share OF THE FAILURES, not of the replay;
+the uncapped current measurement is 97.283437%, reported below. Either way,
+the replay-level proportion is roughly one block in a hundred.
 
-WHAT IT COSTS TODAY: nothing measurable. All 21 metric sections compute
-without it, 16 of them byte-identical to the C# reference on 11 replays, and
-the other 5 differ only because we carry MORE than the reference. No consumer
-asks for this data. The C# parser cannot read it either -- it discards far
-more.
+WHAT IT COSTS TODAY: nothing measurable in the current 20 real metric sections.
+Fifteen are byte-identical to the C# reference on 11 replays; the five varying
+sections do not consume this missing ability-state stream. Their tactical
+direction discrepancy is a separate open question. No current consumer asks
+for this data, and the C# parser cannot read it either.
 
 Ability behaviour is already covered through other groups (30,493 field rows
 on 02d4d478: Wraith smoke zones, Smonk smoke, melee, the ability statistics
@@ -1089,27 +1129,28 @@ oracle, which is the honest part, but its bits are not preserved.
 These blocks frame correctly (malformed framing 0); the group resolution
 returns function_count=0 and they are counted as failures.
 
-Breakdown, RE-MEASURED 2026-08-01. The previous breakdown below was wrong
-because it could not be derived from any committed tool:
-MAX_STREAM_FAILURE_RECORDS (crates/vrfkit/src/sink.rs) caps the diagnostic at
-32 lines, so the percentages had been eyeballed from a truncated sample. The
-corrected figures sum to exactly the oracle's own totals on both scopes.
+CORRECTED 2026-08-01: the previous breakdown was not derivable from a committed
+tool. MAX_STREAM_FAILURE_RECORDS capped diagnostics at 32 lines, and the quoted
+percentages had been inferred from that truncated sample. A temporary uncapped
+aggregation of all 1,047,182 stream failures across the 215-replay corpus
+accounts for every one of the 1,972,080,670 skipped bits and measures:
 
-                               02d4d478    corpus (215)
-  AbilitiesAndBuffsComponent     98.61%      97.28%
-  PatchVolume                     0.66%       1.55%   <- unlisted before
-  RespawningWallPlate2_7          0.02%       0.005%
-  MeleeAttackState1/2/3/4         0.00%       0.00%   <- ZERO blocks
-  everything else (175 groups)    0.71%       1.17%
+  97.283437%  AbilitiesAndBuffsComponent  (1,918,507,857 bits / 752,483 blocks)
+   1.545398%  PatchVolume                  (   30,476,488 bits /   3,432 blocks)
+   0.319715%  AttachedDamageSection        (    6,305,042 bits /  99,002 blocks)
+   0.224846%  DefenderAnnouncer            (    4,434,144 bits /  10,868 blocks)
+   0.181710%  AttackerAnnouncer            (    3,583,464 bits /   8,783 blocks)
+   0.160508%  MapTargetingState            (    3,165,345 bits /  23,632 blocks)
 
-MeleeAttackState contributes NOTHING. The previous text said it was ~5% and
-"tractable"; in fact /Script/ShooterGame.MeleeAttackStateComponent_ClassNetCache
-IS declared, the existing digit-stripping resolution already reaches it, and
-it emits 473 field rows on 02d4d478. There is nothing there to recover.
+On 02d4d478, AbilitiesAndBuffs is 98.61%, PatchVolume is 0.66%, and
+RespawningWallPlate2_7 is 0.02% of skipped bits. The previously quoted 91.7%
+was not current. MeleeAttackState is absent from the failure set on both scopes:
+0 blocks and 0 bits corpus-wide; its already-resolved path emits 473 field rows
+on 02d4d478. There is nothing there to recover.
 
-If anyone wants to work in this area, the useful task is raising or removing
-the 32-line diagnostic cap so this breakdown is reproducible from a committed
-tool. A wrong breakdown survived precisely because it was not.
+If this breakdown needs to become routinely reproducible, first add a committed
+uncapped aggregation mode rather than drawing conclusions from the 32-line
+diagnostic. The wrong breakdown survived precisely because that mode is absent.
 
 AbilitiesAndBuffsComponent is the real ceiling. Until the game server
 declares its ClassNetCache group in the schema, no lookup can reach it.
@@ -1120,8 +1161,26 @@ CONFIRMED 2026-08-01: searched all 475 declared export groups in
 This is now a measured fact rather than an assumption. Do not spend
 time trying to recover those bits.
 
-The MeleeAttackState variants are tractable: if MeleeAttackState1_C_ClassNetCache
-etc. are added to the schema lookup logic, those would be recovered.
+MeleeAttackState1/2/3/4/_Alt were already recovered by the schema-driven
+instance-name resolver in commit 6e6d544. The replay declares exactly one
+ClassNetCache for all five names, not five distinct function tables:
+
+  /Script/ShooterGame.MeleeAttackStateComponent_ClassNetCache
+    num_exports = 2; slot 0 empty; slot 1 = MulticastHitImpact
+
+On 02d4d478, 467 non-empty blocks parse through that group: State1 201,
+State2 45, State3 32, State4 23, and _Alt 166. They carry 211,441 content
+bits in total (91,452 / 20,159 / 14,397 / 10,069 / 75,364 respectively),
+of which 187,995 bits are RPC parameter payload. All 54 instance GUIDs emit
+successfully resolved rows. The 475-group manifest contains only the shared
+ClassNetCache and its MulticastHitImpact parameter group; variant-specific
+ClassNetCache groups declared by the replay: zero.
+
+The numeric names reach the shared group by the existing trailing-digit
+fallback followed by the replay-declared `Component_ClassNetCache` candidate;
+`_Alt` reaches it through underscore-segment stripping. No hardcoded name or
+new lookup rule is needed. Corpus skipped bits before and after this audit are
+identical at 1,972,080,670 because there is no parser change to make.
 
 ### 7-D. Ability/item class display names [DONE 2026-08-01]
 
@@ -1563,9 +1622,11 @@ These are load-bearing. Breaking any one silently corrupts downstream
 consumers without any test failing.
 
 NO SKIP PATH
-  Every field emits (group_path, handle, name, bit_count, raw_bits) even
-  when nothing is known. Overlay is additive: typed values fill value_*
-  columns; failure leaves them null with raw bits intact.
+  Every field inside a walkable block emits (group_path, handle, name,
+  bit_count, raw_bits) even when its type is unknown. Overlay is additive:
+  typed values fill value_* columns; decode failure leaves them null with raw
+  bits intact. An unresolved ClassNetCache block cannot be walked, emits no
+  row, and must remain a loud counted failure; retain the source `.vrf`.
   Rationale: a parser that silently drops data cannot be trusted even when
   it looks correct. The oracle's honesty matters more than its pass rate.
 
@@ -1692,8 +1753,9 @@ Parquet is the clear winner for a pipeline that reads the same data many
 times. Downside: not human-readable without a viewer.
 
 ### Adapter over rewriting compute_metrics.py
-The 21 metric sections were validated against Tracker.gg scoreboard data
-for 10 players. Rewriting them would discard that validation. The adapter
+The 20 real metric sections (plus a constant provenance note) were validated
+against Tracker.gg scoreboard data for 10 players. Rewriting them would discard
+that validation. The adapter
 adds a translation layer (~600 lines) but keeps the proven analytics code
 unchanged. Downside: any schema mismatch between vrfkit output and what
 the adapter produces causes a silent wrong value rather than an error.
@@ -1740,3 +1802,91 @@ than as a layer in vrf-decode, because they need access to the resolved
 group path to know which blob format to apply. A cleaner architecture would
 pass the group path through to vrf-decode, but that would require changing
 the decode trait signature. Current approach works; refactoring is optional.
+
+---
+
+## 11. Delegate Coverage Audit (2026-08-01)
+
+This audit addressed the two live input-coverage questions in CODEX_TASK_BRIEF.md
+and independently confirmed why its original resolver task was withdrawn.
+Search and measurements were read-only except for copying three fixtures into
+vrfkit-owned machine-local baseline directories and adding their generated JSON
+baselines. The dirty C# reference repository and valplay were not modified.
+
+### 11-A. Non-Bomb mode coverage [INPUT-BLOCKED, UNMEASURED]
+
+Recursive searches of all three scopes below found the same four physical
+replays and no additional `.vrf` files:
+
+```
+%LOCALAPPDATA%\VALORANT\Saved\Demos   4
+%LOCALAPPDATA%\VALORANT\Saved         4
+%LOCALAPPDATA%\VALORANT               4
+```
+
+All four are 13.02, inspect/export/validate successfully, have malformed,
+transform, and field-stream failures of zero, and exactly reproduce the pinned
+build_1302 totals in section 4. Their runtime schemas and emitted replay events
+contain BombGameState, BombPlayerState, BombDestination, TimedBomb, and spike
+plant/defuse/explosion evidence.
+
+That is positive evidence for Bomb mechanics, not a reliable official playlist
+label. The replay header's `game_specific_data` contains serializedVersion and
+playerLoadouts but no mode, queue, or playlist key, and modes such as Spike Rush,
+Swiftplay, or Premier may reuse Bomb assets. The CLI has no independent game-mode
+detector. Therefore the defensible inventory is the task brief's four Bomb-labelled
+inputs and **zero mode-labelled non-Bomb inputs**.
+
+No non-Bomb baseline was created and no claim about non-Bomb parsing is made.
+To close this item, supply at least one replay per desired non-Bomb mode together
+with a trustworthy external mode label; then run inspect, validate, full export,
+and a mode-specific baseline on those inputs.
+
+### 11-B. Older supported builds [DONE]
+
+A wider search found one unique source fixture for every previously unmeasured
+supported build under the read-only C# integration-test directory:
+
+| Build | Source filename | Bytes | SHA-256 |
+|---|---|---:|---|
+| 12.10 | `9f8b32c5-c243-41ec-bbbb-832582edf652.12_10.vrf` | 525,616 | `A4CE1B72F9BDF99492162013C1C909E6994A0D22BEF1899E687FDE71FBC86606` |
+| 12.11 | `5c673443-5bdc-4576-b416-aab3f62471a5.12_11.vrf` | 410,628 | `7A7A5492DDF286BB04413DA96F0D3B216F91150E8174A3A4397493529E17EBDD` |
+| 13.00 | `12974d2b-848f-490d-80ba-5f03a033c2d5.13_00.vrf` | 431,908 | `FD49091DD43171BB060EB6BBAE50ED6677AA1077344572C5BF65F0C6FE2B4C1A` |
+
+The search covered valplay data, Documents, Downloads, Desktop, VALORANT Saved,
+and 34 user-profile directories named archive/archives/backup/backups, including
+archive member listings without extraction. It enumerated 236 physical `.vrf`
+files, 226 unique SHA-256 values; all 236 inspect successfully. One directory,
+`%LOCALAPPDATA%\Temp\WinSAT`, was inaccessible. The 215-file valplay corpus is
+entirely 13.01; the four Saved demos are 13.02; the Downloads replay duplicates a
+13.01 valplay input.
+
+One hash-verified copy of each old fixture now lives under:
+
+```
+%LOCALAPPDATA%\vrfkit\baseline-corpora\build_1210
+%LOCALAPPDATA%\vrfkit\baseline-corpora\build_1211
+%LOCALAPPDATA%\vrfkit\baseline-corpora\build_1300
+```
+
+Commit 8f7375e adds `tools/baselines/build_1210.json`, `build_1211.json`, and
+`build_1300.json`. Each positive guard passes 1/1. Each guard was also pointed at
+the wrong build corpus and observed to report seven DRIFT differences with exit
+1, proving that the guards detect change rather than merely run.
+
+The nearby real 12.08 fixture provides the unknown-build negative case. Unit
+tests already cover the selector and ReplicationReader constructor; the real CLI
+run additionally proves the process boundary rejects it loudly with exit 1 and
+the unsupported branch name. No fallback transform is selected.
+
+### 11-C. MeleeAttackState resolver premise [WITHDRAWN; CONFIRMED FALSE]
+
+The proposed missing resolver work was already implemented. All five instance
+names reach the one replay-declared shared ClassNetCache, all measured rows emit,
+and an uncapped 215-replay failure aggregation contains zero MeleeAttackState
+blocks and zero MeleeAttackState bits. No parser rule or hardcoded name was added.
+
+Section 7-C contains the resolver path, exact per-variant counts and bit totals,
+and the corrected 97.283437% failure-share measurement. Commit 458f8e0 records
+the corrected documentation and the clarified function-count comments; total
+skipped bits remain exactly 1,972,080,670 before and after the audit.
