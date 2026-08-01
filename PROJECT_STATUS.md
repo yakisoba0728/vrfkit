@@ -1374,7 +1374,7 @@ replay fd816a35 had no .vrf and implied it was the only reference bundle.
 Eleven others have both a bundle and a .vrf; only fd816a35 is missing its
 source. tools/validate_metrics_corpus.py now runs all eleven -- see 6-A.
 
-### 7-H. Instance-named component groups [NOT SOLVABLE FROM REPLAY DATA]
+### 7-H. Instance-named component groups [43.9% SOLVABLE FROM REPLAY DATA -- NO METRIC IMPACT]
 
 Several component groups arrive under an actor instance name and never reach
 their declared class group, so their fields stay unnamed. The bits are
@@ -1512,6 +1512,105 @@ declare it".
 7-A does not depend on this, and no metric section does: the affected fields
 are ammo-level detail in weapon_stats and posture / fire-mode refinement, none
 of which currently feed a section that is not already exact.
+
+CORRECTION 2026-08-02. The tag on this section was
+`[NOT SOLVABLE FROM REPLAY DATA]`. That is refuted for 43.9% of the affected
+rows, including the single largest offender. The mechanism findings above
+(measurements 1-5) survive intact -- a stably-named subobject's class GUID
+really is never on the wire. What was wrong was the leap from "the class is not
+declared" to "the class cannot be determined".
+
+THE ROUTE THIS SECTION DESCRIBED AND THEN DECLINED TO RUN. The
+"HANDLE-RANGE COINCIDENCE" near-miss above dismisses the idea after checking
+only the MAX handle, and calls the general form "guessing a group to make a
+number look better". The general form is not a guess when it is unique. Match
+the FULL observed handle SET against the declared handle set of every
+RepLayout-shaped group, and require exactly one compatible candidate:
+
+    InventoryComponent observes 25 handles: [1..17, 21..25, 29, 30, 31]
+    compatible groups among all 244 RepLayout-shaped groups: exactly 1
+      -> /Script/ShooterGame.AresInventory
+
+That is the class this section already names as correct, reached by
+elimination. The argument closes: AresInventory's 27 handles were exported, so
+the server replicated one; every resolved group's observed handles fall within
+its declared set (0 exceptions), so no resolved group absorbed that data; the
+only unattributed RepLayout data are the 70 bare-name groups; and
+InventoryComponent is the only handle-compatible one among them.
+
+Corroborated on a second axis -- observed bit widths against AresInventory's
+declared field names line up field by field (handle 1 `bIsActive` is 1 bit x40;
+handles 2-17 are the 16 `ItemSlots`; handle 23 `NetTimestamp` is 32 bits x4,860;
+handle 21 `NewCurrentEquippable` shows 8/16/24-bit IntPacked NetGUID widths).
+Two declared handles are never observed and zero observed handles are
+undeclared.
+
+SAFETY. Applied to groups whose class is ALREADY known, across all 11
+cross-validated replays: 87 spoke, 87 correct, 0 mismatches. The rule is
+self-policing -- unique candidate binds, ambiguity stays silent -- so NO SILENT
+SUCCESS holds. This matters because the objection raised above is real: on the
+RepLayout path a wrong group has no failure signal. Uniqueness, not
+plausibility, is what makes it safe.
+
+YIELD, by evidential strength, over the 11 cross-validated replays:
+
+    route                          rows    share   nature
+    A  handle-set uniqueness    174,077    43.3%   determination
+    B  plain unique_leaf_match    1,183     0.3%   existing rule, never called
+    C  stem-strip leaf            3,413     0.8%   name heuristic (weakest)
+    union                       176,585    43.9%   0 conflicts between routes
+
+The remaining 56% genuinely resists. `ZoomStateMachine` observes only handles
+{2, 4}; 21 groups are compatible. A small handle set carries no information.
+
+ROUTE B IS AN ASYMMETRY IN OUR OWN CODE, not a data problem. `sink.rs:433`
+(subobject path) and `sink.rs:401` (class path) both call `unique_leaf_match`.
+The actor-GUID fallback at `sink.rs:301-310` does not -- it tries the lookup
+keys and then `return actor_path.to_owned()`. `AresWorldSettings` ->
+`/Script/ShooterGame.AresWorldSettings` is an exact unique leaf the parser
+already trusts on the other two paths. Fixing it is a few lines.
+
+VALUE: STILL DO NOT DO IT. No metric section changes. Every section is EXACT,
+MATCH or OURS BETTER and none is BLOCKED; 7-A's tier-2 resolver already covers
+100% of shots and says explicitly that resolving InventoryComponent is not
+needed. The correct verdict is "solvable for 43.9%, buys nothing measurable" --
+which is a different statement from "cannot be solved", and the difference
+matters to whoever reads this next.
+
+FOUR MORE STATEMENTS IN THIS SECTION ARE WRONG:
+
+1. Measurement 4: "A class object is assigned a NetGUID only when it is
+   referenced on the wire, and these classes never are." The generalization is
+   false. `AresAttributeSet` IS assigned one -- GUID 1947, outer 15
+   (`/Script/ShooterGame`) -- and 163 dynamic instances carrying 18,850 rows
+   reference it as their `classNetGuid`. This section's own 19-child list of
+   GUID 15 contains `AresAttributeSet`. True for AresInventory; false as a
+   general rule.
+
+2. "INSTANCE NAME -> CLASS IS MANY-TO-ONE, so no string rule can be correct
+   even in principle." Many-to-one is a function, which is exactly what a
+   lookup consumes. The example given (MeleeAttackState1/2/3/4/_Alt -> one
+   component) is the parser doing this successfully today, 473 rows. What would
+   break a string rule is ONE-to-many, which this section never demonstrates.
+
+3. "33,529 of 429,633 field rows in 02d4d478 (7.8%)". Arithmetically right for
+   the denominator named, but "field rows" now means the 1,240,444-row
+   fields.parquet (429,633 RepLayout + 810,811 RPC parameters). Measured
+   replacement: 2.70% of field rows, 7.80% of RepLayout field rows. Quote the
+   denominator.
+
+4. "the affected fields are ammo-level detail in weapon_stats and posture /
+   fire-mode refinement." The largest block is 13,043 rows -- 38.9% of the gap
+   -- and it is inventory and loadout state (`ItemSlots` x16,
+   `CurrentEquippable`, `NewCurrentEquippable`, `SlotModifiers`,
+   `RespawnNumber`). Ammo is MagazineAmmo (3,124) and ReserveAmmo (564) only.
+
+WHAT WAS NOT RE-MEASURED: measurements 1 and 5 need parser instrumentation and
+were left alone. Measurement 1 is consistent with everything else observed.
+Measurement 5's flag histogram is untested. Checkpoint chunks remain
+unexamined -- this section's own caveat stands.
+
+---
 
 ### 7-I. Effects with no firing state [DONE 2026-08-01]
 
@@ -1694,10 +1793,15 @@ A STABLY-NAMED SUBOBJECT'S CLASS IS NOT ON THE WIRE
   classNetGuid is read, so default subobjects (InventoryComponent,
   MagazineAmmo, ZoomStateMachine, ...) never declare their class. Unreal
   recovers it by resolving the name inside the already-spawned outer actor and
-  reading Object->GetClass() -- asset data, not replay data. No amount of
-  outer-chain walking, leaf matching, or checksum recovery substitutes for it
-  (7-H documents all five routes and why each fails). Treat "this component's
-  fields are unnamed" as expected, not as a bug to be closed by a name rule.
+  reading Object->GetClass() -- asset data, not replay data. Outer-chain
+  walking, leaf matching and checksum recovery were each measured and each
+  fails (7-H). This sentence used to close over ALL routes; that was wrong.
+  The replay's own net field export declares each group's handle set, and for
+  some components exactly one declared group is handle-compatible, which
+  determines the class by elimination rather than by a name rule -- 43.9% of
+  the affected rows, see 7-H's 2026-08-02 correction. Treat "this component's
+  fields are unnamed" as expected and as buying nothing to close, NOT as
+  impossible to close.
 
 GENERATED FILES ONLY VIA GENERATORS
   crates/vrf-decode/src/table.rs    -- only via tools/extract_descriptors.py
