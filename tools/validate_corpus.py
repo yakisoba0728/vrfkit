@@ -21,7 +21,11 @@ from pathlib import Path
 PATTERNS = {
     "branch": re.compile(r"Branch:\s+(\S+)"),
     "blocks": re.compile(r"Total content blocks:\s+(\d+)"),
-    "malformed": re.compile(r"Malformed:\s+(\d+)"),
+    # The oracle prints "Malformed framing:  0". This pattern used to be
+    # "Malformed:\s+(\d+)", which never matched -- and the accumulator below
+    # skips a pattern that does not match, so every corpus run has reported
+    # malformed 0 without ever reading the number. Anchored on the real label.
+    "malformed": re.compile(r"Malformed framing:\s+(\d+)"),
     "skipped": re.compile(r"Skipped bits:\s+(\d+)"),
     "rate": re.compile(r"ORACLE PASS RATE:\s+([\d.]+)%"),
     "fields": re.compile(r"Fields emitted:\s+(\d+)"),
@@ -44,6 +48,7 @@ def main(argv: list[str]) -> int:
     branches: collections.Counter[str] = collections.Counter()
     rates: list[tuple[float, str]] = []
     totals = collections.Counter()
+    missing: collections.Counter[str] = collections.Counter()
     started = time.time()
 
     for i, f in enumerate(files, 1):
@@ -77,6 +82,11 @@ def main(argv: list[str]) -> int:
         for key in ("blocks", "malformed", "skipped", "fields", "rpcs"):
             if got[key]:
                 totals[key] += int(got[key].group(1))
+            else:
+                # A counter the oracle stopped printing must not read as zero.
+                # That is precisely how the malformed figure stayed a vacuous
+                # 0 for the whole corpus while its pattern was wrong.
+                missing[key] += 1
         if i % 25 == 0 or i == len(files):
             print(f"  [{i}/{len(files)}] ok={ok} failed={len(failures)}")
 
@@ -86,6 +96,11 @@ def main(argv: list[str]) -> int:
     print(f"failed   : {len(failures)}")
     for name, why in failures[:15]:
         print(f"    {name}: {why}")
+
+    if missing:
+        print("\nWARNING: counters the oracle did not print (NOT counted as 0):")
+        for key, count in missing.most_common():
+            print(f"  {key}: absent on {count} replay(s)")
 
     print("\nbranches seen:")
     for b, c in branches.most_common():
