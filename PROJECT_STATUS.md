@@ -2131,11 +2131,19 @@ that pinned the typo (`ValorantDescriptorsTests.cs:16`). Regenerating moves
 fields the descriptor declares Raw or Skip.
 
 This is the named root cause behind the `tactical`/`kast` divergence recorded in
-section 6. It does not make those sections converge -- the published reference
-bundles were built by the parser *with* the typo, so they are still missing
-Gekko's kills, and clutch derivation is not monotonic in kill count. Do not
-pursue parity there; regenerating the reference bundles would invalidate every
-comparison figure in this document.
+section 6. It does **not** make those sections converge -- the published
+reference bundles were built by the parser *with* the typo, so they are still
+missing Gekko's kills, and clutch derivation is not monotonic in kill count.
+
+Measured, not inferred: all five values section 6 pins were recomputed after the
+fix and every one is unchanged (2c9e88a0 clutch_attempts 4/1, 45758459 7/5,
+500ce1a8 6/3 and clutch_wins 2/1, 02d4d478 opening_duels_won 11/10). Section 6's
+table is current. On 02d4d478 the per-player breakdown now shows the mechanism
+directly: Gekko is player 264, and the reference credits him 0 first bloods,
+0 opening duels and 0 trade kills against our 2, 2 and 4.
+
+Do not pursue parity there; regenerating the reference bundles would invalidate
+every comparison figure in this document.
 
 ### 13-D. The extractor could not read a factored handle run [FIXED, 4f78f6d]
 
@@ -2175,6 +2183,29 @@ vrfkit-only convention. Null RPC payloads 230,160 -> 229,552.
 
 Measured, not assumed: **zero** of those rows carry a decoded value. An earlier
 note called them "608 real values dropped"; they are 608 undecoded blobs.
+
+### 13-I. A static actor has no class path, and no archetype either [FIXED, ea08a83]
+
+Same shape as 13-A, found the same way -- by widening a comparison that had been
+passing. `NewActorSerializer.cs:29` returns before reading the spawn block for
+anything that is not dynamic, so the reference leaves both
+`ReplicationClassPath` and `ArchetypePath` null for static actors. We filled
+both in.
+
+`sink.rs` fell back to the actor GUID's own path, with a comment asserting that
+"for static actors the actor GUID path itself is the class". It is not -- that
+path is the level's instance name. 27 opens on 02d4d478 shipped `Ascent_C_0`,
+`AresWorldSettings` and `WindowShieldA1` as replication class paths. The adapter
+then derived an archetype from it, and since the class path was empty by that
+point, all 27 came out as the literal string `Default__`.
+
+Nothing is lost: all 27 paths are byte-identical to the `path` column
+`net_guids.parquet` already carries for the same GUID, checked row by row.
+
+All 2,028 `actor_spawned` events now match the reference on **all three**
+fields. The earlier check compared `location` alone, which is why the other two
+stayed wrong through two rounds of "spawns match". **A comparison only defends
+the fields it reads.**
 
 ### 13-F. What is still untyped, and why it is not a bug
 
