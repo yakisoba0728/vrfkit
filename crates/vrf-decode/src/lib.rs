@@ -65,8 +65,8 @@ pub use array::{
 };
 pub use decode::{DecodeError, DecodedValue, FieldType, decode_field};
 pub use overlay::{
-    DecodeErrorKind, OverlayEntry, OverlayErrorReport, OverlayErrorRow, OverlayStats, OverlayTable,
-    apply_overlay,
+    DecodeErrorKind, OverlayEntry, OverlayErrorReport, OverlayErrorRow, OverlayHandleEntry,
+    OverlayStats, OverlayTable, apply_overlay, apply_overlay_with_handle,
 };
-pub use table::OVERLAY_TABLE;
+pub use table::{OVERLAY_HANDLE_TABLE, OVERLAY_TABLE};
 pub use types::{FQuat, FRepMovement, FRotator, FTransform, FVector, RotatorQuantization};

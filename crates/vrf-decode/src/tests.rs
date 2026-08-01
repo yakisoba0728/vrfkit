@@ -504,7 +504,10 @@ mod vector {
 mod overlay_tests {
     use crate::OVERLAY_TABLE;
     use crate::decode::FieldType;
-    use crate::overlay::{OverlayEntry, OverlayStats, OverlayTable, apply_overlay};
+    use crate::overlay::{
+        OverlayEntry, OverlayHandleEntry, OverlayStats, OverlayTable, apply_overlay,
+        apply_overlay_with_handle,
+    };
 
     #[test]
     fn table_is_sorted() {
@@ -631,6 +634,74 @@ mod overlay_tests {
             Some(true),
             "the unprefixed wire name must resolve to the b-prefixed entry",
         );
+    }
+
+    #[test]
+    fn overlay_falls_back_to_an_explicit_property_handle_when_the_wire_name_differs() {
+        const GROUP: &str =
+            "/Script/ShooterGame.ReplayEffectComponent:ReplayPlayContinuousEffectAtLocation";
+        let entries: &[OverlayEntry] = &[OverlayEntry {
+            group_path: GROUP,
+            field_name: "Location",
+            field_type: FieldType::VectorDouble,
+        }];
+        let handle_entries: &[OverlayHandleEntry] = &[OverlayHandleEntry {
+            group_path: GROUP,
+            handle: 26,
+            field_name: "Location",
+        }];
+        let table = OverlayTable::with_handles(entries, handle_entries);
+        let mut data = Vec::new();
+        data.extend_from_slice(&1.25f64.to_le_bytes());
+        data.extend_from_slice(&(-2.5f64).to_le_bytes());
+        data.extend_from_slice(&3.75f64.to_le_bytes());
+        let mut stats = OverlayStats::default();
+
+        let result =
+            apply_overlay_with_handle(&table, GROUP, Some("248"), 26, Some(&data), 192, &mut stats);
+
+        assert_eq!(
+            result.and_then(|value| value.value_str),
+            Some("(1.25,-2.5,3.75)".to_owned()),
+        );
+        assert_eq!(stats.decoded_ok, 1);
+        assert_eq!(stats.not_in_table, 0);
+    }
+
+    #[test]
+    fn overlay_keeps_direct_name_lookup_ahead_of_the_handle_fallback() {
+        let entries: &[OverlayEntry] = &[
+            OverlayEntry {
+                group_path: "/test",
+                field_name: "DeclaredName",
+                field_type: FieldType::Int32,
+            },
+            OverlayEntry {
+                group_path: "/test",
+                field_name: "RuntimeName",
+                field_type: FieldType::Bool,
+            },
+        ];
+        let handle_entries: &[OverlayHandleEntry] = &[OverlayHandleEntry {
+            group_path: "/test",
+            handle: 9,
+            field_name: "DeclaredName",
+        }];
+        let table = OverlayTable::with_handles(entries, handle_entries);
+        let mut stats = OverlayStats::default();
+
+        let result = apply_overlay_with_handle(
+            &table,
+            "/test",
+            Some("RuntimeName"),
+            9,
+            Some(&[1]),
+            1,
+            &mut stats,
+        );
+
+        assert_eq!(result.and_then(|value| value.value_bool), Some(true));
+        assert_eq!(stats.decoded_ok, 1);
     }
 
     #[test]

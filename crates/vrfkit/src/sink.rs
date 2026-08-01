@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 use vrf_bitio::BitReader;
 use vrf_decode::{
-    ArrayDecodeStats, COMBAT_ROUNDS_SCHEMA, OVERLAY_TABLE, OverlayStats, OverlayTable,
-    apply_overlay, decode_struct_array,
+    ArrayDecodeStats, COMBAT_ROUNDS_SCHEMA, OVERLAY_HANDLE_TABLE, OVERLAY_TABLE, OverlayStats,
+    OverlayTable, apply_overlay_with_handle, decode_struct_array,
 };
 use vrf_export::{ActorRecord, FieldRecord, MovementRecord};
 use vrf_net::content::ContentBlockHeader;
@@ -24,7 +24,7 @@ use vrf_net::types::NetworkGuid;
 use vrf_schema::{NetGuidCache, class_net_cache_lookup_keys, replay_path_lookup_keys};
 
 /// Static overlay table built from C# descriptors.
-static TABLE: OverlayTable = OverlayTable::new(&OVERLAY_TABLE);
+static TABLE: OverlayTable = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
 
 /// Well-known subobject leaf names that map to a fixed class path.
 ///
@@ -966,10 +966,11 @@ impl<'a> ExportSink<'a> {
             // Apply type overlay using the parameter group path as group_path.
             let overlay_group = param_group_path_ref.unwrap_or(&self.current_group_path);
             let overlay_field = param_name.as_deref().unwrap_or(&full_field_name);
-            let (value_i64, value_f64, value_bool, value_str) = match apply_overlay(
+            let (value_i64, value_f64, value_bool, value_str) = match apply_overlay_with_handle(
                 &TABLE,
                 overlay_group,
                 Some(overlay_field),
+                param_handle,
                 raw_bits.as_deref(),
                 payload_bits,
                 &mut self.stats.overlay,
@@ -1172,10 +1173,11 @@ impl FieldSink for ExportSink<'_> {
         }
 
         // Apply the type overlay: decode raw_bits into a typed value if possible.
-        let (value_i64, value_f64, value_bool, value_str) = match apply_overlay(
+        let (value_i64, value_f64, value_bool, value_str) = match apply_overlay_with_handle(
             &TABLE,
             &self.current_group_path,
             field_name.as_deref(),
+            handle,
             raw_bits.as_deref(),
             bit_count,
             &mut self.stats.overlay,

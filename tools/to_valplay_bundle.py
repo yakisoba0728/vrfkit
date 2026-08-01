@@ -310,9 +310,17 @@ def _parse_rotation(val) -> dict:
         parts = s.split(",")
         if len(parts) == 3:
             try:
-                return {"pitch": float(parts[0]),
-                        "yaw": float(parts[1]),
-                        "roll": float(parts[2])}
+                # Rust's compact rotator strings are shortest-round-trip f32
+                # decimals. Widen each parsed component back from f32 so the
+                # typed representation matches the legacy raw-wire decoder and
+                # the C# JSON numbers exactly.
+                components = [
+                    _struct.unpack("<f", _struct.pack("<f", float(part)))[0]
+                    for part in parts
+                ]
+                return {"pitch": components[0],
+                        "yaw": components[1],
+                        "roll": components[2]}
             except ValueError:
                 pass
     return {"pitch": 0, "yaw": 0, "roll": 0}
@@ -703,12 +711,16 @@ def _build_shot_event(
                 # (559.962145690918), and rounding here was the only thing
                 # keeping shot_rays.sample_rays from matching.
                 location = _vec3(x, y, z)
+        elif raw248 is not None:
+            location = raw248
     if rotation is None:
         raw249 = scalar_params.get("249")
         if isinstance(raw249, dict) and "Data" in raw249:
             raw_bytes = base64.b64decode(raw249["Data"])
             bit_count_rot = raw249.get("BitCount", len(raw_bytes) * 8)
             rotation = _decode_rotation_short(raw_bytes, bit_count_rot)
+        elif raw249 is not None:
+            rotation = raw249
     effect_id = scalar_params.get("EffectID")
     source_id = scalar_params.get("SourceID")
     start_time = scalar_params.get("StartMovementTime")

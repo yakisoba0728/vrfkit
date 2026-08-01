@@ -22,6 +22,10 @@ Additionally handles:
 Fields using custom IFieldDecoder implementations or RawPayload are classified
 as Raw. Fields using .Ignore() are classified as Skip.
 
+Literal AddPropertyHandle declarations also emit a separate handle-to-name
+table. Runtime lookup remains name-first; the handle table is only a fallback
+for replays whose field name differs from the descriptor's label.
+
 Usage:
     python tools/extract_descriptors.py <replay_valorant_dir> <out.rs>
 """
@@ -136,6 +140,17 @@ ADD_FUNCTION_RE = re.compile(
     r'"(?P<name>[^"]+)"'
 )
 
+# Expression-bodied wrappers whose implementation delegates to
+# AddPropertyHandle(...).Decode(...). DamageParameters<T>.AddRaw is the live
+# example. Discover the wrapper from its implementation instead of baking the
+# helper's name into the extractor.
+RAW_WRAPPER_DEF_RE = re.compile(
+    r'(?:public|internal|protected|private)\s+(?:static\s+)?void\s+'
+    r'(?P<name>\w+)\s*\([^)]*\)\s*=>\s*'
+    r'AddPropertyHandle\([^;]+\)\s*\.Decode\(',
+    re.DOTALL,
+)
+
 
 def extract_path(source: str) -> str | None:
     """Extract the Path property from a descriptor class."""
@@ -156,12 +171,18 @@ def extract_class_info(source: str) -> tuple[str | None, str | None]:
     return (class_name, base)
 
 
-def extract_fields_from_block(block: str) -> list[tuple[str, str]]:
-    """Extract (field_export_name, rust_type) pairs from a code block.
+def extract_fields_from_block(
+    block: str, raw_wrapper_names: set[str] | None = None
+) -> list[tuple[str, str, int | None]]:
+    """Extract (field_export_name, rust_type, literal_handle) tuples.
 
     Handles AddProperty and AddPropertyHandle patterns, including multi-line
     statements where the .Type() or .Decode() call is on a continuation line.
+    ``literal_handle`` is populated only when the declaration supplies a
+    concrete decimal handle; unresolved helper parameters remain ``None``.
     """
+    if raw_wrapper_names is None:
+        raw_wrapper_names = set()
     fields = []
 
     # Join continuation lines: if a line starts with AddProperty but does not
@@ -172,7 +193,11 @@ def extract_fields_from_block(block: str) -> list[tuple[str, str]]:
     in_statement = False
     for raw_line in raw_lines:
         stripped = raw_line.strip()
-        if stripped.startswith("AddProperty"):
+        starts_raw_wrapper = any(
+            re.match(rf'{re.escape(name)}\s*\(', stripped)
+            for name in raw_wrapper_names
+        )
+        if stripped.startswith("AddProperty") or starts_raw_wrapper:
             in_statement = True
             current = [stripped]
             if stripped.endswith(";"):
@@ -191,13 +216,31 @@ def extract_fields_from_block(block: str) -> list[tuple[str, str]]:
 
     for line in statements:
 
+        raw_wrapper = next(
+            (
+                name
+                for name in raw_wrapper_names
+                if re.match(rf'{re.escape(name)}\s*\(', line)
+            ),
+            None,
+        )
+        if raw_wrapper is not None:
+            name = _extract_lambda_field_name(line)
+            if name:
+                fields.append((name, "FieldType::Raw", _extract_literal_handle(line)))
+            continue
+
         # Check for SerializedInt with parameter
         sm = SERIALIZED_INT_RE.search(line)
         if sm:
             max_val = sm.group(1)
             name = _extract_field_name(line)
             if name:
-                fields.append((name, f"FieldType::SerializedInt {{ max: {max_val} }}"))
+                fields.append((
+                    name,
+                    f"FieldType::SerializedInt {{ max: {max_val} }}",
+                    _extract_literal_handle(line),
+                ))
             continue
 
         # Check for ByteArray with parameter
@@ -206,7 +249,11 @@ def extract_fields_from_block(block: str) -> list[tuple[str, str]]:
             max_bytes = bm.group(1)
             name = _extract_field_name(line)
             if name:
-                fields.append((name, f"FieldType::ByteArray {{ max_bytes: {max_bytes} }}"))
+                fields.append((
+                    name,
+                    f"FieldType::ByteArray {{ max_bytes: {max_bytes} }}",
+                    _extract_literal_handle(line),
+                ))
             continue
 
         # Check for ReplicatedMovement with quantization
@@ -218,28 +265,36 @@ def extract_fields_from_block(block: str) -> list[tuple[str, str]]:
                           else "RotatorQuantization::ShortComponents")
             name = _extract_field_name(line)
             if name:
-                fields.append((name, f"FieldType::RepMovement {{ rotation: {rust_quant} }}"))
+                fields.append((
+                    name,
+                    f"FieldType::RepMovement {{ rotation: {rust_quant} }}",
+                    _extract_literal_handle(line),
+                ))
             continue
 
         # Simple ReplicatedMovement()
         if REP_MOVEMENT_DEFAULT_RE.search(line):
             name = _extract_field_name(line)
             if name:
-                fields.append((name, "FieldType::RepMovement { rotation: RotatorQuantization::ShortComponents }"))
+                fields.append((
+                    name,
+                    "FieldType::RepMovement { rotation: RotatorQuantization::ShortComponents }",
+                    _extract_literal_handle(line),
+                ))
             continue
 
         # RepLayoutDynamicArray<T>() -- treated as Raw (opaque TArray)
         if REP_LAYOUT_DYN_ARRAY_RE.search(line):
             name = _extract_field_name(line)
             if name:
-                fields.append((name, "FieldType::Raw"))
+                fields.append((name, "FieldType::Raw", _extract_literal_handle(line)))
             continue
 
         # Check for Decode(...) -- custom/raw
         if DECODE_RE.search(line):
             name = _extract_field_name(line)
             if name:
-                fields.append((name, "FieldType::Raw"))
+                fields.append((name, "FieldType::Raw", _extract_literal_handle(line)))
             continue
 
         # Try simple primitive type
@@ -247,7 +302,11 @@ def extract_fields_from_block(block: str) -> list[tuple[str, str]]:
         if type_name and type_name in PRIMITIVE_TYPES:
             name = _extract_field_name(line)
             if name:
-                fields.append((name, PRIMITIVE_TYPES[type_name]))
+                fields.append((
+                    name,
+                    PRIMITIVE_TYPES[type_name],
+                    _extract_literal_handle(line),
+                ))
             continue
 
     return fields
@@ -261,6 +320,32 @@ def extract_cnc_functions(block: str) -> list[str]:
     names = []
     for m in ADD_FUNCTION_RE.finditer(block):
         names.append(m.group("name"))
+    return names
+
+
+def extract_called_cnc_helper_functions(
+    class_body: str, configure_body: str
+) -> list[str]:
+    """Extract AddFunction calls from parameterless helpers Configure invokes.
+
+    Limiting the scan to called helpers prevents an unused method from silently
+    becoming a generated descriptor entry.
+    """
+    names = []
+    helper_calls = re.findall(r'(?m)^\s*(\w+)\s*\(\s*\)\s*;', configure_body)
+    for helper_name in helper_calls:
+        declaration = re.search(
+            rf'(?:public|internal|protected|private)\s+(?:static\s+)?void\s+'
+            rf'{re.escape(helper_name)}\s*\(\s*\)',
+            class_body,
+        )
+        if declaration is None:
+            continue
+        body_start = class_body.find('{', declaration.end())
+        if body_start == -1:
+            continue
+        _, body_end = find_class_body_range(class_body, declaration.start())
+        names.extend(extract_cnc_functions(class_body[body_start:body_end]))
     return names
 
 
@@ -290,6 +375,18 @@ def _extract_field_name(line: str) -> str | None:
     if m:
         return m.group(1)
     return None
+
+
+def _extract_lambda_field_name(line: str) -> str | None:
+    """Extract the property leaf from any helper invocation containing a lambda."""
+    match = re.search(r'\w+\s*=>\s*(?:\w+\.)?(\w+)', line)
+    return match.group(1) if match else None
+
+
+def _extract_literal_handle(line: str) -> int | None:
+    """Return a declaration's first argument when it is a decimal literal."""
+    match = re.search(r'\w+\s*\(\s*(\d+)\s*,', line)
+    return int(match.group(1)) if match else None
 
 
 def _extract_type_name(line: str) -> str | None:
@@ -336,10 +433,12 @@ def main(argv: list[str]) -> int:
     # and class -> base_class map for inheritance.
     # Some files contain multiple class declarations (e.g. weapon descriptors).
     class_paths: dict[str, str] = {}        # class_name -> path
-    class_fields: dict[str, list[tuple[str, str]]] = {}  # class_name -> fields
+    class_fields: dict[str, list[tuple[str, str, int | None]]] = {}
     class_bases: dict[str, str] = {}        # class_name -> base_class_name
+    agent_category_roots: set[str] = set()
     # ClassNetCache function names -> Skip entries
     cnc_functions: dict[str, list[str]] = {}  # class_name -> function names
+    runtime_cnc_specs: list[tuple[str, str]] = []  # (path suffix, function name)
 
     # Multi-class regex: find ALL class declarations in a file.
     # Handles generic type parameters (<T>) and optional `where` constraint
@@ -354,8 +453,55 @@ def main(argv: list[str]) -> int:
     )
 
     cs_files = sorted(src_dir.rglob("*.cs"))
-    for cs_file in cs_files:
-        source = cs_file.read_text(encoding="utf-8-sig")
+    sources = [
+        (cs_file, cs_file.read_text(encoding="utf-8-sig"))
+        for cs_file in cs_files
+    ]
+    raw_wrapper_names = {
+        match.group("name")
+        for _, source in sources
+        for match in RAW_WRAPPER_DEF_RE.finditer(source)
+    }
+
+    # Runtime-created ClassNetCaches do not have descriptor classes or literal
+    # paths. Discover the constructor shape, resolve its RpcDescriptor.Name,
+    # and later apply it to descriptor paths in the Agent category.
+    runtime_cache_re = re.compile(
+        r'\w+\.Path\s*\+\s*"(?P<suffix>[^"]+)"\s*,\s*'
+        r'\[\s*(?P<factory>\w+)\s*\(\s*\)\s*\]',
+        re.DOTALL,
+    )
+    const_string_re = re.compile(
+        r'\bconst\s+string\s+(?P<name>\w+)\s*=\s*"(?P<value>[^"]+)"'
+    )
+    for _, source in sources:
+        constants = {
+            match.group("name"): match.group("value")
+            for match in const_string_re.finditer(source)
+        }
+        for runtime_match in runtime_cache_re.finditer(source):
+            factory_name = runtime_match.group("factory")
+            factory_match = re.search(
+                rf'\b{re.escape(factory_name)}\s*\(\s*\)', source
+            )
+            if factory_match is None:
+                continue
+            factory_tail = source[factory_match.end():]
+            name_match = re.search(
+                r'\bName\s*=\s*(?:"(?P<literal>[^"]+)"|(?P<constant>\w+))',
+                factory_tail,
+            )
+            if name_match is None:
+                continue
+            function_name = name_match.group("literal")
+            if function_name is None:
+                function_name = constants.get(name_match.group("constant"))
+            if function_name is not None:
+                runtime_cnc_specs.append(
+                    (runtime_match.group("suffix"), function_name)
+                )
+
+    for cs_file, source in sources:
 
         # Find all class declarations in this file
         class_matches = list(MULTI_CLASS_RE.finditer(source))
@@ -379,6 +525,13 @@ def main(argv: list[str]) -> int:
             class_name = cm.group(1)
             body_start, body_end = find_class_body_range(source, cm.start())
             class_body = source[body_start:body_end]
+
+            if re.search(
+                r'override\s+ExportCategory\s+Categories\s*=>\s*'
+                r'ExportCategory\.Agent\b',
+                class_body,
+            ):
+                agent_category_roots.add(class_name)
 
             # Extract Path declarations within this class body
             path_match = PATH_RE.search(class_body)
@@ -413,11 +566,18 @@ def main(argv: list[str]) -> int:
                     if is_cnc:
                         # Extract function names for CNC
                         funcs = extract_cnc_functions(configure_body)
+                        funcs.extend(
+                            extract_called_cnc_helper_functions(
+                                class_body, configure_body
+                            )
+                        )
                         if funcs:
                             cnc_functions[class_name] = funcs
                     else:
                         # Extract fields for ExportGroupDescriptor
-                        fields = extract_fields_from_block(configure_body)
+                        fields = extract_fields_from_block(
+                            configure_body, raw_wrapper_names
+                        )
                         if fields:
                             class_fields[class_name] = fields
 
@@ -427,15 +587,17 @@ def main(argv: list[str]) -> int:
             if not is_cnc:
                 # Look for methods that contain AddProperty calls but aren't
                 # Configure(). These are helper methods.
-                helper_fields = extract_fields_from_block(class_body)
+                helper_fields = extract_fields_from_block(
+                    class_body, raw_wrapper_names
+                )
                 if helper_fields and class_name not in class_fields:
                     class_fields[class_name] = helper_fields
                 elif helper_fields and class_name in class_fields:
                     # Merge helper fields not already captured by Configure()
-                    existing_names = {n for n, _ in class_fields[class_name]}
-                    for n, t in helper_fields:
+                    existing_names = {n for n, _, _ in class_fields[class_name]}
+                    for n, t, h in helper_fields:
                         if n not in existing_names:
-                            class_fields[class_name].append((n, t))
+                            class_fields[class_name].append((n, t, h))
                             existing_names.add(n)
 
     # Phase 2: resolve inheritance -- propagate fields from base classes
@@ -443,7 +605,9 @@ def main(argv: list[str]) -> int:
     # For classes that DO have fields, also merge parent fields (handles the
     # RPC parameter pattern where child.Configure() calls parent.AddSharedFields()
     # which declares additional fields not in the child's own Configure()).
-    def get_fields(cls: str, visited: set[str] | None = None) -> list[tuple[str, str]]:
+    def get_fields(
+        cls: str, visited: set[str] | None = None
+    ) -> list[tuple[str, str, int | None]]:
         if visited is None:
             visited = set()
         if cls in visited:
@@ -456,8 +620,12 @@ def main(argv: list[str]) -> int:
             parent_fields = get_fields(base_plain, visited)
             if parent_fields and own_fields:
                 # Merge: parent fields first, then child (child may override).
-                own_names = {name for name, _ in own_fields}
-                merged = [(n, t) for n, t in parent_fields if n not in own_names]
+                own_names = {name for name, _, _ in own_fields}
+                merged = [
+                    (n, t, h)
+                    for n, t, h in parent_fields
+                    if n not in own_names
+                ]
                 merged.extend(own_fields)
                 return merged
             if parent_fields:
@@ -466,6 +634,7 @@ def main(argv: list[str]) -> int:
 
     # Phase 3: build final entries
     entries: list[tuple[str, str, str]] = []  # (group_path, field_name, rust_type)
+    handle_entries: list[tuple[str, int, str]] = []
     type_counts: Counter[str] = Counter()
     raw_count = 0
     skip_count = 0
@@ -481,8 +650,10 @@ def main(argv: list[str]) -> int:
         if "ClassNetCacheDescriptor" in base:
             continue
         groups_seen.add(path)
-        for field_name, rust_type in fields:
+        for field_name, rust_type, literal_handle in fields:
             entries.append((path, field_name, rust_type))
+            if literal_handle is not None:
+                handle_entries.append((path, literal_handle, field_name))
             if rust_type == "FieldType::Raw":
                 raw_count += 1
             elif rust_type == "FieldType::Skip":
@@ -505,6 +676,33 @@ def main(argv: list[str]) -> int:
             entries.append((path, func_name, "FieldType::Skip"))
             skip_count += 1
 
+    def descends_from_any(cls: str, roots: set[str]) -> bool:
+        visited: set[str] = set()
+        current = cls
+        while current not in visited:
+            visited.add(current)
+            base = class_bases.get(current)
+            if base is None:
+                return False
+            if base in roots:
+                return True
+            current = base
+        return False
+
+    # 3c: runtime-created ClassNetCache entries. The live factory builds one
+    # cache for every Agent-category descriptor using `descriptor.Path +
+    # "_ClassNetCache"` and a shared RpcDescriptor. The constructor suffix and
+    # RPC name were parsed from source above; no replay path or alias is baked
+    # into the generator.
+    for suffix, function_name in sorted(set(runtime_cnc_specs)):
+        for class_name, path in sorted(class_paths.items()):
+            if not descends_from_any(class_name, agent_category_roots):
+                continue
+            cache_path = path + suffix
+            groups_seen.add(cache_path)
+            entries.append((cache_path, function_name, "FieldType::Skip"))
+            skip_count += 1
+
     # Deduplicate entries (same path + field_name can appear if parent+child both declare)
     seen_keys: set[tuple[str, str]] = set()
     deduped: list[tuple[str, str, str]] = []
@@ -515,8 +713,24 @@ def main(argv: list[str]) -> int:
             deduped.append(entry)
     entries = deduped
 
+    handle_by_key: dict[tuple[str, int], str] = {}
+    for group_path, handle, field_name in handle_entries:
+        key = (group_path, handle)
+        previous = handle_by_key.get(key)
+        if previous is not None and previous != field_name:
+            raise SystemExit(
+                "conflicting explicit handles for "
+                f"{group_path} handle {handle}: {previous!r} vs {field_name!r}"
+            )
+        handle_by_key[key] = field_name
+    handle_entries = [
+        (group_path, handle, field_name)
+        for (group_path, handle), field_name in handle_by_key.items()
+    ]
+
     # Sort by (group_path, field_name) for binary search
     entries.sort(key=lambda e: (e[0], e[1]))
+    handle_entries.sort(key=lambda e: (e[0], e[1]))
 
     # Recount after dedup
     raw_count = sum(1 for _, _, t in entries if t == "FieldType::Raw")
@@ -533,6 +747,7 @@ def main(argv: list[str]) -> int:
     print(f"  Raw (custom decoder): {raw_count}")
     print(f"  Skip (ignored): {skip_count}")
     print(f"  Typed: {len(entries) - raw_count - skip_count}")
+    print(f"Handle aliases: {len(handle_entries)}")
     print("Type distribution:")
     for t, c in type_counts.most_common():
         print(f"  {t}: {c}")
@@ -546,7 +761,7 @@ def main(argv: list[str]) -> int:
         f"// Raw/Custom: {raw_count}, Skip: {skip_count}, Typed: {len(entries) - raw_count - skip_count}.",
         "",
         "use crate::decode::FieldType;",
-        "use crate::overlay::OverlayEntry;",
+        "use crate::overlay::{OverlayEntry, OverlayHandleEntry};",
         "use crate::types::RotatorQuantization;",
         "",
         f"pub static OVERLAY_TABLE: [OverlayEntry; {len(entries)}] = [",
@@ -558,6 +773,19 @@ def main(argv: list[str]) -> int:
             f'    OverlayEntry {{ group_path: "{gp}", '
             f'field_name: "{fn}", '
             f'field_type: {rust_type} }},'
+        )
+    lines.append("];")
+    lines.append("")
+    lines.append(
+        f"pub static OVERLAY_HANDLE_TABLE: [OverlayHandleEntry; "
+        f"{len(handle_entries)}] = ["
+    )
+    for group_path, handle, field_name in handle_entries:
+        gp = group_path.replace("\\", "\\\\").replace('"', '\\"')
+        fn = field_name.replace("\\", "\\\\").replace('"', '\\"')
+        lines.append(
+            f'    OverlayHandleEntry {{ group_path: "{gp}", '
+            f'handle: {handle}, field_name: "{fn}" }},'
         )
     lines.append("];")
     lines.append("")
