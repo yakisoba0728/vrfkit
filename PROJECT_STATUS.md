@@ -38,11 +38,22 @@ valplay        : C:\Users\yakihyuk0728\Documents\GitHub\valplay
                  Never modify. Run its scripts by absolute path only.
 Corpus (.vrf)  : C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf
                  215 files, all ++Ares-Core+release-13.01
-Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf  (4 files)
+Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf
+                 The GAME OWNS THIS DIRECTORY AND ROTATES IT. Do not pin a
+                 baseline at it -- build_1302.json did, and on 2026-08-02 all
+                 four pinned replays were gone, replaced by three unrelated
+                 ones (verified: no subset of the pinned four sums to the new
+                 total). Re-pinned against a preserved copy, below.
 Older fixtures : C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser\tests\Test.Integration\Replays
                  One source fixture each for 12.10, 12.11, and 13.00.
                  READ ONLY; do not run baselines from this repository.
 Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
+                 One preserved replay per build: 12.10, 12.11, 13.00 (test
+                 fixtures, ~1 MB each) and 13.02 (a real 62 MB demo, copied
+                 2026-08-02). Every build_*.json now points here, at files
+                 nothing else writes to. THIS is what makes the pins mean
+                 something -- a baseline over a directory some other program
+                 owns guards nothing.
 ```
 
 ### Verify the build before touching anything

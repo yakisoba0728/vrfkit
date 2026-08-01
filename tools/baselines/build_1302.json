@@ -1,51 +1,24 @@
 {
- "corpus": "%LOCALAPPDATA%\\VALORANT\\Saved\\Demos",
+ "corpus": "%LOCALAPPDATA%\\vrfkit\\baseline-corpora\\build_1302",
  "branches": {
-  "++Ares-Core+release-13.02": 4
+  "++Ares-Core+release-13.02": 1
  },
  "totals": {
-  "blocks": 3117920,
-  "fields": 2279512,
-  "rpcs": 1713576,
+  "blocks": 774299,
+  "fields": 568553,
+  "rpcs": 408591,
   "malformed": 0,
-  "skipped": 74573628
+  "skipped": 23029269
  },
  "per_file": {
-  "2a09e682-59e1-4889-b574-bd793e10a59a.vrf": {
+  "1.vrf": {
    "branch": "++Ares-Core+release-13.02",
-   "rate": "97.959041",
-   "blocks": 686559,
-   "fields": 507642,
-   "rpcs": 370896,
+   "rate": "98.919383",
+   "blocks": 774299,
+   "fields": 568553,
+   "rpcs": 408591,
    "malformed": 0,
-   "skipped": 43365155
-  },
-  "43d0f434-d70a-44d4-bc72-ba12189281b8.vrf": {
-   "branch": "++Ares-Core+release-13.02",
-   "rate": "99.182250",
-   "blocks": 1004465,
-   "fields": 727996,
-   "rpcs": 568226,
-   "malformed": 0,
-   "skipped": 6395959
-  },
-  "5fbbeb4a-d72e-4412-bf94-a4c39845369f.vrf": {
-   "branch": "++Ares-Core+release-13.02",
-   "rate": "98.706979",
-   "blocks": 797976,
-   "fields": 574132,
-   "rpcs": 428640,
-   "malformed": 0,
-   "skipped": 20938456
-  },
-  "6c791012-f0b1-47ff-aa16-a08e481703b4.vrf": {
-   "branch": "++Ares-Core+release-13.02",
-   "rate": "99.329325",
-   "blocks": 628920,
-   "fields": 469742,
-   "rpcs": 345814,
-   "malformed": 0,
-   "skipped": 3874058
+   "skipped": 23029269
   }
  }
 }
