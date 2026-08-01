@@ -879,6 +879,34 @@ def _set_nested(root: dict, parts: list, value):
                 obj = next_obj
 
 
+def _drop_padding_elements(node):
+    """Remove `{}` placeholders that array extension left behind.
+
+    Replication is sparse: a packet can carry element [1] of an array without
+    resending [0]. `_set_nested` has to extend the list to reach index 1, and
+    the filler it appends is a bare `{}`.
+
+    The reference emits only the elements actually present, so those fillers
+    are ours alone -- and they are not harmless. compute_metrics builds
+    `{t["Index"]: t for t in teams}` and then sorts the keys; a filler has no
+    Index, so the None key made sorting raise TypeError and the whole replay
+    failed to produce metrics.
+
+    Only fully empty dicts are dropped. Every genuine element carries at least
+    the `Index` that `_set_nested` injects, so nothing real matches. `None`
+    fillers in scalar arrays are left alone: there the position IS the index,
+    and removing one would silently renumber the rest.
+    """
+    if isinstance(node, dict):
+        for value in node.values():
+            _drop_padding_elements(value)
+    elif isinstance(node, list):
+        node[:] = [e for e in node if e != {}]
+        for value in node:
+            _drop_padding_elements(value)
+    return node
+
+
 def _get_value(row_i64, row_f64, row_bool, row_str, row_raw, row_bits):
     """Extract the typed value from a fields.parquet row.
 
@@ -1232,6 +1260,8 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
                 payload[bare_name] = value
             elif parts[0][0] not in RAW_BLOB_PREFERRED:
                 _set_nested(payload, parts, value)
+
+        _drop_padding_elements(payload)
 
         # Emit even if payload is empty (some events are just existence signals)
         event = {
