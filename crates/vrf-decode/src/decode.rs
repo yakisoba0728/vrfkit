@@ -68,7 +68,7 @@ pub enum DecodeError {
     BitIo(#[from] vrf_bitio::BitError),
     #[error("not fully consumed: {remaining} bits left after decode")]
     NotFullyConsumed { remaining: u64 },
-    #[error("field type is Raw/Skip — no decode attempted")]
+    #[error("field type is Raw/Skip -- no decode attempted")]
     RawOrSkip,
 }
 
