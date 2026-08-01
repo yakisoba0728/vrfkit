@@ -243,7 +243,11 @@ vrfkit/
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 236 tests. Counts measured per crate on 2026-08-01; the previous
+Total: 236 tests. The per-crate list above sums to 233, not 236, because it
+was taken excluding doc-tests for some crates and including them for others.
+Known wrong: vrf-frame is 5 not 3, vrf-export is 19 not 18 (0 unit + 17
+integration + 2 doc). Re-measure per crate before quoting any single row.
+Counts measured per crate on 2026-08-01; the previous
 breakdown in this document was wrong for six of the ten crates even though
 its total happened to be right.
 
@@ -721,13 +725,37 @@ weapon_stats     OURS BETTER  by_weapon identical for all 23 weapons;
 ---------------------------------------------------------------------------
 ```
 
-EXACT: identical Python object equality. 16 of 21 sections, and the same
-       16 on all 11 cross-validated replays (section 6-A).
+EXACT: identical Python object equality. The harness prints 16 of 21, but
+       one of those keys is `note` -- a fixed provenance string
+       compute_metrics writes for any input, structurally incapable of
+       failing. The honest figure is 15 of 20 real metric sections, and the
+       same 15 on all 11 cross-validated replays (section 6-A).
+       NOTE ALSO: the table above lists `combat` twice; it is one section.
 OURS BETTER: our value is more complete/correct than the C# reference.
 BLOCKED: the data is present but a named defect prevents it being used.
-         No section is BLOCKED, and no section differs for a reason that is
-         not understood. Every remaining difference is a case where we carry
-         data the C# parser does not.
+         No section is BLOCKED.
+
+CORRECTION 2026-08-01. This block previously claimed "no section differs for
+a reason that is not understood" and "every remaining difference is a case
+where we carry data the C# parser does not". An audit refuted both. Three
+fields exist where the REFERENCE is higher than us:
+
+  2c9e88a0  tactical.clutch_attempts     ref 4   ours 1
+  45758459  tactical.clutch_attempts     ref 7   ours 5
+  500ce1a8  tactical.clutch_attempts     ref 6   ours 3
+  500ce1a8  tactical.clutch_wins         ref 2   ours 1
+  02d4d478  tactical.opening_duels_won   ref 11  ours 10
+            (with opening_duels_played conserved at 18)
+
+opening_duels_won is a strict subset of opening_duels_played, and the
+denominator is conserved -- so that one is a disagreement about a single
+duel's OUTCOME, not a data-volume difference. These are derived from the kill
+timeline, whose derivation is not monotonic in kill count, so carrying 13
+extra kills COULD lower a clutch count. No mechanism has been established.
+Treat this as an open question, not as understood.
+
+kast survived the same check cleanly: zero reference-higher values on any
+replay.
 
 Scoreboard metrics that Tracker.gg validated (K/D/A, ADR, HS%, KAST,
 FK/FD, MK, rank): reproduced exactly for all 10 players from vrfkit data.
@@ -888,21 +916,52 @@ between "this ability was used" (which we have) and "this ability affected
 these players for this long" (which we do not). Interesting for coaching or
 pro analysis; irrelevant to replacing the C# parser.
 
-NOT LOST, ONLY UNNAMED: the raw bits are written to Parquet regardless, under
-the no-skip-path invariant. If a future build declares the group, replays
-already archived can be reinterpreted. The C# parser drops these blocks
-entirely, so its output can never be revisited.
+LOST, NOT MERELY UNNAMED. This section previously claimed "the raw bits are
+written to Parquet regardless ... replays already archived can be
+reinterpreted". That is FALSE and was never checked.
+
+`crates/vrf-net/src/field.rs:119` returns `Err` when `function_count == 0`
+BEFORE reading any bits. The caller only invokes `on_stream_failure`, which
+pushes a diagnostic string capped at 32 lines. No `on_field` or `on_rpc`
+fires, so no Parquet row is written. Measured: AbilitiesAndBuffsComponent
+accounts for 17,264,706 skipped bits on 02d4d478 but only 4,960 bits / 160
+rows in fields.parquet -- and all 6,365 failures are RPC-kind, so those 160
+rows are its RepLayout property path, which parses normally.
+
+Consequence: an archived Parquet export CANNOT be reinterpreted if a future
+build declares the group. You would have to re-run against the .vrf. Keep
+the source replays.
+
+This also qualifies NO SKIP PATH as written in section 8. "Every field emits
+(group_path, handle, name, bit_count, raw_bits) even when nothing is known"
+holds for fields inside a walkable block. A ClassNetCache block whose group
+cannot be resolved emits nothing at all -- it is counted and named in the
+oracle, which is the honest part, but its bits are not preserved.
 
 These blocks frame correctly (malformed framing 0); the group resolution
 returns function_count=0 and they are counted as failures.
 
-Breakdown:
-  91.7%  AbilitiesAndBuffsComponent  -- no cache group declared in schema
-  ~5%    MeleeAttackState1/2/3/4     -- digit suffix is a class variant,
-                                        not an instance suffix; each has
-                                        a distinct function table
-  ~2%    RespawningWallPlate2_7      -- "2_7" too aggressive to strip
-  ~1%    Various (space-in-name, etc.)
+Breakdown, RE-MEASURED 2026-08-01. The previous breakdown below was wrong
+because it could not be derived from any committed tool:
+MAX_STREAM_FAILURE_RECORDS (crates/vrfkit/src/sink.rs) caps the diagnostic at
+32 lines, so the percentages had been eyeballed from a truncated sample. The
+corrected figures sum to exactly the oracle's own totals on both scopes.
+
+                               02d4d478    corpus (215)
+  AbilitiesAndBuffsComponent     98.61%      97.28%
+  PatchVolume                     0.66%       1.55%   <- unlisted before
+  RespawningWallPlate2_7          0.02%       0.005%
+  MeleeAttackState1/2/3/4         0.00%       0.00%   <- ZERO blocks
+  everything else (175 groups)    0.71%       1.17%
+
+MeleeAttackState contributes NOTHING. The previous text said it was ~5% and
+"tractable"; in fact /Script/ShooterGame.MeleeAttackStateComponent_ClassNetCache
+IS declared, the existing digit-stripping resolution already reaches it, and
+it emits 473 field rows on 02d4d478. There is nothing there to recover.
+
+If anyone wants to work in this area, the useful task is raising or removing
+the 32-line diagnostic cap so this breakdown is reproducible from a committed
+tool. A wrong breakdown survived precisely because it was not.
 
 AbilitiesAndBuffsComponent is the real ceiling. Until the game server
 declares its ClassNetCache group in the schema, no lookup can reach it.
