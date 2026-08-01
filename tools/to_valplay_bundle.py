@@ -612,6 +612,37 @@ def _parse_location(val) -> dict:
     return {"x": 0, "y": 0, "z": 0}
 
 
+def _parse_exact_vector(val):
+    """Parse a "(x,y,z)" vector without losing precision.
+
+    Distinct from _parse_location, which rounds to 2 decimals and substitutes
+    a zero vector when it cannot parse. Neither is acceptable here: the damage
+    direction is a unit vector the reference emits at full float precision
+    (0.055482650227362894), and a zero vector would be a silent wrong value
+    rather than a visible absence.
+
+    Integral components come back as ints so the output matches the C#
+    reference exactly -- it emits {"x": 0, "y": 1, "z": 0}, not 0.0/1.0/0.0.
+
+    Returns None when the value is not a parseable vector.
+    """
+    if isinstance(val, dict):
+        return val
+    if not isinstance(val, str):
+        return None
+    parts = val.strip("()").split(",")
+    if len(parts) != 3:
+        return None
+    try:
+        nums = [float(p) for p in parts]
+    except ValueError:
+        return None
+    return {
+        axis: (int(n) if n.is_integer() else n)
+        for axis, n in zip(("x", "y", "z"), nums)
+    }
+
+
 def _parse_rotation(val) -> dict:
     """Parse a Rotation value into {pitch, yaw, roll}."""
     if val is None:
@@ -660,6 +691,18 @@ def _decode_rotation_short(data: bytes, bit_count: int) -> dict:
 # ---------------------------------------------------------------------------
 # RegionalDamage enum mapping: vrfkit stores as int, valplay expects string
 # ---------------------------------------------------------------------------
+# Damage RPC parameters that carry an FVector_NetQuantize* payload. The C#
+# call sites are DamageParameters.cs:50 and
+# MulticastNotifyDamagePointParameters.cs:40-46.
+DAMAGE_VECTOR_PARAMS = frozenset({
+    "DamageOrigin",
+    "DamageImpactLocation",
+    "DamageImpactBoneRelativeLocation",
+    "DamageDirection",
+    "DamageImpactNormal",
+})
+
+
 # EAresRegionalDamage.cs. The ordinals are the C# enum's, not an invention:
 #
 #   RegionalDamage_Normal         = 0
@@ -1294,6 +1337,16 @@ def _normalize_rpc_param(rpc_name: str, param: str, value, is_raw: bool) -> dict
         # RegionalDamage: int -> string
         if param == "RegionalDamage" and not is_raw:
             value = REGIONAL_DAMAGE_MAP.get(value, f"regional_damage__unknown_{value}")
+
+        # Damage geometry: the parser now decodes these as quantized vectors
+        # (previously raw blobs, because the C# custom decoder hid the type).
+        # They arrive as the compact "(x,y,z)" string and the reference emits
+        # {x, y, z}. Left as the raw payload if a value ever fails to parse --
+        # visibly absent beats a fabricated zero vector.
+        if param in DAMAGE_VECTOR_PARAMS:
+            parsed = _parse_exact_vector(value)
+            result[out_name] = parsed if parsed is not None else value
+            return result
 
         # EquippableUsed: net GUID -> the C# ValorantEquippable shape.
         #

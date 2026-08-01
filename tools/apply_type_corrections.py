@@ -153,6 +153,45 @@ def main():
             count += 1
     content = "    OverlayEntry {".join(blocks)
 
+    # Fix: Raw -> quantized vectors for the damage geometry fields.
+    #
+    # Same invisibility problem as EquippableUsed above: these are attached
+    # with .Decode(ValorantPayloadDecoders.VectorNetQuantize*(...)), so the
+    # extractor sees a custom decoder and emits Raw, even though vrf-decode
+    # already implements the exact quantization.
+    #
+    # Scales come from the C# call sites, not from guesswork:
+    #   DamageParameters.cs:50                    VectorNetQuantize100
+    #   MulticastNotifyDamagePointParameters.cs:40 VectorNetQuantizeNormal
+    #   MulticastNotifyDamagePointParameters.cs:42 VectorNetQuantize
+    #   MulticastNotifyDamagePointParameters.cs:44 VectorNetQuantizeNormal
+    #   MulticastNotifyDamagePointParameters.cs:46 VectorNetQuantize
+    #
+    # Confirmed by the reference bundle's own output: DamageImpactLocation is
+    # integral (scale 1), DamageOrigin carries two decimals (scale 100), and
+    # DamageDirection / DamageImpactNormal are unit vectors.
+    damage_vectors = {
+        "DamageOrigin": "FieldType::VectorNetQuantize { scale: 100 }",
+        "DamageImpactLocation": "FieldType::VectorNetQuantize { scale: 1 }",
+        "DamageImpactBoneRelativeLocation": "FieldType::VectorNetQuantize { scale: 1 }",
+        "DamageDirection": "FieldType::VectorNetQuantizeNormal",
+        "DamageImpactNormal": "FieldType::VectorNetQuantizeNormal",
+    }
+    blocks = content.split("    OverlayEntry {")
+    for i, block in enumerate(blocks):
+        if i == 0:
+            continue
+        if "DamageableComponent:MulticastNotifyDamage_" not in block:
+            continue
+        for field, new_type in damage_vectors.items():
+            if f'field_name: "{field}"' not in block:
+                continue
+            if "FieldType::Raw" in block:
+                blocks[i] = block.replace("FieldType::Raw", new_type)
+                count += 1
+            break
+    content = "    OverlayEntry {".join(blocks)
+
     TABLE_RS.write_text(content, encoding="utf-8")
     print(f"Applied {count} type corrections to {TABLE_RS}")
     return 0

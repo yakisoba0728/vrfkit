@@ -520,6 +520,54 @@ mod overlay_tests {
     }
 
     #[test]
+    fn damage_geometry_fields_are_quantized_vectors() {
+        // Same trap as EquippableUsed: DamageParameters attaches
+        // ValorantPayloadDecoders.VectorNetQuantize* to these four, so
+        // extract_descriptors.py cannot see the type and they land as Raw --
+        // even though vrf-decode already implements the exact quantization.
+        // Scales are the C# call sites: VectorNetQuantize = 1,
+        // VectorNetQuantize100 = 100, VectorNetQuantizeNormal = unit vector.
+        const BASE: &str = "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Base";
+        const POINT: &str = "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Point";
+
+        // DamageOrigin is on the shared base; the impact geometry only exists
+        // for point damage, which is why the two groups differ here.
+        let expected = [
+            (
+                BASE,
+                "DamageOrigin",
+                FieldType::VectorNetQuantize { scale: 100 },
+            ),
+            (
+                POINT,
+                "DamageOrigin",
+                FieldType::VectorNetQuantize { scale: 100 },
+            ),
+            (
+                POINT,
+                "DamageImpactLocation",
+                FieldType::VectorNetQuantize { scale: 1 },
+            ),
+            (
+                POINT,
+                "DamageImpactBoneRelativeLocation",
+                FieldType::VectorNetQuantize { scale: 1 },
+            ),
+            (POINT, "DamageDirection", FieldType::VectorNetQuantizeNormal),
+            (
+                POINT,
+                "DamageImpactNormal",
+                FieldType::VectorNetQuantizeNormal,
+            ),
+        ];
+
+        let table = OverlayTable::new(&OVERLAY_TABLE);
+        for (group, field, want) in expected {
+            assert_eq!(table.lookup(group, field), Some(want), "{field} in {group}");
+        }
+    }
+
+    #[test]
     fn lookup_returns_none_for_unknown() {
         let table = OverlayTable::new(&OVERLAY_TABLE);
         let ft = table.lookup("nonexistent", "field");

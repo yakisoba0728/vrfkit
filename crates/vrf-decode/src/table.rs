@@ -4361,7 +4361,7 @@ pub static OVERLAY_TABLE: [OverlayEntry; 1054] = [
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Base",
         field_name: "DamageOrigin",
-        field_type: FieldType::Raw,
+        field_type: FieldType::VectorNetQuantize { scale: 100 },
     },
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Base",
@@ -4486,27 +4486,27 @@ pub static OVERLAY_TABLE: [OverlayEntry; 1054] = [
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Point",
         field_name: "DamageDirection",
-        field_type: FieldType::Raw,
+        field_type: FieldType::VectorNetQuantizeNormal,
     },
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Point",
         field_name: "DamageImpactBoneRelativeLocation",
-        field_type: FieldType::Raw,
+        field_type: FieldType::VectorNetQuantize { scale: 1 },
     },
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Point",
         field_name: "DamageImpactLocation",
-        field_type: FieldType::Raw,
+        field_type: FieldType::VectorNetQuantize { scale: 1 },
     },
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Point",
         field_name: "DamageImpactNormal",
-        field_type: FieldType::Raw,
+        field_type: FieldType::VectorNetQuantizeNormal,
     },
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Point",
         field_name: "DamageOrigin",
-        field_type: FieldType::Raw,
+        field_type: FieldType::VectorNetQuantize { scale: 100 },
     },
     OverlayEntry {
         group_path: "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Point",
