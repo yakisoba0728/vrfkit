@@ -26,6 +26,23 @@ mod scalar {
     }
 
     #[test]
+    fn fname_hardcoded_reads_a_packed_index() {
+        // FArchive.ReadFNameCore: when the leading bit is set the name is a
+        // hardcoded table index sent as IntPacked, and the reference renders
+        // it as the decimal index -- there is no FString to read.
+        //
+        // Ignoring that branch is why MulticastNotifyDamage_Point.DamagedBone
+        // had to be forced to Raw: 177 of its 581 payloads on 02d4d478 are
+        // 9 bits (1 flag + one IntPacked byte), far too short for the
+        // FString path, which read past the end and produced mojibake.
+        //
+        // 9-bit payload: bit0 = 1 (hardcoded), then IntPacked 0 = byte 0x00.
+        let data = [0x01u8, 0x00];
+        let result = decode_field(FieldType::FName, &data, 9).unwrap();
+        assert_eq!(result, DecodedValue::Str("0".into()));
+    }
+
+    #[test]
     fn fname_reads_inline_name() {
         let mut bits = Vec::new();
         // bit 0 = false (not hardcoded)

@@ -50,7 +50,6 @@ for _group in (
         EXPECTED.append((_group, _field, "EnumRemainingBits"))
 EXPECTED += [
     ("SmokeScreen", "ReplicatedMovement", "ByteComponents"),
-    ("MulticastNotifyDamage_Point", "DamagedBone", "Raw"),
     ("AresEquippableDataTracker", "OriginalBuyerTeam", "Raw"),
     ("MulticastNotifyDamage_Base", "EquippableUsed", "ObjectNetGuid"),
     ("MulticastNotifyDamage_Point", "EquippableUsed", "ObjectNetGuid"),
@@ -201,23 +200,17 @@ def main():
             count += 1
     content = "    OverlayEntry {".join(blocks)
 
-    # Fix: FName -> Raw for DamagedBone in MulticastNotifyDamage_Point.
-    # Wire sends 9 bits consistently (176 occurrences in 02d4d478); this is
-    # too short for the standard IntPacked FName reader (minimum ~8-16 bits for
-    # index alone). C# uses a custom decoder path for this field. Mark as Raw
-    # to preserve the bits without decode errors. Value is always bone index 0.
-    blocks = content.split("    OverlayEntry {")
-    for i, block in enumerate(blocks):
-        if i == 0:
-            continue
-        if "MulticastNotifyDamage_Point" not in block:
-            continue
-        if 'field_name: "DamagedBone"' not in block:
-            continue
-        if "FieldType::FName" in block:
-            blocks[i] = block.replace("FieldType::FName", "FieldType::Raw")
-            count += 1
-    content = "    OverlayEntry {".join(blocks)
+    # REMOVED: FName -> Raw for DamagedBone in MulticastNotifyDamage_Point.
+    #
+    # This pass existed because 177 of 581 payloads arrive at 9 bits, which
+    # the FName decoder could not read. Its comment claimed the value "is
+    # always bone index 0" -- generalised from those 177 and wrong: the
+    # reference has 22 distinct bone names (Head 69, Spine4 51, L_Shoulder
+    # 46, ...) and forcing Raw made us ship mojibake for all 581.
+    #
+    # The real cause was decode_fname ignoring the isHardcoded bit. Fixed in
+    # vrf-decode, so the field decodes as the FName the C# descriptor
+    # declares and needs no correction here.
 
     # Fix: EnumByte -> Raw for AresEquippableDataTracker.OriginalBuyerTeam.
     # C# declares this as EnumByte (single byte), but on wire it arrives as

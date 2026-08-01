@@ -189,9 +189,24 @@ fn decode_fstring(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeError> {
     Ok(DecodedValue::Str(r.read_fstring(64 * 1024)?))
 }
 
-/// FName on the wire: 1 bit (isHardcoded=false for replays) + FString + i32 suffix.
+/// FName on the wire: 1 bit `isHardcoded`, then one of two shapes.
+///
+/// Mirrors `FArchive.ReadFNameCore` in the reference. When the bit is set the
+/// name is an index into the engine's hardcoded name table, sent as a single
+/// IntPacked and rendered as its decimal value; there is no string. When it is
+/// clear the name is inline: FString plus an i32 suffix.
+///
+/// The comment here used to assert "isHardcoded=false for replays" and the
+/// code read the bit and discarded it, always taking the inline path. That is
+/// false: 177 of the 581 `DamagedBone` payloads on 02d4d478 are 9 bits, which
+/// is exactly the hardcoded shape (1 flag + one IntPacked byte). Reading them
+/// as an FString ran off the end of the payload and produced mojibake, which
+/// is why the field had to be forced to Raw in the type-correction pass.
 fn decode_fname(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeError> {
-    let _is_hardcoded = r.read_bit()?;
+    if r.read_bit()? {
+        let index = r.read_int_packed()?;
+        return Ok(DecodedValue::Str(index.to_string()));
+    }
     let name = r.read_fstring(64 * 1024)?;
     let _suffix = r.read_i32()?;
     Ok(DecodedValue::Str(name))
