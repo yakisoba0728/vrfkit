@@ -116,7 +116,7 @@ use vrf_net::stats::{DiagnosticEvent, SkipReason};
 use vrf_schema::NetGuidCache;
 
 use crate::error::CliError;
-use crate::sink::{ChannelState, ExportSink};
+use crate::sink::{ChannelState, ExportSink, RecordBuffers};
 
 /// Run the validate oracle. If `diagnostics` is true, print full diagnostic
 /// dumps for every malformed/skipped event.
@@ -142,6 +142,9 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
     let mut chunk_iter = ChunkIterator::new(&data, preamble.remaining_offset);
     let mut packet_descs: Vec<(u32, usize, usize)> = Vec::with_capacity(4096);
     let mut channel_state = ChannelState::new();
+    // Reused across every packet: the oracle never drains these, and
+    // `ExportSink::new` clears them, so they stay bounded by the largest packet.
+    let mut buffers = RecordBuffers::default();
 
     while let Some(chunk) = chunk_iter.next_chunk()? {
         if chunk.chunk_type != ChunkType::ReplayData {
@@ -161,7 +164,7 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
         // Phase 2: process packets
         for &(time_ms, offset, len) in &packet_descs {
             let pkt_data = &decompressed[offset..offset + len];
-            let mut sink = ExportSink::new(&mut cache, &mut channel_state);
+            let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut buffers);
             sink.time_ms = time_ms;
             sink.packet_id = total_packets;
             repl_reader.process_packet(pkt_data, total_packets as i32, &mut sink);
