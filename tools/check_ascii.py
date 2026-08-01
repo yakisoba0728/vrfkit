@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 Violation = tuple[int, int, int]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
 def violations(path: Path) -> list[Violation]:
@@ -26,19 +27,22 @@ def violations(path: Path) -> list[Violation]:
 def tracked_rust_files() -> list[Path]:
     """Enumerate tracked Rust files from the repository root."""
     result = subprocess.run(
-        ["git", "ls-files", "-z", "--", "*.rs"],
+        ["git", "-C", str(REPOSITORY_ROOT), "ls-files", "-z", "--", "*.rs"],
         check=True,
         stdout=subprocess.PIPE,
     )
     return [Path(raw.decode()) for raw in result.stdout.split(b"\0") if raw]
 
 
-def scan(paths: list[Path]) -> tuple[list[tuple[Path, Violation]], int]:
+def scan(
+    paths: list[Path], *, root: Path | None = None
+) -> tuple[list[tuple[Path, Violation]], int]:
     """Scan paths, returning individual violations and affected-line count."""
     found: list[tuple[Path, Violation]] = []
     affected_lines: set[tuple[Path, int]] = set()
     for path in paths:
-        for violation in violations(path):
+        source_path = root / path if root is not None else path
+        for violation in violations(source_path):
             found.append((path, violation))
             affected_lines.add((path, violation[0]))
     return found, len(affected_lines)
@@ -47,7 +51,8 @@ def scan(paths: list[Path]) -> tuple[list[tuple[Path, Violation]], int]:
 def run_check(paths: list[Path], *, tracked: bool) -> int:
     """Print a stable scanner report and return its process exit status."""
     try:
-        found, affected_line_count = scan(paths)
+        root = REPOSITORY_ROOT if tracked else None
+        found, affected_line_count = scan(paths, root=root)
     except OSError as exc:
         print(f"ERROR: cannot read Rust source: {exc}", file=sys.stderr)
         return 2
