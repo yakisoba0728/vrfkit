@@ -915,10 +915,11 @@ transform is order-free.
 Ceiling: perfect N-way parallelism over the transform alone saves at most
 3.4% of an export and about 6.5% of a validate. Against that: a rayon
 dependency, per-worker scratch buffers, a gather step, and a bit-identity
-risk -- reordering would change `skipped_bits` accumulation order, the
-diagnostics vector, and which 32 lines survive the stream-failure cap, all
-of which are load-bearing under NO SILENT SUCCESS. Do not reopen without
-new measurements.
+risk. The counter totals would survive reordering -- `skipped_bits` is a
+u64 sum and addition commutes -- but the ordered records would not: the
+`DiagnosticEvent` vector behind `validate --diagnostics`, and which 32
+lines survive the first-32-wins stream-failure cap. Both are load-bearing
+under NO SILENT SUCCESS. Do not reopen without new measurements.
 
 Where the time actually is, if a future session wants throughput: Parquet
 writing (37%), `on_content_block` group-path resolution (12%), and
