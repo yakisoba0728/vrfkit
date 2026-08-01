@@ -59,8 +59,9 @@ fn parse_all_vrf_files() {
         *branches.entry(branch.clone()).or_insert(0) += 1;
 
         // (c) Oodle decompression — try first ReplayData chunk
+        // A file with no ReplayData chunk at all is unusual but not a failure:
+        // the loop just ends without recording an Oodle result either way.
         let mut iter = ChunkIterator::new(&data, preamble.remaining_offset);
-        let mut tried_oodle = false;
         while let Ok(Some(chunk)) = iter.next_chunk() {
             if chunk.chunk_type == ChunkType::ReplayData {
                 let payload =
@@ -78,12 +79,8 @@ fn parse_all_vrf_files() {
                         failures.push((filename.clone(), format!("oodle: {e}")));
                     }
                 }
-                tried_oodle = true;
                 break;
             }
-        }
-        if !tried_oodle {
-            // No ReplayData chunks found — unusual but not a failure
         }
     }
 
