@@ -104,6 +104,9 @@ pub struct NetGuidCache {
     guid_to_path: HashMap<u32, String>,
     /// NetGUID value → outer NetGUID value (containment hierarchy).
     guid_to_outer: HashMap<u32, NetworkGuid>,
+    /// Bumped whenever the set of group paths changes. See
+    /// [`Self::schema_generation`].
+    schema_generation: u64,
 }
 
 impl NetGuidCache {
@@ -121,7 +124,27 @@ impl NetGuidCache {
             groups: Vec::new(),
             guid_to_path: HashMap::new(),
             guid_to_outer: HashMap::new(),
+            schema_generation: 0,
         }
+    }
+
+    /// A counter that changes whenever the set of group paths changes.
+    ///
+    /// Callers that memoise a *pure function of the group paths* -- "which group
+    /// does this path resolve to", "is this function name unique across all
+    /// groups" -- can stamp the memo with this value and discard it when the
+    /// value moves. It is bumped by every [`Self::add_export_group`] and by
+    /// [`Self::clear`], which are the only operations that add a path, add a
+    /// path alias, or remove one.
+    ///
+    /// It deliberately does NOT track field mutations ([`Self::set_field_on_group`],
+    /// the merge half of `add_export_group`): a memo of field contents would be
+    /// unsound to key on this. Only path-set queries may use it. The generation
+    /// is bumped unconditionally on `add_export_group`, including the merge
+    /// branch, because merging also re-registers path aliases.
+    #[must_use]
+    pub fn schema_generation(&self) -> u64 {
+        self.schema_generation
     }
 
     /// Register a new export group or merge it with an existing one.
@@ -130,6 +153,7 @@ impl NetGuidCache {
     /// incoming fields are merged into it (growing the field vector if needed).
     /// Returns a shared reference to the canonical group.
     pub fn add_export_group(&mut self, group: NetFieldExportGroup) -> usize {
+        self.schema_generation = self.schema_generation.wrapping_add(1);
         let existing_by_path = self.by_path.get(&group.path).copied();
         let existing_by_index = self.by_index.get(&group.path_name_index).copied();
 
@@ -464,6 +488,7 @@ impl NetGuidCache {
 
     /// Remove all state. Intended for tests or replay-boundary resets.
     pub fn clear(&mut self) {
+        self.schema_generation = self.schema_generation.wrapping_add(1);
         self.by_path.clear();
         self.by_index.clear();
         self.by_leaf.clear();

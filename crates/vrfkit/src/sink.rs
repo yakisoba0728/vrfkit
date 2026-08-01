@@ -8,6 +8,7 @@
 //! representation of the stream.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use vrf_bitio::BitReader;
 use vrf_decode::{
@@ -53,10 +54,31 @@ const KNOWN_SUBOBJECT_CLASS_PATHS: &[(&str, &str)] = &[
 /// struct holds the state that *must* persist across those boundaries ??namely
 /// the archetype GUID assigned when a channel is opened, which is needed later
 /// to resolve ClassNetCache export groups when content blocks arrive.
+/// Memo for `ExportSink::find_rpc_param_group_path`.
+///
+/// That lookup is a pure function of (content-block group path, function name,
+/// the set of declared group paths). The third input is what
+/// `NetGuidCache::schema_generation` tracks, so stamping the memo with it and
+/// clearing on a change makes the memo exactly equivalent to recomputing.
+///
+/// Why it matters: the fallback branch scans every declared group (475 on
+/// 02d4d478) with `ends_with`, once per RPC, and a replay has 342,735 RPCs.
+/// The distinct (group path, function name) pairs number in the hundreds.
+///
+/// Two levels rather than a tuple key so that a hit costs no allocation: both
+/// levels are keyed by `String` and probed with `&str`.
+#[derive(Debug, Clone, Default)]
+struct RpcParamGroupMemo {
+    generation: u64,
+    by_group: HashMap<String, HashMap<String, Option<Arc<str>>>>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ChannelState {
     /// channel_index ??archetype NetworkGuid.
     archetypes: HashMap<u32, NetworkGuid>,
+    /// See [`RpcParamGroupMemo`].
+    rpc_param_groups: RpcParamGroupMemo,
     /// One line per content block that framed and decoded but whose inner stream
     /// could not be walked.
     ///
@@ -969,19 +991,61 @@ impl<'a> ExportSink<'a> {
     /// The second strategy handles inheritance: `Wushu_PC_C_ClassNetCache` has
     /// `MulticastNotifyKilledEnemy` but the parameter group is under
     /// `ShooterCharacter:MulticastNotifyKilledEnemy`.
-    fn find_rpc_param_group_path(&self, function_name: &str) -> Option<String> {
+    /// Memoised wrapper around [`Self::compute_rpc_param_group_path`].
+    ///
+    /// The computation is a pure function of the current group path, the
+    /// function name, and the set of declared group paths; only the third can
+    /// change while a replay is being read, and `schema_generation` tracks
+    /// exactly that. A generation change discards the whole memo, so a hit is
+    /// indistinguishable from a recomputation.
+    ///
+    /// Strategy 2 below is O(groups) per call. Without this memo a replay pays
+    /// 342,735 x 475 `ends_with` probes.
+    fn find_rpc_param_group_path(&mut self, function_name: &str) -> Option<Arc<str>> {
+        let Self {
+            cache,
+            channel_state,
+            current_group_path,
+            ..
+        } = self;
+        let memo = &mut channel_state.rpc_param_groups;
+        let generation = cache.schema_generation();
+        if memo.generation != generation {
+            memo.by_group.clear();
+            memo.generation = generation;
+        }
+
+        if let Some(by_function) = memo.by_group.get(current_group_path.as_str()) {
+            if let Some(hit) = by_function.get(function_name) {
+                return hit.clone();
+            }
+        }
+
+        let resolved = Self::compute_rpc_param_group_path(cache, current_group_path, function_name);
+        memo.by_group
+            .entry(current_group_path.clone())
+            .or_default()
+            .insert(function_name.to_owned(), resolved.clone());
+        resolved
+    }
+
+    fn compute_rpc_param_group_path(
+        cache: &NetGuidCache,
+        current_group_path: &str,
+        function_name: &str,
+    ) -> Option<Arc<str>> {
         // Strategy 1: direct path construction from CNC group.
-        if let Some(base) = self.current_group_path.strip_suffix("_ClassNetCache") {
+        if let Some(base) = current_group_path.strip_suffix("_ClassNetCache") {
             let candidate = format!("{base}:{function_name}");
-            if self.cache.get_group_by_path(&candidate).is_some() {
-                return Some(candidate);
+            if cache.get_group_by_path(&candidate).is_some() {
+                return Some(Arc::from(candidate));
             }
         }
 
         // Strategy 2: search for unique group with `:<function_name>` suffix.
         let suffix = format!(":{function_name}");
         let mut found: Option<&str> = None;
-        for group in self.cache.groups() {
+        for group in cache.groups() {
             if group.path.ends_with(&suffix) && group.path.contains(':') {
                 if found.is_some() {
                     // Ambiguous: multiple groups match this function name.
@@ -990,7 +1054,7 @@ impl<'a> ExportSink<'a> {
                 found = Some(&group.path);
             }
         }
-        found.map(|s| s.to_owned())
+        found.map(Arc::from)
     }
 }
 
