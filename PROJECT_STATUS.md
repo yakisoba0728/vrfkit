@@ -490,19 +490,21 @@ Section          Status       Notes
 players          EXACT        10 players, PUUID/character/tier identical
 side_winrate     EXACT        byte-identical after struct blob fix
 economy          EXACT        byte-identical after struct blob fix
-combat.per_player            270/270 within float32 epsilon (249 byte-exact,
-                              21 differ only in JSON float precision, worst
-                              relative delta 3.6e-8)
-combat           MATCH*       per_player 270/270 exact; kill_timeline_check
-                              differs because OURS IS MORE COMPLETE
-                              (132 kills vs ref 119; ref missing char-576)
+combat           MATCH*       per_player 270/270 within float32 epsilon
+                              (249 byte-exact; the other 21 differ only in
+                              JSON float precision, worst relative delta
+                              3.6e-8 -- the earlier "270/270 exact" in this
+                              document omitted that tolerance).
+                              kill_timeline_check differs because OURS IS
+                              MORE COMPLETE (132 kills vs ref 119; ref
+                              missing char-576). Those two keys are the only
+                              ones in combat that differ at all.
 rounds           ~1ms         round_intervals off by exactly 1ms
 objective        ~1ms         side_switch_ms off by 1ms; round_results 18/18
 ultimate         ~1ms         cast_times_ms off by 1ms
 tactical         OURS BETTER  3 players differ; vrfkit recovered 13 kill RPCs
 kast             OURS BETTER  3 players +1 KAST round; same root cause
-shot_rays        ~1ms         ray_count 2475/2475 exact; sample .ms off 1ms;
-                              weapon field "unknown" (equippable not resolved)
+shot_rays        ~1ms         ray_count 2475/2475 exact; sample .ms off 1ms
 movement_summary MINOR        1,839,607 vs 1,837,220 samples (+2387 rows,
                               vrfkit captures intermediate move frames)
 movement_detail  MINOR        per-character floats <0.1 cm/s speed delta
@@ -524,10 +526,12 @@ posture          MINOR        by_weapon EXACT for all 10 players; remaining
 ```
 
 EXACT: identical Python object equality.
+MATCH*: every key identical except the two named, both understood.
 ~1ms: numerically correct; systematic -1ms offset from bunch timestamp choice.
 OURS BETTER: our value is more complete/correct than the C# reference.
 MINOR: correct data, cosmetic naming or sample-count difference.
-BLOCKED: requires equippable (weapon actor) resolution -- see Section 7.
+BLOCKED: the data is present but a named defect prevents it being used --
+         currently only weapon_stats, on 7-J.
 
 Scoreboard metrics that Tracker.gg validated (K/D/A, ADR, HS%, KAST,
 FK/FD, MK, rank): reproduced exactly for all 10 players from vrfkit data.
@@ -769,6 +773,14 @@ that matches) and compare against the C# ValorantPayloadDecoders path.
 The rank-order pairing between the two value sets is NOT evidence of a
 transform: the implied ratios are 1.41 / 1.71 / 1.82 / 3.97, and two entities
 tie at 16 occurrences, so the pairing is not even well defined.
+
+Two traps for whoever picks this up:
+  - Exactly one of our 115 values does land in actors.parquet. With the
+    other 114 missing, treat that as coincidence, not partial correctness.
+  - The reference emits GUID 0 for 22 unresolved hits (valplay's own notes
+    record this). A correct decode must be able to produce 0. Ours never
+    does, which is a second independent signal rather than a rounding
+    difference.
 
 Our total is 625 vs the reference's 631; the six-record gap should be
 explained as part of the same investigation.
