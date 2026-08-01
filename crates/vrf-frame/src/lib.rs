@@ -134,7 +134,15 @@ pub fn iter_demo_frames(
         // ── Frame header ──────────────────────────────────────────────────
         let _current_level_index = reader.read_i32().map_err(FrameError::bit)?;
         let time_seconds = reader.read_f32().map_err(FrameError::bit)?;
-        let time_ms = (time_seconds * 1000.0) as u32;
+        // Mirror the reference exactly (ReplayEventJsonWriter.cs:194):
+        //   (long)Math.Round(seconds * 1000d, MidpointRounding.AwayFromZero)
+        // Both halves matter. Promoting to f64 before scaling avoids rounding
+        // the product to the nearest f32 first, and rounding rather than
+        // truncating is what keeps timestamps aligned -- truncation put every
+        // frame whose fractional millisecond was >= 0.5 one millisecond early.
+        // Rust's f64::round is already half-away-from-zero, and the `as u32`
+        // cast saturates, so non-finite input yields 0 as the reference does.
+        let time_ms = (f64::from(time_seconds) * 1000.0).round() as u32;
 
         // ── ExportData ────────────────────────────────────────────────────
         read_export_data(&mut reader, cache)?;
@@ -352,6 +360,50 @@ mod tests {
         assert_eq!(received.len(), 1);
         assert_eq!(received[0].0, 12500);
         assert_eq!(received[0].1, packet_payload);
+    }
+
+    /// Run one frame and return the packet's `time_ms`.
+    fn time_ms_of(time_secs: f32) -> u32 {
+        let flags = FLAG_HAS_STREAMING_FIXES | FLAG_GAME_SPECIFIC_FRAME_DATA;
+        let data = build_minimal_frame(time_secs, &[0x00], flags);
+        let mut cache = NetGuidCache::new();
+        let mut out = 0;
+        iter_demo_frames(&data, flags, &mut cache, |pkt| out = pkt.time_ms).unwrap();
+        out
+    }
+
+    #[test]
+    fn time_ms_rounds_half_away_from_zero_like_the_reference() {
+        // ReplayEventJsonWriter.cs:194 --
+        //   (long)Math.Round(seconds * 1000d, MidpointRounding.AwayFromZero)
+        //
+        // Truncating instead put roughly half of all timestamps 1 ms early,
+        // which is the entire "systematic -1ms offset" this project had
+        // recorded as a bunch-boundary choice. It is neither systematic nor
+        // about boundaries: it only shows up when the fractional millisecond
+        // is >= 0.5.
+        assert_eq!(time_ms_of(12.5), 12500, "exact value must be unchanged");
+        assert_eq!(time_ms_of(0.0004), 0, "below half a ms rounds down");
+        assert_eq!(time_ms_of(0.0005), 1, "exactly half rounds away from zero");
+        assert_eq!(time_ms_of(0.0006), 1, "above half rounds up");
+        assert_eq!(time_ms_of(1.9999), 2000, "carries into the next second");
+    }
+
+    #[test]
+    fn time_ms_matches_the_reference_formula_across_a_match() {
+        // Sweep realistic frame timestamps -- a competitive match runs to
+        // roughly 2,300 s -- against the reference expression, computed in
+        // double precision exactly as ReplayEventJsonWriter.cs does. This
+        // catches both the rounding rule and any f32-vs-f64 drift in the
+        // multiply, which a handful of named cases would not.
+        let mut checked = 0;
+        for step in 0..2000 {
+            let secs = (step as f32) * 1.1597; // ~0 to ~2319 s, uneven fractions
+            let expected = (f64::from(secs) * 1000.0).round() as u32;
+            assert_eq!(time_ms_of(secs), expected, "at {secs} s");
+            checked += 1;
+        }
+        assert_eq!(checked, 2000);
     }
 
     #[test]
