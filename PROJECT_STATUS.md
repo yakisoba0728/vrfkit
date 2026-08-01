@@ -2173,6 +2173,86 @@ The untested Python decoder is worth a follow-up. It is the live path for
 four metric sections and has zero executable tests; the Rust vectors could be
 ported to give it some.
 
+CORRECTION 2026-08-02, from a read-only audit. The recommendation holds --
+keep as is, wire nothing in -- but two of the three reasons above are wrong,
+and the "port the Rust vectors" suggestion is dangerous as written.
+
+REASON 2 IS REFUTED. "The consumer reads Parquet so wiring it in means a
+schema change" is false. Two precedents in this repo already carry a decoded
+multi-member structure through the EXISTING columns: `ReplicatedMovement`
+serializes as a JSON object in `value_str` (13-B), and `decode_struct_array`
+at `sink.rs:1133` emits one row per leaf with a nested `field_name` such as
+`Rounds[3].Reports[1].DamageDealt`. No new column is needed on either route.
+The real cost is bytes and baseline updates: +143,105 bytes (+1.08%) adding
+decoded arrays to `value_str`, or +12,828 (+0.10%) if the now-redundant
+`raw_bits` are dropped; zero rows added on that route; about 0.47% of export
+wall-clock.
+
+REASON 1 IS CONFIRMED AS CODE BUT MISDESCRIBED. The contracts are not mirror
+images. Python is MORE permissive in two places -- `effect.rs` caps payloads at
+65,536 bits and 8 fields per element and Python caps neither. One divergence is
+on WELL-FORMED input, not malformed: on a repeated element index Rust mutates
+in place and accumulates while Python rebuilds and clobbers, which is a data
+model difference, not a failure contract. And the two are not even fed the same
+input -- `_decode_effect_blob` computes `bit_count = len(raw_bytes) * 8` while
+the call site discards the `bit_count` column, where `effect.rs` takes an exact
+bit length. Decisively: `effect.rs`'s `Err` HAS NO CONSUMER. Nothing outside
+the file calls it. A failure contract only differs observably if something
+reads it.
+
+REASON 3 IS CONFIRMED AND WIDENED, with its vacuity stated. Reproduced from a
+fresh export rather than quoted, comparing all 22 keys of the `shot` object on
+the union of keys, across all 11 replays: 34,762 shot events, 0 mismatches,
+0 one-sided keys. But `effect_equippable` matches vacuously -- null on both
+sides for all 2,647 shots on 02d4d478 -- and `tracer_option` has exactly one
+distinct value. The load-bearing evidence is `random_seed` and
+`attack_vectors`, 2,475 distinct values each.
+
+NO DIVERGENT BRANCH IS REACHABLE. Every input where the two decoders disagree
+maps to a branch counter that is zero corpus-wide: 2,008,409 blobs across the
+215 replays of build 13.01, plus 37,019 across three local 13.02 demos, take
+the terminator branch and nothing else. Every blob is byte-aligned and every
+one has `len(raw_bits) * 8 == bit_count`, so even the input-length difference
+has no reachable instance. A direct Python-vs-Rust differential over every real
+blob in 11 replays -- 100,997 compared, floats as IEEE-754 bit patterns -- found
+0 disagreements.
+
+WHAT THE REFERENCE DOES WITH A MALFORMED BLOB IS UNKNOWN, and that is the
+finding, not a gap in the audit. No blob in 2,045,428 takes a divergent branch,
+so the reference exhibits no behaviour to observe. Do not settle the question
+from our own decoders' synthetic output.
+
+THERE IS A THIRD DECODER FOR THIS FRAMING and none of the three reasons
+mentions it. `crates/vrf-decode/src/array.rs` is wired in at `sink.rs:1133`
+and, on hitting a limit, stops that branch, preserves the remaining raw bits
+and increments a truncation counter. Ranked against section 8's invariants:
+the live Python path is a SILENT partial with no counter, which fails NO SILENT
+SUCCESS; `effect.rs` would be counted but throws away recoverable elements;
+`array.rs` is counted, raw-preserving and keeps the good elements. The
+implementation whose contract the invariants actually endorse is the one
+already wired in.
+
+DO NOT GENERATE THE PYTHON TEST VECTORS FROM THE RUST IMPLEMENTATION. The
+paragraph above suggests porting the Rust vectors, and that is safe only for
+the eight existing ones, which are all well-formed and byte-aligned by
+construction (three were confirmed byte-identical to real `raw_bits` rows). The
+vectors that would matter are the malformed ones, and generating those from
+`effect.rs` would write Rust's contract into the live path's tests on 12 of 18
+constructed cases -- a behaviour change wearing a test-addition costume. Pin
+what Python DOES, and record the corpus census as the reason those branches are
+unreachable.
+
+WHEN effect.rs CAN BE DELETED. Its only remaining value is as an executable
+spec, and that value moves to the Python side the moment a test port lands.
+The eight vectors cannot pin the one live-path decision with a latent-bug
+shape: that the adapter passes `len(raw_bits) * 8` rather than the `bit_count`
+column. If the port pins that too, the keep-reason dissolves and deleting
+`effect.rs` is defensible. If it does not, that decision is unpinned on both
+sides, so keeping `effect.rs` still buys nothing.
+
+Evidence log: `out/audit_effect/measurements.txt`, 303 lines, every command's
+raw output. Not committed -- `out/` is gitignored.
+
 ### 12-E. Non-ASCII in string literals [FIXED, commits e8f40cb and the cli.rs follow-up]
 
 27 in total, of which 22 were the whole of `print_diagnostic_event`. The
