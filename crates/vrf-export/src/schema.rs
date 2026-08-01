@@ -121,3 +121,32 @@ pub fn actors_schema() -> Schema {
 pub fn actors_schema_ref() -> Arc<Schema> {
     Arc::new(actors_schema())
 }
+
+/// Schema for the `net_guids` table (one row per registered NetGUID).
+///
+/// This is the replay's own object registry: which GUID maps to which object
+/// path, and which object contains it. `actors.parquet` only covers GUIDs that
+/// opened a channel, which excludes subobjects -- a weapon's `FiringState`
+/// appears in no other table. Without the outer chain there is no route from a
+/// shot event to the equippable that fired it.
+///
+/// `outer_net_guid` is nullable rather than zero-filled: GUID 0 is the engine's
+/// "invalid" sentinel, so collapsing "no outer declared" onto 0 would erase the
+/// distinction between an unknown parent and an explicitly invalid one.
+pub fn net_guids_schema() -> Schema {
+    Schema::new(vec![
+        Field::new("net_guid", DataType::UInt32, false),
+        // Paths repeat heavily (175 GUIDs share "FiringState" in one match).
+        Field::new(
+            "path",
+            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+            false,
+        ),
+        Field::new("outer_net_guid", DataType::UInt32, true),
+    ])
+}
+
+/// Convenience: wrap net_guids schema in an Arc.
+pub fn net_guids_schema_ref() -> Arc<Schema> {
+    Arc::new(net_guids_schema())
+}

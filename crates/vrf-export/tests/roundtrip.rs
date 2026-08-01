@@ -615,3 +615,75 @@ fn actor_push_finish_empty() {
     let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
     assert_eq!(total_rows, 0);
 }
+
+// ---------------------------------------------------------------------------
+// net_guids table
+// ---------------------------------------------------------------------------
+
+use vrf_export::{NetGuidRecord, NetGuidWriter};
+
+#[test]
+fn net_guid_roundtrip_preserves_outer_chain() {
+    let path = test_dir().join("net_guid_roundtrip.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = NetGuidWriter::with_row_group_size(file, 1024).unwrap();
+        // A weapon actor: no outer.
+        writer
+            .push(NetGuidRecord {
+                net_guid: 2910,
+                path: "/Game/Equippables/Guns/Sidearms/Revolver/RevolverPistol.RevolverPistol_C"
+                    .into(),
+                outer_net_guid: None,
+            })
+            .unwrap();
+        // Its FiringState subobject: outer points back at the weapon.
+        writer
+            .push(NetGuidRecord {
+                net_guid: 3086,
+                path: "FiringState".into(),
+                outer_net_guid: Some(2910),
+            })
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    let batches = read_all_batches(&path);
+    let batch = &batches[0];
+    assert_eq!(batch.num_rows(), 2);
+
+    let net_guid = batch
+        .column(0)
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .unwrap();
+    assert_eq!(net_guid.value(0), 2910);
+    assert_eq!(net_guid.value(1), 3086);
+
+    let path_col = batch.column(1).as_dictionary::<Int32Type>();
+    let path_values = path_col.downcast_dict::<StringArray>().unwrap();
+    assert_eq!(path_values.value(1), "FiringState");
+
+    let outer = batch
+        .column(2)
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .unwrap();
+    // A GUID with no declared outer must be null, not 0 -- 0 is a real
+    // sentinel meaning "invalid GUID" and must stay distinguishable.
+    assert!(outer.is_null(0));
+    assert_eq!(outer.value(1), 2910);
+}
+
+#[test]
+fn net_guid_push_finish_empty() {
+    let path = test_dir().join("net_guid_empty.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let writer = NetGuidWriter::new(file).unwrap();
+        writer.finish().unwrap();
+    }
+    let batches = read_all_batches(&path);
+    let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+    assert_eq!(total_rows, 0);
+}

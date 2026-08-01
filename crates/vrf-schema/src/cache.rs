@@ -64,6 +64,22 @@ impl ExportFlags {
 /// The path used for the gameplay-tag name table group.
 const GAMEPLAY_TAG_GROUP_PATH: &str = "NetworkGameplayTagNodeIndex";
 
+/// One registered NetGUID and what the replay said about it.
+///
+/// Produced by [`NetGuidCache::net_guid_entries`] so exporters can persist the
+/// containment hierarchy. Downstream consumers need it to walk from a
+/// subobject (e.g. a weapon's `FiringState`) to the actor that owns it; that
+/// chain is the only route from a shot event to the equippable that fired it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NetGuidEntry<'a> {
+    /// The GUID itself.
+    pub net_guid: u32,
+    /// Object path as the replay declared it.
+    pub path: &'a str,
+    /// Containing object's GUID, when the replay declared one.
+    pub outer_net_guid: Option<u32>,
+}
+
 /// Replay-wide schema accumulator.
 ///
 /// All lookups are O(1) via `HashMap`. Field access within a group is O(1) via
@@ -194,6 +210,22 @@ impl NetGuidCache {
     #[must_use]
     pub fn get_outer_guid(&self, net_guid: u32) -> Option<NetworkGuid> {
         self.guid_to_outer.get(&net_guid).copied()
+    }
+
+    /// Every registered NetGUID with its path and outer GUID.
+    ///
+    /// Order is unspecified (backed by a `HashMap`); sort if determinism
+    /// matters.
+    #[must_use]
+    pub fn net_guid_entries(&self) -> Vec<NetGuidEntry<'_>> {
+        self.guid_to_path
+            .iter()
+            .map(|(&net_guid, path)| NetGuidEntry {
+                net_guid,
+                path: path.as_str(),
+                outer_net_guid: self.guid_to_outer.get(&net_guid).map(|o| o.0),
+            })
+            .collect()
     }
 
     /// Walk the outer chain to resolve the outer object's path.

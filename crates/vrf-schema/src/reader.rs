@@ -531,6 +531,24 @@ mod tests {
     }
 
     #[test]
+    fn cache_net_guid_entries_yields_guid_path_and_outer() {
+        let mut cache = NetGuidCache::new();
+        cache.set_net_guid_path(11, "/Game/Test.Test_C".into(), None);
+        cache.set_net_guid_path(17, "FiringState".into(), Some(NetworkGuid(11)));
+
+        let mut entries = cache.net_guid_entries();
+        entries.sort_by_key(|e| e.net_guid);
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].net_guid, 11);
+        assert_eq!(entries[0].path, "/Game/Test.Test_C");
+        assert_eq!(entries[0].outer_net_guid, None);
+        assert_eq!(entries[1].net_guid, 17);
+        assert_eq!(entries[1].path, "FiringState");
+        assert_eq!(entries[1].outer_net_guid, Some(11));
+    }
+
+    #[test]
     fn cache_clear_removes_all() {
         let mut cache = NetGuidCache::new();
         cache.add_export_group(NetFieldExportGroup::new("/Game/Test.Test_C".into(), 7, 2));

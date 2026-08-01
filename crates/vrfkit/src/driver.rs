@@ -17,7 +17,7 @@ use std::time::Instant;
 
 use vrf_container::{ChunkIterator, ChunkType, decompress_replay_data, parse_preamble};
 use vrf_decode::{OverlayErrorReport, OverlayStats};
-use vrf_export::{ActorWriter, FieldWriter, MovementWriter};
+use vrf_export::{ActorWriter, FieldWriter, MovementWriter, NetGuidRecord, NetGuidWriter};
 use vrf_frame::iter_demo_frames;
 use vrf_net::pipeline::ReplicationReader;
 use vrf_schema::NetGuidCache;
@@ -153,6 +153,26 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     movement_writer.finish()?;
     actor_writer.finish()?;
 
+    // ── Write the NetGUID registry ────────────────────────────────────────
+    //
+    // Written after the replication pass because the cache accumulates over the
+    // whole replay: a GUID's outer may be declared in a later chunk than the
+    // one that first referenced it. Sorted so the file is byte-reproducible
+    // across runs (the cache is HashMap-backed and iterates in arbitrary order).
+    let net_guids_file = BufWriter::new(fs::File::create(out_path.join("net_guids.parquet"))?);
+    let mut net_guid_writer = NetGuidWriter::new(net_guids_file)?;
+    let mut guid_entries = cache.net_guid_entries();
+    guid_entries.sort_unstable_by_key(|e| e.net_guid);
+    let net_guid_rows = guid_entries.len();
+    for entry in guid_entries {
+        net_guid_writer.push(NetGuidRecord {
+            net_guid: entry.net_guid,
+            path: entry.path.to_owned(),
+            outer_net_guid: entry.outer_net_guid,
+        })?;
+    }
+    net_guid_writer.finish()?;
+
     // ── Stats ─────────────────────────────────────────────────────────────
     let net_stats = repl_reader.stats();
     let elapsed = start.elapsed();
@@ -173,6 +193,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     eprintln!("  Malformed pkts:   {}", net_stats.malformed_packets);
     eprintln!("  Skipped bits:     {}", net_stats.skipped_bits);
     eprintln!("  Movement rows:    {movement_rows}");
+    eprintln!("  NetGUID rows:     {net_guid_rows}");
     eprintln!("  Elapsed:          {:.2?}", elapsed);
 
     // ── Write manifest ────────────────────────────────────────────────────
@@ -198,11 +219,15 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     let actors_size = fs::metadata(out_path.join("actors.parquet"))
         .map(|m| m.len())
         .unwrap_or(0);
+    let net_guids_size = fs::metadata(out_path.join("net_guids.parquet"))
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     eprintln!();
     eprintln!("  fields.parquet:   {} bytes", fields_size);
     eprintln!("  movement.parquet: {} bytes", movement_size);
     eprintln!("  actors.parquet:   {} bytes", actors_size);
+    eprintln!("  net_guids.parquet:{} bytes", net_guids_size);
     eprintln!("  manifest.json:    {}", manifest_path.display());
 
     // ── Overlay statistics ─────────────────────────────────────────────────
