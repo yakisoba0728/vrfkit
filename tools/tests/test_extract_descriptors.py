@@ -17,6 +17,24 @@ HANDLE_ENTRY_RE = re.compile(
     r'OverlayHandleEntry \{ group_path: "([^"]+)", handle: (\d+), '
     r'field_name: "([^"]+)" \},'
 )
+RUNTIME_AGENT_CACHE_FACTORY = r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    private const string KillFunctionName = "MulticastNotifyKilledEnemy";
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors)
+    {
+        return agentDescriptors
+            .Select(agent => new ClassNetCacheDescriptor(
+                agent.Path + "_ClassNetCache", [CreateKillRpc()]))
+            .ToArray();
+    }
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = KillFunctionName,
+    };
+}
+'''
 
 
 class ExtractDescriptorsTests(unittest.TestCase):
@@ -53,6 +71,13 @@ class ExtractDescriptorsTests(unittest.TestCase):
         result, _ = self.run_generator_process(sources)
         self.assertNotEqual(result.returncode, 0, "generator unexpectedly succeeded")
         return result.stderr
+
+    def runtime_cache_entries(self, output: str) -> set[tuple[str, str, str]]:
+        return {
+            (group, field, field_type.strip())
+            for group, field, field_type in ENTRY_RE.findall(output)
+            if group.endswith("_ClassNetCache")
+        }
 
     def test_add_raw_wrapper_calls_emit_all_eleven_raw_fields(self):
         output = self.run_generator(
@@ -338,6 +363,152 @@ internal static class AgentClassNetCacheDescriptors
             {
                 (
                     "/Game/Characters/Alpha/Alpha_PC.Alpha_PC_C_ClassNetCache",
+                    "MulticastNotifyKilledEnemy",
+                    "FieldType::Skip",
+                ),
+            },
+        )
+
+    def test_fully_qualified_ability_override_suppresses_runtime_agent_cache(self):
+        output = self.run_generator(
+            {
+                "GenericAgentDescriptor.cs": r'''
+public abstract class GenericAgentDescriptor : ExportGroupDescriptor<GenericAgentDescriptor>
+{
+    public override ExportCategory Categories => ExportCategory.Agent;
+    protected override void Configure() { AddProperty(x => x.Owner).ObjectNetGuid(); }
+}
+''',
+                "OrdinaryAgentDescriptor.cs": r'''
+public sealed class OrdinaryAgentDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Agents/Ordinary.Ordinary_C";
+}
+''',
+                "QualifiedAbilityDescriptor.cs": r'''
+public sealed class QualifiedAbilityDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Abilities/Qualified.Qualified_C";
+    private string Display => $"{Format("/*")}";
+    public override Replay./* namespace trivia */Models.Descriptors.ExportCategory Categories =>
+        global::Replay.Models.Descriptors.ExportCategory /* value trivia */ . Ability;
+}
+''',
+                "AgentClassNetCacheDescriptors.cs": RUNTIME_AGENT_CACHE_FACTORY,
+            }
+        )
+
+        self.assertEqual(
+            self.runtime_cache_entries(output),
+            {
+                (
+                    "/Game/Agents/Ordinary.Ordinary_C_ClassNetCache",
+                    "MulticastNotifyKilledEnemy",
+                    "FieldType::Skip",
+                ),
+            },
+        )
+
+    def test_category_like_comments_preserve_real_and_inherited_categories(self):
+        output = self.run_generator(
+            {
+                "GenericAgentDescriptor.cs": r'''
+public abstract class GenericAgentDescriptor : ExportGroupDescriptor<GenericAgentDescriptor>
+{
+    public override ExportCategory Categories => ExportCategory.Agent;
+    protected override void Configure() { AddProperty(x => x.Owner).ObjectNetGuid(); }
+}
+''',
+                "CommentedInheritedAgentDescriptor.cs": r'''
+public sealed class CommentedInheritedAgentDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Comments//Inherited/*literal*/.Inherited_C";
+    private const string Regular =
+        "escaped \" // public override ExportCategory Categories => ExportCategory.Ability;";
+    private const string Verbatim =
+        @"escaped "" /* public override ExportCategory Categories => ExportCategory.Ability;";
+    private string Interpolated =>
+        $"// public override ExportCategory Categories => ExportCategory.Ability;";
+    private string InterpolatedVerbatim =>
+        $@"/* public override ExportCategory Categories => ExportCategory.Ability;";
+    private string VerbatimInterpolated =>
+        @$"// public override ExportCategory Categories => ExportCategory.Ability;";
+    private const char Slash = '/';
+    private const char Quote = '\'';
+    // public override ExportCategory Categories => ExportCategory.Ability;
+    /*
+    public override ExportCategory Categories
+    {
+        get => ExportCategory.Ability;
+    }
+    */
+}
+''',
+                "CommentedAbilityDescriptor.cs": r'''
+public sealed class CommentedAbilityDescriptor : GenericAgentDescriptor
+{
+    public override string Path => "/Game/Comments/Ability.Ability_C";
+    /* public override ExportCategory Categories => ExportCategory.Agent; */
+    // } This comment does not close the class.
+    public override ExportCategory Categories => ExportCategory.Ability;
+}
+''',
+                "AgentClassNetCacheDescriptors.cs": RUNTIME_AGENT_CACHE_FACTORY,
+            }
+        )
+
+        self.assertEqual(
+            self.runtime_cache_entries(output),
+            {
+                (
+                    "/Game/Comments//Inherited/*literal*/.Inherited_C_ClassNetCache",
+                    "MulticastNotifyKilledEnemy",
+                    "FieldType::Skip",
+                ),
+            },
+        )
+
+    def test_agent_flags_and_all_retain_runtime_agent_caches(self):
+        output = self.run_generator(
+            {
+                "GenericAbilityDescriptor.cs": r'''
+public abstract class GenericAbilityDescriptor : ExportGroupDescriptor<GenericAbilityDescriptor>
+{
+    public override ExportCategory Categories => ExportCategory.Ability;
+    protected override void Configure() { AddProperty(x => x.Owner).ObjectNetGuid(); }
+}
+''',
+                "AgentAbilityDescriptor.cs": r'''
+public sealed class AgentAbilityDescriptor : GenericAbilityDescriptor
+{
+    public override string Path => "/Game/Flags/AgentAbility.AgentAbility_C";
+    public override Replay.Models.Descriptors.ExportCategory Categories =>
+        Replay.Models.Descriptors.ExportCategory.Agent |
+        Replay.Models.Descriptors.ExportCategory.Ability;
+}
+''',
+                "AllCategoriesDescriptor.cs": r'''
+public sealed class AllCategoriesDescriptor : GenericAbilityDescriptor
+{
+    public override string Path => "/Game/Flags/All.All_C";
+    public override Replay.Models.Descriptors.ExportCategory Categories =>
+        Replay.Models.Descriptors.ExportCategory.All;
+}
+''',
+                "AgentClassNetCacheDescriptors.cs": RUNTIME_AGENT_CACHE_FACTORY,
+            }
+        )
+
+        self.assertEqual(
+            self.runtime_cache_entries(output),
+            {
+                (
+                    "/Game/Flags/AgentAbility.AgentAbility_C_ClassNetCache",
+                    "MulticastNotifyKilledEnemy",
+                    "FieldType::Skip",
+                ),
+                (
+                    "/Game/Flags/All.All_C_ClassNetCache",
                     "MulticastNotifyKilledEnemy",
                     "FieldType::Skip",
                 ),

@@ -88,16 +88,23 @@ EXPORT_CATEGORY_NAMES = {
     "Debug",
     "All",
 }
+EXPORT_CATEGORY_TYPE = (
+    r'(?:global\s*::\s*)?'
+    r'(?:[A-Za-z_]\w*\s*\.\s*)*ExportCategory'
+)
 CATEGORY_OVERRIDE_MARKER_RE = re.compile(
-    r'\boverride\s+ExportCategory\s+Categories\b'
+    rf'\boverride\s+{EXPORT_CATEGORY_TYPE}\s+Categories\b'
 )
 CATEGORY_OVERRIDE_RE = re.compile(
-    r'\boverride\s+ExportCategory\s+Categories\s*=>\s*'
+    rf'\boverride\s+{EXPORT_CATEGORY_TYPE}\s+Categories\s*=>\s*'
     r'(?P<expression>[^;]+)\s*;'
 )
 CATEGORY_EXPRESSION_RE = re.compile(
-    r'\s*ExportCategory\.\w+'
-    r'(?:\s*\|\s*ExportCategory\.\w+)*\s*'
+    rf'\s*{EXPORT_CATEGORY_TYPE}\s*\.\s*\w+'
+    rf'(?:\s*\|\s*{EXPORT_CATEGORY_TYPE}\s*\.\s*\w+)*\s*'
+)
+CATEGORY_MEMBER_RE = re.compile(
+    rf'{EXPORT_CATEGORY_TYPE}\s*\.\s*(\w+)'
 )
 
 # Regex for AddProperty with explicit export name
@@ -480,15 +487,152 @@ def extract_parameterless_method_body(source: str, method_name: str) -> str | No
     return source[body_start + 1:pos - 1]
 
 
+def csharp_code_view(source: str) -> str:
+    """Return a same-length view with comments and literal bodies masked."""
+    masked = list(source)
+    source_len = len(source)
+
+    def mask_non_newlines(start: int, end: int) -> None:
+        for index in range(start, end):
+            if source[index] not in "\r\n":
+                masked[index] = " "
+
+    def scan_regular_literal(opening_quote: int, quote: str) -> int:
+        cursor = opening_quote + 1
+        while cursor < source_len:
+            if source[cursor] == "\\":
+                cursor += 2
+            elif source[cursor] == quote:
+                return cursor + 1
+            else:
+                cursor += 1
+        return source_len
+
+    def scan_verbatim_string(opening_quote: int) -> int:
+        cursor = opening_quote + 1
+        while cursor < source_len:
+            if source.startswith('""', cursor):
+                cursor += 2
+            elif source[cursor] == '"':
+                return cursor + 1
+            else:
+                cursor += 1
+        return source_len
+
+    interpolated_prefixes = ("$@\"", "@$\"", "$\"")
+
+    def scan_interpolated_string(start: int, prefix: str) -> int:
+        cursor = start + len(prefix)
+        expression_depth = 0
+        verbatim = "@" in prefix
+        while cursor < source_len:
+            if expression_depth == 0:
+                if verbatim and source.startswith('""', cursor):
+                    cursor += 2
+                elif not verbatim and source[cursor] == "\\":
+                    cursor += 2
+                elif source[cursor] == '"':
+                    return cursor + 1
+                elif source.startswith("{{", cursor) or source.startswith("}}", cursor):
+                    cursor += 2
+                elif source[cursor] == "{":
+                    expression_depth = 1
+                    cursor += 1
+                else:
+                    cursor += 1
+                continue
+
+            if source.startswith("//", cursor):
+                newline = source.find("\n", cursor + 2)
+                cursor = source_len if newline == -1 else newline
+                continue
+            if source.startswith("/*", cursor):
+                closing = source.find("*/", cursor + 2)
+                cursor = source_len if closing == -1 else closing + 2
+                continue
+
+            nested_prefix = next(
+                (
+                    candidate
+                    for candidate in interpolated_prefixes
+                    if source.startswith(candidate, cursor)
+                ),
+                None,
+            )
+            if nested_prefix is not None:
+                cursor = scan_interpolated_string(cursor, nested_prefix)
+            elif source.startswith('@"', cursor):
+                cursor = scan_verbatim_string(cursor + 1)
+            elif source[cursor] in "\"'":
+                cursor = scan_regular_literal(cursor, source[cursor])
+            elif source[cursor] == "{":
+                expression_depth += 1
+                cursor += 1
+            elif source[cursor] == "}":
+                expression_depth -= 1
+                cursor += 1
+            else:
+                cursor += 1
+        return source_len
+
+    pos = 0
+    while pos < source_len:
+        if source.startswith("//", pos):
+            end = source.find("\n", pos + 2)
+            if end == -1:
+                end = source_len
+            mask_non_newlines(pos, end)
+            pos = end
+            continue
+
+        if source.startswith("/*", pos):
+            closing = source.find("*/", pos + 2)
+            end = source_len if closing == -1 else closing + 2
+            mask_non_newlines(pos, end)
+            pos = end
+            continue
+
+        interpolated_prefix = next(
+            (
+                prefix
+                for prefix in interpolated_prefixes
+                if source.startswith(prefix, pos)
+            ),
+            None,
+        )
+        if interpolated_prefix is not None:
+            start = pos
+            pos = scan_interpolated_string(pos, interpolated_prefix)
+            mask_non_newlines(start, pos)
+            continue
+
+        if source.startswith('@"', pos):
+            start = pos
+            pos = scan_verbatim_string(pos + 1)
+            mask_non_newlines(start, pos)
+            continue
+
+        if source[pos] in "\"'":
+            start = pos
+            pos = scan_regular_literal(pos, source[pos])
+            mask_non_newlines(start, pos)
+            continue
+
+        pos += 1
+
+    return "".join(masked)
+
+
 def extract_category_override(
     class_name: str, class_body: str
 ) -> frozenset[str] | None:
     """Parse a class's explicit category flags, rejecting unsupported forms."""
-    markers = list(CATEGORY_OVERRIDE_MARKER_RE.finditer(class_body))
+    category_source = csharp_code_view(class_body)
+    markers = list(CATEGORY_OVERRIDE_MARKER_RE.finditer(category_source))
     if not markers:
         return None
 
-    overrides = list(CATEGORY_OVERRIDE_RE.finditer(class_body))
+    overrides = list(CATEGORY_OVERRIDE_RE.finditer(category_source))
     if (
         len(markers) != 1
         or len(overrides) != 1
@@ -506,7 +650,7 @@ def extract_category_override(
             f"{expression.strip()!r}"
         )
 
-    categories = frozenset(re.findall(r'ExportCategory\.(\w+)', expression))
+    categories = frozenset(CATEGORY_MEMBER_RE.findall(expression))
     unknown = sorted(categories - EXPORT_CATEGORY_NAMES)
     if unknown:
         raise SystemExit(
@@ -549,13 +693,13 @@ def main(argv: list[str]) -> int:
     )
 
     cs_files = sorted(src_dir.rglob("*.cs"))
-    sources = [
-        (cs_file, cs_file.read_text(encoding="utf-8-sig"))
-        for cs_file in cs_files
-    ]
+    sources = []
+    for cs_file in cs_files:
+        source = cs_file.read_text(encoding="utf-8-sig")
+        sources.append((cs_file, source, csharp_code_view(source)))
     raw_wrapper_names = {
         match.group("name")
-        for _, source in sources
+        for _, source, _ in sources
         for match in RAW_WRAPPER_DEF_RE.finditer(source)
     }
 
@@ -570,7 +714,7 @@ def main(argv: list[str]) -> int:
     const_string_re = re.compile(
         r'\bconst\s+string\s+(?P<name>\w+)\s*=\s*"(?P<value>[^"]+)"'
     )
-    for _, source in sources:
+    for _, source, _ in sources:
         constants = {
             match.group("name"): match.group("value")
             for match in const_string_re.finditer(source)
@@ -605,10 +749,10 @@ def main(argv: list[str]) -> int:
                 (runtime_match.group("suffix"), function_name)
             )
 
-    for cs_file, source in sources:
+    for cs_file, source, code_view in sources:
 
         # Find all class declarations in this file
-        class_matches = list(MULTI_CLASS_RE.finditer(source))
+        class_matches = list(MULTI_CLASS_RE.finditer(code_view))
 
         for cm in class_matches:
             class_name = cm.group(1)
@@ -627,7 +771,7 @@ def main(argv: list[str]) -> int:
         # with the class whose body contains them)
         for cm in class_matches:
             class_name = cm.group(1)
-            body_start, body_end = find_class_body_range(source, cm.start())
+            body_start, body_end = find_class_body_range(code_view, cm.start())
             class_body = source[body_start:body_end]
 
             category_override = extract_category_override(class_name, class_body)
