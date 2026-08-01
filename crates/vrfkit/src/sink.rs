@@ -1440,10 +1440,19 @@ impl ReplicationSink for ExportSink<'_> {
         // For subobject blocks it identifies *which* subobject, which is the
         // only way to tell one of a character's inventory item slots from
         // another; merging them makes a player look like they hold one item.
+        //
+        // A subobject GUID of 0 is kept as `Some(0)`, not folded to `None`. The
+        // reference reads it unconditionally (`ContentBlockFramer.cs:436-437`)
+        // and branches on `!header.ObjectNetGuid.IsValid`
+        // (`ContentBlockPathResolver.cs:100`), so it treats the invalid GUID as
+        // reachable rather than impossible. `None` is not a safe stand-in for
+        // it: downstream `None` means "actor block", the adapter substitutes
+        // the actor GUID, and the block collapses onto the actor -- the merge
+        // cf97ecf existed to undo.
         self.current_object_guid = if header.is_actor {
             None
         } else {
-            Some(header.object_net_guid.0).filter(|&g| g != 0)
+            Some(header.object_net_guid.0)
         };
         self.current_group_path = self.resolve_group_path(channel_index, actor_net_guid.0, header);
         self.stats.content_blocks += 1;
@@ -1573,5 +1582,62 @@ fn decode_array_leaf(
         Ok(vrf_decode::DecodedValue::Bool(v)) => (None, None, Some(v), None),
         Ok(vrf_decode::DecodedValue::Str(v)) => (None, None, None, Some(v)),
         Err(DecodeError::RawOrSkip) | Err(_) => (None, None, None, None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run one content block through the sink and report the subobject GUID it
+    /// recorded for the fields that would follow.
+    fn object_guid_for(is_actor: bool, object_net_guid: u32) -> Option<u32> {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        let header = ContentBlockHeader {
+            // RepLayout, so the block needs no ClassNetCache function count.
+            has_rep_layout: true,
+            is_actor,
+            object_net_guid: NetworkGuid(object_net_guid),
+            ..ContentBlockHeader::default()
+        };
+        sink.on_content_block(7, NetworkGuid(1234), &header);
+        sink.current_object_guid
+    }
+
+    /// A subobject block whose object GUID is 0 must record `Some(0)`.
+    ///
+    /// The reference reads the field unconditionally
+    /// (`ContentBlockFramer.cs:436-437`) and then branches on
+    /// `!header.ObjectNetGuid.IsValid` in `ContentBlockPathResolver.cs:100`,
+    /// so it treats an invalid object GUID as a state that occurs rather than
+    /// one that cannot. Folding it to `None` here is not a no-op: `None` means
+    /// "actor block, no subobject at all", the adapter substitutes the actor
+    /// GUID for it, and every such block collapses back onto the actor -- the
+    /// exact merge cf97ecf existed to undo. `FieldRecord::object_net_guid`
+    /// documents the same distinction ("Kept distinct from `Some(0)`").
+    #[test]
+    fn a_subobject_block_keeps_a_zero_object_guid_distinct_from_none() {
+        assert_eq!(
+            object_guid_for(false, 0),
+            Some(0),
+            "zero is the invalid-GUID sentinel, not the absence of a subobject"
+        );
+    }
+
+    /// The two cases that must keep working: an actor block carries no
+    /// subobject GUID at all, and a real subobject GUID passes through.
+    #[test]
+    fn an_actor_block_has_no_object_guid_and_subobjects_keep_theirs() {
+        assert_eq!(object_guid_for(true, 0), None, "actor block");
+        assert_eq!(
+            object_guid_for(true, 99),
+            None,
+            "an actor block ignores the GUID"
+        );
+        assert_eq!(object_guid_for(false, 99), Some(99), "subobject block");
     }
 }
