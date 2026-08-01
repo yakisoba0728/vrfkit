@@ -76,3 +76,48 @@ pub fn fields_schema_ref() -> Arc<Schema> {
 pub fn movement_schema_ref() -> Arc<Schema> {
     Arc::new(movement_schema())
 }
+
+/// Schema for the `actors` table (one row per channel open or close).
+///
+/// This table makes actors visible even if they never replicate a single
+/// field -- e.g. weapon/ability instances, DefuserItem, HeavyArmorItem.
+/// Without it, only actors that produce at least one field row in
+/// `fields.parquet` can be resolved downstream.
+///
+/// Spawn location and rotation are nullable because static actors and
+/// channel-close rows do not carry spatial data.
+pub fn actors_schema() -> Schema {
+    Schema::new(vec![
+        Field::new("time_ms", DataType::UInt32, false),
+        Field::new("packet_id", DataType::UInt32, false),
+        Field::new("channel_index", DataType::UInt32, false),
+        Field::new("actor_net_guid", DataType::UInt32, false),
+        // "open" or "close" -- small cardinality, dictionary is overkill.
+        Field::new("event", DataType::Utf8, false),
+        // Nullable: class path may be unresolvable for some actors.
+        Field::new(
+            "class_path",
+            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+            true,
+        ),
+        // Nullable: archetype path may be absent (static actors).
+        Field::new(
+            "archetype_path",
+            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+            true,
+        ),
+        // Spawn location (nullable -- only present for dynamic actor opens).
+        Field::new("spawn_x", DataType::Float32, true),
+        Field::new("spawn_y", DataType::Float32, true),
+        Field::new("spawn_z", DataType::Float32, true),
+        // Spawn rotation (nullable).
+        Field::new("spawn_pitch", DataType::Float32, true),
+        Field::new("spawn_yaw", DataType::Float32, true),
+        Field::new("spawn_roll", DataType::Float32, true),
+    ])
+}
+
+/// Convenience: wrap actors schema in an Arc.
+pub fn actors_schema_ref() -> Arc<Schema> {
+    Arc::new(actors_schema())
+}

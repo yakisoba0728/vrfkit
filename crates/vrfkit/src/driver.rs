@@ -17,7 +17,7 @@ use std::time::Instant;
 
 use vrf_container::{ChunkIterator, ChunkType, decompress_replay_data, parse_preamble};
 use vrf_decode::{OverlayErrorReport, OverlayStats};
-use vrf_export::{FieldWriter, MovementWriter};
+use vrf_export::{ActorWriter, FieldWriter, MovementWriter};
 use vrf_frame::iter_demo_frames;
 use vrf_net::pipeline::ReplicationReader;
 use vrf_schema::NetGuidCache;
@@ -61,9 +61,11 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
 
     let fields_file = BufWriter::new(fs::File::create(out_path.join("fields.parquet"))?);
     let movement_file = BufWriter::new(fs::File::create(out_path.join("movement.parquet"))?);
+    let actors_file = BufWriter::new(fs::File::create(out_path.join("actors.parquet"))?);
 
     let mut field_writer = FieldWriter::new(fields_file)?;
     let mut movement_writer = MovementWriter::new(movement_file)?;
+    let mut actor_writer = ActorWriter::new(actors_file)?;
 
     // ── Setup replication reader and schema cache ──────────────────────────
     let mut cache = NetGuidCache::new();
@@ -123,6 +125,10 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
                 movement_writer.push(record)?;
                 movement_rows += 1;
             }
+            // Drain actor lifecycle records to writer.
+            for record in sink.actor_records.drain(..) {
+                actor_writer.push(record)?;
+            }
             // Accumulate overlay stats.
             overlay_stats.decoded_ok += sink.stats.overlay.decoded_ok;
             overlay_stats.decoded_err += sink.stats.overlay.decoded_err;
@@ -145,6 +151,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     // ── Finish writers ────────────────────────────────────────────────────
     field_writer.finish()?;
     movement_writer.finish()?;
+    actor_writer.finish()?;
 
     // ── Stats ─────────────────────────────────────────────────────────────
     let net_stats = repl_reader.stats();
@@ -188,10 +195,14 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     let movement_size = fs::metadata(out_path.join("movement.parquet"))
         .map(|m| m.len())
         .unwrap_or(0);
+    let actors_size = fs::metadata(out_path.join("actors.parquet"))
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     eprintln!();
     eprintln!("  fields.parquet:   {} bytes", fields_size);
     eprintln!("  movement.parquet: {} bytes", movement_size);
+    eprintln!("  actors.parquet:   {} bytes", actors_size);
     eprintln!("  manifest.json:    {}", manifest_path.display());
 
     // ── Overlay statistics ─────────────────────────────────────────────────

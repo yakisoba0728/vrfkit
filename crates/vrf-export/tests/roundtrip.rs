@@ -455,3 +455,163 @@ fn write_interop_files() {
     println!("FIELD_SIZE_BYTES={field_size}");
     println!("MOVEMENT_SIZE_BYTES={movement_size}");
 }
+
+// --- Actor Writer Tests ---
+
+use vrf_export::{ActorRecord, ActorWriter};
+
+/// Helper: build an ActorRecord with predictable values.
+fn make_actor_record(i: u32, is_open: bool) -> ActorRecord {
+    ActorRecord {
+        time_ms: i * 16,
+        packet_id: i / 2,
+        channel_index: i % 64,
+        actor_net_guid: 2000 + i,
+        event: if is_open { "open" } else { "close" },
+        class_path: if i % 4 == 0 {
+            None
+        } else {
+            Some(format!(
+                "/Game/Characters/Agent_{}/Agent_{}_PC.Agent_{}_PC_C",
+                i % 5,
+                i % 5,
+                i % 5
+            ))
+        },
+        archetype_path: if is_open && i % 3 != 0 {
+            Some(format!(
+                "/Game/Characters/Agent_{}/Agent_{}_PC.Default__Agent_{}_PC_C",
+                i % 5,
+                i % 5,
+                i % 5
+            ))
+        } else {
+            None
+        },
+        spawn_x: if is_open { Some(i as f32 * 10.0) } else { None },
+        spawn_y: if is_open { Some(i as f32 * 20.0) } else { None },
+        spawn_z: if is_open { Some(100.0) } else { None },
+        spawn_pitch: if is_open && i % 2 == 0 {
+            Some(5.0)
+        } else {
+            None
+        },
+        spawn_yaw: if is_open && i % 2 == 0 {
+            Some(90.0)
+        } else {
+            None
+        },
+        spawn_roll: if is_open && i % 2 == 0 {
+            Some(0.0)
+        } else {
+            None
+        },
+    }
+}
+
+#[test]
+fn actor_roundtrip_basic() {
+    let path = test_dir().join("actor_roundtrip_basic.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = ActorWriter::with_row_group_size(file, 1024).unwrap();
+        for i in 0..100 {
+            writer.push(make_actor_record(i, i % 3 != 2)).unwrap();
+        }
+        writer.finish().unwrap();
+    }
+
+    let batches = read_all_batches(&path);
+    let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+    assert_eq!(total_rows, 100);
+
+    // Verify first batch content.
+    let batch = &batches[0];
+    let time_ms = batch
+        .column(0)
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .unwrap();
+    assert_eq!(time_ms.value(0), 0);
+    assert_eq!(time_ms.value(1), 16);
+
+    // Verify event column (string).
+    let event = batch
+        .column(4)
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    assert_eq!(event.value(0), "open");
+    // Index 2 is the first "close" (i=2, i%3==2).
+    assert_eq!(event.value(2), "close");
+}
+
+#[test]
+fn actor_null_class_path() {
+    let path = test_dir().join("actor_null_class_path.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = ActorWriter::with_row_group_size(file, 1024).unwrap();
+        // Row 0: class_path = None (i=0, i%4==0)
+        writer.push(make_actor_record(0, true)).unwrap();
+        // Row 1: class_path = Some (i=1, i%4!=0)
+        writer.push(make_actor_record(1, true)).unwrap();
+        writer.finish().unwrap();
+    }
+
+    let batches = read_all_batches(&path);
+    let batch = &batches[0];
+
+    // class_path: row 0 null, row 1 non-null
+    let class_path = batch.column(5).as_dictionary::<Int32Type>();
+    assert!(class_path.is_null(0));
+    assert!(!class_path.is_null(1));
+    let class_path_values = class_path.downcast_dict::<StringArray>().unwrap();
+    assert_eq!(
+        class_path_values.value(1),
+        "/Game/Characters/Agent_1/Agent_1_PC.Agent_1_PC_C"
+    );
+}
+
+#[test]
+fn actor_spawn_location_nullable() {
+    let path = test_dir().join("actor_spawn_location.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = ActorWriter::with_row_group_size(file, 1024).unwrap();
+        // Open: has spawn location
+        writer.push(make_actor_record(5, true)).unwrap();
+        // Close: no spawn location
+        writer.push(make_actor_record(5, false)).unwrap();
+        writer.finish().unwrap();
+    }
+
+    let batches = read_all_batches(&path);
+    let batch = &batches[0];
+
+    let spawn_x = batch
+        .column(7)
+        .as_any()
+        .downcast_ref::<Float32Array>()
+        .unwrap();
+    // Open row has spawn_x = 50.0
+    assert!(!spawn_x.is_null(0));
+    assert!((spawn_x.value(0) - 50.0).abs() < f32::EPSILON);
+    // Close row has null spawn_x
+    assert!(spawn_x.is_null(1));
+}
+
+#[test]
+fn actor_push_finish_empty() {
+    // Verify that finishing a writer with zero rows produces a valid file.
+    let path = test_dir().join("actor_empty.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let writer = ActorWriter::new(file).unwrap();
+        writer.finish().unwrap();
+    }
+    // File should still be valid Parquet with 0 rows.
+    let batches = read_all_batches(&path);
+    let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+    assert_eq!(total_rows, 0);
+}

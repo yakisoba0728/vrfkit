@@ -49,11 +49,13 @@
 
 #![forbid(unsafe_code)]
 
+mod actor_writer;
 mod error;
 mod field_writer;
 mod movement_writer;
 mod schema;
 
+pub use actor_writer::{ActorRecord, ActorWriter};
 pub use error::ExportError;
 pub use field_writer::{FieldRecord, FieldWriter};
 pub use movement_writer::{MovementRecord, MovementWriter};
