@@ -477,7 +477,10 @@ def _build_shot_event(
                 x = _struct.unpack_from('<d', raw_bytes, 0)[0]
                 y = _struct.unpack_from('<d', raw_bytes, 8)[0]
                 z = _struct.unpack_from('<d', raw_bytes, 16)[0]
-                location = {"x": round(x, 2), "y": round(y, 2), "z": round(z, 2)}
+                # Full precision: the reference emits the raw double
+                # (559.962145690918), and rounding here was the only thing
+                # keeping shot_rays.sample_rays from matching.
+                location = _vec3(x, y, z)
     if rotation is None:
         raw249 = scalar_params.get("249")
         if isinstance(raw249, dict) and "Data" in raw249:
@@ -593,23 +596,34 @@ def _build_shot_event(
 
 
 def _parse_location(val) -> dict:
-    """Parse a Location value into {x, y, z}."""
-    if val is None:
-        return {"x": 0, "y": 0, "z": 0}
+    """Parse a Location value into {x, y, z}, preserving full precision.
+
+    This used to round to 2 decimals, which was the last thing keeping
+    shot_rays.sample_rays from matching the reference -- it emits the raw
+    double (559.962145690918).
+
+    Callers expect a dict, so an unparseable value still yields a zero vector
+    rather than None. That is a fabricated value and the one place in this
+    adapter that has one; it is retained because the shot filter upstream
+    already guarantees a location is present, so it should be unreachable.
+    """
     if isinstance(val, dict):
         return val
-    if isinstance(val, str):
-        # Compact vector format: "(x,y,z)"
-        s = val.strip("()")
-        parts = s.split(",")
-        if len(parts) == 3:
-            try:
-                return {"x": round(float(parts[0]), 2),
-                        "y": round(float(parts[1]), 2),
-                        "z": round(float(parts[2]), 2)}
-            except ValueError:
-                pass
-    return {"x": 0, "y": 0, "z": 0}
+    parsed = _parse_exact_vector(val) if val is not None else None
+    return parsed if parsed is not None else {"x": 0, "y": 0, "z": 0}
+
+
+def _vec3(x, y, z) -> dict:
+    """Build an {x, y, z} dict, emitting integral components as ints.
+
+    Matches how the C# reference serializes a double: System.Text.Json writes
+    0.0 as `0`, so keeping Python floats here would put `0.0` where the
+    reference has `0`.
+    """
+    return {
+        axis: (int(n) if float(n).is_integer() else n)
+        for axis, n in zip(("x", "y", "z"), (x, y, z))
+    }
 
 
 def _parse_exact_vector(val):
