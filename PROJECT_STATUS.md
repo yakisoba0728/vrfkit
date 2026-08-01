@@ -1,6 +1,6 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Reflects commit 1f3afe4 (30th commit, master).
+Last updated: 2026-08-01. Reflects commit e7414d9 (32nd commit, master).
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -33,7 +33,7 @@ Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf  (4 files)
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 231 passed, 0 failed across all crates
+# Expected: 232 passed, 0 failed across all crates
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
@@ -60,23 +60,24 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 See Section 7 for full detail, and NEXT_STEPS_FINDINGS.md for the measured
 evidence behind the 7-A correction.
 
-7-A is DONE (commits 47849d2, b258dfd, 1f3afe4): every shot resolves to a
-weapon, 2,475 / 2,475, names identical to the C# reference. spray_control is
-now EXACT and posture's by_weapon is exact for all 10 players.
+7-A and 7-J are both DONE. All four previously blocked metric sections now
+produce correct data, and no section is BLOCKED any more.
 
-The highest-value remaining task surfaced while verifying it:
+  spray_control  EXACT
+  weapon_stats   by_weapon identical for all 23 weapons
+  posture        by_weapon exact for all 10 players
+  weapons        shot counts identical for all 19 weapons
 
-**7-J. EquippableUsed.NetGuid decodes wrong** [HIGH]
-  weapon_stats reports 0 hits / 0 damage / 0 kills. Every one of our 115
-  values is ODD and resolves to no actor; all 115 of the reference's are
-  EVEN and 114 resolve to a weapon class path. Dynamic NetGUIDs must be
-  even (section 9), so we are producing something that is not a valid GUID.
-  A decode bug in one RPC parameter, not a resolution problem.
+**7-B. 1ms timing alignment** is now the highest-value remaining task.
+  It has grown from cosmetic to the single largest source of remaining
+  difference: rounds, objective, ultimate, shot_rays, the 1-RPM delta in
+  weapons, and hp_tracking's entire timeline all trace to it. Every one of
+  those is otherwise identical. Fix is in pipeline.rs -- shift the time_ms
+  attribution by +1ms, or determine which bunch boundary the C# parser uses
+  and match it.
 
-After that: 1ms timing alignment (Section 7-B) makes 5-6 more sections
-byte-exact -- but those sections are already numerically correct, so 7-B is
-cosmetic parity, not new capability. Note it also accounts for the 1-RPM
-delta now visible in weapons.
+After that the remaining gaps are naming (7-D), the 7-I parity decision, and
+the bounded unattributed bits (7-C, whose ceiling is measured and real).
 
 7-I is classified and is not a defect: the 172 events are server-world
 effects with no firing state, correctly excluded by our filter. Only decide
@@ -130,8 +131,8 @@ analytics pipeline runs unchanged on our data.
 
 ```
 branch       : master
-commits      : 30
-tests        : 231 passing, 0 failed
+commits      : 32
+tests        : 232 passing, 0 failed
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
 working tree : clean
@@ -181,7 +182,7 @@ vrfkit/
     vrf-frame       -- DemoFrame iteration (3 tests)
     vrf-schema      -- dynamic field schema from replay wire (47 tests)
     vrf-net         -- Unreal replication pipeline, no skip path (31 tests)
-    vrf-decode      -- primitive decoders, nested arrays, struct blobs (51 tests)
+    vrf-decode      -- primitive decoders, nested arrays, struct blobs (52 tests)
     vrf-movement    -- remote-character update protocol (5 tests)
     vrf-export      -- columnar Parquet writers (18 tests)
     vrfkit          -- CLI: inspect / validate / export (0 tests; the driver is
@@ -189,7 +190,7 @@ vrfkit/
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 231 tests. Counts measured per crate on 2026-08-01; the previous
+Total: 232 tests. Counts measured per crate on 2026-08-01; the previous
 breakdown in this document was wrong for six of the ten crates even though
 its total happened to be right.
 
@@ -473,6 +474,34 @@ Follow-on items surfaced during verification, both new sections:
 7-I (172 events the reference emits and we do not, now classified as
 server-world effects rather than dropped shots).
 
+### 5-M. EquippableUsed and RegionalDamage (commits 90a50e1, e7414d9)
+
+7-J closed. Two bugs, the second only visible once the first was fixed.
+
+EquippableUsed was FieldType::Raw because the C# descriptor hides it behind
+a custom .Decode(...) the extractor cannot read. The adapter, given no type,
+read the bits as a fixed little-endian uint16. IntPacked is 8/16/24 bits
+wide, so that only ever saw 272 of 632 occurrences, and IntPacked's
+continuation flag sits in the low bit of the first byte, so every multi-byte
+value came out odd -- while the engine requires dynamic NetGUIDs to be even.
+All 115 values we produced were odd and none was a real actor.
+
+The diagnosis came from two cheap discriminating checks rather than from
+staring at the values: parity (115 odd vs the reference's 115 even) and
+"does it resolve to an actor" (1/115 vs 114/115). Rank-order pairing between
+the two value sets looked suggestive and was worthless -- the implied ratios
+were 1.41 / 1.71 / 1.82 / 3.97 and two entities tied on frequency.
+
+With the GUIDs correct, hits/damage/kills matched but head and body were
+swapped. REGIONAL_DAMAGE_MAP had ordinals 0 and 1 reversed and put invalid
+at 3; EAresRegionalDamage.cs has Normal=0, Headshot=1, Legshot=2,
+RegionCount=3, Invalid_Radial=4, Invalid=5. The 18 genuine "no hit region"
+events at ordinal 5 had been falling through to unknown_5.
+
+Both fixes verified against the reference: 116 distinct GUIDs all even,
+115 of 116 resolving to an actor (the extra is the record 6e6d544 recovers),
+by_weapon identical for all 23 weapons, region_source byte-identical.
+
 
 ---
 
@@ -517,8 +546,10 @@ spray_control    EXACT        69 cells, 2304 shots, zero differing cells
 weapons          MINOR        all 19 weapons + shot counts identical; two
                               deltas: ref carries "unknown": 172 (7-I), and
                               Sheriff/Ghost rpm_estimated differ by 1 (7-B)
-weapon_stats     BLOCKED      shots/pellets identical; hits/damage/kills 0
-                              -- blocked by 7-J, not by weapon identity
+weapon_stats     MATCH*       by_weapon identical for all 23 weapons;
+                              region_source byte-identical. Deltas: excluded
+                              counts (+1 recovered record, 7-I's 172) and
+                              hp_tracking timestamps (7-B 1ms)
 posture          MINOR        by_weapon EXACT for all 10 players; remaining
                               deltas are distance_m / movement_samples, the
                               pre-existing movement row-count difference
@@ -530,8 +561,8 @@ MATCH*: every key identical except the two named, both understood.
 ~1ms: numerically correct; systematic -1ms offset from bunch timestamp choice.
 OURS BETTER: our value is more complete/correct than the C# reference.
 MINOR: correct data, cosmetic naming or sample-count difference.
-BLOCKED: the data is present but a named defect prevents it being used --
-         currently only weapon_stats, on 7-J.
+BLOCKED: the data is present but a named defect prevents it being used.
+         No section is currently BLOCKED.
 
 Scoreboard metrics that Tracker.gg validated (K/D/A, ADR, HS%, KAST,
 FK/FD, MK, rank): reproduced exactly for all 10 players from vrfkit data.
@@ -603,18 +634,35 @@ NOT needed: resolving InventoryComponent -> /Script/ShooterGame.AresInventory.
 That is the C# tier-3 fallback and tier 2 already covers 100% of shots. It
 remains interesting for other sections -- see 7-H.
 
-### 7-B. 1ms timing alignment [LOW IMPACT, COSMETIC]
+### 7-B. 1ms timing alignment [NOW THE LARGEST REMAINING GAP]
 
 All timestamp differences are exactly -1ms. This is not random noise; it
 is a systematic choice of which packet timestamp to use (start vs end of
 the UE4 bunch). No metric threshold operates at 1ms granularity, so this
 has zero effect on any computed value.
 
+Reclassified 2026-08-01. This was labelled LOW IMPACT / COSMETIC when four
+sections were blocked outright. With 7-A and 7-J closed it is now the single
+largest source of remaining difference, and in several sections the ONLY
+one:
+  rounds.round_intervals, objective.side_switch_ms, ultimate.cast_times_ms,
+  shot_rays[].ms, weapon_stats.hp_tracking.timeline[].t_ms (every entry,
+  everything else about those entries identical), and the 1-RPM delta in
+  weapons.by_weapon that comes from gap-derived rates.
+
 Fix: in pipeline.rs, shift the time_ms attribution by +1ms, or verify
 which boundary the C# parser uses and match it.
 
-Unlocks: rounds, objective.side_switch_ms, ultimate.cast_times_ms,
-shot_rays[].ms go from ~1ms to EXACT. Probably 5-6 more EXACT sections.
+DO NOT treat this as a one-liner. time_ms is attributed once and flows into
+every row of every table, so a blind +1 could fix five sections and break
+four. Determine which bunch boundary the C# parser uses FIRST, then change
+it, then re-diff all 21 sections -- not just the ~1ms ones. Every currently
+EXACT section (players, economy, side_winrate, spray_control) rides on the
+same timestamp and must be re-verified, along with the full regression guard
+and the 215-replay corpus.
+
+Unlocks: probably 5-6 more EXACT sections, and removes the last unexplained
+difference from weapon_stats.
 
 ### 7-C. Unattributed ClassNetCache blocks [MEDIUM IMPACT, BOUNDED]
 
@@ -732,9 +780,34 @@ distinct_weapons 20 where we report 19.
 Decide whether to emit them for byte-parity or keep the cleaner output. If
 kept, this stops being a gap and becomes a documented divergence.
 
-### 7-J. MulticastNotifyDamage EquippableUsed.NetGuid decodes wrong [HIGH]
+### 7-J. EquippableUsed.NetGuid decoded wrong [DONE 2026-08-01]
 
-Blocks: weapon_stats hits / regions / damage / kills (all report 0).
+Fixed in commits 90a50e1 (type correction) and e7414d9 (RegionalDamage enum,
+a second bug the first fix exposed).
+
+weapon_stats.by_weapon is now identical to the reference for all 23 weapons,
+and region_source is byte-identical. Remaining deltas are the +1 recovered
+damage record, the 7-I server-world effects, and the 7-B 1ms offset on
+hp_tracking timestamps -- no unexplained difference remains.
+
+Root cause: DamageParameters.cs:51 attaches a custom decoder
+(.Decode(ValorantPayloadDecoders.Equippable)) that extract_descriptors.py
+cannot see through, so the field landed in table.rs as FieldType::Raw. That
+decoder is exactly archive.ReadIntPacked(), which FieldType::ObjectNetGuid
+already implements. With no type, the adapter guessed a fixed little-endian
+uint16 -- wrong both because IntPacked is 8/16/24 bits wide depending on the
+value, and because the low bit of the first byte is IntPacked's continuation
+flag, which made every multi-byte value odd when dynamic NetGUIDs must be
+even.
+
+Generalisable lesson: any C# field with a custom .Decode(...) is invisible to
+the extractor and silently becomes Raw. `Equippable` was the only such
+decoder in use, but a future one would fail the same way, and Raw looks
+deliberate rather than unknown. Worth an audit if new descriptors land.
+
+The original investigation notes follow.
+
+Blocked: weapon_stats hits / regions / damage / kills (all reported 0).
 
 Found 2026-08-01 while verifying 7-A. weapon_stats resolves the gun behind
 each hit from MulticastNotifyDamage_*.EquippableUsed.NetGuid. Our values do
