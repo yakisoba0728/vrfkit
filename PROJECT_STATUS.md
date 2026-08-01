@@ -1,7 +1,10 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Reflects commit ed4415f (25th commit, master).
-All numbers come from direct tool runs in the previous session, not estimates.
+Last updated: 2026-08-01. Reflects commit 21003aa (26th commit, master).
+All numbers come from direct tool runs, not estimates.
+
+Section 7-A was corrected on 2026-08-01 after its premise was disproved by
+measurement. See NEXT_STEPS_FINDINGS.md for the evidence.
 
 ---
 
@@ -53,16 +56,21 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 ```
 
 ### What to do next (highest impact first)
-See Section 7 for full detail. The single most valuable next task is:
+See Section 7 for full detail, and NEXT_STEPS_FINDINGS.md for the measured
+evidence behind the 7-A correction. The single most valuable next task is:
 
-**7-A. Equippable (weapon) identity resolution** -- No Rust change needed.
-  actors.parquet now exists with class_path per actor.
-  The shot EffectContainer carries a net GUID; join it to actors.parquet
-  to get the weapon class path, then map class path -> display name.
+**7-A. Equippable (weapon) identity resolution** -- verified route, 100% hit.
+  shot.firing_state -> NetGuidCache outer chain -> equippable actor GUID
+  -> actors.parquet class_path -> display name.
+  Needs one small Rust export addition (the netguid -> path/outer table is
+  computed today but never written out), then adapter work.
+  Verified on 02d4d478: 2,475 / 2,475 shots resolve, class_path identical
+  to the C# reference on every one.
   Unlocks 4 metric sections: weapons, weapon_stats, spray_control, posture.
-  Estimated effort: 1-2 hours in to_valplay_bundle.py.
 
-After that: 1ms timing alignment (Section 7-B) closes 5-6 more sections.
+After that: 1ms timing alignment (Section 7-B) makes 5-6 more sections
+byte-exact -- but note those sections are already numerically correct, so
+7-B is cosmetic parity, not new capability.
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -112,7 +120,7 @@ analytics pipeline runs unchanged on our data.
 
 ```
 branch       : master
-commits      : 24
+commits      : 26
 tests        : 228 passing, 0 failed
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
@@ -438,25 +446,47 @@ FK/FD, MK, rank): reproduced exactly for all 10 players from vrfkit data.
 
 Blocks: weapons, weapon_stats, spray_control, posture (4 metric sections).
 
-The shot EffectContainer carries a net GUID that refers to the equippable
-actor. The equippable actor's class path (e.g. Rifle_Standard_V2_C for
-Vandal) is in actors.parquet. The chain is:
-  EffectContainer.equippable_guid
-    -> actors.parquet actor_net_guid where event_kind='open'
-    -> class_path
+CORRECTED 2026-08-01. The earlier version of this section said the shot
+EffectContainer carries the equippable net GUID and that the join needed no
+Rust change. Both were wrong. Measured against the reference bundle:
+effect_equippable is set on 0 of 2,647 shots, and firing_state GUIDs appear
+in 0 of 2,475 actors.parquet rows. Full evidence in NEXT_STEPS_FINDINGS.md.
+
+The route that actually works, verified end to end at 100%:
+  shot.firing_state (adapter already emits it)
+    -> NetGuidCache guid_to_outer      <- NOT currently exported
+    -> equippable actor GUID
+    -> actors.parquet class_path       <- already exported and correct
     -> weapon display name via a lookup table
 
-Two sub-tasks:
-  a) Walk the GUID chain in the adapter (Python, no Rust change needed).
-     actors.parquet now exists; the join is straightforward.
-  b) Build the weapon display name table. The C# parser has this internally
-     as WeaponClassMapping. It can be extracted from the C# source or
-     derived from existing data (the C# events.ndjson for 02d4d478 has
-     weapon names alongside GUID references).
+Probe result on 02d4d478 (temporary instrumentation, since reverted):
+  firing_state GUIDs present in guid->outer : 175 / 175  (100%)
+  shots resolved to a weapon class_path     : 2,475 / 2,475  (100.00%)
+  class_path equal to the C# reference       : 2,475 / 2,475
+  reference equippable GUIDs in actors.parquet: 157 / 157, byte-identical
 
-Estimated effort: 1-2 hours. No Rust change required.
+Three sub-tasks:
+  a) Export the netguid table (Rust, vrf-export + a NetGuidCache accessor).
+     Suggested: net_guids.parquet with (net_guid, path, outer_net_guid).
+     16,167 rows for this replay. The data already exists in guid_to_outer
+     (cache.rs:89) and guid_to_path (:88); the exporter never emits it.
+     Export path as well as outer -- path is what distinguishes FiringState
+     from ZoomedFiringState, and the C# fallback uses it.
+  b) Walk the outer chain in the adapter (Python). Mirrors the C# tier-2
+     resolver, ValorantShotEventEnricher.cs:163.
+  c) Build the weapon display name table. The C# parser hardcodes this in
+     ValorantEquippableResolver.cs:20 (130 lines of
+     Define(class_path, name, category)). Keep it in the Python adapter so
+     the Rust parser stays free of hardcoded names -- see section 8.
+
+Effort: a Rust export addition plus adapter work, not the 1-2 hours the
+earlier estimate claimed. No parser resolution redesign is needed.
 
 Unlocks: 4 metric sections from BLOCKED to MATCH.
+
+NOT needed: resolving InventoryComponent -> /Script/ShooterGame.AresInventory.
+That is the C# tier-3 fallback and tier 2 already covers 100% of shots. It
+remains interesting for other sections -- see 7-H.
 
 ### 7-B. 1ms timing alignment [LOW IMPACT, COSMETIC]
 
@@ -488,6 +518,11 @@ Breakdown:
 AbilitiesAndBuffsComponent is the real ceiling. Until the game server
 declares its ClassNetCache group in the schema, no lookup can reach it.
 This may change in a future build.
+
+CONFIRMED 2026-08-01: searched all 475 declared export groups in
+02d4d478's manifest -- zero contain the substring "AbilitiesAndBuffs".
+This is now a measured fact rather than an assumption. Do not spend
+time trying to recover those bits.
 
 The MeleeAttackState variants are tractable: if MeleeAttackState1_C_ClassNetCache
 etc. are added to the schema lookup logic, those would be recovered.
@@ -523,6 +558,50 @@ The Tracker.gg cross-validation was done on fd816a35, but that replay's
 on 02d4d478 is strong (270 comparisons, 0 mismatches for scoreboard
 metrics) but it is still one replay. Running the adapter on 3-4 more
 replays and spot-checking K/D/A would raise confidence.
+
+### 7-H. Instance-named component groups [MEDIUM IMPACT, DESIGN WORK]
+
+Several component groups arrive under an actor instance name and never reach
+their declared class group, so their fields stay unnamed. The bits are
+captured -- no-skip-path holds -- but no field_name is attached.
+
+Top unnamed group_paths in 02d4d478's fields.parquet:
+```
+13043  InventoryComponent          (declared as /Script/ShooterGame.AresInventory)
+ 8042  ZoomStateMachine            fire mode / posture
+ 3124  MagazineAmmo                weapon_stats
+ 1782  CalloutRegionTracker
+  746  MapTargetingState
+  693  HealthDamageSection
+  564  ReserveAmmo                 weapon_stats
+  516  PMAimToolingPointsTarget
+  470  VisionComponent
+  464  AresAttributeSet_2
+```
+
+This is NOT a mechanical extension of resolve_cnc_for_instance_name
+(cache.rs:301). That function strips _SEGMENT stems and tries
+stem_ClassNetCache / stemComponent_ClassNetCache / stem_C_ClassNetCache.
+No stem of "InventoryComponent" produces "AresInventory" -- the class carries
+an "Ares" prefix the instance name does not have. Resolving it needs
+structure the replay provides (most likely the subobject's outer chain in
+guid_to_outer, leading to the owning actor's class) rather than string
+manipulation.
+
+7-A does NOT depend on this. It matters for ammo-level detail in weapon_stats
+and for posture / fire-mode refinement.
+
+### 7-I. Verify the 2,647 vs 2,475 shot gap [SMALL, VALIDATION HYGIENE]
+
+The reference bundle has 2,647 valorant_shot_received events and resolves
+equippable on exactly 2,475 of them -- the same count our adapter emits.
+Our adapter filters on FiringState.FiringPlayerState being present. If that
+filter is what produces both numbers, then "ray_count 2475/2475 exact" is a
+self-selecting comparison and reads stronger than it is.
+
+Classify the 172: pull their source_id / fire_mode_evidence from the
+reference events.ndjson and determine whether they are gun shots we drop or
+ability/melee effects that were never gun shots.
 
 ---
 
