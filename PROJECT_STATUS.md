@@ -1,6 +1,6 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Reflects commit 3d37c68 (46th commit, master).
+Last updated: 2026-08-01. Reflects commit ef9a521 (56th commit, master).
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -150,7 +150,7 @@ analytics pipeline runs unchanged on our data.
 
 ```
 branch       : master
-commits      : 47
+commits      : 56
 tests        : 236 passing, 0 failed
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
@@ -162,6 +162,17 @@ ValorantReplayParser : 0 modified files (instrumentation always reverted)
 ### Commit list
 
 ```
+ef9a521 Merge branch 'worktree-agent-a6abf41017a8780d8'
+a1e9943 docs: record the throughput win 7-F's measurement pointed at
+ae3b83f perf(tools): run corpus validation N replays at a time
+ef6e0c2 docs: close 7-H as not solvable, with the five measurements that prove it
+b299a86 Merge branch 'worktree-agent-ab447b5e87d427c27'
+601a447 docs: name the right reordering hazard in 7-F
+9ec24e7 docs: close 7-E and 7-I, and record the vacuous malformed counter
+de0ca29 docs: close 7-F after measuring where the export time actually goes
+9cb7a24 fix(tools): the corpus malformed counter was never actually read
+6a73475 fix(tools): stop filtering out effects that carry no firing state
+e0c5bd8 docs: record cross-validation, the movement defect, and three audited claims
 3d37c68 fix(tools): collapse intra-packet sub-moves and stop printing f32 artefacts
 38ca3fe feat(tools): cross-validate metrics against every available reference bundle
 279770a docs: close 7-B and 7-D, and record what their premises got wrong
@@ -598,6 +609,40 @@ Causation for the kill-derived claims was established by injecting the 13
 RPCs into a copy of the reference bundle and re-running valplay's own
 compute_metrics: the unmodified copy reproduces the reference, the injected
 copy reproduces ours.
+
+### 5-O. Closing out section 7
+
+7-E, 7-F, 7-H and 7-I were finished in parallel; 7-F and 7-H ran as isolated
+worktree agents and both came back with a measured "do not do this", which is
+the outcome that saves the most time.
+
+  7-I  the 172 server-world effects are now emitted, not filtered.
+       weapons became EXACT. Dropping them had hidden information valplay's
+       "unknown" bucket and shots_without_equippable diagnostic exist to
+       report -- a silent drop made at the adapter layer, where the parser's
+       own invariants were not being applied.
+  7-E  tools/check_corpus_baseline.py pins the four 13.02 demos and was
+       proven to fail on a perturbed baseline before being trusted.
+  7-F  closed by measurement: the transform it wanted to parallelise is 3.4%
+       of an export, and the decode half is order-dependent because a
+       block's group path -- and therefore its handle bit width -- depends on
+       cache state mutated by earlier blocks. The process-level win it
+       pointed at was taken instead: 11x on the corpus, zero risk.
+  7-H  closed as not solvable from replay data. The class of a stably-named
+       subobject is never transmitted; five independent measurements, and the
+       cf97ecf export-gap check was run first and came back negative.
+
+The malformed counter was the session's sharpest lesson. validate_corpus.py
+matched on "Malformed:" while the oracle prints "Malformed framing:", and a
+non-matching pattern was silently skipped -- so the figure quoted as the
+primary evidence for exact framing had never been read. It is genuinely 0,
+but for the whole project's history that was luck rather than knowledge.
+
+Six claims were corrected this session by measuring something that had been
+asserted: two premises (7-B, 7-D), two figures (combat.per_player's
+tolerance, the per-crate test counts), one scope error (7-G's "only one
+reference bundle" -- there were eleven), and one counter that was never read
+at all.
 
 ---
 
