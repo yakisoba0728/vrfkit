@@ -37,7 +37,7 @@ Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf  (4 files)
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 236 passed, 0 failed across all crates
+# Expected: 238 passed, 0 failed across all crates
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
@@ -62,6 +62,22 @@ python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # Expected: OK: 4 replays match the baseline
 ```
 
+For a change that is supposed to alter nothing at all -- a refactor, or a
+performance change like 5-P -- the counters above are too coarse. Hash the
+output instead. Delete `out\nested` first; a stale file makes a matching hash
+meaningless.
+```powershell
+Get-ChildItem out\nested\*.parquet | Sort-Object Name |
+  ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash, $_.Name }
+# 02d4d478, unchanged since before 5-P:
+#   F9D21B325B8C8F426CE758F000DBF3B5E412ABFE23CBCB862D8BCA522CA82CE5  actors.parquet
+#   2DDC81D8C3EBB58931BF9C667D0C505A608F6F73C2CB097A461EB738E087B59A  fields.parquet
+#   1242BBB15B29BE267BA4B0326BCBC508B5E2AC6C7CD8A1570035C335C04D9363  movement.parquet
+#   501CABC678770431D0FEC9C37C4E21ED06193BB93263313959E87865625BBA0F  net_guids.parquet
+```
+manifest.json is deliberately not in that set: it records elapsed time, so it
+differs on every run by design.
+
 ### What to do next (highest impact first)
 See Section 7 for full detail, and NEXT_STEPS_FINDINGS.md for the measured
 evidence behind the 7-A correction.
@@ -72,9 +88,9 @@ replays**, up from 3 sections on 1 replay at the start of the session.
 
 Verify it yourself:
 ```powershell
-python toolsalidate_metrics_corpus.py --jobs 3
+python tools\validate_metrics_corpus.py --jobs 3
 # Expected: sections exact on ALL   : 16 / 21
-python tools\check_corpus_baseline.py --baseline toolsaselinesuild_1302.json
+python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # Expected: OK: 4 replays match the baseline
 ```
 
@@ -93,8 +109,11 @@ done, or closed with a measurement showing it cannot or should not be done.
   7-C  measured ceiling -- the game never declares the group. Read 7-C for
        the proportion before quoting the raw bit count: it is 1.05% of
        blocks and costs nothing measurable today
-  7-F  measured -- the parallelisable slice is 3.4%, the rest is
-       order-dependent. The process-level win was taken instead (11x)
+  7-F  measured -- the parallelisable slice of the DECODE path is 3.4%, the
+       rest is order-dependent. The process-level win was taken instead
+       (11x). The three hot spots 7-F named were then optimized in 5-P:
+       an export is 1.73x faster with all four Parquet files byte-identical.
+       Decode is still strictly sequential; only the writers are concurrent
   7-H  CLOSED NOT SOLVABLE. The export-gap check that fixed cf97ecf was run
        and came back negative, and so did every other structural route: the
        class of a stably-named subobject is never on the wire. Five
@@ -152,8 +171,10 @@ analytics pipeline runs unchanged on our data.
 
 ```
 branch       : master
-commits      : 56
-tests        : 236 passing, 0 failed
+commits      : 65 (git log --oneline | wc -l). The "56" this line used to
+               carry did not match the log; re-measure it rather than
+               incrementing it
+tests        : 238 passing, 0 failed
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
 working tree : clean
@@ -164,6 +185,14 @@ ValorantReplayParser : 0 modified files (instrumentation always reverted)
 ### Commit list
 
 ```
+14a9e93 test(export): prove the offloaded writers cannot fail silently
+2012c51 perf(sink): lend the record buffers to the sink instead of rebuilding them
+f70781a perf(sink, schema): memoise the RPC parameter group lookup
+e08665b perf(export): move the fields and movement Parquet writers off the packet loop
+a026a7f docs: task brief for delegating the three remaining items to Codex
+bb21b82 docs: handoff brief for the three remaining tasks
+8cc83a1 docs: state what 7-C actually costs, not just how many bits it is
+c055ee5 docs: close out section 7 and record the session's corrected claims
 ef9a521 Merge branch 'worktree-agent-a6abf41017a8780d8'
 a1e9943 docs: record the throughput win 7-F's measurement pointed at
 ae3b83f perf(tools): run corpus validation N replays at a time
@@ -238,14 +267,18 @@ vrfkit/
     vrf-decode      -- primitive decoders, nested arrays, struct blobs (53 tests)
     vrf-movement    -- remote-character update protocol (5 tests)
     vrf-export      -- columnar Parquet writers (18 tests)
-    vrfkit          -- CLI: inspect / validate / export (0 tests; the driver is
-                       covered by the regression guard, not unit tests)
+    vrfkit          -- CLI: inspect / validate / export (2 tests; the driver is
+                       otherwise covered by the regression guard. The two are
+                       the writer-thread failure guards from 5-P, which the
+                       regression guard cannot reach because it only exercises
+                       the success path)
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 236 tests. Counts measured per crate on 2026-08-01; the previous
+Total: 238 tests. Counts measured per crate on 2026-08-01; the previous
 breakdown in this document was wrong for six of the ten crates even though
-its total happened to be right.
+its total happened to be right. It was 236 until 5-P added the two vrfkit
+writer-thread guards.
 
 ---
 
@@ -649,6 +682,119 @@ tolerance, the per-crate test counts), one scope error (7-G's "only one
 reference bundle" -- there were eleven), and one counter that was never read
 at all.
 
+### 5-P. Export path optimization (commits e08665b, f70781a, 2012c51, 14a9e93)
+
+7-F ended by naming three places the time was: Parquet writing (37%),
+`on_content_block` group-path resolution (12%) and `try_parse_rpc_params`
+(10%). Two of the three were taken -- Parquet and the RPC lookup. Group-path
+resolution was not, and is now the largest single slice; the breakdown at the
+end of this section says where it went instead. The largest win after Parquet
+turned out to be a fourth thing 7-F's table had folded into `process_packet`
+and never named: `ExportSink` construction. The constraint throughout was
+**bit-identical, order-identical output**, checked by SHA-256 of all four
+Parquet files after every step -- all four are unchanged from the
+pre-optimization baseline:
+
+```
+actors.parquet     F9D21B325B8C8F426CE758F000DBF3B5E412ABFE23CBCB862D8BCA522CA82CE5
+fields.parquet     2DDC81D8C3EBB58931BF9C667D0C505A608F6F73C2CB097A461EB738E087B59A
+movement.parquet   1242BBB15B29BE267BA4B0326BCBC508B5E2AC6C7CD8A1570035C335C04D9363
+net_guids.parquet  501CABC678770431D0FEC9C37C4E21ED06193BB93263313959E87865625BBA0F
+```
+
+Result, interleaved A/B against the pre-change binary (alternating runs, so
+machine drift cancels), in-process elapsed on 02d4d478:
+
+```
+              baseline           patched          speedup
+export        2.840 s median     1.640 s median    1.73x
+              2.760 s min        1.580 s min       1.75x
+validate      1.580 s median     1.350 s median    1.17x
+              1.520 s min        1.290 s min       1.18x
+```
+
+`validate` moves less because it never wrote Parquet; its 1.17x is the sink
+work alone. The export-minus-validate gap -- which 7-F established IS the
+Parquet write -- went from 1.26 s to 0.29 s. That is the offload measured
+from the outside, and it agrees with 7-F's 1045 ms.
+
+Three optimizations, each provably output-preserving rather than
+tested-into-confidence, plus the guard that keeps the first one honest:
+
+  **e08665b -- fields and movement writers moved off the packet loop.**
+  Each is an independent file whose writer reads no replay state. They now
+  run on their own threads, fed 16,384-row batches over a bounded channel.
+  The writers still see every record exactly once in stream order and the
+  row-group flush still falls on the same cumulative row counts, so the
+  encoder input is identical. Batched rather than per packet because a
+  replay is ~530 k packets carrying 0.8 field rows and 3.5 movement rows
+  each; per-packet messages would cost more than the encoding they hide.
+  std::thread + sync_channel, no new dependency.
+
+  **f70781a -- the RPC parameter group lookup is memoised.**
+  `find_rpc_param_group_path` fell back to scanning every declared export
+  group with `ends_with(":<function>")`, once per RPC: 113,214 calls against
+  475 groups. It is a pure function of (block group path, function name,
+  set of declared group paths), and only the third can change mid-replay, so
+  `NetGuidCache` gained a `schema_generation` counter bumped by
+  `add_export_group` and `clear` -- the only operations that add or remove a
+  path or alias. A memo stamped with it is exactly equivalent to
+  recomputing. The counter deliberately does not track field mutations, and
+  says so; only path-set queries may key on it.
+
+  **2012c51 -- the record buffers are lent to the sink, not rebuilt.**
+  `ExportSink` is constructed once per packet -- 530,401 times -- and
+  allocated two `Vec::with_capacity(256)` each time. Instrumentation put
+  construct-and-drop at 356 ms, larger than the whole movement decoder. A
+  discriminating probe confirmed it was the allocation and not the timers:
+  `Vec::new()` moved the slice to 66 ms while pushing 69 ms back into
+  `process_packet` (the vectors then regrow every packet). The buffers now
+  live in a caller-owned `RecordBuffers`; `ExportSink::new` clears them, so
+  a caller that never drains them -- the oracle is one -- cannot accumulate.
+
+  **14a9e93 -- the offloaded writers are proven unable to fail silently.**
+  Threading moved the writers' errors off the `?` path. Both the error and
+  the panic branch were driven deliberately and confirmed to fail for the
+  right reason when the `match` on the join result is replaced with
+  `let _ = join(); Ok(())`. Test count 236 -> 238; these two are the only
+  additions.
+
+**Tried and measured as not worth it.** Returning `Option<&str>` instead of
+two `to_owned()` calls from `resolve_actor_package_and_archetype`, which runs
+once per content block. Interleaved A/B: median 1.580 s vs 1.590 s, min
+1.470 s vs 1.470 s -- no effect, and it was reverted. The remaining
+allocation in that path is the `Vec<String>` from
+`replay_path_lookup_keys` / `class_net_cache_lookup_keys`, up to four calls
+of up to six strings per block; removing it needs a borrowing or callback API
+in `vrf-schema`, which was not attempted.
+
+Where the time is **now**, same method as 7-F (temporary `Instant` timers,
+reverted before commit). Instrumented total 1.81 s against 1.64 s clean, so
+~11% of timer overhead is spread across these rows:
+
+```
+  oodle decompress            165 ms
+  DemoFrame iteration          22 ms
+  phase 2 (packet loop)      1529 ms
+    process_packet           1366 ms
+      resolve_group_path      371 ms   <- now the single largest slice
+      try_parse_rpc_params    220 ms
+      movement decode         192 ms
+      on_field total          214 ms
+        apply_overlay          66 ms
+        resolve_field_name     33 ms
+        raw_bits copy          22 ms
+        record push            22 ms
+      resolve_function_count   19 ms
+      residual (bunches, payload transform, framing)  ~350 ms
+    sink construct + drop      38 ms   (was 356 ms)
+    append to writer threads   89 ms
+```
+
+Parquet no longer appears as a slice: it is overlapped with the packet loop,
+which is the whole point. The next target, if there is one, is
+`resolve_group_path` at 371 ms over 608,011 blocks.
+
 ---
 
 ## 6. metrics.json Reproduction Status (02d4d478 vs reference)
@@ -741,7 +887,7 @@ Section 6 used to rest on 02d4d478 alone. Eleven replays have BOTH a source
 was cross-validated was wrong; fd816a35 is simply the one whose .vrf is
 missing.
 
-    python toolsalidate_metrics_corpus.py --jobs 3
+    python tools\validate_metrics_corpus.py --jobs 3
 
 runs the full pipeline over all eleven and prints a section x replay matrix.
 
@@ -938,7 +1084,7 @@ same sections was spawn coordinates: Float32 widened to Python float printed
 Done in commit 9cb7a24. tools/check_corpus_baseline.py pins per-file and
 total oracle figures in JSON and fails on any difference:
 
-    python tools\check_corpus_baseline.py --baseline toolsaselinesuild_1302.json
+    python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 
 tools/baselines/build_1302.json covers the four local 13.02 demos --
 blocks 3,117,920, fields 2,279,512, rpcs 1,713,576, malformed 0,
@@ -1037,6 +1183,12 @@ under NO SILENT SUCCESS. Do not reopen without new measurements.
 Where the time actually is, if a future session wants throughput: Parquet
 writing (37%), `on_content_block` group-path resolution (12%), and
 `try_parse_rpc_params` (10%).
+
+**Two of those three were actioned in 5-P** -- Parquet writing and
+`try_parse_rpc_params`. Group-path resolution was not, and is now the largest
+single slice. An export is 1.73x faster, byte-identically. 7-F itself stays
+CLOSED: nothing in 5-P made the decode half concurrent. Read 5-P before
+treating the table above as current -- it is the pre-5-P breakdown.
 
 The process-level win was taken (commit ae3b83f). validate_corpus.py ran the
 215 replays as 215 *sequential* subprocesses; each already owns its own
@@ -1498,10 +1650,10 @@ This reduced the corpus pass rate from an inflated 100% to an honest
 that every discarded bit is counted and the class is named, which is what
 allows the gaps to be investigated and closed.
 
-### No parallelization within a replay (measured, closed)
-The pipeline is sequential within a replay and stays that way. This entry
-used to name the blocker as atomic oracle counters; that was wrong, and it
-made the problem sound mechanical. The real blocker is that a content
+### No parallel DECODE within a replay (measured, closed)
+The decode pipeline is sequential within a replay and stays that way. This
+entry used to name the blocker as atomic oracle counters; that was wrong, and
+it made the problem sound mechanical. The real blocker is that a content
 block's resolved group path -- and therefore its `function_count` and the
 bit width of its handle read -- depends on cache and channel state mutated
 by earlier blocks in the same phase-2 walk. Only the payload transform is
@@ -1510,6 +1662,16 @@ tradeoff is now a measured one rather than a deferral: the gain is capped
 below what a rayon dependency and the reordering risk cost. See 7-F for
 the full per-slice breakdown and for the process-level alternative that
 does pay off.
+
+Be precise about what 5-P did and did not change. It put the `fields` and
+`movement` **Parquet writers** on their own threads. It did not make anything
+in the decode path concurrent: `process_packet`, the sink, the `NetGuidCache`
+and `ChannelState` all still run strictly sequentially on the main thread, in
+stream order. 7-F's hazard is therefore not triggered -- the `DiagnosticEvent`
+vector and the first-32-wins `stream_failures` cap are produced by the same
+single-threaded walk in the same order as before, and the writers receive
+records in the order the walk emits them. What is concurrent is only the
+encoding of records that have already been decided.
 
 ### Blob decoders in sink.rs vs vrf-decode
 The struct blob decoders (RoundResults etc.) are wired in sink.rs rather
