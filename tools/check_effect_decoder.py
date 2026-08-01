@@ -209,7 +209,8 @@ def _corrupt(case: Case) -> Case:
     if not case.data:
         raise ValueError(f"cannot corrupt empty data for {case.name}")
     data = bytearray(case.data)
-    data[0] ^= 1
+    mask = 2 if case.data == b"\x00" and case.expected == () else 1
+    data[0] ^= mask
     return case._replace(data=bytes(data))
 
 
