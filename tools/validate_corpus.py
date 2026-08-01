@@ -5,6 +5,12 @@ different claim: no file may crash, and every file must land at essentially the
 same oracle pass rate. A file that drops to a low rate would mean either a build
 we mis-detected or a stream shape we have never seen.
 
+Replays are independent, so they run one subprocess each, several at a time.
+Set VRFKIT_JOBS to override the worker count (default: cores - 2, capped at
+16). This changes no number -- each subprocess owns its own output and shares
+nothing. Parallelising *inside* a replay is a different question, measured
+and closed in PROJECT_STATUS 7-F.
+
 Usage:
     python tools/validate_corpus.py <vrfkit.exe> <dir-with-vrf-files> [limit]
 """
@@ -12,10 +18,12 @@ Usage:
 from __future__ import annotations
 
 import collections
+import os
 import re
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 PATTERNS = {
@@ -33,16 +41,41 @@ PATTERNS = {
 }
 
 
+def _run_one(exe: Path, path: Path) -> tuple[str | None, str]:
+    """Validate one replay. Returns (error, combined output).
+
+    The oracle prints to stdout; stderr carries progress noise, and both are
+    searched. UTF-8 is forced because the CLI writes a few non-ASCII glyphs
+    and Python would otherwise pick the Windows console codepage and raise
+    UnicodeDecodeError mid-stream.
+    """
+    try:
+        r = subprocess.run(
+            [str(exe), "validate", str(path)],
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        return "timeout", ""
+    out = (r.stdout or "") + (r.stderr or "")
+    if r.returncode != 0:
+        tail = " | ".join(l for l in out.splitlines()[-3:] if l.strip())
+        return f"exit {r.returncode}: {tail[:160]}", out
+    return None, out
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 3:
         raise SystemExit(__doc__)
     exe, root = Path(argv[1]), Path(argv[2])
     limit = int(argv[3]) if len(argv) > 3 else None
+    # Leave two cores for the OS; each worker is a whole vrfkit process.
+    jobs = max(1, min(int(os.environ.get("VRFKIT_JOBS", "0")) or (os.cpu_count() or 2) - 2, 16))
     files = sorted(root.rglob("*.vrf"))[:limit]
     if not files:
         raise SystemExit(f"no .vrf under {root}")
 
-    print(f"validating {len(files)} replays with {exe}\n")
+    print(f"validating {len(files)} replays with {exe} ({jobs} workers)\n")
     ok = 0
     failures: list[tuple[str, str]] = []
     branches: collections.Counter[str] = collections.Counter()
@@ -51,44 +84,36 @@ def main(argv: list[str]) -> int:
     missing: collections.Counter[str] = collections.Counter()
     started = time.time()
 
-    for i, f in enumerate(files, 1):
-        try:
-            # The oracle prints to stdout; stderr carries progress noise.
-            #
-            # Decode as UTF-8 explicitly: the CLI writes a few non-ASCII glyphs
-            # and Python would otherwise pick the Windows console codepage and
-            # raise UnicodeDecodeError mid-stream.
-            r = subprocess.run(
-                [str(exe), "validate", str(f)],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=300,
-            )
-        except subprocess.TimeoutExpired:
-            failures.append((f.name, "timeout"))
-            continue
-        out = (r.stdout or "") + (r.stderr or "")
-        got = {k: p.search(out) for k, p in PATTERNS.items()}
-        if r.returncode != 0 or not got["rate"]:
-            tail = " | ".join(line for line in out.splitlines()[-3:] if line.strip())
-            failures.append((f.name, f"exit {r.returncode}: {tail[:160]}"))
-            continue
-        ok += 1
-        branches[got["branch"].group(1)] += 1
-        rate = float(got["rate"].group(1))
-        rates.append((rate, f.name))
-        for key in ("blocks", "malformed", "skipped", "fields", "rpcs"):
-            if got[key]:
-                totals[key] += int(got[key].group(1))
-            else:
-                # A counter the oracle stopped printing must not read as zero.
-                # That is precisely how the malformed figure stayed a vacuous
-                # 0 for the whole corpus while its pattern was wrong.
-                missing[key] += 1
-        if i % 25 == 0 or i == len(files):
-            print(f"  [{i}/{len(files)}] ok={ok} failed={len(failures)}")
+    # One subprocess per replay, run jobs-wide. Each already owns its own
+    # output and shares nothing, so this is near-linear with no effect on any
+    # number -- unlike parallelising inside a replay, which 7-F measured and
+    # closed because content blocks are order-dependent.
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        results = pool.map(lambda f: (f, _run_one(exe, f)), files)
+
+        for i, (f, outcome) in enumerate(results, 1):
+            err, out = outcome
+            if err is not None:
+                failures.append((f.name, err))
+                continue
+            got = {k: p.search(out) for k, p in PATTERNS.items()}
+            if not got["rate"]:
+                tail = " | ".join(l for l in out.splitlines()[-3:] if l.strip())
+                failures.append((f.name, f"no pass rate: {tail[:160]}"))
+                continue
+            ok += 1
+            branches[got["branch"].group(1)] += 1
+            rates.append((float(got["rate"].group(1)), f.name))
+            for key in ("blocks", "malformed", "skipped", "fields", "rpcs"):
+                if got[key]:
+                    totals[key] += int(got[key].group(1))
+                else:
+                    # A counter the oracle stopped printing must not read as
+                    # zero. That is precisely how the malformed figure stayed a
+                    # vacuous 0 for the whole corpus while its pattern wrong.
+                    missing[key] += 1
+            if i % 25 == 0 or i == len(files):
+                print(f"  [{i}/{len(files)}] ok={ok} failed={len(failures)}")
 
     elapsed = time.time() - started
     print(f"\nelapsed {elapsed:.1f}s ({elapsed / max(len(files), 1):.2f}s per replay)")
