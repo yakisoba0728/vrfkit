@@ -660,11 +660,35 @@ def _decode_rotation_short(data: bytes, bit_count: int) -> dict:
 # ---------------------------------------------------------------------------
 # RegionalDamage enum mapping: vrfkit stores as int, valplay expects string
 # ---------------------------------------------------------------------------
+# EAresRegionalDamage.cs. The ordinals are the C# enum's, not an invention:
+#
+#   RegionalDamage_Normal         = 0
+#   RegionalDamage_Headshot       = 1
+#   RegionalDamage_Legshot        = 2
+#   RegionalDamage_RegionCount    = 3
+#   RegionalDamage_Invalid_Radial = 4
+#   RegionalDamage_Invalid        = 5
+#   RegionalDamage_CountPlusOne   = 6
+#
+# This map previously had 0 and 1 swapped and put invalid at 3, so every
+# body shot was reported as a headshot and vice versa (Vandal: 109 head /
+# 35 body instead of 35 / 109), and the 18 genuine "no hit region" damage
+# events at ordinal 5 fell through to unknown_5.
+#
+# The four strings that appear on the wire are verified against 02d4d478's
+# reference bundle. The remaining three are derived with the same
+# name-to-string rule (insert "_" before each capital, lowercase) which that
+# verification confirms on 4 of 4 cases; they are sentinels and have not been
+# observed, so an unexpected ordinal still falls through to a loud
+# unknown_{n} rather than being silently absorbed.
 REGIONAL_DAMAGE_MAP = {
-    0: "regional_damage__headshot",
-    1: "regional_damage__normal",
-    2: "regional_damage__legshot",
-    3: "regional_damage__invalid",
+    0: "regional_damage__normal",           # verified: 446 occurrences
+    1: "regional_damage__headshot",         # verified: 83
+    2: "regional_damage__legshot",          # verified: 26
+    3: "regional_damage__region_count",     # derived, sentinel
+    4: "regional_damage__invalid__radial",  # derived, not observed
+    5: "regional_damage__invalid",          # verified: 76
+    6: "regional_damage__count_plus_one",   # derived, sentinel
 }
 
 
