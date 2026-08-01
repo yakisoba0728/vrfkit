@@ -1,4 +1,4 @@
-﻿//! Sink implementation connecting `vrf-net` events to `vrf-export` writers.
+//! Sink implementation connecting `vrf-net` events to `vrf-export` writers.
 //!
 //! # Design: no skipping
 //!
@@ -14,7 +14,7 @@ use vrf_decode::{
     ArrayDecodeStats, COMBAT_ROUNDS_SCHEMA, OVERLAY_TABLE, OverlayStats, OverlayTable,
     apply_overlay, decode_struct_array,
 };
-use vrf_export::{FieldRecord, MovementRecord};
+use vrf_export::{ActorRecord, FieldRecord, MovementRecord};
 use vrf_net::content::ContentBlockHeader;
 use vrf_net::field::FieldSink;
 use vrf_net::net_guid::GuidPathSink;
@@ -120,6 +120,8 @@ pub struct ExportSink<'a> {
     pub field_records: Vec<FieldRecord>,
     /// Buffered movement records to be drained by the driver.
     pub movement_records: Vec<MovementRecord>,
+    /// Buffered actor lifecycle records to be drained by the driver.
+    pub actor_records: Vec<ActorRecord>,
     /// Stats.
     pub stats: ExportStats,
 
@@ -138,6 +140,7 @@ impl<'a> ExportSink<'a> {
             packet_id: 0,
             field_records: Vec::with_capacity(256),
             movement_records: Vec::with_capacity(256),
+            actor_records: Vec::new(),
             stats: ExportStats::default(),
             current_channel: 0,
             current_actor_guid: 0,
@@ -432,6 +435,271 @@ impl<'a> ExportSink<'a> {
         }
     }
 
+    /// Check if a field is a struct blob that has a dedicated decoder.
+    fn is_struct_blob_field(&self, field_name: Option<&str>) -> bool {
+        match field_name {
+            Some("RoundResults") | Some("TeamEconomy") => {
+                self.current_group_path.contains("BombGameState")
+            }
+            Some("RoundInfos") => self.current_group_path.contains("OwnerExclusivePlayerInfo"),
+            _ => false,
+        }
+    }
+
+    /// Decode a struct blob and emit flattened sub-field rows.
+    /// Returns true if decoding succeeded and sub-fields were emitted.
+    fn decode_struct_blob(&mut self, field_name: &str, raw: &[u8], bit_count: u32) -> bool {
+        match field_name {
+            "RoundResults" if self.current_group_path.contains("BombGameState") => {
+                self.decode_round_results_blob(raw, bit_count)
+            }
+            "TeamEconomy" if self.current_group_path.contains("BombGameState") => {
+                self.decode_team_economy_blob(raw, bit_count)
+            }
+            "RoundInfos" if self.current_group_path.contains("OwnerExclusivePlayerInfo") => {
+                self.decode_round_infos_blob(raw, bit_count)
+            }
+            _ => false,
+        }
+    }
+
+    /// Decode RoundResults blob and emit sub-field rows.
+    fn decode_round_results_blob(&mut self, raw: &[u8], bit_count: u32) -> bool {
+        use vrf_decode::structs::decode_round_results;
+
+        let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count));
+        let results = match decode_round_results(&mut reader) {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+
+        for rr in &results {
+            let prefix = format!("RoundResults[{}]", rr.round_number);
+
+            // RoundNumber
+            self.emit_struct_sub_field(
+                &format!("{prefix}.RoundNumber"),
+                Some(i64::from(rr.round_number)),
+                None,
+                None,
+                None,
+            );
+
+            // WinningTeam
+            if let Some(ref team) = rr.winning_team {
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.WinningTeam"),
+                    None,
+                    None,
+                    None,
+                    Some(team.clone()),
+                );
+            }
+
+            // WinningTeamRole
+            if let Some(role) = rr.winning_team_role {
+                let role_str = match role {
+                    vrf_decode::structs::AresTeamRole::None => "none",
+                    vrf_decode::structs::AresTeamRole::Attacker => "attacker",
+                    vrf_decode::structs::AresTeamRole::Defender => "defender",
+                    vrf_decode::structs::AresTeamRole::FreeForAll => "free_for_all",
+                    vrf_decode::structs::AresTeamRole::Any => "any",
+                    vrf_decode::structs::AresTeamRole::RoleCount => "role_count",
+                };
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.WinningTeamRole"),
+                    None,
+                    None,
+                    None,
+                    Some(role_str.to_owned()),
+                );
+            }
+
+            // RoundResult
+            if let Some(outcome) = rr.round_result {
+                let outcome_str = match outcome {
+                    vrf_decode::structs::AresRoundOutcome::Elimination => "elimination",
+                    vrf_decode::structs::AresRoundOutcome::Defuse => "defuse",
+                    vrf_decode::structs::AresRoundOutcome::Detonate => "detonate",
+                    vrf_decode::structs::AresRoundOutcome::TimeExpired => "time_expired",
+                    vrf_decode::structs::AresRoundOutcome::Cheat => "cheat",
+                    vrf_decode::structs::AresRoundOutcome::Surrendered => "surrendered",
+                    vrf_decode::structs::AresRoundOutcome::RoundOutcomeCount => {
+                        "round_outcome_count"
+                    }
+                    vrf_decode::structs::AresRoundOutcome::Invalid => "invalid",
+                };
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.RoundResult"),
+                    None,
+                    None,
+                    None,
+                    Some(outcome_str.to_owned()),
+                );
+            }
+        }
+
+        !results.is_empty()
+    }
+
+    /// Decode TeamEconomy blob and emit sub-field rows.
+    fn decode_team_economy_blob(&mut self, raw: &[u8], bit_count: u32) -> bool {
+        use vrf_decode::structs::decode_team_economy;
+
+        let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count));
+        let results = match decode_team_economy(&mut reader) {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+
+        for te in &results {
+            let prefix = format!("TeamEconomy[{}]", te.index);
+
+            // Index
+            self.emit_struct_sub_field(
+                &format!("{prefix}.Index"),
+                Some(i64::from(te.index)),
+                None,
+                None,
+                None,
+            );
+
+            // ReplicationId
+            if let Some(rep_id) = te.replication_id {
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.ReplicationId"),
+                    Some(i64::from(rep_id)),
+                    None,
+                    None,
+                    None,
+                );
+            }
+
+            // LoadoutValue
+            if let Some(lv) = te.loadout_value {
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.LoadoutValue"),
+                    Some(i64::from(lv)),
+                    None,
+                    None,
+                    None,
+                );
+            }
+
+            // AverageLoadoutValue
+            if let Some(alv) = te.average_loadout_value {
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.AverageLoadoutValue"),
+                    Some(i64::from(alv)),
+                    None,
+                    None,
+                    None,
+                );
+            }
+        }
+
+        !results.is_empty()
+    }
+
+    /// Decode RoundInfos blob and emit sub-field rows.
+    fn decode_round_infos_blob(&mut self, raw: &[u8], bit_count: u32) -> bool {
+        use vrf_decode::structs::decode_round_infos;
+
+        let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count));
+        let results = match decode_round_infos(&mut reader) {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+
+        for ri in &results {
+            let prefix = format!("RoundInfos[{}]", ri.index);
+
+            // RoundNumber
+            if let Some(rn) = ri.round_number {
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.RoundNumber"),
+                    Some(i64::from(rn)),
+                    None,
+                    None,
+                    None,
+                );
+            }
+
+            // StartOfRoundMoney
+            if let Some(v) = ri.start_of_round_money {
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.StartOfRoundMoney"),
+                    Some(i64::from(v)),
+                    None,
+                    None,
+                    None,
+                );
+            }
+
+            // StartOfRoundLoadoutValue
+            if let Some(v) = ri.start_of_round_loadout_value {
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.StartOfRoundLoadoutValue"),
+                    Some(i64::from(v)),
+                    None,
+                    None,
+                    None,
+                );
+            }
+
+            // EndOfRoundMoney
+            if let Some(v) = ri.end_of_round_money {
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.EndOfRoundMoney"),
+                    Some(i64::from(v)),
+                    None,
+                    None,
+                    None,
+                );
+            }
+
+            // EndOfRoundLoadoutValue
+            if let Some(v) = ri.end_of_round_loadout_value {
+                self.emit_struct_sub_field(
+                    &format!("{prefix}.EndOfRoundLoadoutValue"),
+                    Some(i64::from(v)),
+                    None,
+                    None,
+                    None,
+                );
+            }
+        }
+
+        !results.is_empty()
+    }
+
+    /// Emit a single sub-field row for a decoded struct blob element.
+    fn emit_struct_sub_field(
+        &mut self,
+        field_name: &str,
+        value_i64: Option<i64>,
+        value_f64: Option<f64>,
+        value_bool: Option<bool>,
+        value_str: Option<String>,
+    ) {
+        self.field_records.push(FieldRecord {
+            time_ms: self.time_ms,
+            packet_id: self.packet_id,
+            channel_index: self.current_channel,
+            actor_net_guid: self.current_actor_guid,
+            group_path: self.current_group_path.clone(),
+            handle: 0,
+            field_name: Some(field_name.to_owned()),
+            bit_count: 0,
+            raw_bits: None,
+            value_i64,
+            value_f64,
+            value_bool,
+            value_str,
+        });
+        self.stats.fields_emitted += 1;
+    }
+
     /// Determine function_count for a ClassNetCache block.
     ///
     /// The function count equals `NetFieldExportGroup.len()` for the matching
@@ -616,15 +884,15 @@ impl<'a> ExportSink<'a> {
             };
 
             // Resolve parameter field name from the group.
-            let param_name = param_group_path_ref.and_then(|gp| {
+            let param_name: Option<String> = param_group_path_ref.and_then(|gp| {
                 self.cache
                     .get_group_by_path(gp)
                     .and_then(|g| g.get_field(param_handle))
-                    .map(|f| f.name.as_str())
+                    .map(|f| f.name.clone())
             });
 
             // Build field_name: "FunctionName.ParamName" or "FunctionName._h{N}"
-            let full_field_name = match param_name {
+            let full_field_name = match param_name.as_deref() {
                 Some(pn) => format!("{func_name}.{pn}"),
                 None => format!("{func_name}._h{param_handle}"),
             };
@@ -642,7 +910,7 @@ impl<'a> ExportSink<'a> {
 
             // Apply type overlay using the parameter group path as group_path.
             let overlay_group = param_group_path_ref.unwrap_or(&self.current_group_path);
-            let overlay_field = param_name.unwrap_or(&full_field_name);
+            let overlay_field = param_name.as_deref().unwrap_or(&full_field_name);
             let (value_i64, value_f64, value_bool, value_str) = match apply_overlay(
                 &TABLE,
                 overlay_group,
@@ -676,6 +944,7 @@ impl<'a> ExportSink<'a> {
                 value_str,
             });
             self.stats.fields_emitted += 1;
+
             emitted_any = true;
         }
 
@@ -791,6 +1060,16 @@ impl FieldSink for ExportSink<'_> {
                 }
             }
             // Also emit the parent array row (with raw bits) for completeness.
+        }
+
+        // Check if this field is a struct blob with a dedicated decoder
+        // (RoundResults, TeamEconomy, RoundInfos). Decoded sub-fields are
+        // additive: raw_bits parent row is still emitted below.
+        if self.is_struct_blob_field(field_name.as_deref()) {
+            if let Some(ref raw) = raw_bits {
+                let fname = field_name.as_deref().unwrap_or("");
+                self.decode_struct_blob(fname, raw, bit_count);
+            }
         }
 
         // Apply the type overlay: decode raw_bits into a typed value if possible.
@@ -933,21 +1212,117 @@ impl ReplicationSink for ExportSink<'_> {
     fn on_actor_open(&mut self, state: &ActorChannelState) {
         self.stats.actor_opens += 1;
         // Track archetype GUID per channel so ClassNetCache path resolution can
-        // walk archetype ??outer path ??class name.
+        // walk archetype -> outer path -> class name.
         if state.archetype_net_guid.is_valid() {
             self.channel_state
                 .archetypes
                 .insert(state.channel_index, state.archetype_net_guid);
         }
+
+        // Resolve class_path: for dynamic actors the outer path of the
+        // archetype GUID gives the class. For static actors the actor GUID
+        // path itself is the class.
+        let class_path = if state.archetype_net_guid.is_valid() {
+            let outer = self
+                .cache
+                .get_outer_path(state.archetype_net_guid.0)
+                .map(|s| s.to_owned());
+            let arch_path = self
+                .cache
+                .get_path_by_guid(state.archetype_net_guid.0)
+                .map(|s| s.to_owned());
+            let combined = self.create_combined_candidate(outer.as_deref(), arch_path.as_deref());
+            combined.or(outer)
+        } else if state.actor_net_guid.is_valid() {
+            self.cache
+                .get_path_by_guid(state.actor_net_guid.0)
+                .map(|s| s.to_owned())
+        } else {
+            None
+        };
+
+        // Resolve archetype_path from the archetype GUID.
+        let archetype_path = if state.archetype_net_guid.is_valid() {
+            self.cache
+                .get_path_by_guid(state.archetype_net_guid.0)
+                .map(|s| s.to_owned())
+        } else {
+            None
+        };
+
+        // Spawn location (only for dynamic actors that have it).
+        let (spawn_x, spawn_y, spawn_z) = match state.spawn_location {
+            Some(loc) => (Some(loc.x as f32), Some(loc.y as f32), Some(loc.z as f32)),
+            None => (None, None, None),
+        };
+
+        // Spawn rotation.
+        let (spawn_pitch, spawn_yaw, spawn_roll) = match state.spawn_rotation {
+            Some(rot) => (Some(rot.pitch), Some(rot.yaw), Some(rot.roll)),
+            None => (None, None, None),
+        };
+
+        self.actor_records.push(ActorRecord {
+            time_ms: self.time_ms,
+            packet_id: self.packet_id,
+            channel_index: state.channel_index,
+            actor_net_guid: state.actor_net_guid.0,
+            event: "open",
+            class_path,
+            archetype_path,
+            spawn_x,
+            spawn_y,
+            spawn_z,
+            spawn_pitch,
+            spawn_yaw,
+            spawn_roll,
+        });
     }
 
-    fn on_actor_close(
-        &mut self,
-        _channel_index: u32,
-        _actor_net_guid: NetworkGuid,
-        _dormant: bool,
-    ) {
+    fn on_actor_close(&mut self, channel_index: u32, actor_net_guid: NetworkGuid, _dormant: bool) {
         self.stats.actor_closes += 1;
+
+        // Resolve class_path from the channel's archetype (same logic as open).
+        let class_path = if let Some(&arch_guid) = self.channel_state.archetypes.get(&channel_index)
+        {
+            let outer = self.cache.get_outer_path(arch_guid.0).map(|s| s.to_owned());
+            let arch_path = self
+                .cache
+                .get_path_by_guid(arch_guid.0)
+                .map(|s| s.to_owned());
+            let combined = self.create_combined_candidate(outer.as_deref(), arch_path.as_deref());
+            combined.or(outer)
+        } else if actor_net_guid.is_valid() {
+            self.cache
+                .get_path_by_guid(actor_net_guid.0)
+                .map(|s| s.to_owned())
+        } else {
+            None
+        };
+
+        // Archetype path from channel state.
+        let archetype_path = self
+            .channel_state
+            .archetypes
+            .get(&channel_index)
+            .and_then(|g| self.cache.get_path_by_guid(g.0))
+            .map(|s| s.to_owned());
+
+        self.actor_records.push(ActorRecord {
+            time_ms: self.time_ms,
+            packet_id: self.packet_id,
+            channel_index,
+            actor_net_guid: actor_net_guid.0,
+            event: "close",
+            class_path,
+            archetype_path,
+            spawn_x: None,
+            spawn_y: None,
+            spawn_z: None,
+            spawn_pitch: None,
+            spawn_yaw: None,
+            spawn_roll: None,
+        });
     }
 
     fn on_content_block(

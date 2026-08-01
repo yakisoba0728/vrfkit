@@ -48,7 +48,9 @@
 
 mod array;
 mod decode;
+pub mod effect;
 mod overlay;
+pub mod structs;
 mod table;
 #[cfg(test)]
 mod tests;
