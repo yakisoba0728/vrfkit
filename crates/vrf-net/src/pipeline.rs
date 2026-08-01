@@ -816,7 +816,6 @@ impl ReplicationReader {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn decode_and_parse_rep_layout(
         payload: &mut BitReader<'_>,
         bit_count: usize,

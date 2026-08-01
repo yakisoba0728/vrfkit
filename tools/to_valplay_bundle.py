@@ -24,6 +24,10 @@ second resolution tier (ValorantShotEventEnricher.ResolveFromFiringState); its
 first tier, an equippable GUID inside the effect blob, is never populated in
 practice (0 of 2,647 shots in the 02d4d478 reference).
 
+Layout: constants, then leaf helpers (vectors, blob decoding, path parsing,
+RPC normalization), then one function per conversion phase, then `convert`
+which wires the phases together.
+
 Usage:
     python tools/to_valplay_bundle.py <vrfkit_export_dir> [-o <output_dir>]
 """
@@ -33,13 +37,13 @@ from __future__ import annotations
 import argparse
 import base64
 import json
-import math
-import os
 import re
+import struct as _struct
 import sys
 import time
 from collections import defaultdict
 from pathlib import Path
+from typing import NamedTuple
 
 try:
     import pyarrow.parquet as pq
@@ -47,11 +51,13 @@ try:
 except ImportError:
     sys.exit("pyarrow is required: pip install pyarrow")
 
-import struct as _struct
-
 sys.path.insert(0, str(Path(__file__).parent))
 from equippable_table import EQUIPPABLE_BY_PATH  # noqa: E402
 
+
+# ---------------------------------------------------------------------------
+# Constants and lookup tables
+# ---------------------------------------------------------------------------
 
 # Unreal's own cap in FNetGUIDCache traversal; the C# resolver uses the same
 # value. Real chains observed in 02d4d478 are one hop, but a bounded loop is
@@ -74,7 +80,192 @@ ALTERNATE_FIRE_MARKERS = (
     "burstmode",
 )
 
+# Array fields whose *undecoded* blob is what downstream expects, mapped to the
+# TypeName the reference labels them with.
+#
+# vrfkit emits both forms for these: the bare container blob and the decoded
+# per-element sub-fields. The general rule below prefers the decoded form,
+# because that is what CombatReport's `Rounds` needs. RoundInfos is the
+# opposite case -- valplay's _roundinfo.collect_round_infos does its own
+# bit-level decode and requires {Data, BitCount}, skipping anything that is not
+# a dict, so handing it our decoded list silently produced
+# events_with_roundinfos: 0 and left every credits_actual figure null.
+#
+# Our raw bits for RoundInfos are byte-identical to the reference's, so passing
+# them through is exact rather than approximate.
+RAW_BLOB_PREFERRED = {
+    "RoundInfos": "TArray<FAresPlayerRoundInfo>",
+}
 
+
+# Damage RPC parameters that carry an FVector_NetQuantize* payload. The C#
+# call sites are DamageParameters.cs:50 and
+# MulticastNotifyDamagePointParameters.cs:40-46.
+DAMAGE_VECTOR_PARAMS = frozenset({
+    "DamageOrigin",
+    "DamageImpactLocation",
+    "DamageImpactBoneRelativeLocation",
+    "DamageDirection",
+    "DamageImpactNormal",
+})
+
+
+# RegionalDamage enum mapping: vrfkit stores as int, valplay expects string.
+#
+# EAresRegionalDamage.cs. The ordinals are the C# enum's, not an invention:
+#
+#   RegionalDamage_Normal         = 0
+#   RegionalDamage_Headshot       = 1
+#   RegionalDamage_Legshot        = 2
+#   RegionalDamage_RegionCount    = 3
+#   RegionalDamage_Invalid_Radial = 4
+#   RegionalDamage_Invalid        = 5
+#   RegionalDamage_CountPlusOne   = 6
+#
+# This map previously had 0 and 1 swapped and put invalid at 3, so every
+# body shot was reported as a headshot and vice versa (Vandal: 109 head /
+# 35 body instead of 35 / 109), and the 18 genuine "no hit region" damage
+# events at ordinal 5 fell through to unknown_5.
+#
+# The four strings that appear on the wire are verified against 02d4d478's
+# reference bundle. The remaining three are derived with the same
+# name-to-string rule (insert "_" before each capital, lowercase) which that
+# verification confirms on 4 of 4 cases; they are sentinels and have not been
+# observed, so an unexpected ordinal still falls through to a loud
+# unknown_{n} rather than being silently absorbed.
+REGIONAL_DAMAGE_MAP = {
+    0: "regional_damage__normal",           # verified: 446 occurrences
+    1: "regional_damage__headshot",         # verified: 83
+    2: "regional_damage__legshot",          # verified: 26
+    3: "regional_damage__region_count",     # derived, sentinel
+    4: "regional_damage__invalid__radial",  # derived, not observed
+    5: "regional_damage__invalid",          # verified: 76
+    6: "regional_damage__count_plus_one",   # derived, sentinel
+}
+
+
+# Nested path parser: "Rounds[0].Reports[1].Interactions[2].DamageDealt"
+# -> [("Rounds", 0), ("Reports", 1), ("Interactions", 2), ("DamageDealt", None)]
+_PATH_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)(?:\[(\d+)\])?')
+
+
+# ---------------------------------------------------------------------------
+# Scalar and vector formatting
+#
+# Three distinct rounding/precision policies live here and the differences are
+# load-bearing; the names say which is which.
+# ---------------------------------------------------------------------------
+def _f32_shortest(value):
+    """Shortest decimal that round-trips through float32.
+
+    actors.parquet stores spawn coordinates as Float32. Widening one to a
+    Python float exposes the binary artefact -- 2382.2f becomes
+    2382.199951171875 -- while the C# reference serializes the float itself,
+    which System.Text.Json writes with float (not double) round-trip
+    precision: "2382.2".
+
+    Reproducing that means finding the fewest significant digits that still
+    round-trip as a float32, which is exactly what a shortest-round-trip
+    float formatter does.
+    """
+    if value is None:
+        return None
+    packed = _struct.unpack("f", _struct.pack("f", value))[0]
+    for digits in range(1, 10):
+        candidate = float(f"{packed:.{digits}g}")
+        if _struct.unpack("f", _struct.pack("f", candidate))[0] == packed:
+            return int(candidate) if candidate.is_integer() else candidate
+    return int(packed) if float(packed).is_integer() else packed
+
+
+def _vec3(x, y, z) -> dict:
+    """Build an {x, y, z} dict, emitting integral components as ints.
+
+    Matches how the C# reference serializes a double: System.Text.Json writes
+    0.0 as `0`, so keeping Python floats here would put `0.0` where the
+    reference has `0`.
+    """
+    return {
+        axis: (int(n) if float(n).is_integer() else n)
+        for axis, n in zip(("x", "y", "z"), (x, y, z))
+    }
+
+
+def _parse_vector_or_none(val):
+    """Parse a "(x,y,z)" vector without losing precision; None if unparseable.
+
+    Full precision matters: the damage direction is a unit vector the reference
+    emits at full float precision (0.055482650227362894). This function used to
+    be contrasted with a _parse_location that rounded to 2 decimals -- that
+    rounding is gone from both, and the only remaining difference is the
+    failure mode, which is what the two names now say.
+
+    Returning None rather than a zero vector is the point of this variant: for
+    damage geometry a zero vector would be a silent wrong value rather than a
+    visible absence.
+
+    Integral components come back as ints so the output matches the C#
+    reference exactly -- it emits {"x": 0, "y": 1, "z": 0}, not 0.0/1.0/0.0.
+    """
+    if isinstance(val, dict):
+        return val
+    if not isinstance(val, str):
+        return None
+    parts = val.strip("()").split(",")
+    if len(parts) != 3:
+        return None
+    try:
+        nums = [float(p) for p in parts]
+    except ValueError:
+        return None
+    return _vec3(*nums)
+
+
+def _parse_vector_or_zero(val) -> dict:
+    """Parse a Location value into {x, y, z}, preserving full precision.
+
+    This used to round to 2 decimals, which was the last thing keeping
+    shot_rays.sample_rays from matching the reference -- it emits the raw
+    double (559.962145690918).
+
+    Callers expect a dict, so an unparseable value still yields a zero vector
+    rather than None. That is a fabricated value and the one place in this
+    adapter that has one; it is retained because the shot filter upstream
+    already guarantees a location is present, so it should be unreachable.
+    """
+    if isinstance(val, dict):
+        return val
+    parsed = _parse_vector_or_none(val) if val is not None else None
+    return parsed if parsed is not None else {"x": 0, "y": 0, "z": 0}
+
+
+def _parse_rotation(val) -> dict:
+    """Parse a Rotation value into {pitch, yaw, roll}."""
+    if val is None:
+        return {"pitch": 0, "yaw": 0, "roll": 0}
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, str):
+        # Compact rotator format: "rot(pitch,yaw,roll)"
+        s = val
+        if s.startswith("rot(") and s.endswith(")"):
+            s = s[4:-1]
+        else:
+            s = s.strip("()")
+        parts = s.split(",")
+        if len(parts) == 3:
+            try:
+                return {"pitch": float(parts[0]),
+                        "yaw": float(parts[1]),
+                        "roll": float(parts[2])}
+            except ValueError:
+                pass
+    return {"pitch": 0, "yaw": 0, "roll": 0}
+
+
+# ---------------------------------------------------------------------------
+# NetGUID outer-chain resolution (weapon identity and fire mode)
+# ---------------------------------------------------------------------------
 def _has_alternate_marker(value) -> bool:
     if not value:
         return False
@@ -187,6 +378,9 @@ class _BitReader:
     def bits_remaining(self) -> int:
         return max(0, self._bit_len - self._pos)
 
+    def tell(self) -> int:
+        return self._pos
+
     def read_bit(self) -> int:
         if self._pos >= self._bit_len:
             raise EOFError
@@ -234,8 +428,48 @@ class _BitReader:
             self._pos = self._bit_len
 
 
-def _decode_effect_floats(data: bytes, bit_count: int):
-    """Decode FloatValues blob -> list of (tag_index, value) tuples."""
+def _read_effect_float(r: _BitReader):
+    return r.read_f32()
+
+
+def _read_effect_object(r: _BitReader):
+    return r.read_int_packed()
+
+
+def _read_effect_vector(r: _BitReader):
+    # Evaluated left to right, so a short read on y or z leaves the reader in
+    # exactly the position the three-statement version left it in.
+    return (r.read_f64(), r.read_f64(), r.read_f64())
+
+
+class _EffectArraySpec(NamedTuple):
+    """How to read one of the three effect value arrays.
+
+    The arrays share their whole wire shape and differ only in which two
+    property handles carry the gameplay-tag index and the value, and in how the
+    value itself is read. The handle numbers are the containing struct's own,
+    which is why they are not contiguous across the three.
+    """
+
+    tag_handle: int
+    value_handle: int
+    read_value: object
+
+
+_EFFECT_FLOATS = _EffectArraySpec(7, 8, _read_effect_float)
+_EFFECT_VECTORS = _EffectArraySpec(11, 12, _read_effect_vector)
+_EFFECT_OBJECTS = _EffectArraySpec(15, 16, _read_effect_object)
+
+
+def _decode_effect_elements(data: bytes, bit_count: int, spec: _EffectArraySpec):
+    """Decode one effect value array -> list of (tag_index, value) tuples.
+
+    ``spec.read_value`` must raise on a short read rather than return a
+    sentinel: a failed read has to leave whatever value a previous element
+    handle already stored untouched, and the reader's position is still
+    advanced by however much the partial read consumed. Both are relied on by
+    the ``consumed``/``skip_bits`` resynchronisation below.
+    """
     r = _BitReader(data, bit_count)
     try:
         count = r.read_int_packed()
@@ -275,143 +509,39 @@ def _decode_effect_floats(data: bytes, bit_count: int):
                 break
             if payload_bits > r.bits_remaining():
                 break
-            start = r._pos
-            if handle == 7:
+            start = r.tell()
+            if handle == spec.tag_handle:
                 try:
                     tag = r.read_int_packed()
                 except (EOFError, ValueError):
                     pass
-            elif handle == 8:
+            elif handle == spec.value_handle:
                 try:
-                    val = r.read_f32()
+                    val = spec.read_value(r)
                 except (EOFError, ValueError):
                     pass
-            consumed = r._pos - start
+            consumed = r.tell() - start
             if consumed < payload_bits:
                 r.skip_bits(payload_bits - consumed)
         elements[idx] = (tag, val)
     return elements
 
 
-def _decode_effect_objects(data: bytes, bit_count: int):
-    """Decode ObjectValues blob -> list of (tag_index, net_guid) tuples."""
-    r = _BitReader(data, bit_count)
-    try:
-        count = r.read_int_packed()
-    except (EOFError, ValueError):
-        return []
-    if count > 256 or count == 0:
-        return []
-    elements = [(None, None)] * count
-    while not r.at_end():
-        try:
-            enc_idx = r.read_int_packed()
-        except (EOFError, ValueError):
-            break
-        if enc_idx == 0:
-            if r.bits_remaining() == 8:
-                try:
-                    r.read_int_packed()
-                except (EOFError, ValueError):
-                    pass
-            break
-        idx = enc_idx - 1
-        if idx >= count:
-            break
-        tag = None
-        val = None
-        while not r.at_end():
-            try:
-                enc_h = r.read_int_packed()
-            except (EOFError, ValueError):
-                break
-            if enc_h == 0:
-                break
-            handle = enc_h - 1
-            try:
-                payload_bits = r.read_int_packed()
-            except (EOFError, ValueError):
-                break
-            if payload_bits > r.bits_remaining():
-                break
-            start = r._pos
-            if handle == 15:
-                try:
-                    tag = r.read_int_packed()
-                except (EOFError, ValueError):
-                    pass
-            elif handle == 16:
-                try:
-                    val = r.read_int_packed()
-                except (EOFError, ValueError):
-                    pass
-            consumed = r._pos - start
-            if consumed < payload_bits:
-                r.skip_bits(payload_bits - consumed)
-        elements[idx] = (tag, val)
-    return elements
+def _decode_effect_blob(blob, spec: _EffectArraySpec, tag_table: dict) -> dict:
+    """Decode one effect blob into {tag_name: value}, dropping half-read pairs.
 
-
-def _decode_effect_vectors(data: bytes, bit_count: int):
-    """Decode VectorValues blob -> list of (tag_index, (x,y,z)) tuples."""
-    r = _BitReader(data, bit_count)
-    try:
-        count = r.read_int_packed()
-    except (EOFError, ValueError):
-        return []
-    if count > 256 or count == 0:
-        return []
-    elements = [(None, None)] * count
-    while not r.at_end():
-        try:
-            enc_idx = r.read_int_packed()
-        except (EOFError, ValueError):
-            break
-        if enc_idx == 0:
-            if r.bits_remaining() == 8:
-                try:
-                    r.read_int_packed()
-                except (EOFError, ValueError):
-                    pass
-            break
-        idx = enc_idx - 1
-        if idx >= count:
-            break
-        tag = None
-        val = None
-        while not r.at_end():
-            try:
-                enc_h = r.read_int_packed()
-            except (EOFError, ValueError):
-                break
-            if enc_h == 0:
-                break
-            handle = enc_h - 1
-            try:
-                payload_bits = r.read_int_packed()
-            except (EOFError, ValueError):
-                break
-            if payload_bits > r.bits_remaining():
-                break
-            start = r._pos
-            if handle == 11:
-                try:
-                    tag = r.read_int_packed()
-                except (EOFError, ValueError):
-                    pass
-            elif handle == 12:
-                try:
-                    x = r.read_f64()
-                    y = r.read_f64()
-                    z = r.read_f64()
-                    val = (x, y, z)
-                except (EOFError, ValueError):
-                    pass
-            consumed = r._pos - start
-            if consumed < payload_bits:
-                r.skip_bits(payload_bits - consumed)
-        elements[idx] = (tag, val)
-    return elements
+    An absent blob and a blob that decodes to nothing are the same thing to
+    every caller: an empty mapping.
+    """
+    if blob is None:
+        return {}
+    raw_bytes = blob if isinstance(blob, bytes) else b''
+    bit_count = len(raw_bytes) * 8
+    decoded = {}
+    for tag_idx, val in _decode_effect_elements(raw_bytes, bit_count, spec):
+        if tag_idx is not None and val is not None:
+            decoded[tag_table.get(tag_idx, str(tag_idx))] = val
+    return decoded
 
 
 def _build_tag_table(manifest: dict) -> dict:
@@ -423,10 +553,55 @@ def _build_tag_table(manifest: dict) -> dict:
     return {}
 
 
+def _decode_rotation_short(data: bytes, bit_count: int) -> dict:
+    """Decode a UE4 RotationShort from raw bits.
+
+    Wire format: for each of pitch/yaw/roll:
+      1 bit: is_non_zero
+      if non_zero: 16 bits LE unsigned -> degrees = value * 360 / 65536
+    """
+    r = _BitReader(data, bit_count)
+    result = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
+    for axis in ("pitch", "yaw", "roll"):
+        try:
+            is_non_zero = r.read_bit()
+            if is_non_zero:
+                val = r.read_bits(16)
+                degrees = val * 360.0 / 65536.0
+                result[axis] = degrees
+        except (EOFError, ValueError):
+            break
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Shot events
+# ---------------------------------------------------------------------------
+class _EffectBlobs(NamedTuple):
+    """The three undecoded value arrays a shot RPC may carry. Any may be absent."""
+
+    floats: bytes | None = None
+    objects: bytes | None = None
+    vectors: bytes | None = None
+
+
+class _ShotContext(NamedTuple):
+    """Per-replay lookups every shot event needs, resolved once per conversion.
+
+    The two lookups default to None so a caller that has neither still produces
+    an event -- with a null equippable and fire_mode "unknown", which is what
+    the reference emits for a server-world effect anyway.
+    """
+
+    tag_table: dict
+    equippable_lookup: object = None
+    fire_mode_lookup: object = None
+
+
 def _build_shot_event(
+    ctx: _ShotContext,
     time_ms, packet_id, actor_net_guid, channel_index,
-    scalar_params: dict, float_blob, object_blob, vector_blob,
-    tag_table: dict, equippable_lookup=None, fire_mode_lookup=None,
+    scalar_params: dict, blobs: _EffectBlobs,
 ) -> dict:
     """Build a valorant_shot_received event from decoded RPC params.
 
@@ -435,34 +610,11 @@ def _build_shot_event(
     fire_mode "unknown", which is how the reference emits them and what
     valplay's "unknown" weapon bucket exists to receive.
     """
-    # Decode blobs
-    floats = {}  # tag_name -> float_value
-    objects = {}  # tag_name -> net_guid
-    vectors = {}  # tag_name -> (x,y,z)
-
-    if float_blob is not None:
-        raw_bytes = float_blob if isinstance(float_blob, bytes) else b''
-        bit_count = len(raw_bytes) * 8
-        for (tag_idx, val) in _decode_effect_floats(raw_bytes, bit_count):
-            if tag_idx is not None and val is not None:
-                name = tag_table.get(tag_idx, str(tag_idx))
-                floats[name] = val
-
-    if object_blob is not None:
-        raw_bytes = object_blob if isinstance(object_blob, bytes) else b''
-        bit_count = len(raw_bytes) * 8
-        for (tag_idx, val) in _decode_effect_objects(raw_bytes, bit_count):
-            if tag_idx is not None and val is not None:
-                name = tag_table.get(tag_idx, str(tag_idx))
-                objects[name] = val
-
-    if vector_blob is not None:
-        raw_bytes = vector_blob if isinstance(vector_blob, bytes) else b''
-        bit_count = len(raw_bytes) * 8
-        for (tag_idx, val) in _decode_effect_vectors(raw_bytes, bit_count):
-            if tag_idx is not None and val is not None:
-                name = tag_table.get(tag_idx, str(tag_idx))
-                vectors[name] = val
+    # Decode blobs: tag_name -> value
+    tag_table = ctx.tag_table
+    floats = _decode_effect_blob(blobs.floats, _EFFECT_FLOATS, tag_table)
+    objects = _decode_effect_blob(blobs.objects, _EFFECT_OBJECTS, tag_table)
+    vectors = _decode_effect_blob(blobs.vectors, _EFFECT_VECTORS, tag_table)
 
     # Events with no firing state are emitted too, not filtered out.
     #
@@ -511,7 +663,7 @@ def _build_shot_event(
     alliance = scalar_params.get("AllianceFilter")
 
     # Parse location/rotation from value_str compact format if needed
-    loc_obj = _parse_location(location)
+    loc_obj = _parse_vector_or_zero(location)
     rot_obj = _parse_rotation(rotation)
 
     # Build attack vectors
@@ -546,8 +698,8 @@ def _build_shot_event(
     # the equippable actor. Null when the chain does not reach a known
     # equippable -- never guessed.
     equippable = None
-    if equippable_lookup is not None and firing_state:
-        hit = equippable_lookup(firing_state)
+    if ctx.equippable_lookup is not None and firing_state:
+        hit = ctx.equippable_lookup(firing_state)
         if hit is not None:
             owner_guid, name, category, class_path = hit
             equippable = {
@@ -558,8 +710,8 @@ def _build_shot_event(
             }
 
     # Fire mode comes from the same chain: the firing-state subobject's own name.
-    if fire_mode_lookup is not None:
-        fire_mode, fire_mode_evidence = fire_mode_lookup(firing_state, source_id)
+    if ctx.fire_mode_lookup is not None:
+        fire_mode, fire_mode_evidence = ctx.fire_mode_lookup(firing_state, source_id)
     else:
         fire_mode, fire_mode_evidence = "unknown", None
 
@@ -587,7 +739,7 @@ def _build_shot_event(
         "num_projectiles": num_proj or 1,
         "random_seed": random_seed,
         "tracer_option": tracer_opt,
-        "burst_shot_number": floats.get("FiringState.BurstShotNumber"),
+        "burst_shot_number": burst,
         "yaw_switch": yaw_switch,
         "firing_player_state": firing_player,
         "firing_state": firing_state,
@@ -610,203 +762,8 @@ def _build_shot_event(
     }
 
 
-def _parse_location(val) -> dict:
-    """Parse a Location value into {x, y, z}, preserving full precision.
-
-    This used to round to 2 decimals, which was the last thing keeping
-    shot_rays.sample_rays from matching the reference -- it emits the raw
-    double (559.962145690918).
-
-    Callers expect a dict, so an unparseable value still yields a zero vector
-    rather than None. That is a fabricated value and the one place in this
-    adapter that has one; it is retained because the shot filter upstream
-    already guarantees a location is present, so it should be unreachable.
-    """
-    if isinstance(val, dict):
-        return val
-    parsed = _parse_exact_vector(val) if val is not None else None
-    return parsed if parsed is not None else {"x": 0, "y": 0, "z": 0}
-
-
-def _f32_shortest(value):
-    """Shortest decimal that round-trips through float32.
-
-    actors.parquet stores spawn coordinates as Float32. Widening one to a
-    Python float exposes the binary artefact -- 2382.2f becomes
-    2382.199951171875 -- while the C# reference serializes the float itself,
-    which System.Text.Json writes with float (not double) round-trip
-    precision: "2382.2".
-
-    Reproducing that means finding the fewest significant digits that still
-    round-trip as a float32, which is exactly what a shortest-round-trip
-    float formatter does.
-    """
-    if value is None:
-        return None
-    packed = _struct.unpack("f", _struct.pack("f", value))[0]
-    for digits in range(1, 10):
-        candidate = float(f"{packed:.{digits}g}")
-        if _struct.unpack("f", _struct.pack("f", candidate))[0] == packed:
-            return int(candidate) if candidate.is_integer() else candidate
-    return int(packed) if float(packed).is_integer() else packed
-
-
-def _vec3(x, y, z) -> dict:
-    """Build an {x, y, z} dict, emitting integral components as ints.
-
-    Matches how the C# reference serializes a double: System.Text.Json writes
-    0.0 as `0`, so keeping Python floats here would put `0.0` where the
-    reference has `0`.
-    """
-    return {
-        axis: (int(n) if float(n).is_integer() else n)
-        for axis, n in zip(("x", "y", "z"), (x, y, z))
-    }
-
-
-def _parse_exact_vector(val):
-    """Parse a "(x,y,z)" vector without losing precision.
-
-    Distinct from _parse_location, which rounds to 2 decimals and substitutes
-    a zero vector when it cannot parse. Neither is acceptable here: the damage
-    direction is a unit vector the reference emits at full float precision
-    (0.055482650227362894), and a zero vector would be a silent wrong value
-    rather than a visible absence.
-
-    Integral components come back as ints so the output matches the C#
-    reference exactly -- it emits {"x": 0, "y": 1, "z": 0}, not 0.0/1.0/0.0.
-
-    Returns None when the value is not a parseable vector.
-    """
-    if isinstance(val, dict):
-        return val
-    if not isinstance(val, str):
-        return None
-    parts = val.strip("()").split(",")
-    if len(parts) != 3:
-        return None
-    try:
-        nums = [float(p) for p in parts]
-    except ValueError:
-        return None
-    return {
-        axis: (int(n) if n.is_integer() else n)
-        for axis, n in zip(("x", "y", "z"), nums)
-    }
-
-
-def _parse_rotation(val) -> dict:
-    """Parse a Rotation value into {pitch, yaw, roll}."""
-    if val is None:
-        return {"pitch": 0, "yaw": 0, "roll": 0}
-    if isinstance(val, dict):
-        return val
-    if isinstance(val, str):
-        # Compact rotator format: "rot(pitch,yaw,roll)"
-        s = val
-        if s.startswith("rot(") and s.endswith(")"):
-            s = s[4:-1]
-        else:
-            s = s.strip("()")
-        parts = s.split(",")
-        if len(parts) == 3:
-            try:
-                return {"pitch": float(parts[0]),
-                        "yaw": float(parts[1]),
-                        "roll": float(parts[2])}
-            except ValueError:
-                pass
-    return {"pitch": 0, "yaw": 0, "roll": 0}
-
-
-def _decode_rotation_short(data: bytes, bit_count: int) -> dict:
-    """Decode a UE4 RotationShort from raw bits.
-
-    Wire format: for each of pitch/yaw/roll:
-      1 bit: is_non_zero
-      if non_zero: 16 bits LE unsigned -> degrees = value * 360 / 65536
-    """
-    r = _BitReader(data, bit_count)
-    result = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
-    for axis in ("pitch", "yaw", "roll"):
-        try:
-            is_non_zero = r.read_bit()
-            if is_non_zero:
-                val = r.read_bits(16)
-                degrees = val * 360.0 / 65536.0
-                result[axis] = degrees
-        except (EOFError, ValueError):
-            break
-    return result
-
-
 # ---------------------------------------------------------------------------
-# RegionalDamage enum mapping: vrfkit stores as int, valplay expects string
-# ---------------------------------------------------------------------------
-# Array fields whose *undecoded* blob is what downstream expects, mapped to the
-# TypeName the reference labels them with.
-#
-# vrfkit emits both forms for these: the bare container blob and the decoded
-# per-element sub-fields. The general rule below prefers the decoded form,
-# because that is what CombatReport's `Rounds` needs. RoundInfos is the
-# opposite case -- valplay's _roundinfo.collect_round_infos does its own
-# bit-level decode and requires {Data, BitCount}, skipping anything that is not
-# a dict, so handing it our decoded list silently produced
-# events_with_roundinfos: 0 and left every credits_actual figure null.
-#
-# Our raw bits for RoundInfos are byte-identical to the reference's, so passing
-# them through is exact rather than approximate.
-RAW_BLOB_PREFERRED = {
-    "RoundInfos": "TArray<FAresPlayerRoundInfo>",
-}
-
-
-# Damage RPC parameters that carry an FVector_NetQuantize* payload. The C#
-# call sites are DamageParameters.cs:50 and
-# MulticastNotifyDamagePointParameters.cs:40-46.
-DAMAGE_VECTOR_PARAMS = frozenset({
-    "DamageOrigin",
-    "DamageImpactLocation",
-    "DamageImpactBoneRelativeLocation",
-    "DamageDirection",
-    "DamageImpactNormal",
-})
-
-
-# EAresRegionalDamage.cs. The ordinals are the C# enum's, not an invention:
-#
-#   RegionalDamage_Normal         = 0
-#   RegionalDamage_Headshot       = 1
-#   RegionalDamage_Legshot        = 2
-#   RegionalDamage_RegionCount    = 3
-#   RegionalDamage_Invalid_Radial = 4
-#   RegionalDamage_Invalid        = 5
-#   RegionalDamage_CountPlusOne   = 6
-#
-# This map previously had 0 and 1 swapped and put invalid at 3, so every
-# body shot was reported as a headshot and vice versa (Vandal: 109 head /
-# 35 body instead of 35 / 109), and the 18 genuine "no hit region" damage
-# events at ordinal 5 fell through to unknown_5.
-#
-# The four strings that appear on the wire are verified against 02d4d478's
-# reference bundle. The remaining three are derived with the same
-# name-to-string rule (insert "_" before each capital, lowercase) which that
-# verification confirms on 4 of 4 cases; they are sentinels and have not been
-# observed, so an unexpected ordinal still falls through to a loud
-# unknown_{n} rather than being silently absorbed.
-REGIONAL_DAMAGE_MAP = {
-    0: "regional_damage__normal",           # verified: 446 occurrences
-    1: "regional_damage__headshot",         # verified: 83
-    2: "regional_damage__legshot",          # verified: 26
-    3: "regional_damage__region_count",     # derived, sentinel
-    4: "regional_damage__invalid__radial",  # derived, not observed
-    5: "regional_damage__invalid",          # verified: 76
-    6: "regional_damage__count_plus_one",   # derived, sentinel
-}
-
-
-# ---------------------------------------------------------------------------
-# Field name normalization for replicated properties
+# Field rows -> nested payloads
 # ---------------------------------------------------------------------------
 def _normalize_prop_field_name(field_name: str, is_bool: bool) -> str:
     """Normalize a replicated property field name to match C# parser output.
@@ -819,13 +776,6 @@ def _normalize_prop_field_name(field_name: str, is_bool: bool) -> str:
     if is_bool and field_name.startswith('b') and len(field_name) > 1 and field_name[1].isupper():
         return field_name[1:]
     return field_name
-
-
-# ---------------------------------------------------------------------------
-# Nested path parser: "Rounds[0].Reports[1].Interactions[2].DamageDealt"
-# -> [("Rounds", 0), ("Reports", 1), ("Interactions", 2), ("DamageDealt", None)]
-# ---------------------------------------------------------------------------
-_PATH_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)(?:\[(\d+)\])?')
 
 
 def _parse_field_path(path: str):
@@ -945,14 +895,12 @@ def _get_value(row_i64, row_f64, row_bool, row_str, row_raw, row_bits):
     return None, False
 
 
-# ---------------------------------------------------------------------------
-# RPC name extraction from field_name: "MulticastNotifyDamage_Point.DamageTaken"
-# -> rpc_name = "MulticastNotifyDamage_Point", param_name = "DamageTaken"
-# ---------------------------------------------------------------------------
 def _split_rpc_field(field_name: str):
     """Split an RPC field_name into (rpc_name, param_name).
 
-    For zero-param RPCs, the field_name IS the RPC name with no dot.
+    "MulticastNotifyDamage_Point.DamageTaken" -> ("MulticastNotifyDamage_Point",
+    "DamageTaken"). For zero-param RPCs, the field_name IS the RPC name with no
+    dot.
     """
     if field_name is None:
         return None, None
@@ -1016,25 +964,157 @@ def _group_path_to_archetype(gp: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Main conversion
+# RPC name normalization
 # ---------------------------------------------------------------------------
-def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
-    """Read vrfkit Parquet export and write valplay-compatible bundle."""
-    fields_path = export_dir / "fields.parquet"
-    movement_path = export_dir / "movement.parquet"
-    manifest_path = export_dir / "manifest.json"
+def _normalize_rpc_name(name: str) -> str:
+    """Map vrfkit's RPC field_name prefix to the C# parser's function_name.
 
-    if not fields_path.exists():
-        sys.exit(f"fields.parquet not found in {export_dir}")
+    WHY: vrfkit uses the exact ClassNetCache field name as the RPC name prefix
+    in field_name (e.g. 'MulticastNotifyDamage_Point'). The C# parser emits
+    the same names, but some zero-param RPCs may differ in casing or prefix.
+    """
+    # Most are identical. Known mappings:
+    return name
 
-    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---- Load manifest ----
-    manifest = {}
-    if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+# ---------------------------------------------------------------------------
+# RPC parameter normalization
+# ---------------------------------------------------------------------------
+def _normalize_rpc_param(rpc_name: str, param: str, value, is_raw: bool) -> dict | None:
+    """Normalize an RPC parameter name and value to match C# parser output.
 
-    # Write minimal manifest for compute_metrics
+    WHY: vrfkit uses prefixed 'b' for booleans (e.g. 'bDamageKilledTarget')
+    while C# emits 'DamageKilledTarget'. Also, RegionalDamage is stored as
+    int enum in vrfkit but as string in C# output.
+    """
+    result = {}
+
+    if rpc_name in ("MulticastNotifyDamage_Point", "MulticastNotifyDamage_Base"):
+        # Parameter name mapping for damage RPCs
+        param_map = {
+            "bDamageKilledTarget": "DamageKilledTarget",
+            "bAliveAfterDamage": "AliveAfterDamage",
+            "bIsWallPenetration": "IsWallPenetration",
+            "bEquippableUsedZoomed": "EquippableUsedZoomed",
+            "bEquippableUsedInFocusMode": "EquippableUsedInFocusMode",
+        }
+        out_name = param_map.get(param, param)
+
+        # RegionalDamage: int -> string
+        if param == "RegionalDamage" and not is_raw:
+            value = REGIONAL_DAMAGE_MAP.get(value, f"regional_damage__unknown_{value}")
+
+        # Damage geometry: the parser now decodes these as quantized vectors
+        # (previously raw blobs, because the C# custom decoder hid the type).
+        # They arrive as the compact "(x,y,z)" string and the reference emits
+        # {x, y, z}. Left as the raw payload if a value ever fails to parse --
+        # visibly absent beats a fabricated zero vector.
+        if param in DAMAGE_VECTOR_PARAMS:
+            parsed = _parse_vector_or_none(value)
+            result[out_name] = parsed if parsed is not None else value
+            return result
+
+        # EquippableUsed: net GUID -> the C# ValorantEquippable shape.
+        #
+        # Name/ClassPath stay null and Category stays "unknown" because that is
+        # what the C# parser emits: its resolver looks the GUID up in the
+        # NetGuidCache path table, and weapon instances are dynamic actors that
+        # never register a path there. valplay resolves the gun downstream from
+        # actor_spawned instead (_actorindex.build_actor_class_index), so
+        # filling these in here would diverge from the reference for no gain.
+        #
+        # This used to read the raw bits as a fixed little-endian uint16, which
+        # was wrong twice over: the field is IntPacked (8/16/24 bits wide
+        # depending on the value), and the low bit of the first byte is
+        # IntPacked's continuation flag, so every multi-byte value came out odd
+        # and could never be a valid dynamic NetGUID. The overlay now types the
+        # field as ObjectNetGuid, so the parser hands us the decoded integer.
+        if param == "EquippableUsed":
+            if isinstance(value, int) and not is_raw:
+                result[out_name] = {
+                    "NetGuid": value,
+                    "Name": None,
+                    "ClassPath": None,
+                    "Category": "unknown",
+                }
+            else:
+                # Undecodable: pass the bits through rather than guessing.
+                result[out_name] = value
+            return result
+
+        # LifeChangeEvents: keep as blob
+        if param == "LifeChangeEvents" and is_raw:
+            # Pass through as {BitCount, Data, TypeName} matching C# format
+            if isinstance(value, dict):
+                value["TypeName"] = "LifeChangeEvents"
+            result[out_name] = value
+            return result
+
+        # DamagedBone: raw -> string "0" or actual bone name
+        if param == "DamagedBone" and is_raw:
+            if isinstance(value, dict) and "Data" in value:
+                raw_bytes = base64.b64decode(value["Data"])
+                # Try to interpret as a null-terminated string or simple int
+                try:
+                    # It's typically a short string or "0"
+                    decoded = raw_bytes.rstrip(b'\x00').decode('ascii', errors='replace')
+                    if decoded:
+                        result[out_name] = decoded
+                    else:
+                        result[out_name] = "0"
+                except Exception:
+                    result[out_name] = "0"
+                return result
+            result[out_name] = value
+            return result
+
+        # DeathMontageEffectOverride* blobs: pass through
+        if param.startswith("DeathMontageEffect") and is_raw:
+            if isinstance(value, dict):
+                value["TypeName"] = param
+            result[out_name] = value
+            return result
+
+        result[out_name] = value
+        return result
+
+    elif rpc_name == "MulticastNotifyKilledEnemy":
+        # Parameters: KillerCharacter, KilledCharacter, MultikillLevel
+        result[param] = value
+        return result
+
+    elif rpc_name in ("MulticastEndRound", "ClientRoundStart"):
+        # NewRoundNumber
+        result[param] = value
+        return result
+
+    elif rpc_name == "MulticastSetPhase":
+        result[param] = value
+        return result
+
+    elif rpc_name == "MulticastReceivePlayerResurrectEvent":
+        result[param] = value
+        return result
+
+    else:
+        # Generic: pass through all params
+        if is_raw and isinstance(value, dict):
+            # Keep blob format
+            pass
+        result[param] = value
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Conversion phases
+#
+# Every phase that appends to `events` is order-sensitive: `events.sort` at the
+# end is stable, so events that tie on (packet_id, time_ms) come out in the
+# order the phases produced them. Keep the phase order (actors, properties,
+# RPCs) and the append order inside each phase.
+# ---------------------------------------------------------------------------
+def _write_manifest(manifest: dict, output_dir: Path):
+    """Write the minimal manifest compute_metrics needs."""
     out_manifest = {
         "replay_version": manifest.get("replay_version", "unknown"),
         "duration_ms": manifest.get("duration_ms", 0),
@@ -1048,7 +1128,32 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
         json.dumps(out_manifest, indent=2), encoding='utf-8'
     )
 
-    # ---- Load fields.parquet ----
+
+class _FieldColumns(NamedTuple):
+    """fields.parquet held column-wise.
+
+    pyarrow iteration row-by-row is slow; batch-extracting each column to a
+    Python list once and indexing it is much faster.
+    """
+
+    n_rows: int
+    time_ms: list
+    packet_id: list
+    actor: list
+    obj: list
+    group_path: list
+    handle: list
+    field_name: list
+    bit_count: list
+    raw_bits: list
+    value_i64: list
+    value_f64: list
+    value_bool: list
+    value_str: list
+
+
+def _load_field_columns(fields_path: Path, verbose: bool) -> _FieldColumns:
+    """Read fields.parquet and extract every column we consume."""
     t0 = time.time()
     if verbose:
         print("Loading fields.parquet...")
@@ -1057,58 +1162,68 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
     if verbose:
         print(f"  {n_rows:,} rows loaded in {time.time()-t0:.1f}s")
 
-    # Extract columns as Python lists for fast iteration
-    # (pyarrow iteration row-by-row is slow; batch extract is much faster)
     t0 = time.time()
     if verbose:
         print("Extracting columns...")
 
-    col_time = table.column('time_ms').to_pylist()
-    col_pid = table.column('packet_id').to_pylist()
-    col_actor = table.column('actor_net_guid').to_pylist()
-    # Subobject identity. Null for actor blocks; the C# reference then
-    # repeats the actor guid, so mirror that when emitting.
-    col_object = (
-        table.column('object_net_guid').to_pylist()
-        if 'object_net_guid' in table.schema.names
-        else [None] * n_rows
+    cols = _FieldColumns(
+        n_rows=n_rows,
+        time_ms=table.column('time_ms').to_pylist(),
+        packet_id=table.column('packet_id').to_pylist(),
+        actor=table.column('actor_net_guid').to_pylist(),
+        # Subobject identity. Null for actor blocks; the C# reference then
+        # repeats the actor guid, so mirror that when emitting.
+        obj=(
+            table.column('object_net_guid').to_pylist()
+            if 'object_net_guid' in table.schema.names
+            else [None] * n_rows
+        ),
+        group_path=table.column('group_path').cast('string').to_pylist(),
+        handle=table.column('handle').to_pylist(),
+        field_name=table.column('field_name').cast('string').to_pylist(),
+        bit_count=table.column('bit_count').to_pylist(),
+        raw_bits=table.column('raw_bits').to_pylist(),
+        value_i64=table.column('value_i64').to_pylist(),
+        value_f64=table.column('value_f64').to_pylist(),
+        value_bool=table.column('value_bool').to_pylist(),
+        value_str=table.column('value_str').to_pylist(),
     )
-    col_gp = table.column('group_path').cast('string').to_pylist()
-    col_handle = table.column('handle').to_pylist()
-    col_fn = table.column('field_name').cast('string').to_pylist()
-    col_bits = table.column('bit_count').to_pylist()
-    col_raw = table.column('raw_bits').to_pylist()
-    col_i64 = table.column('value_i64').to_pylist()
-    col_f64 = table.column('value_f64').to_pylist()
-    col_bool = table.column('value_bool').to_pylist()
-    col_str = table.column('value_str').to_pylist()
 
     if verbose:
         print(f"  Columns extracted in {time.time()-t0:.1f}s")
+    return cols
 
-    # ---- Classify rows: RPC vs replicated property ----
-    # RPCs: group_path contains '_ClassNetCache'
-    # Properties: everything else
 
-    # We need to group and emit events in packet_id order (time order).
-    # Strategy: build a list of events keyed by packet_id, then sort and write.
+def _group_rows(cols: _FieldColumns):
+    """Classify every field row: RPC vs replicated property, plus actor lifetimes.
 
-    t0 = time.time()
-    if verbose:
-        print("Grouping rows into events...")
+    RPCs are the rows whose group_path contains '_ClassNetCache'; properties are
+    everything else.
 
+    One pass, not two: `prop_groups` and `rpc_groups` are dicts, so they iterate
+    in insertion order, and that order decides how events tying on
+    (packet_id, time_ms) are ordered in the written bundle. Splitting this loop
+    would reshuffle them.
+    """
     # Track actor first/last appearance for actor_spawned/actor_closed
     # (fallback when actors.parquet is absent).
     actor_first = {}  # actor_net_guid -> (time_ms, packet_id, group_path)
     actor_last = {}   # actor_net_guid -> (time_ms, packet_id)
 
     # Group key -> list of row indices
-    # For properties: (packet_id, actor_net_guid, group_path) -> [row_indices]
-    # For RPCs: (packet_id, actor_net_guid, group_path, handle) -> [row_indices]
+    # For properties: (packet_id, actor_net_guid, object_net_guid, group_path)
+    # For RPCs: (packet_id, actor_net_guid, group_path, handle)
     prop_groups = defaultdict(list)
     rpc_groups = defaultdict(list)
 
-    for i in range(n_rows):
+    col_time = cols.time_ms
+    col_pid = cols.packet_id
+    col_actor = cols.actor
+    col_obj = cols.obj
+    col_gp = cols.group_path
+    col_handle = cols.handle
+
+    for i in range(cols.n_rows):
         actor = col_actor[i]
         gp = col_gp[i]
         pid = col_pid[i]
@@ -1127,26 +1242,24 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
             # Keyed by subobject too: a character replicates several
             # ItemSlot subobjects, and merging them into one event makes
             # the inventory look like a single slot.
-            prop_groups[(pid, actor, col_object[i], gp)].append(i)
+            prop_groups[(pid, actor, col_obj[i], gp)].append(i)
 
-    if verbose:
-        print(f"  {len(prop_groups):,} property events, {len(rpc_groups):,} RPC invocations")
-        print(f"  Grouped in {time.time()-t0:.1f}s")
+    return actor_first, actor_last, prop_groups, rpc_groups
 
-    # ---- Build events list ----
-    t0 = time.time()
-    if verbose:
-        print("Building event records...")
 
-    events = []  # (packet_id, time_ms, event_dict)
+def _build_actor_events(export_dir: Path, actor_first: dict, actor_last: dict,
+                        verbose: bool):
+    """Build actor_spawned / actor_closed events.
 
-    # Containment chain for weapon identity. Loaded before the actor pass so
-    # guid_class can be filled from the same loop that emits actor_spawned.
-    guid_outer, guid_path = _load_net_guids(export_dir)
+    Returns ``(events, guid_class)``. `guid_class` maps an actor GUID to its
+    spawn class path and is filled from the same pass, because the shot events
+    built later need it for weapon identity.
+    """
+    events = []
     guid_class = {}  # actor net guid -> spawn class path
 
-    # 1 & 2. actor_spawned and actor_closed events from actors.parquet
-    #         (authoritative: carries class/archetype/location from spawn data)
+    # actors.parquet is authoritative: it carries class/archetype/location from
+    # the spawn data itself.
     actors_path = export_dir / "actors.parquet"
     if actors_path.exists():
         actors_table = pq.read_table(actors_path)
@@ -1223,7 +1336,21 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
             }
             events.append((pid + 1, ms, event))
 
-    # 3. export_group_received events (replicated properties)
+    return events, guid_class
+
+
+def _build_property_events(cols: _FieldColumns, prop_groups: dict):
+    """Build export_group_received events from the replicated-property groups."""
+    col_time = cols.time_ms
+    col_fn = cols.field_name
+    col_bits = cols.bit_count
+    col_raw = cols.raw_bits
+    col_i64 = cols.value_i64
+    col_f64 = cols.value_f64
+    col_bool = cols.value_bool
+    col_str = cols.value_str
+
+    events = []
     for (pid, actor, obj, gp), row_indices in prop_groups.items():
         ms = col_time[row_indices[0]]
 
@@ -1289,17 +1416,28 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
         }
         events.append((pid, ms, event))
 
-    # 4. rpc_received events
-    # Build gameplay tag table for effect blob decoding
-    tag_table = _build_tag_table(manifest)
+    return events
+
+
+def _build_rpc_events(cols: _FieldColumns, rpc_groups: dict, shot_ctx: _ShotContext):
+    """Build rpc_received events, plus a valorant_shot_received for each shot RPC.
+
+    Returns ``(events, shot_count, resolved_weapon_count)``. A shot RPC emits
+    both events, the shot first -- they tie on (packet_id, time_ms) and the
+    stable sort preserves that order.
+    """
+    col_time = cols.time_ms
+    col_fn = cols.field_name
+    col_bits = cols.bit_count
+    col_raw = cols.raw_bits
+    col_i64 = cols.value_i64
+    col_f64 = cols.value_f64
+    col_bool = cols.value_bool
+    col_str = cols.value_str
+
+    events = []
     shot_count = 0
     resolved_weapon_count = 0
-
-    def equippable_lookup(firing_state_guid):
-        return _resolve_equippable(firing_state_guid, guid_outer, guid_path, guid_class)
-
-    def fire_mode_lookup(firing_state_guid, source_id):
-        return _resolve_fire_mode(firing_state_guid, source_id, guid_outer, guid_path)
 
     for (pid, actor, gp, handle), row_indices in rpc_groups.items():
         ms = col_time[row_indices[0]]
@@ -1352,9 +1490,8 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
             # them entirely rather than letting them reach the "unknown"
             # bucket built for exactly this case.
             shot_event = _build_shot_event(
-                ms, pid, actor, 0,
-                payload, float_blob, object_blob, vector_blob,
-                tag_table, equippable_lookup, fire_mode_lookup,
+                shot_ctx, ms, pid, actor, 0, payload,
+                _EffectBlobs(float_blob, object_blob, vector_blob),
             )
             events.append((pid, ms, shot_event))
             shot_count += 1
@@ -1374,13 +1511,14 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
         }
         events.append((pid, ms, event))
 
-    if verbose:
-        print(f"  {len(events):,} total events built in {time.time()-t0:.1f}s")
-        print(f"  {shot_count:,} valorant_shot_received events")
-        pct = 100 * resolved_weapon_count / shot_count if shot_count else 0
-        print(f"  {resolved_weapon_count:,} with a resolved weapon ({pct:.2f}%)")
+    return events, shot_count, resolved_weapon_count
 
-    # ---- Sort by (packet_id, time_ms) and write ----
+
+def _write_events(events: list, output_dir: Path, verbose: bool) -> int:
+    """Sort by (packet_id, time_ms) and write events.ndjson.
+
+    The sort is stable, so ties keep the order the phases appended them in.
+    """
     t0 = time.time()
     if verbose:
         print("Sorting and writing events.ndjson...")
@@ -1395,89 +1533,174 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
 
     if verbose:
         print(f"  {events_written:,} events written in {time.time()-t0:.1f}s")
+    return events_written
 
-    # ---- Convert movement.parquet ----
-    movement_written = 0
-    if movement_path.exists():
-        t0 = time.time()
-        if verbose:
-            print("Converting movement.parquet...")
-        mv_table = pq.read_table(movement_path)
-        n_mv = len(mv_table)
 
-        mv_time = mv_table.column('time_ms').to_pylist()
-        mv_char = mv_table.column('character_net_guid').to_pylist()
-        mv_px = mv_table.column('pos_x').to_pylist()
-        mv_py = mv_table.column('pos_y').to_pylist()
-        mv_pz = mv_table.column('pos_z').to_pylist()
-        mv_yaw = mv_table.column('yaw').to_pylist()
-        mv_pitch = mv_table.column('pitch').to_pylist()
-        mv_vx = mv_table.column('vel_x').to_pylist()
-        mv_vy = mv_table.column('vel_y').to_pylist()
-        mv_vz = mv_table.column('vel_z').to_pylist()
-
-        # Keep only the last sub-move per (time_ms, character).
-        #
-        # Our decoder walks the marker-chained move sequence inside a
-        # replication packet and emits every sub-move, so a packet can produce
-        # several rows sharing one time_ms. That is genuinely more data --
-        # 1,687 of the 2,387 extra rows on 02d4d478 carry distinct positions,
-        # and none of the reference's rows are missing from ours -- and
-        # movement.parquet keeps all of it.
-        #
-        # The bundle cannot. valplay's posture.py requires 0 < dt before adding
-        # a distance step but updates last_sample unconditionally, so for two
-        # sub-moves A then B at the same ms it adds |A-prev|, skips the A->B
-        # leg, and continues from B. The result is a distance_m that is *lower*
-        # than the reference for every player (3.1-5.2 m on 02d4d478) -- an
-        # impossible direction for finer sampling, and simply wrong.
-        #
-        # The reference retains only the final move per packet, and dropping
-        # exactly these rows reproduces its movement_detail on 60/60 values
-        # with no rounding. So this is not an approximation: it is the shape
-        # the consumer was written against.
-        last_of_group = {}
-        for i in range(n_mv):
-            last_of_group[(mv_time[i], mv_char[i])] = i
-        keep = sorted(last_of_group.values())
-        movement_collapsed = n_mv - len(keep)
-
-        with open(output_dir / "movement.ndjson", 'w', encoding='utf-8') as f:
-            for i in keep:
-                # Every one of these is Float32 on the wire and in Parquet;
-                # widening to a Python float prints the binary artefact
-                # (349.989990234375 for what the reference shows as 349.99).
-                # position_bbox is min/max of the raw values, so it surfaced
-                # there even though the derived distances agreed either way.
-                rec = {
-                    "time_ms": mv_time[i],
-                    "shooter_character_net_guid": mv_char[i],
-                    "position": {
-                        "x": _f32_shortest(mv_px[i]),
-                        "y": _f32_shortest(mv_py[i]),
-                        "z": _f32_shortest(mv_pz[i]),
-                    },
-                    "velocity": {
-                        "x": _f32_shortest(mv_vx[i]),
-                        "y": _f32_shortest(mv_vy[i]),
-                        "z": _f32_shortest(mv_vz[i]),
-                    },
-                    "yaw": _f32_shortest(mv_yaw[i]),
-                    "pitch": _f32_shortest(mv_pitch[i]),
-                }
-                f.write(json.dumps(rec, separators=(',', ':'), ensure_ascii=True))
-                f.write('\n')
-                movement_written += 1
-
-        if verbose and movement_collapsed:
-            print(f"  {movement_collapsed:,} intra-packet sub-moves collapsed "
-                  f"(kept in movement.parquet)")
-
-        if verbose:
-            print(f"  {movement_written:,} movement rows written in {time.time()-t0:.1f}s")
-    else:
+def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> int:
+    """Write movement.ndjson, keeping the last sub-move per (time_ms, character)."""
+    if not movement_path.exists():
         if verbose:
             print("  movement.parquet not found, skipping movement.ndjson")
+        return 0
+
+    t0 = time.time()
+    if verbose:
+        print("Converting movement.parquet...")
+    mv_table = pq.read_table(movement_path)
+    n_mv = len(mv_table)
+
+    mv_time = mv_table.column('time_ms').to_pylist()
+    mv_char = mv_table.column('character_net_guid').to_pylist()
+    mv_px = mv_table.column('pos_x').to_pylist()
+    mv_py = mv_table.column('pos_y').to_pylist()
+    mv_pz = mv_table.column('pos_z').to_pylist()
+    mv_yaw = mv_table.column('yaw').to_pylist()
+    mv_pitch = mv_table.column('pitch').to_pylist()
+    mv_vx = mv_table.column('vel_x').to_pylist()
+    mv_vy = mv_table.column('vel_y').to_pylist()
+    mv_vz = mv_table.column('vel_z').to_pylist()
+
+    # Keep only the last sub-move per (time_ms, character).
+    #
+    # Our decoder walks the marker-chained move sequence inside a
+    # replication packet and emits every sub-move, so a packet can produce
+    # several rows sharing one time_ms. That is genuinely more data --
+    # 1,687 of the 2,387 extra rows on 02d4d478 carry distinct positions,
+    # and none of the reference's rows are missing from ours -- and
+    # movement.parquet keeps all of it.
+    #
+    # The bundle cannot. valplay's posture.py requires 0 < dt before adding
+    # a distance step but updates last_sample unconditionally, so for two
+    # sub-moves A then B at the same ms it adds |A-prev|, skips the A->B
+    # leg, and continues from B. The result is a distance_m that is *lower*
+    # than the reference for every player (3.1-5.2 m on 02d4d478) -- an
+    # impossible direction for finer sampling, and simply wrong.
+    #
+    # The reference retains only the final move per packet, and dropping
+    # exactly these rows reproduces its movement_detail on 60/60 values
+    # with no rounding. So this is not an approximation: it is the shape
+    # the consumer was written against.
+    last_of_group = {}
+    for i in range(n_mv):
+        last_of_group[(mv_time[i], mv_char[i])] = i
+    keep = sorted(last_of_group.values())
+    movement_collapsed = n_mv - len(keep)
+
+    movement_written = 0
+    with open(output_dir / "movement.ndjson", 'w', encoding='utf-8') as f:
+        for i in keep:
+            # Every one of these is Float32 on the wire and in Parquet;
+            # widening to a Python float prints the binary artefact
+            # (349.989990234375 for what the reference shows as 349.99).
+            # position_bbox is min/max of the raw values, so it surfaced
+            # there even though the derived distances agreed either way.
+            rec = {
+                "time_ms": mv_time[i],
+                "shooter_character_net_guid": mv_char[i],
+                "position": {
+                    "x": _f32_shortest(mv_px[i]),
+                    "y": _f32_shortest(mv_py[i]),
+                    "z": _f32_shortest(mv_pz[i]),
+                },
+                "velocity": {
+                    "x": _f32_shortest(mv_vx[i]),
+                    "y": _f32_shortest(mv_vy[i]),
+                    "z": _f32_shortest(mv_vz[i]),
+                },
+                "yaw": _f32_shortest(mv_yaw[i]),
+                "pitch": _f32_shortest(mv_pitch[i]),
+            }
+            f.write(json.dumps(rec, separators=(',', ':'), ensure_ascii=True))
+            f.write('\n')
+            movement_written += 1
+
+    if verbose and movement_collapsed:
+        print(f"  {movement_collapsed:,} intra-packet sub-moves collapsed "
+              f"(kept in movement.parquet)")
+
+    if verbose:
+        print(f"  {movement_written:,} movement rows written in {time.time()-t0:.1f}s")
+    return movement_written
+
+
+# ---------------------------------------------------------------------------
+# Main conversion
+# ---------------------------------------------------------------------------
+def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
+    """Read vrfkit Parquet export and write valplay-compatible bundle."""
+    fields_path = export_dir / "fields.parquet"
+    movement_path = export_dir / "movement.parquet"
+    manifest_path = export_dir / "manifest.json"
+
+    if not fields_path.exists():
+        sys.exit(f"fields.parquet not found in {export_dir}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # ---- Load manifest ----
+    manifest = {}
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    _write_manifest(manifest, output_dir)
+
+    # ---- Load fields.parquet ----
+    cols = _load_field_columns(fields_path, verbose)
+
+    # ---- Classify rows: RPC vs replicated property ----
+    # We need to group and emit events in packet_id order (time order).
+    # Strategy: build a list of events keyed by packet_id, then sort and write.
+    t0 = time.time()
+    if verbose:
+        print("Grouping rows into events...")
+    actor_first, actor_last, prop_groups, rpc_groups = _group_rows(cols)
+    if verbose:
+        print(f"  {len(prop_groups):,} property events, {len(rpc_groups):,} RPC invocations")
+        print(f"  Grouped in {time.time()-t0:.1f}s")
+
+    # ---- Build events list ----
+    t0 = time.time()
+    if verbose:
+        print("Building event records...")
+
+    # Containment chain for weapon identity. Loaded before the actor pass so
+    # guid_class can be filled from the same loop that emits actor_spawned.
+    guid_outer, guid_path = _load_net_guids(export_dir)
+
+    # 1 & 2. actor_spawned and actor_closed
+    events, guid_class = _build_actor_events(
+        export_dir, actor_first, actor_last, verbose
+    )
+
+    # 3. export_group_received events (replicated properties)
+    events += _build_property_events(cols, prop_groups)
+
+    # 4. rpc_received events, and valorant_shot_received for the effect RPCs
+    def equippable_lookup(firing_state_guid):
+        return _resolve_equippable(firing_state_guid, guid_outer, guid_path, guid_class)
+
+    def fire_mode_lookup(firing_state_guid, source_id):
+        return _resolve_fire_mode(firing_state_guid, source_id, guid_outer, guid_path)
+
+    shot_ctx = _ShotContext(
+        # Gameplay tag table for effect blob decoding.
+        _build_tag_table(manifest), equippable_lookup, fire_mode_lookup,
+    )
+    rpc_events, shot_count, resolved_weapon_count = _build_rpc_events(
+        cols, rpc_groups, shot_ctx
+    )
+    events += rpc_events
+
+    if verbose:
+        print(f"  {len(events):,} total events built in {time.time()-t0:.1f}s")
+        print(f"  {shot_count:,} valorant_shot_received events")
+        pct = 100 * resolved_weapon_count / shot_count if shot_count else 0
+        print(f"  {resolved_weapon_count:,} with a resolved weapon ({pct:.2f}%)")
+
+    # ---- Sort by (packet_id, time_ms) and write ----
+    events_written = _write_events(events, output_dir, verbose)
+
+    # ---- Convert movement.parquet ----
+    movement_written = _write_movement(movement_path, output_dir, verbose)
 
     # ---- Summary ----
     print(f"\nConversion complete: {output_dir}")
@@ -1489,156 +1712,6 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
         "events_written": events_written,
         "movement_written": movement_written,
     }
-
-
-# ---------------------------------------------------------------------------
-# RPC name normalization
-# ---------------------------------------------------------------------------
-def _normalize_rpc_name(name: str) -> str:
-    """Map vrfkit's RPC field_name prefix to the C# parser's function_name.
-
-    WHY: vrfkit uses the exact ClassNetCache field name as the RPC name prefix
-    in field_name (e.g. 'MulticastNotifyDamage_Point'). The C# parser emits
-    the same names, but some zero-param RPCs may differ in casing or prefix.
-    """
-    # Most are identical. Known mappings:
-    return name
-
-
-# ---------------------------------------------------------------------------
-# RPC parameter normalization
-# ---------------------------------------------------------------------------
-def _normalize_rpc_param(rpc_name: str, param: str, value, is_raw: bool) -> dict | None:
-    """Normalize an RPC parameter name and value to match C# parser output.
-
-    WHY: vrfkit uses prefixed 'b' for booleans (e.g. 'bDamageKilledTarget')
-    while C# emits 'DamageKilledTarget'. Also, RegionalDamage is stored as
-    int enum in vrfkit but as string in C# output.
-    """
-    result = {}
-
-    if rpc_name in ("MulticastNotifyDamage_Point", "MulticastNotifyDamage_Base"):
-        # Parameter name mapping for damage RPCs
-        param_map = {
-            "bDamageKilledTarget": "DamageKilledTarget",
-            "bAliveAfterDamage": "AliveAfterDamage",
-            "bIsWallPenetration": "IsWallPenetration",
-            "bEquippableUsedZoomed": "EquippableUsedZoomed",
-            "bEquippableUsedInFocusMode": "EquippableUsedInFocusMode",
-        }
-        out_name = param_map.get(param, param)
-
-        # RegionalDamage: int -> string
-        if param == "RegionalDamage" and not is_raw:
-            value = REGIONAL_DAMAGE_MAP.get(value, f"regional_damage__unknown_{value}")
-
-        # Damage geometry: the parser now decodes these as quantized vectors
-        # (previously raw blobs, because the C# custom decoder hid the type).
-        # They arrive as the compact "(x,y,z)" string and the reference emits
-        # {x, y, z}. Left as the raw payload if a value ever fails to parse --
-        # visibly absent beats a fabricated zero vector.
-        if param in DAMAGE_VECTOR_PARAMS:
-            parsed = _parse_exact_vector(value)
-            result[out_name] = parsed if parsed is not None else value
-            return result
-
-        # EquippableUsed: net GUID -> the C# ValorantEquippable shape.
-        #
-        # Name/ClassPath stay null and Category stays "unknown" because that is
-        # what the C# parser emits: its resolver looks the GUID up in the
-        # NetGuidCache path table, and weapon instances are dynamic actors that
-        # never register a path there. valplay resolves the gun downstream from
-        # actor_spawned instead (_actorindex.build_actor_class_index), so
-        # filling these in here would diverge from the reference for no gain.
-        #
-        # This used to read the raw bits as a fixed little-endian uint16, which
-        # was wrong twice over: the field is IntPacked (8/16/24 bits wide
-        # depending on the value), and the low bit of the first byte is
-        # IntPacked's continuation flag, so every multi-byte value came out odd
-        # and could never be a valid dynamic NetGUID. The overlay now types the
-        # field as ObjectNetGuid, so the parser hands us the decoded integer.
-        if param == "EquippableUsed":
-            if isinstance(value, int) and not is_raw:
-                result[out_name] = {
-                    "NetGuid": value,
-                    "Name": None,
-                    "ClassPath": None,
-                    "Category": "unknown",
-                }
-            else:
-                # Undecodable: pass the bits through rather than guessing.
-                result[out_name] = value
-            return result
-
-        # LifeChangeEvents: keep as blob
-        if param == "LifeChangeEvents" and is_raw:
-            # Pass through as {BitCount, Data, TypeName} matching C# format
-            if isinstance(value, dict):
-                value["TypeName"] = "LifeChangeEvents"
-            result[out_name] = value
-            return result
-
-        # DamagedBone: raw -> string "0" or actual bone name
-        if param == "DamagedBone" and is_raw:
-            if isinstance(value, dict) and "Data" in value:
-                raw_bytes = base64.b64decode(value["Data"])
-                # Try to interpret as a null-terminated string or simple int
-                try:
-                    # It's typically a short string or "0"
-                    decoded = raw_bytes.rstrip(b'\x00').decode('ascii', errors='replace')
-                    if decoded:
-                        result[out_name] = decoded
-                    else:
-                        result[out_name] = "0"
-                except Exception:
-                    result[out_name] = "0"
-                return result
-            result[out_name] = value
-            return result
-
-        # Vector fields stored as raw blobs
-        if param in ("DamageOrigin", "DamageDirection", "DamageImpactLocation",
-                     "DamageImpactNormal", "DamageImpactBoneRelativeLocation"):
-            if is_raw:
-                # These are packed vectors, skip for now (not consumed by metrics)
-                result[out_name] = value
-                return result
-
-        # DeathMontageEffectOverride* blobs: pass through
-        if param.startswith("DeathMontageEffect") and is_raw:
-            if isinstance(value, dict):
-                value["TypeName"] = param
-            result[out_name] = value
-            return result
-
-        result[out_name] = value
-        return result
-
-    elif rpc_name == "MulticastNotifyKilledEnemy":
-        # Parameters: KillerCharacter, KilledCharacter, MultikillLevel
-        result[param] = value
-        return result
-
-    elif rpc_name in ("MulticastEndRound", "ClientRoundStart"):
-        # NewRoundNumber
-        result[param] = value
-        return result
-
-    elif rpc_name == "MulticastSetPhase":
-        result[param] = value
-        return result
-
-    elif rpc_name == "MulticastReceivePlayerResurrectEvent":
-        result[param] = value
-        return result
-
-    else:
-        # Generic: pass through all params
-        if is_raw and isinstance(value, dict):
-            # Keep blob format
-            pass
-        result[param] = value
-        return result
 
 
 # ---------------------------------------------------------------------------
