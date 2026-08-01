@@ -1896,7 +1896,8 @@ NO UNSAFE
   Corpus        : valplay\data\raw\vrf  (215 x .vrf, all 13.01)
   C# ref output : valplay\pipeline\exports\02d4d478-...\
                   SLIMMED: 97% of rpc_received removed, several keys stripped
-  Local 13.02   : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf (4 files)
+  Local 13.02   : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf
+                  Game-owned rotating input; currently 3 files, not a baseline.
 
 ---
 
