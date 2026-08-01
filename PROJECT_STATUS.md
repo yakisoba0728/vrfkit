@@ -1,6 +1,6 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Reflects commit 059713e (34th commit, master).
+Last updated: 2026-08-01. Reflects commit cf97ecf (41st commit, master).
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -33,7 +33,7 @@ Local 13.02    : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf  (4 files)
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 233 passed, 0 failed across all crates
+# Expected: 236 passed, 0 failed across all crates
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
@@ -60,28 +60,31 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 See Section 7 for full detail, and NEXT_STEPS_FINDINGS.md for the measured
 evidence behind the 7-A correction.
 
-7-A and 7-J are both DONE. All four previously blocked metric sections now
-produce correct data, and no section is BLOCKED any more.
+7-A, 7-B, 7-D and 7-J are all DONE. 12 of 20 metric sections are now
+byte-identical to the C# reference, up from 3 at the start of the session,
+and no section is BLOCKED.
 
-  spray_control  EXACT
-  weapon_stats   by_weapon identical for all 23 weapons
-  posture        by_weapon exact for all 10 players
-  weapons        shot counts identical for all 19 weapons
+  EXACT: ability_detail, ability_usage, economy, objective, objective_detail,
+         players, rounds, shot_rays, side_winrate, spray_control, ultimate
+         (+ note)
 
-**7-B. 1ms timing alignment** is now the highest-value remaining task.
-  It has grown from cosmetic to the single largest source of remaining
-  difference: rounds, objective, ultimate, shot_rays, the 1-RPM delta in
-  weapons, and hp_tracking's entire timeline all trace to it. Every one of
-  those is otherwise identical. Fix is in pipeline.rs -- shift the time_ms
-  attribution by +1ms, or determine which bunch boundary the C# parser uses
-  and match it.
+What is left is mostly decisions and validation breadth rather than defects:
 
-After that the remaining gaps are naming (7-D), the 7-I parity decision, and
-the bounded unattributed bits (7-C, whose ceiling is measured and real).
+**7-K. Movement sample count** -- the last difference with no confirmed
+  explanation. We emit 1,839,607 samples against the reference's 1,837,220.
+  The claim that the extra 2,387 are "intermediate move frames" was never
+  verified. This is the only thing standing between movement_summary /
+  movement_detail / posture and parity.
 
-7-I is classified and is not a defect: the 172 events are server-world
+**7-G. Validate on replays other than 02d4d478** -- every figure in this
+  document rests on one replay. This is now the highest-value work for
+  confidence, because it is what makes the other numbers trustworthy.
+
+**7-I** is classified and is not a defect: the 172 events are server-world
 effects with no firing state, correctly excluded by our filter. Only decide
 whether to emit them for byte-parity.
+
+**7-C** is a measured ceiling, not a task. Do not spend time there.
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -131,8 +134,8 @@ analytics pipeline runs unchanged on our data.
 
 ```
 branch       : master
-commits      : 34
-tests        : 233 passing, 0 failed
+commits      : 41
+tests        : 236 passing, 0 failed
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
 working tree : clean
@@ -143,15 +146,33 @@ ValorantReplayParser : 0 modified files (instrumentation always reverted)
 ### Commit list
 
 ```
-de24d6d  feat(decode, tools): decode shot EffectContainer blob
-cc5dabd  feat(decode): decode RoundResults, TeamEconomy and RoundInfos blobs
-df20d5b  feat(export): write actors.parquet with channel open/close events
-b6947ee  feat(tools): adapter that feeds vrfkit output to the metrics pipeline
+cf97ecf  feat(export, tools): carry the subobject GUID through to the bundle
+fc24b63  fix(tools): emit spawn paths and coordinates in the reference's shapes
+bea59d9  fix(tools): stop rounding shot locations to two decimals
+bff712a  fix(frame): round frame timestamps like the reference instead of truncating
+50fc3ab  docs: correct the oracle pass-rate median and max to measured values
+9b99017  docs: record the custom-decoder audit and promote its lesson to an invariant
+059713e  feat(decode, tools): decode the damage geometry vectors
+2764428  docs: close 7-J, and reclassify 7-B as the largest remaining gap
+e7414d9  fix(tools): correct the RegionalDamage enum ordinals
+90a50e1  fix(decode, tools): type EquippableUsed as a net GUID (7-J)
+0869b3c  docs: reconcile the combat row and sharpen the 7-J handoff notes
+c2a3f4d  docs: record the 7-A outcome and the two gaps its verification exposed
+1f3afe4  fix(tools): classify fire mode from the firing-state name, not ammo counters
+b258dfd  feat(tools): resolve weapon identity for every shot
+47849d2  feat(export): write net_guids.parquet with the NetGUID containment chain
+391ee2e  docs: correct section 7-A after measurement disproved its premise
+21003aa  docs: add quick-start section to PROJECT_STATUS.md for next session
+ed4415f  docs: PROJECT_STATUS.md -- full session record, remaining work and tradeoffs
+de24d6d  feat(decode, tools): decode shot EffectContainer blob and emit valorant_shot_received
+cc5dabd  feat(decode): decode RoundResults, TeamEconomy and RoundInfos struct blobs
+df20d5b  feat(export): write actors.parquet with channel open and close events
+b6947ee  feat(tools): adapter that feeds vrfkit output to the existing metrics pipeline
 7c2faa1  docs: correct the README figures the honesty fix invalidated
 6e6d544  feat(schema): resolve ClassNetCache groups from actor instance names
-00dce40  test(net): update stale zero-function test
+00dce40  test(net): update the zero-function case left stale by the loud-failure change
 29b2936  fix(net): stop dropping ClassNetCache blocks for unresolved groups
-90727ed  fix(net): clamp ClassNetCache handle read to a minimum of two
+90727ed  fix(net): clamp the ClassNetCache handle read to a minimum of two
 b531724  feat(oracle): name the class behind every payload-stage failure
 bb797d2  fix(oracle): count payload-stage failures in the pass rate
 0c2df40  docs: README with measured cross-parser comparison
@@ -190,7 +211,7 @@ vrfkit/
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 233 tests. Counts measured per crate on 2026-08-01; the previous
+Total: 236 tests. Counts measured per crate on 2026-08-01; the previous
 breakdown in this document was wrong for six of the ten crates even though
 its total happened to be right.
 
@@ -533,37 +554,43 @@ combat           MATCH*       per_player 270/270 within float32 epsilon
                               MORE COMPLETE (132 kills vs ref 119; ref
                               missing char-576). Those two keys are the only
                               ones in combat that differ at all.
-rounds           ~1ms         round_intervals off by exactly 1ms
-objective        ~1ms         side_switch_ms off by 1ms; round_results 18/18
-ultimate         ~1ms         cast_times_ms off by 1ms
+rounds           EXACT        after the 7-B timestamp fix
+objective        EXACT        after the 7-B timestamp fix
+ultimate         EXACT        after the 7-B timestamp fix
+shot_rays        EXACT        after 7-B plus dropping coordinate rounding
+spray_control    EXACT        69 cells, 2304 shots, zero differing cells
+ability_usage    EXACT        after emitting package paths and f32-shortest
+                              spawn coordinates
+ability_detail   EXACT        after carrying the subobject GUID (cf97ecf);
+                              attribution.spawns_by_source had been reading
+                              item_slot 10 against the reference's 118
+objective_detail EXACT        same cause as ability_detail
 tactical         OURS BETTER  3 players differ; vrfkit recovered 13 kill RPCs
 kast             OURS BETTER  3 players +1 KAST round; same root cause
-shot_rays        ~1ms         ray_count 2475/2475 exact; sample .ms off 1ms
-movement_summary MINOR        1,839,607 vs 1,837,220 samples (+2387 rows,
-                              vrfkit captures intermediate move frames)
-movement_detail  MINOR        per-character floats <0.1 cm/s speed delta
-ability_usage    MINOR        spawn counts correct; class names differ
-                              (C# uses display names; we use wire class paths)
-objective_detail MINOR        18 rounds correct; timing off 1ms
-economy_detail   MINOR        18 rounds, correct credits; weapon display names
-ability_detail   MINOR        events correct; timing off 1ms
-spray_control    EXACT        69 cells, 2304 shots, zero differing cells
-weapons          MINOR        all 19 weapons + shot counts identical; two
-                              deltas: ref carries "unknown": 172 (7-I), and
-                              Sheriff/Ghost rpm_estimated differ by 1 (7-B)
+economy_detail   OURS BETTER  credits and loadout now identical for all 10
+                              players. Differs only on purchases: we resolve
+                              496 of 496 PurchasedItemComponent buyers, the
+                              reference 151. All 496 buyers are real player
+                              states and all 496 item classes resolve; the
+                              reference's set is a strict subset
+weapons          MINOR        all 19 weapons + shot counts identical; the
+                              reference additionally carries "unknown": 172
+                              (7-I) and reports distinct_weapons 20 vs our 19
 weapon_stats     MATCH*       by_weapon identical for all 23 weapons;
-                              region_source byte-identical. Deltas: excluded
-                              counts (+1 recovered record, 7-I's 172) and
-                              hp_tracking timestamps (7-B 1ms)
+                              region_source and hp_tracking byte-identical.
+                              Differs only on `excluded`: +1 recovered damage
+                              record and 7-I's 172
+movement_summary MINOR        1,839,607 vs 1,837,220 samples (+2387 rows) --
+                              under investigation, see 7-K
+movement_detail  MINOR        per-character floats; same row-count origin
 posture          MINOR        by_weapon EXACT for all 10 players; remaining
-                              deltas are distance_m / movement_samples, the
-                              pre-existing movement row-count difference
+                              deltas are distance_m / movement_samples, from
+                              the same row-count difference
 ---------------------------------------------------------------------------
 ```
 
-EXACT: identical Python object equality.
-MATCH*: every key identical except the two named, both understood.
-~1ms: numerically correct; systematic -1ms offset from bunch timestamp choice.
+EXACT: identical Python object equality. 12 of 20 metric sections.
+MATCH*: every key identical except the one named, and it is understood.
 OURS BETTER: our value is more complete/correct than the C# reference.
 MINOR: correct data, cosmetic naming or sample-count difference.
 BLOCKED: the data is present but a named defect prevents it being used.
@@ -639,35 +666,34 @@ NOT needed: resolving InventoryComponent -> /Script/ShooterGame.AresInventory.
 That is the C# tier-3 fallback and tier 2 already covers 100% of shots. It
 remains interesting for other sections -- see 7-H.
 
-### 7-B. 1ms timing alignment [NOW THE LARGEST REMAINING GAP]
+### 7-B. 1ms timing alignment [DONE 2026-08-01]
 
-All timestamp differences are exactly -1ms. This is not random noise; it
-is a systematic choice of which packet timestamp to use (start vs end of
-the UE4 bunch). No metric threshold operates at 1ms granularity, so this
-has zero effect on any computed value.
+Fixed in commit bff712a. rounds, objective and ultimate became EXACT, and
+weapon_stats.hp_tracking's timeline went from every entry off by -1ms to
+zero differences.
 
-Reclassified 2026-08-01. This was labelled LOW IMPACT / COSMETIC when four
-sections were blocked outright. With 7-A and 7-J closed it is now the single
-largest source of remaining difference, and in several sections the ONLY
-one:
-  rounds.round_intervals, objective.side_switch_ms, ultimate.cast_times_ms,
-  shot_rays[].ms, weapon_stats.hp_tracking.timeline[].t_ms (every entry,
-  everything else about those entries identical), and the 1-RPM delta in
-  weapons.by_weapon that comes from gap-derived rates.
+The diagnosis in this document was wrong in a way worth recording. It said:
 
-Fix: in pipeline.rs, shift the time_ms attribution by +1ms, or verify
-which boundary the C# parser uses and match it.
+> All timestamp differences are exactly -1ms. This is not random noise; it
+> is a systematic choice of which packet timestamp to use (start vs end of
+> the UE4 bunch).
 
-DO NOT treat this as a one-liner. time_ms is attributed once and flows into
-every row of every table, so a blind +1 could fix five sections and break
-four. Determine which bunch boundary the C# parser uses FIRST, then change
-it, then re-diff all 21 sections -- not just the ~1ms ones. Every currently
-EXACT section (players, economy, side_winrate, spray_control) rides on the
-same timestamp and must be re-verified, along with the full regression guard
-and the 215-replay corpus.
+It was not a boundary choice, and it was not systematic. vrf-frame computed
 
-Unlocks: probably 5-6 more EXACT sections, and removes the last unexplained
-difference from weapon_stats.
+    let time_ms = (time_seconds * 1000.0) as u32;
+
+which truncates and multiplies in f32, against the reference's
+(ReplayEventJsonWriter.cs:194)
+
+    (long)Math.Round(seconds * 1000d, MidpointRounding.AwayFromZero)
+
+Only frames whose fractional millisecond was >= 0.5 landed early -- roughly
+half of them. That is exactly why the differences that existed were always
+-1 while many timestamps matched: the "systematic -1ms" reading came from
+looking only at the rows that differed.
+
+Lesson: "the differences are all -N" does not imply "everything is shifted
+by N". Check how many values match before inferring a constant offset.
 
 ### 7-C. Unattributed ClassNetCache blocks [MEDIUM IMPACT, BOUNDED]
 
@@ -695,12 +721,22 @@ time trying to recover those bits.
 The MeleeAttackState variants are tractable: if MeleeAttackState1_C_ClassNetCache
 etc. are added to the schema lookup logic, those would be recovered.
 
-### 7-D. Ability/item class display names [LOW IMPACT]
+### 7-D. Ability/item class display names [DONE 2026-08-01]
 
-ability_usage and ability_detail use wire class paths (e.g. Ability_E_C)
-instead of display names (e.g. "Smoke"). This causes MINOR differences
-but the underlying data is correct. A class-path-to-display-name table
-exists in the C# parser; extracting it closes this gap.
+Fixed in commit fc24b63. ability_usage is EXACT; ability_detail became
+EXACT once the subobject GUID landed (commit cf97ecf).
+
+The premise here was also wrong. It said the sections needed a
+class-path-to-display-name table "extracted from the C# parser". The
+reference does not use display names for abilities either -- it uses class
+names. The entire difference was that our replication_class_path carried the
+full object path ("Foo.Foo_C") where the reference emits the package path
+("Foo"), and the two consumers that matter take path.split("/")[-1]
+verbatim rather than splitting on the dot.
+
+No name table was needed. A second, unrelated formatting difference in the
+same sections was spawn coordinates: Float32 widened to Python float printed
+2382.199951171875 where the reference shows 2382.2.
 
 ### 7-E. 13.02 golden vector coverage [MAINTENANCE]
 
@@ -758,6 +794,15 @@ manipulation.
 
 7-A does NOT depend on this. It matters for ammo-level detail in weapon_stats
 and for posture / fire-mode refinement.
+
+Still open, but narrower than it looks. A separate subobject problem that
+LOOKED like this one turned out to be an export gap, not a resolution gap:
+content blocks describing a subobject carry its GUID, vrf-net parsed it, and
+the sink discarded it, so every ItemSlot on a character collapsed onto the
+actor GUID. Fixed in commit cf97ecf by adding fields.object_net_guid, which
+made ability_detail and objective_detail EXACT. Before treating any remaining
+"component" gap as a naming problem, check whether the data is simply not
+being exported.
 
 ### 7-I. Verify the 2,647 vs 2,475 shot gap [SMALL, VALIDATION HYGIENE]
 
