@@ -896,13 +896,19 @@ entirely, so its output can never be revisited.
 These blocks frame correctly (malformed framing 0); the group resolution
 returns function_count=0 and they are counted as failures.
 
-Breakdown:
-  91.7%  AbilitiesAndBuffsComponent  -- no cache group declared in schema
-  ~5%    MeleeAttackState1/2/3/4     -- digit suffix is a class variant,
-                                        not an instance suffix; each has
-                                        a distinct function table
-  ~2%    RespawningWallPlate2_7      -- "2_7" too aggressive to strip
-  ~1%    Various (space-in-name, etc.)
+CORRECTED 2026-08-01: the earlier breakdown was wrong in two ways. A full,
+uncapped aggregation of all 1,047,182 stream failures across the 215-replay
+corpus accounts for every one of the 1,972,080,670 skipped bits and measures:
+
+  97.283437%  AbilitiesAndBuffsComponent  (1,918,507,857 bits / 752,483 blocks)
+   1.545398%  PatchVolume                  (   30,476,488 bits /   3,432 blocks)
+   0.319715%  AttachedDamageSection        (    6,305,042 bits /  99,002 blocks)
+   0.224846%  DefenderAnnouncer            (    4,434,144 bits /  10,868 blocks)
+   0.181710%  AttackerAnnouncer            (    3,583,464 bits /   8,783 blocks)
+   0.160508%  MapTargetingState            (    3,165,345 bits /  23,632 blocks)
+
+The previously quoted 91.7% share was not current, and MeleeAttackState is
+not in the failure set at all: 0 blocks and 0 bits corpus-wide.
 
 AbilitiesAndBuffsComponent is the real ceiling. Until the game server
 declares its ClassNetCache group in the schema, no lookup can reach it.
@@ -913,8 +919,26 @@ CONFIRMED 2026-08-01: searched all 475 declared export groups in
 This is now a measured fact rather than an assumption. Do not spend
 time trying to recover those bits.
 
-The MeleeAttackState variants are tractable: if MeleeAttackState1_C_ClassNetCache
-etc. are added to the schema lookup logic, those would be recovered.
+MeleeAttackState1/2/3/4/_Alt were already recovered by the schema-driven
+instance-name resolver in commit 6e6d544. The replay declares exactly one
+ClassNetCache for all five names, not five distinct function tables:
+
+  /Script/ShooterGame.MeleeAttackStateComponent_ClassNetCache
+    num_exports = 2; slot 0 empty; slot 1 = MulticastHitImpact
+
+On 02d4d478, 467 non-empty blocks parse through that group: State1 201,
+State2 45, State3 32, State4 23, and _Alt 166. They carry 211,441 content
+bits in total (91,452 / 20,159 / 14,397 / 10,069 / 75,364 respectively),
+of which 187,995 bits are RPC parameter payload. All 54 instance GUIDs emit
+successfully resolved rows. The 475-group manifest contains only the shared
+ClassNetCache and its MulticastHitImpact parameter group; variant-specific
+ClassNetCache groups declared by the replay: zero.
+
+The numeric names reach the shared group by the existing trailing-digit
+fallback followed by the replay-declared `Component_ClassNetCache` candidate;
+`_Alt` reaches it through underscore-segment stripping. No hardcoded name or
+new lookup rule is needed. Corpus skipped bits before and after this audit are
+identical at 1,972,080,670 because there is no parser change to make.
 
 ### 7-D. Ability/item class display names [DONE 2026-08-01]
 
