@@ -21,6 +21,9 @@ pub fn fields_schema() -> Schema {
         Field::new("packet_id", DataType::UInt32, false),
         Field::new("channel_index", DataType::UInt32, false),
         Field::new("actor_net_guid", DataType::UInt32, false),
+        // Nullable: only subobject blocks carry one, and null must stay
+        // distinguishable from 0 (the engine's invalid-GUID sentinel).
+        Field::new("object_net_guid", DataType::UInt32, true),
         // Dictionary<Int32, Utf8>: ~300 distinct group paths over 780k rows.
         Field::new(
             "group_path",

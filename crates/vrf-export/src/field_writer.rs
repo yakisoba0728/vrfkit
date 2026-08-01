@@ -36,6 +36,14 @@ pub struct FieldRecord {
     pub packet_id: u32,
     pub channel_index: u32,
     pub actor_net_guid: u32,
+    /// Subobject this block described, when it was not the actor itself.
+    ///
+    /// `None` means the block described the actor. Kept distinct from `Some(0)`
+    /// because 0 is the engine's invalid-GUID sentinel, and distinct from
+    /// `actor_net_guid` because a character replicates several subobjects
+    /// (inventory item slots being the case that matters) whose state must not
+    /// be merged.
+    pub object_net_guid: Option<u32>,
     pub group_path: String,
     pub handle: u32,
     /// `None` when the field name is unknown (unmapped export index).
@@ -60,7 +68,8 @@ pub struct FieldRecord {
 /// let mut writer = FieldWriter::new(file)?;
 /// writer.push(FieldRecord {
 ///     time_ms: 1000, packet_id: 42, channel_index: 3,
-///     actor_net_guid: 100, group_path: "PlayerState".into(),
+///     actor_net_guid: 100, object_net_guid: None,
+///     group_path: "PlayerState".into(),
 ///     handle: 7, field_name: Some("Health".into()),
 ///     bit_count: 32, raw_bits: Some(vec![0x64, 0, 0, 0]),
 ///     value_i64: Some(100), value_f64: None,
@@ -196,6 +205,9 @@ impl<W: Write + Send> FieldWriter<W> {
         let actor_net_guid: ArrayRef = Arc::new(UInt32Array::from_iter_values(
             rows.iter().map(|r| r.actor_net_guid),
         ));
+        let object_net_guid: ArrayRef = Arc::new(UInt32Array::from_iter(
+            rows.iter().map(|r| r.object_net_guid),
+        ));
 
         // Dictionary-encoded group_path (non-nullable).
         let mut group_path_builder =
@@ -243,6 +255,7 @@ impl<W: Write + Send> FieldWriter<W> {
                 packet_id,
                 channel_index,
                 actor_net_guid,
+                object_net_guid,
                 group_path,
                 handle,
                 field_name,

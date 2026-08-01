@@ -728,6 +728,24 @@ def _decode_rotation_short(data: bytes, bit_count: int) -> dict:
 # ---------------------------------------------------------------------------
 # RegionalDamage enum mapping: vrfkit stores as int, valplay expects string
 # ---------------------------------------------------------------------------
+# Array fields whose *undecoded* blob is what downstream expects, mapped to the
+# TypeName the reference labels them with.
+#
+# vrfkit emits both forms for these: the bare container blob and the decoded
+# per-element sub-fields. The general rule below prefers the decoded form,
+# because that is what CombatReport's `Rounds` needs. RoundInfos is the
+# opposite case -- valplay's _roundinfo.collect_round_infos does its own
+# bit-level decode and requires {Data, BitCount}, skipping anything that is not
+# a dict, so handing it our decoded list silently produced
+# events_with_roundinfos: 0 and left every credits_actual figure null.
+#
+# Our raw bits for RoundInfos are byte-identical to the reference's, so passing
+# them through is exact rather than approximate.
+RAW_BLOB_PREFERRED = {
+    "RoundInfos": "TArray<FAresPlayerRoundInfo>",
+}
+
+
 # Damage RPC parameters that carry an FVector_NetQuantize* payload. The C#
 # call sites are DamageParameters.cs:50 and
 # MulticastNotifyDamagePointParameters.cs:40-46.
@@ -1005,6 +1023,13 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
     col_time = table.column('time_ms').to_pylist()
     col_pid = table.column('packet_id').to_pylist()
     col_actor = table.column('actor_net_guid').to_pylist()
+    # Subobject identity. Null for actor blocks; the C# reference then
+    # repeats the actor guid, so mirror that when emitting.
+    col_object = (
+        table.column('object_net_guid').to_pylist()
+        if 'object_net_guid' in table.schema.names
+        else [None] * n_rows
+    )
     col_gp = table.column('group_path').cast('string').to_pylist()
     col_handle = table.column('handle').to_pylist()
     col_fn = table.column('field_name').cast('string').to_pylist()
@@ -1056,7 +1081,10 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
             handle = col_handle[i]
             rpc_groups[(pid, actor, gp, handle)].append(i)
         else:
-            prop_groups[(pid, actor, gp)].append(i)
+            # Keyed by subobject too: a character replicates several
+            # ItemSlot subobjects, and merging them into one event makes
+            # the inventory look like a single slot.
+            prop_groups[(pid, actor, col_object[i], gp)].append(i)
 
     if verbose:
         print(f"  {len(prop_groups):,} property events, {len(rpc_groups):,} RPC invocations")
@@ -1153,7 +1181,7 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
             events.append((pid + 1, ms, event))
 
     # 3. export_group_received events (replicated properties)
-    for (pid, actor, gp), row_indices in prop_groups.items():
+    for (pid, actor, obj, gp), row_indices in prop_groups.items():
         ms = col_time[row_indices[0]]
 
         # Build nested payload from field paths.
@@ -1191,12 +1219,18 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
             parts = _parse_field_path(fn)
             if len(parts) == 1 and parts[0][1] is None:
                 # Simple top-level field. Skip if it's a raw blob that has
-                # indexed sub-fields (the sub-fields carry the decoded data).
+                # indexed sub-fields (the sub-fields carry the decoded data)
+                # -- unless downstream wants the undecoded blob.
                 bare_name = parts[0][0]
+                if bare_name in RAW_BLOB_PREFERRED:
+                    if is_raw and isinstance(value, dict):
+                        value["TypeName"] = RAW_BLOB_PREFERRED[bare_name]
+                        payload[bare_name] = value
+                    continue
                 if is_raw and bare_name in indexed_names:
                     continue
                 payload[bare_name] = value
-            else:
+            elif parts[0][0] not in RAW_BLOB_PREFERRED:
                 _set_nested(payload, parts, value)
 
         # Emit even if payload is empty (some events are just existence signals)
@@ -1205,7 +1239,7 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
             "time_ms": ms,
             "export_group_path": gp,
             "actor_net_guid": actor,
-            "object_net_guid": actor,  # best approximation
+            "object_net_guid": obj if obj is not None else actor,
             "payload": payload,
         }
         events.append((pid, ms, event))

@@ -128,6 +128,8 @@ pub struct ExportSink<'a> {
     // ?? per-content-block context (set by on_content_block) ??????????????
     current_channel: u32,
     current_actor_guid: u32,
+    /// Subobject GUID of the block being walked; `None` for actor blocks.
+    current_object_guid: Option<u32>,
     current_group_path: String,
 }
 
@@ -144,6 +146,7 @@ impl<'a> ExportSink<'a> {
             stats: ExportStats::default(),
             current_channel: 0,
             current_actor_guid: 0,
+            current_object_guid: None,
             current_group_path: String::new(),
         }
     }
@@ -687,6 +690,7 @@ impl<'a> ExportSink<'a> {
             packet_id: self.packet_id,
             channel_index: self.current_channel,
             actor_net_guid: self.current_actor_guid,
+            object_net_guid: self.current_object_guid,
             group_path: self.current_group_path.clone(),
             handle: 0,
             field_name: Some(field_name.to_owned()),
@@ -933,6 +937,7 @@ impl<'a> ExportSink<'a> {
                 packet_id: self.packet_id,
                 channel_index: self.current_channel,
                 actor_net_guid: self.current_actor_guid,
+                object_net_guid: self.current_object_guid,
                 group_path: self.current_group_path.clone(),
                 handle: rpc_handle,
                 field_name: Some(full_field_name),
@@ -1046,6 +1051,7 @@ impl FieldSink for ExportSink<'_> {
                         packet_id: self.packet_id,
                         channel_index: self.current_channel,
                         actor_net_guid: self.current_actor_guid,
+                        object_net_guid: self.current_object_guid,
                         group_path: self.current_group_path.clone(),
                         handle: f.handle,
                         field_name: Some(full_name),
@@ -1095,6 +1101,7 @@ impl FieldSink for ExportSink<'_> {
             packet_id: self.packet_id,
             channel_index: self.current_channel,
             actor_net_guid: self.current_actor_guid,
+            object_net_guid: self.current_object_guid,
             group_path: self.current_group_path.clone(),
             handle,
             field_name,
@@ -1141,6 +1148,7 @@ impl FieldSink for ExportSink<'_> {
                 packet_id: self.packet_id,
                 channel_index: self.current_channel,
                 actor_net_guid: self.current_actor_guid,
+                object_net_guid: self.current_object_guid,
                 group_path: self.current_group_path.clone(),
                 handle,
                 field_name,
@@ -1175,6 +1183,7 @@ impl FieldSink for ExportSink<'_> {
                     packet_id: self.packet_id,
                     channel_index: self.current_channel,
                     actor_net_guid: self.current_actor_guid,
+                    object_net_guid: self.current_object_guid,
                     group_path: self.current_group_path.clone(),
                     handle,
                     field_name,
@@ -1193,6 +1202,7 @@ impl FieldSink for ExportSink<'_> {
                 packet_id: self.packet_id,
                 channel_index: self.current_channel,
                 actor_net_guid: self.current_actor_guid,
+                object_net_guid: self.current_object_guid,
                 group_path: self.current_group_path.clone(),
                 handle,
                 field_name,
@@ -1333,6 +1343,15 @@ impl ReplicationSink for ExportSink<'_> {
     ) -> u32 {
         self.current_channel = channel_index;
         self.current_actor_guid = actor_net_guid.0;
+        // Actor blocks describe the actor itself and carry no subobject GUID.
+        // For subobject blocks it identifies *which* subobject, which is the
+        // only way to tell one of a character's inventory item slots from
+        // another; merging them makes a player look like they hold one item.
+        self.current_object_guid = if header.is_actor {
+            None
+        } else {
+            Some(header.object_net_guid.0).filter(|&g| g != 0)
+        };
         self.current_group_path = self.resolve_group_path(channel_index, actor_net_guid.0, header);
         self.stats.content_blocks += 1;
 

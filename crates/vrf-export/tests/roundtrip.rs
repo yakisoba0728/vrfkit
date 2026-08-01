@@ -34,6 +34,8 @@ fn make_field_record(i: u32) -> FieldRecord {
         packet_id: i,
         channel_index: i % 8,
         actor_net_guid: 1000 + (i % 20),
+        // Every third record models a subobject block.
+        object_net_guid: if i % 3 == 0 { None } else { Some(9000 + i) },
         group_path: format!("Group_{}", i % 5),
         handle: i % 64,
         field_name: if i % 3 == 0 {
@@ -136,6 +138,7 @@ fn field_null_preservation() {
                 packet_id: 0,
                 channel_index: 0,
                 actor_net_guid: 1,
+                object_net_guid: None,
                 group_path: "Test".into(),
                 handle: 0,
                 field_name: None,
@@ -154,6 +157,7 @@ fn field_null_preservation() {
                 packet_id: 1,
                 channel_index: 0,
                 actor_net_guid: 1,
+                object_net_guid: None,
                 group_path: "Test".into(),
                 handle: 1,
                 field_name: Some("Health".into()),
@@ -172,7 +176,9 @@ fn field_null_preservation() {
     let batch = &batches[0];
 
     // field_name: row 0 null, row 1 = "Health"
-    let field_name = batch.column(6).as_dictionary::<Int32Type>();
+    let field_name = batch
+        .column(batch.schema().index_of("field_name").unwrap())
+        .as_dictionary::<Int32Type>();
     assert!(field_name.is_null(0));
     assert!(!field_name.is_null(1));
     let field_name_values = field_name.downcast_dict::<StringArray>().unwrap();
@@ -180,7 +186,7 @@ fn field_null_preservation() {
 
     // raw_bits: row 0 null, row 1 = [0xAB]
     let raw_bits = batch
-        .column(8)
+        .column(batch.schema().index_of("raw_bits").unwrap())
         .as_any()
         .downcast_ref::<BinaryArray>()
         .unwrap();
@@ -189,7 +195,7 @@ fn field_null_preservation() {
 
     // value_i64: row 0 = Some(0), row 1 = null
     let value_i64 = batch
-        .column(9)
+        .column(batch.schema().index_of("value_i64").unwrap())
         .as_any()
         .downcast_ref::<Int64Array>()
         .unwrap();
@@ -199,7 +205,7 @@ fn field_null_preservation() {
 
     // value_str: row 0 = null, row 1 = "hello"
     let value_str = batch
-        .column(12)
+        .column(batch.schema().index_of("value_str").unwrap())
         .as_any()
         .downcast_ref::<StringArray>()
         .unwrap();
@@ -221,6 +227,7 @@ fn field_binary_preservation() {
                 packet_id: 0,
                 channel_index: 0,
                 actor_net_guid: 0,
+                object_net_guid: None,
                 group_path: "Bin".into(),
                 handle: 0,
                 field_name: None,
@@ -237,7 +244,7 @@ fn field_binary_preservation() {
 
     let batches = read_all_batches(&path);
     let raw_bits = batches[0]
-        .column(8)
+        .column(batches[0].schema().index_of("raw_bits").unwrap())
         .as_any()
         .downcast_ref::<BinaryArray>()
         .unwrap();
@@ -673,6 +680,38 @@ fn net_guid_roundtrip_preserves_outer_chain() {
     // sentinel meaning "invalid GUID" and must stay distinguishable.
     assert!(outer.is_null(0));
     assert_eq!(outer.value(1), 2910);
+}
+
+#[test]
+fn field_object_net_guid_roundtrips_and_is_nullable() {
+    // A content block can describe the actor itself or one of its subobjects.
+    // Without the subobject GUID every ItemSlot on a character collapses onto
+    // one key downstream, so a player appears to hold a single item.
+    // `None` means "this block described the actor", which must stay distinct
+    // from any real GUID -- including 0.
+    let path = test_dir().join("field_object_net_guid.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = FieldWriter::with_row_group_size(file, 1024).unwrap();
+        let mut actor_block = make_field_record(1);
+        actor_block.object_net_guid = None;
+        let mut subobject_block = make_field_record(2);
+        subobject_block.object_net_guid = Some(4242);
+        writer.push(actor_block).unwrap();
+        writer.push(subobject_block).unwrap();
+        writer.finish().unwrap();
+    }
+
+    let batches = read_all_batches(&path);
+    let batch = &batches[0];
+    let idx = batch.schema().index_of("object_net_guid").unwrap();
+    let col = batch
+        .column(idx)
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .unwrap();
+    assert!(col.is_null(0), "actor blocks carry no subobject GUID");
+    assert_eq!(col.value(1), 4242);
 }
 
 #[test]
