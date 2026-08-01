@@ -92,8 +92,11 @@ EXPORT_CATEGORY_TYPE = (
     r'(?:global\s*::\s*)?'
     r'(?:[A-Za-z_]\w*\s*\.\s*)*ExportCategory'
 )
+CATEGORY_RETURN_TYPE = (
+    r'@?[A-Za-z_]\w*(?:\s*(?:::|\.)\s*@?[A-Za-z_]\w*)*'
+)
 CATEGORY_OVERRIDE_MARKER_RE = re.compile(
-    rf'\boverride\s+{EXPORT_CATEGORY_TYPE}\s+Categories\b'
+    rf'\boverride\s+(?P<return_type>{CATEGORY_RETURN_TYPE})\s+@?Categories\b'
 )
 CATEGORY_OVERRIDE_RE = re.compile(
     rf'\boverride\s+{EXPORT_CATEGORY_TYPE}\s+Categories\s*=>\s*'
@@ -260,7 +263,13 @@ def extract_fields_from_block(
         if raw_wrapper is not None:
             name = _extract_lambda_field_name(line)
             if name:
-                fields.append((name, "FieldType::Raw", _extract_literal_handle(line)))
+                fields.append(
+                    (
+                        name,
+                        "FieldType::Raw",
+                        _extract_literal_handle(line, raw_wrapper),
+                    )
+                )
             continue
 
         # Check for SerializedInt with parameter
@@ -416,9 +425,13 @@ def _extract_lambda_field_name(line: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _extract_literal_handle(line: str) -> int | None:
-    """Return a declaration's first argument when it is a decimal literal."""
-    match = re.search(r'\w+\s*\(\s*(\d+)\s*,', line)
+def _extract_literal_handle(
+    line: str, declaration_name: str = "AddPropertyHandle"
+) -> int | None:
+    """Return a handle declaration's leading decimal argument, if present."""
+    match = re.match(
+        rf'{re.escape(declaration_name)}\s*\(\s*(\d+)\s*,', line
+    )
     return int(match.group(1)) if match else None
 
 
@@ -452,39 +465,35 @@ def find_class_body_range(source: str, class_start: int) -> tuple[int, int]:
     return (brace_pos + 1, pos - 1)
 
 
-def extract_parameterless_method_body(source: str, method_name: str) -> str | None:
-    """Return only the named parameterless method's block or expression body."""
+def extract_parameterless_method_body(
+    source: str, method_name: str, code_view: str | None = None
+) -> str | None:
+    """Return a live parameterless method's block or expression body."""
+    if code_view is None:
+        code_view = csharp_code_view(source)
     declaration_re = re.compile(
         rf'\b(?:public|internal|protected|private)\s+(?:static\s+)?'
         rf'[\w.<>,?\[\]]+\s+{re.escape(method_name)}\s*\(\s*\)\s*'
     )
-    declaration = declaration_re.search(source)
+    declaration = declaration_re.search(code_view)
     if declaration is None:
         return None
 
     body_start = declaration.end()
-    if source.startswith("=>", body_start):
+    if code_view.startswith("=>", body_start):
         expression_start = body_start + 2
-        expression_end = source.find(";", expression_start)
+        expression_end = code_view.find(";", expression_start)
         if expression_end == -1:
             return None
         return source[expression_start:expression_end]
 
-    if body_start >= len(source) or source[body_start] != "{":
+    if body_start >= len(code_view) or code_view[body_start] != "{":
         return None
 
-    depth = 1
-    pos = body_start + 1
-    while pos < len(source) and depth > 0:
-        if source[pos] == "{":
-            depth += 1
-        elif source[pos] == "}":
-            depth -= 1
-        pos += 1
-
-    if depth != 0:
+    _, body_end = find_class_body_range(code_view, declaration.start())
+    if body_end < body_start or body_end >= len(source):
         return None
-    return source[body_start + 1:pos - 1]
+    return source[body_start + 1:body_end]
 
 
 def csharp_code_view(source: str) -> str:
@@ -521,6 +530,96 @@ def csharp_code_view(source: str) -> str:
 
     interpolated_prefixes = ("$@\"", "@$\"", "$\"")
 
+    def run_length(start: int, character: str) -> int:
+        cursor = start
+        while cursor < source_len and source[cursor] == character:
+            cursor += 1
+        return cursor - start
+
+    def raw_delimiter_at(start: int) -> tuple[int, int] | None:
+        cursor = start
+        while cursor < source_len and source[cursor] == "$":
+            cursor += 1
+        dollar_count = cursor - start
+        if dollar_count == 0 and (
+            start >= source_len or source[start] != '"'
+        ):
+            return None
+        quote_count = run_length(cursor, '"')
+        if quote_count < 3:
+            return None
+        return dollar_count, quote_count
+
+    def scan_comment(start: int) -> int | None:
+        if source.startswith("//", start):
+            newline = source.find("\n", start + 2)
+            return source_len if newline == -1 else newline
+        if source.startswith("/*", start):
+            closing = source.find("*/", start + 2)
+            return source_len if closing == -1 else closing + 2
+        return None
+
+    def scan_raw_interpolation(start: int, dollar_count: int) -> int:
+        cursor = start
+        brace_depth = 0
+        while cursor < source_len:
+            comment_end = scan_comment(cursor)
+            if comment_end is not None:
+                cursor = comment_end
+                continue
+
+            literal_end = scan_literal_at(cursor)
+            if literal_end is not None:
+                cursor = literal_end
+                continue
+
+            if source[cursor] == "{":
+                opening_count = run_length(cursor, "{")
+                brace_depth += opening_count
+                cursor += opening_count
+                continue
+
+            if source[cursor] == "}":
+                closing_count = run_length(cursor, "}")
+                structural_closings = min(brace_depth, closing_count)
+                brace_depth -= structural_closings
+                delimiter_closings = closing_count - structural_closings
+                cursor += closing_count
+                if (
+                    brace_depth == 0
+                    and dollar_count <= delimiter_closings < 2 * dollar_count
+                ):
+                    return cursor
+                continue
+
+            cursor += 1
+        return source_len
+
+    def scan_raw_string(
+        start: int, dollar_count: int, quote_count: int
+    ) -> int:
+        cursor = start + dollar_count + quote_count
+        while cursor < source_len:
+            if source[cursor] == '"':
+                closing_count = run_length(cursor, '"')
+                if closing_count == quote_count:
+                    return cursor + closing_count
+                cursor += closing_count
+                continue
+
+            if dollar_count and source[cursor] == "{":
+                opening_count = run_length(cursor, "{")
+                if dollar_count <= opening_count < 2 * dollar_count:
+                    cursor = scan_raw_interpolation(
+                        cursor + opening_count, dollar_count
+                    )
+                else:
+                    cursor += opening_count
+                continue
+
+            cursor += 1
+        return source_len
+
     def scan_interpolated_string(start: int, prefix: str) -> int:
         cursor = start + len(prefix)
         expression_depth = 0
@@ -542,29 +641,14 @@ def csharp_code_view(source: str) -> str:
                     cursor += 1
                 continue
 
-            if source.startswith("//", cursor):
-                newline = source.find("\n", cursor + 2)
-                cursor = source_len if newline == -1 else newline
-                continue
-            if source.startswith("/*", cursor):
-                closing = source.find("*/", cursor + 2)
-                cursor = source_len if closing == -1 else closing + 2
+            comment_end = scan_comment(cursor)
+            if comment_end is not None:
+                cursor = comment_end
                 continue
 
-            nested_prefix = next(
-                (
-                    candidate
-                    for candidate in interpolated_prefixes
-                    if source.startswith(candidate, cursor)
-                ),
-                None,
-            )
-            if nested_prefix is not None:
-                cursor = scan_interpolated_string(cursor, nested_prefix)
-            elif source.startswith('@"', cursor):
-                cursor = scan_verbatim_string(cursor + 1)
-            elif source[cursor] in "\"'":
-                cursor = scan_regular_literal(cursor, source[cursor])
+            literal_end = scan_literal_at(cursor)
+            if literal_end is not None:
+                cursor = literal_end
             elif source[cursor] == "{":
                 expression_depth += 1
                 cursor += 1
@@ -575,46 +659,39 @@ def csharp_code_view(source: str) -> str:
                 cursor += 1
         return source_len
 
-    pos = 0
-    while pos < source_len:
-        if source.startswith("//", pos):
-            end = source.find("\n", pos + 2)
-            if end == -1:
-                end = source_len
-            mask_non_newlines(pos, end)
-            pos = end
-            continue
-
-        if source.startswith("/*", pos):
-            closing = source.find("*/", pos + 2)
-            end = source_len if closing == -1 else closing + 2
-            mask_non_newlines(pos, end)
-            pos = end
-            continue
+    def scan_literal_at(start: int) -> int | None:
+        raw_delimiter = raw_delimiter_at(start)
+        if raw_delimiter is not None:
+            return scan_raw_string(start, *raw_delimiter)
 
         interpolated_prefix = next(
             (
                 prefix
                 for prefix in interpolated_prefixes
-                if source.startswith(prefix, pos)
+                if source.startswith(prefix, start)
             ),
             None,
         )
         if interpolated_prefix is not None:
-            start = pos
-            pos = scan_interpolated_string(pos, interpolated_prefix)
-            mask_non_newlines(start, pos)
+            return scan_interpolated_string(start, interpolated_prefix)
+        if source.startswith('@"', start):
+            return scan_verbatim_string(start + 1)
+        if start < source_len and source[start] in "\"'":
+            return scan_regular_literal(start, source[start])
+        return None
+
+    pos = 0
+    while pos < source_len:
+        comment_end = scan_comment(pos)
+        if comment_end is not None:
+            mask_non_newlines(pos, comment_end)
+            pos = comment_end
             continue
 
-        if source.startswith('@"', pos):
+        literal_end = scan_literal_at(pos)
+        if literal_end is not None:
             start = pos
-            pos = scan_verbatim_string(pos + 1)
-            mask_non_newlines(start, pos)
-            continue
-
-        if source[pos] in "\"'":
-            start = pos
-            pos = scan_regular_literal(pos, source[pos])
+            pos = literal_end
             mask_non_newlines(start, pos)
             continue
 
@@ -623,11 +700,53 @@ def csharp_code_view(source: str) -> str:
     return "".join(masked)
 
 
+def direct_member_code_view(source: str) -> str:
+    """Mask block contents so only declarations in the current type remain."""
+    code_view = csharp_code_view(source)
+    masked = list(code_view)
+    depth = 0
+    for index, character in enumerate(code_view):
+        if character == "{":
+            if depth > 0:
+                masked[index] = " "
+            depth += 1
+            continue
+        if character == "}":
+            if depth > 1:
+                masked[index] = " "
+            if depth > 0:
+                depth -= 1
+            continue
+        if depth > 0 and character not in "\r\n":
+            masked[index] = " "
+    return "".join(masked)
+
+
+NESTED_TYPE_RE = re.compile(
+    r'\b(?:class|struct|interface|enum|record(?:\s+(?:class|struct))?)\s+'
+    r'[A-Za-z_]\w*(?:\s*<[^>{}]*>)?[^;{}]*\{',
+    re.DOTALL,
+)
+
+
+def mask_nested_type_bodies(source: str) -> str:
+    """Return source text with direct nested type declarations masked."""
+    code_view = csharp_code_view(source)
+    member_view = direct_member_code_view(source)
+    masked = list(source)
+    for declaration in NESTED_TYPE_RE.finditer(member_view):
+        _, body_end = find_class_body_range(code_view, declaration.start())
+        for index in range(declaration.start(), min(body_end + 1, len(source))):
+            if source[index] not in "\r\n":
+                masked[index] = " "
+    return "".join(masked)
+
+
 def extract_category_override(
     class_name: str, class_body: str
 ) -> frozenset[str] | None:
     """Parse a class's explicit category flags, rejecting unsupported forms."""
-    category_source = csharp_code_view(class_body)
+    category_source = direct_member_code_view(class_body)
     markers = list(CATEGORY_OVERRIDE_MARKER_RE.finditer(category_source))
     if not markers:
         return None
@@ -638,8 +757,12 @@ def extract_category_override(
         or len(overrides) != 1
         or markers[0].start() != overrides[0].start()
     ):
+        return_types = ", ".join(
+            sorted({marker.group("return_type").strip() for marker in markers})
+        )
         raise SystemExit(
-            f"{class_name}: unsupported ExportCategory override; "
+            f"{class_name}: unsupported ExportCategory override "
+            f"using return type {return_types!r}; "
             "expected an expression joined with |"
         )
 
@@ -714,22 +837,39 @@ def main(argv: list[str]) -> int:
     const_string_re = re.compile(
         r'\bconst\s+string\s+(?P<name>\w+)\s*=\s*"(?P<value>[^"]+)"'
     )
-    for _, source, _ in sources:
+    for _, source, code_view in sources:
         constants = {
             match.group("name"): match.group("value")
             for match in const_string_re.finditer(source)
+            if code_view[match.start()] != " "
         }
         for runtime_match in runtime_cache_re.finditer(source):
             factory_name = runtime_match.group("factory")
-            factory_body = extract_parameterless_method_body(source, factory_name)
+            factory_start, factory_end = runtime_match.span("factory")
+            if (
+                code_view[runtime_match.start()] == " "
+                or code_view[factory_start:factory_end] != factory_name
+            ):
+                continue
+            factory_body = extract_parameterless_method_body(
+                source, factory_name, code_view
+            )
             if factory_body is None:
                 raise SystemExit(
                     f"runtime ClassNetCache factory {factory_name}: "
                     "method body not found"
                 )
-            name_match = re.search(
+            name_re = re.compile(
                 r'\bName\s*=\s*(?:"(?P<literal>[^"]+)"|(?P<constant>\w+))',
-                factory_body,
+            )
+            factory_view = csharp_code_view(factory_body)
+            name_match = next(
+                (
+                    match
+                    for match in name_re.finditer(factory_body)
+                    if factory_view[match.start()] != " "
+                ),
+                None,
             )
             if name_match is None:
                 raise SystemExit(
@@ -773,13 +913,23 @@ def main(argv: list[str]) -> int:
             class_name = cm.group(1)
             body_start, body_end = find_class_body_range(code_view, cm.start())
             class_body = source[body_start:body_end]
+            class_body_code_view = code_view[body_start:body_end]
+            member_view = direct_member_code_view(class_body)
+            scoped_class_body = mask_nested_type_bodies(class_body)
 
             category_override = extract_category_override(class_name, class_body)
             if category_override is not None:
                 class_category_overrides[class_name] = category_override
 
             # Extract Path declarations within this class body
-            path_match = PATH_RE.search(class_body)
+            path_match = next(
+                (
+                    match
+                    for match in PATH_RE.finditer(class_body)
+                    if member_view.startswith("override", match.start())
+                ),
+                None,
+            )
             if path_match:
                 class_paths[class_name] = path_match.group("path")
 
@@ -791,29 +941,36 @@ def main(argv: list[str]) -> int:
             configure_re = re.compile(
                 r'(?:protected\s+)?override\s+void\s+Configure\(\)'
             )
-            configure_match = configure_re.search(class_body)
+            configure_match = configure_re.search(member_view)
             if configure_match:
-                # Find the body of Configure() -- it starts at the next { after
-                # the match.
-                cfg_start = class_body.find('{', configure_match.end())
-                if cfg_start != -1:
-                    # Find matching closing brace
-                    depth = 1
-                    pos = cfg_start + 1
-                    while pos < len(class_body) and depth > 0:
-                        if class_body[pos] == '{':
-                            depth += 1
-                        elif class_body[pos] == '}':
-                            depth -= 1
-                        pos += 1
-                    configure_body = class_body[cfg_start:pos]
+                token_start = configure_match.end()
+                while (
+                    token_start < len(member_view)
+                    and member_view[token_start].isspace()
+                ):
+                    token_start += 1
 
+                configure_body: str | None = None
+                if member_view.startswith("{", token_start):
+                    _, cfg_end = find_class_body_range(
+                        class_body_code_view, token_start
+                    )
+                    configure_body = class_body[token_start:cfg_end + 1]
+                elif member_view.startswith("=>", token_start):
+                    expression_start = token_start + 2
+                    expression_end = member_view.find(";", expression_start)
+                    if expression_end != -1:
+                        configure_body = class_body[
+                            expression_start:expression_end + 1
+                        ]
+
+                if configure_body is not None:
                     if is_cnc:
                         # Extract function names for CNC
                         funcs = extract_cnc_functions(configure_body)
                         funcs.extend(
                             extract_called_cnc_helper_functions(
-                                class_body, configure_body
+                                scoped_class_body, configure_body
                             )
                         )
                         if funcs:
@@ -833,7 +990,7 @@ def main(argv: list[str]) -> int:
                 # Look for methods that contain AddProperty calls but aren't
                 # Configure(). These are helper methods.
                 helper_fields = extract_fields_from_block(
-                    class_body, raw_wrapper_names
+                    scoped_class_body, raw_wrapper_names
                 )
                 if helper_fields and class_name not in class_fields:
                     class_fields[class_name] = helper_fields
