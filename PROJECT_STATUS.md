@@ -60,37 +60,37 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 See Section 7 for full detail, and NEXT_STEPS_FINDINGS.md for the measured
 evidence behind the 7-A correction.
 
-7-A, 7-B, 7-D, 7-G, 7-J and 7-K are all DONE. **15 of 21 metric sections are
-byte-identical to the C# reference on all 11 cross-validated replays**, up
-from 3 sections on 1 replay at the start of the session.
+7-A, 7-B, 7-D, 7-E, 7-G, 7-I, 7-J and 7-K are all DONE. **16 of 21 metric
+sections are byte-identical to the C# reference on all 11 cross-validated
+replays**, up from 3 sections on 1 replay at the start of the session.
 
 Verify it yourself:
 ```powershell
 python toolsalidate_metrics_corpus.py --jobs 3
-# Expected: sections exact on ALL   : 15 / 21
+# Expected: sections exact on ALL   : 16 / 21
+python tools\check_corpus_baseline.py --baseline toolsaselinesuild_1302.json
+# Expected: OK: 4 replays match the baseline
 ```
 
 No section is BLOCKED, and **no section differs for a reason that is not
-understood**. The six that differ all do so because we carry data the C#
+understood**. The five that differ all do so because we carry data the C#
 parser does not:
 
   combat / kast / tactical  13 MulticastNotifyKilledEnemy RPCs from
                             character 576 that the C# parser never emits
   economy_detail            496 of 496 purchase buyers resolved vs its 151
-  weapons / weapon_stats    172 server-world effects it bins as "unknown",
-                            plus one damage record commit 6e6d544 recovers
+  weapon_stats              one damage record commit 6e6d544 recovers
 
 What is actually left:
 
-**7-E. 13.02 corpus guard** -- the transform works on two local 13.02 demos
-  but nothing pins it. A future transform change could break 13.02 silently.
+**7-H. Instance-named component groups** -- the last open item with real
+  data behind it. Check whether the data is merely unexported before
+  treating it as a naming problem; that is what cf97ecf turned out to be.
 
-**7-H. Instance-named component groups** -- still open, but check whether the
-  data is merely unexported before treating it as a naming problem; that is
-  what cf97ecf turned out to be.
+**7-F. Parallelization** -- optional, and only worth doing if measurement
+  says the time is where 7-F assumes it is.
 
-**7-I** is a parity decision, not a defect. **7-C** is a measured ceiling --
-do not spend time there.
+**7-C** is a measured ceiling. Do not spend time there.
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -246,6 +246,15 @@ corpus totals
   fields emitted   :  98,883,979
   RPCs emitted     :  75,571,092
   malformed framing:           0   <-- container/bunch/block framing perfect
+                                   MEASURED for the first time on 2026-08-01.
+                                   validate_corpus.py matched on "Malformed:"
+                                   while the oracle prints "Malformed
+                                   framing:", and a non-matching pattern was
+                                   silently skipped -- so this had always been
+                                   a Counter default, not a reading. Fixed in
+                                   9cb7a24; the value is genuinely 0, and a
+                                   counter that stops printing now warns
+                                   instead of reading as zero.
   unattributed bits: 1,972,080,670 (~246 MB, 91.7% is AbilitiesAndBuffsComponent)
 ```
 
@@ -265,7 +274,11 @@ typed (value_*)    :    36.0%  (356,290 decoded, up from 35.7% / 353,334
 oracle pass rate   :  98.95%
 ```
 
-13.02 replays (local demos, first measured in this session):
+13.02 replays (4 local demos, pinned by tools/check_corpus_baseline.py):
+  all 4 parse, malformed 0, pass rate 97.959041% - 99.329325%
+  blocks 3,117,920  fields 2,279,512  rpcs 1,713,576  skipped 74,573,628
+
+Earlier measurement of two of them:
 ```
 2a09e682  55 MB   686,559 blocks  malformed 0  transform 0  pass 97.96%
 43d0f434  85 MB 1,004,465 blocks  malformed 0  transform 0  pass 99.18%
@@ -637,18 +650,19 @@ economy_detail   OURS BETTER  credits and loadout identical for all 10
                               151. All 496 buyers are real player states,
                               all 496 item classes resolve, and the
                               reference's set is a strict subset
-weapons          OURS BETTER  all 19 weapons + shot counts identical; the
-                              reference additionally bins 172 server-world
-                              effects as "unknown" (7-I)
+weapons          EXACT        after emitting the 172 server-world effects
+                              the reference bins as "unknown" (7-I)
 weapon_stats     OURS BETTER  by_weapon identical for all 23 weapons;
-                              region_source and hp_tracking byte-identical.
-                              Differs only on `excluded`: the +1 recovered
-                              damage record and 7-I's 172
+                              region_source, hp_tracking and
+                              shots_without_equippable byte-identical.
+                              Differs only on non_player_victim_hits,
+                              212 vs 211 -- the damage record commit 6e6d544
+                              recovers and the C# parser discards
 ---------------------------------------------------------------------------
 ```
 
-EXACT: identical Python object equality. 14 of 20 metric sections here,
-       and the same 14 on all 11 cross-validated replays (section 6-A).
+EXACT: identical Python object equality. 16 of 21 sections, and the same
+       16 on all 11 cross-validated replays (section 6-A).
 OURS BETTER: our value is more complete/correct than the C# reference.
 BLOCKED: the data is present but a named defect prevents it being used.
          No section is BLOCKED, and no section differs for a reason that is
@@ -671,19 +685,18 @@ missing.
 
 runs the full pipeline over all eleven and prints a section x replay matrix.
 
-Result (2026-08-01): **15 of 21 sections byte-identical on all 11 replays** --
+Result (2026-08-01): **16 of 21 sections byte-identical on all 11 replays** --
 the same set measured on 02d4d478, so those figures generalise.
 
   ability_detail  ability_usage  economy      movement_detail
   movement_summary  objective    objective_detail  players
   posture         rounds         shot_rays    side_winrate
-  spray_control   ultimate       (+ note)
+  spray_control   ultimate       weapons      (+ note)
 
-The six that vary do so per replay in the expected direction: kast and
-tactical are EXACT on the replays where the C# parser missed nothing (7 and
-8 of 11 respectively), and differ only where we recover kills it dropped.
-combat, economy_detail, weapons and weapon_stats differ on every replay,
-always because we carry more.
+The five that vary do so per replay in the expected direction: kast,
+tactical and weapon_stats are EXACT on the replays where the C# parser
+missed nothing, and differ only where we recover data it dropped. combat and
+economy_detail differ on every replay, always because we carry more.
 
 This is also what found the sparse-array crash: 1d898bfb produced no metrics
 at all until the padding fix. One replay could not have surfaced it.
@@ -826,15 +839,25 @@ No name table was needed. A second, unrelated formatting difference in the
 same sections was spawn coordinates: Float32 widened to Python float printed
 2382.199951171875 where the reference shows 2382.2.
 
-### 7-E. 13.02 golden vector coverage [MAINTENANCE]
+### 7-E. 13.02 regression guard [DONE 2026-08-01]
 
-Two 13.02 replays parse with malformed framing 0 and transform failures 0,
-so the transform is working. However the 215-replay corpus is entirely
-13.01, so 13.02 has no corpus-level regression guard. If a future session
-modifies the transform path, 13.02 could silently break.
+Done in commit 9cb7a24. tools/check_corpus_baseline.py pins per-file and
+total oracle figures in JSON and fails on any difference:
 
-Fix: add a small 13.02 replay to the test corpus, or at minimum run
-validate_corpus.py over the local demos and pin the output.
+    python tools\check_corpus_baseline.py --baseline toolsaselinesuild_1302.json
+
+tools/baselines/build_1302.json covers the four local 13.02 demos --
+blocks 3,117,920, fields 2,279,512, rpcs 1,713,576, malformed 0,
+skipped 74,573,628, pass rate 97.96-99.33%.
+
+Those replays live under %LOCALAPPDATA% and are machine-local, so an absent
+corpus SKIPs with a message rather than failing. A guard that fails on
+someone else's machine gets disabled, and a disabled guard protects nothing.
+The guard was proven to fail: perturbing the baseline produced the expected
+DRIFT lines and exit 1.
+
+This work also uncovered a worse problem -- see the malformed-counter note
+in section 4.
 
 ### 7-F. Parallelization [OPTIONAL PERFORMANCE]
 
@@ -891,31 +914,26 @@ made ability_detail and objective_detail EXACT. Before treating any remaining
 "component" gap as a naming problem, check whether the data is simply not
 being exported.
 
-### 7-I. Verify the 2,647 vs 2,475 shot gap [SMALL, VALIDATION HYGIENE]
+### 7-I. Effects with no firing state [DONE 2026-08-01]
 
-The reference bundle has 2,647 valorant_shot_received events and resolves
-equippable on exactly 2,475 of them -- the same count our adapter emits.
-Our adapter filters on FiringState.FiringPlayerState being present. If that
-filter is what produces both numbers, then "ray_count 2475/2475 exact" is a
-self-selecting comparison and reads stronger than it is.
+Resolved in commit 6a73475 by emitting them, which made `weapons` EXACT.
 
-Classify the 172: pull their source_id / fire_mode_evidence from the
-reference events.ndjson and determine whether they are gun shots we drop or
-ability/melee effects that were never gun shots.
+The adapter had filtered out any effect RPC without
+FiringState.FiringPlayerState -- 172 of 02d4d478's 2,647 -- plus 7 more that
+carried no blob at all. The 172 are server-world effects
+(source_id = DedicatedServerWorldSourceID) with no player, weapon or attack
+vectors, so dropping them looked like the clean choice.
 
-CLASSIFIED 2026-08-01, and it is NOT a defect. All 172 carry
-source_id = "DedicatedServerWorldSourceID" and fire_mode_evidence = None,
-i.e. no firing state at all. They are server-world effects, not weapon
-shots -- which is exactly why the reference cannot resolve an equippable for
-them either and files them under "unknown".
+It was the wrong one. valplay's weapons section has an "unknown" bucket and
+weapon_stats has a shots_without_equippable diagnostic, both built precisely
+to receive these. Filtering them hid information the consumer was designed to
+report -- the same silent-drop mistake the parser invariants exist to
+prevent, made at the adapter layer where those invariants were not being
+applied.
 
-Our adapter filters on FiringState.FiringPlayerState being present, which
-excludes them correctly. The only consequence is cosmetic: the reference's
-weapons.shots_by_weapon carries an "unknown": 172 bucket and reports
-distinct_weapons 20 where we report 19.
-
-Decide whether to emit them for byte-parity or keep the cleaner output. If
-kept, this stops being a gap and becomes a documented divergence.
+Nothing downstream is distorted: every section that would be already guards
+on firing_player_state or attack_vectors, and spray_control, posture,
+shot_rays and movement_* are unchanged and still EXACT.
 
 ### 7-J. EquippableUsed.NetGuid decoded wrong [DONE 2026-08-01]
 
