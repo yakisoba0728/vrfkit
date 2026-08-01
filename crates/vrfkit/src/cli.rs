@@ -11,7 +11,7 @@ use crate::inspect;
 use crate::oracle;
 
 const USAGE: &str = "\
-vrfkit — VALORANT replay (.vrf) toolkit
+vrfkit -- VALORANT replay (.vrf) toolkit
 
 USAGE:
     vrfkit inspect  <file.vrf>

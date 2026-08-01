@@ -27,6 +27,9 @@ Two independent checks run here, and they fail on different things:
      compared against a pinned JSON. This is what catches the other failure
      mode -- the data moving and the summary faithfully reporting the new,
      wrong number. A cross-check alone cannot see that.
+     A byte-size difference with every counter equal means the row VALUES
+     moved -- or that the parquet crate version did. Cargo.lock pins it, so
+     check that before assuming a data bug, and do not disable the guard.
 
 Both were confirmed to fail on a deliberately broken build before this was
 committed; see the commit message.
@@ -47,6 +50,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -116,7 +120,16 @@ def cross_checks(counters: dict, parquet: dict) -> list[str]:
 
 
 def measure(exe: Path, replay: Path, out_dir: Path) -> dict:
-    """Export one replay and collect the summary counters and Parquet shape."""
+    """Export one replay and collect the summary counters and Parquet shape.
+
+    The output directory is deleted first. Exporting over a previous run would
+    leave a file the exporter has stopped writing sitting there with last
+    run's contents, and both checks below would then read it and pass -- the
+    exact way "a stale file makes a matching hash meaningless" applies here.
+    """
+    shutil.rmtree(out_dir, ignore_errors=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     r = subprocess.run(
         [str(exe), "export", str(replay), "--out", str(out_dir)],
         capture_output=True, text=True, encoding="utf-8",
@@ -172,7 +185,7 @@ def main() -> int:
     ap.add_argument("--replay", type=Path, default=None,
                     help="overrides the replay path stored in the baseline")
     ap.add_argument("--out", type=Path, default=None,
-                    help="export directory (default: out/export_check)")
+                    help="export directory, DELETED first (default: out/export_check)")
     ap.add_argument("--update", action="store_true",
                     help="rewrite the baseline from the current numbers")
     args = ap.parse_args()
@@ -190,7 +203,6 @@ def main() -> int:
         return 0
 
     out_dir = args.out or (REPO / "out" / "export_check")
-    out_dir.mkdir(parents=True, exist_ok=True)
     current = measure(args.exe, replay, out_dir)
 
     # The cross-check runs whether or not a baseline exists, and before the
