@@ -16,6 +16,14 @@ ObjectValues, VectorValues blobs. These are decoded in Python using the
 gameplay tag table from the manifest, and emitted as valorant_shot_received
 events matching the C# parser's output format.
 
+Weapon identity: the shot blob does not name the gun. It carries a FiringState
+subobject GUID, whose *outer* is the equippable actor. net_guids.parquet
+supplies that containment chain and actors.parquet supplies the class path,
+which equippable_table.py maps to a display name. This mirrors the C# parser's
+second resolution tier (ValorantShotEventEnricher.ResolveFromFiringState); its
+first tier, an equippable GUID inside the effect blob, is never populated in
+practice (0 of 2,647 shots in the 02d4d478 reference).
+
 Usage:
     python tools/to_valplay_bundle.py <vrfkit_export_dir> [-o <output_dir>]
 """
@@ -40,6 +48,63 @@ except ImportError:
     sys.exit("pyarrow is required: pip install pyarrow")
 
 import struct as _struct
+
+sys.path.insert(0, str(Path(__file__).parent))
+from equippable_table import EQUIPPABLE_BY_PATH  # noqa: E402
+
+
+# Unreal's own cap in FNetGUIDCache traversal; the C# resolver uses the same
+# value. Real chains observed in 02d4d478 are one hop, but a bounded loop is
+# what keeps a malformed self-referential chain from hanging the adapter.
+MAX_OUTER_DEPTH = 16
+
+
+def _resolve_equippable(net_guid, guid_outer, guid_path, guid_class):
+    """Walk a GUID's outer chain to the equippable actor that contains it.
+
+    Returns ``(owner_net_guid, name, category, class_path)`` or ``None``.
+
+    Two lookups per hop, because the two tables cover different populations:
+    ``guid_class`` comes from actors.parquet (channel opens, carrying the spawn
+    class path) while ``guid_path`` comes from net_guids.parquet (every GUID the
+    replay registered, including subobjects that never opened a channel).
+    A weapon appears in the first; its FiringState only in the second.
+    """
+    current = net_guid
+    for _ in range(MAX_OUTER_DEPTH):
+        if not current:
+            return None
+        for table in (guid_class, guid_path):
+            path = table.get(current)
+            if path:
+                hit = EQUIPPABLE_BY_PATH.get(path)
+                if hit:
+                    name, category, canonical = hit
+                    return current, name, category, canonical
+        nxt = guid_outer.get(current)
+        if nxt is None or nxt == current:
+            return None
+        current = nxt
+    return None
+
+
+def _load_net_guids(export_dir):
+    """Read net_guids.parquet into (guid -> outer, guid -> path) dicts.
+
+    Returns empty dicts when the file is absent, so bundles produced by an
+    older vrfkit still convert -- weapon identity is simply left unresolved
+    rather than the run failing.
+    """
+    path = export_dir / "net_guids.parquet"
+    if not path.exists():
+        return {}, {}
+    table = pq.read_table(path)
+    guids = table.column("net_guid").to_pylist()
+    paths = table.column("path").cast("string").to_pylist()
+    outers = table.column("outer_net_guid").to_pylist()
+    guid_outer = {g: o for g, o in zip(guids, outers) if o is not None}
+    guid_path = {g: p for g, p in zip(guids, paths) if p}
+    return guid_outer, guid_path
 
 
 # ---------------------------------------------------------------------------
@@ -298,7 +363,7 @@ def _build_tag_table(manifest: dict) -> dict:
 def _build_shot_event(
     time_ms, packet_id, actor_net_guid, channel_index,
     scalar_params: dict, float_blob, object_blob, vector_blob,
-    tag_table: dict,
+    tag_table: dict, equippable_lookup=None,
 ) -> dict | None:
     """Build a valorant_shot_received event from decoded RPC params.
 
@@ -403,6 +468,21 @@ def _build_shot_event(
     firing_player = objects.get("FiringState.FiringPlayerState")
     firing_state = objects.get("FiringState.FiringState")
 
+    # Weapon identity: FiringState is a subobject of the gun, so its outer is
+    # the equippable actor. Null when the chain does not reach a known
+    # equippable -- never guessed.
+    equippable = None
+    if equippable_lookup is not None and firing_state:
+        hit = equippable_lookup(firing_state)
+        if hit is not None:
+            owner_guid, name, category, class_path = hit
+            equippable = {
+                "net_guid": owner_guid,
+                "name": name,
+                "category": category,
+                "class_path": class_path,
+            }
+
     # Alliance filter string
     alliance_str = None
     if alliance is not None:
@@ -432,8 +512,9 @@ def _build_shot_event(
         "firing_player_state": firing_player,
         "firing_state": firing_state,
         "attack_vectors": attack_vectors if attack_vectors else [],
+        # The C# parser's tier-1 source; never populated in any observed replay.
         "effect_equippable": None,
-        "equippable": None,  # Resolved downstream by _actorindex.py
+        "equippable": equippable,
         "fire_mode": fire_mode,
         "fire_mode_evidence": "firing-state:FiringState",
     }
@@ -798,6 +879,11 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
 
     events = []  # (packet_id, time_ms, event_dict)
 
+    # Containment chain for weapon identity. Loaded before the actor pass so
+    # guid_class can be filled from the same loop that emits actor_spawned.
+    guid_outer, guid_path = _load_net_guids(export_dir)
+    guid_class = {}  # actor net guid -> spawn class path
+
     # 1 & 2. actor_spawned and actor_closed events from actors.parquet
     #         (authoritative: carries class/archetype/location from spawn data)
     actors_path = export_dir / "actors.parquet"
@@ -820,6 +906,10 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
                 loc_y = a_sy[i] if a_sy[i] is not None else 0
                 loc_z = a_sz[i] if a_sz[i] is not None else 0
                 class_path = a_class[i] if a_class[i] is not None else ""
+                if class_path:
+                    # First open wins: a GUID can be reused after a close, but
+                    # the shot events that reference it belong to its first life.
+                    guid_class.setdefault(a_guid[i], class_path)
                 archetype = a_arch[i] if a_arch[i] is not None else _group_path_to_archetype(class_path)
                 event = {
                     "type": "actor_spawned",
@@ -925,6 +1015,10 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
     # Build gameplay tag table for effect blob decoding
     tag_table = _build_tag_table(manifest)
     shot_count = 0
+    resolved_weapon_count = 0
+
+    def equippable_lookup(firing_state_guid):
+        return _resolve_equippable(firing_state_guid, guid_outer, guid_path, guid_class)
 
     for (pid, actor, gp, handle), row_indices in rpc_groups.items():
         ms = col_time[row_indices[0]]
@@ -976,11 +1070,13 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
                 shot_event = _build_shot_event(
                     ms, pid, actor, 0,
                     payload, float_blob, object_blob, vector_blob,
-                    tag_table,
+                    tag_table, equippable_lookup,
                 )
                 if shot_event is not None:
                     events.append((pid, ms, shot_event))
                     shot_count += 1
+                    if shot_event["shot"]["equippable"] is not None:
+                        resolved_weapon_count += 1
             # Still emit as rpc_received too (some downstream might need it)
 
         # Normalize the RPC function name to match C# parser output
@@ -998,6 +1094,8 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
     if verbose:
         print(f"  {len(events):,} total events built in {time.time()-t0:.1f}s")
         print(f"  {shot_count:,} valorant_shot_received events")
+        pct = 100 * resolved_weapon_count / shot_count if shot_count else 0
+        print(f"  {resolved_weapon_count:,} with a resolved weapon ({pct:.2f}%)")
 
     # ---- Sort by (packet_id, time_ms) and write ----
     t0 = time.time()
