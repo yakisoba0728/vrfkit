@@ -1,7 +1,7 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-01. Includes the delegated coverage audit through
-commit 458f8e0 on branch codex/remaining-items.
+Last updated: 2026-08-01. Includes the replay-coverage audit through 8eb5909
+and the concurrent master audit corrections through 101c33a.
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -77,9 +77,9 @@ evidence behind the 7-A correction, and Section 11 for the replay-coverage
 audit. Non-Bomb mode coverage remains input-blocked and unmeasured: supply a
 mode-labelled non-Bomb replay before making any claim about it.
 
-7-A, 7-B, 7-D, 7-E, 7-G, 7-I, 7-J and 7-K are all DONE. **16 of 21 metric
-sections are byte-identical to the C# reference on all 11 cross-validated
-replays**, up from 3 sections on 1 replay at the start of the session.
+7-A, 7-B, 7-D, 7-E, 7-G, 7-I, 7-J and 7-K are all DONE. The harness reports
+**16 of 21 keys byte-identical on all 11 cross-validated replays**; excluding
+the constant provenance `note`, the honest metric count is 15 of 20.
 
 Verify it yourself:
 ```powershell
@@ -89,14 +89,17 @@ python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # Expected: OK: 4 replays match the baseline
 ```
 
-No section is BLOCKED, and **no section differs for a reason that is not
-understood**. The five that differ all do so because we carry data the C#
-parser does not:
+No section is BLOCKED. Most differences reflect data the C# parser drops:
 
-  combat / kast / tactical  13 MulticastNotifyKilledEnemy RPCs from
+  combat / kast             13 MulticastNotifyKilledEnemy RPCs from
                             character 576 that the C# parser never emits
   economy_detail            496 of 496 purchase buyers resolved vs its 151
   weapon_stats              one damage record commit 6e6d544 recovers
+
+Tactical remains an open interpretation question: five values are higher in
+the reference, including one opening_duels_won difference with its denominator
+conserved. Section 6 records the exact replay/value pairs. Do not describe all
+five varying sections as understood or as monotonic gains.
 
 What is actually left: **nothing in section 7 is open.** Every item is either
 done, or closed with a measurement showing it cannot or should not be done.
@@ -111,9 +114,6 @@ done, or closed with a measurement showing it cannot or should not be done.
        class of a stably-named subobject is never on the wire. Five
        measurements in 7-H. Do not reopen without new input data --
        checkpoint chunks are the only unexamined region.
-
-The five metric sections that still differ from the C# reference all differ
-because we carry data it does not, and each is named above.
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -133,10 +133,11 @@ python "C:\...\valplay\pipeline\metrics\compute_metrics.py" `
 ```
 
 ### Key invariant (never break)
-Every content block emits (group_path, handle, name, bit_count, raw_bits)
-even when nothing is known. Overlay is additive. A block whose group is
-unresolved returns Err (counted, named) -- never Ok with a guessed capacity.
-The oracle's honesty matters more than its pass rate.
+Every field inside a walkable block emits (group_path, handle, name, bit_count,
+raw_bits), even when its type is unknown. Overlay is additive. An unresolved
+ClassNetCache block cannot be walked and emits no Parquet rows; it returns Err
+and its skipped bits are counted and named, never hidden behind a guessed
+capacity. Keep the source `.vrf` if future reinterpretation may be needed.
 
 
 ---
@@ -147,15 +148,16 @@ A from-scratch Rust VALORANT replay (.vrf) parser in a NEW repository
 (C:\Users\yakihyuk0728\Documents\GitHub\vrfkit), built to replace the
 C# parser (ValorantReplayParser, MIT) that the valplay Python analytics
 pipeline depends on. The C# parser discards roughly 26% of content blocks
-because it abandons any bunch whose payload has no registered descriptor;
-this parser never discards: every field emits (group_path, handle, name,
-bit_count, raw_bits) even when nothing is known about the type.
+because it abandons any bunch whose payload has no registered descriptor.
+vrfkit preserves every field it can walk, including raw bits for unknown
+types; an unresolved ClassNetCache block is instead counted as a loud stream
+failure and emits no field/RPC rows.
 
 Primary outputs: fields.parquet, movement.parquet, actors.parquet,
 net_guids.parquet, manifest.json -- all written by `vrfkit export`. A Python adapter
 (tools/to_valplay_bundle.py) converts these into the bundle shape that
-valplay's compute_metrics.py already consumes, so the validated 21-section
-analytics pipeline runs unchanged on our data.
+valplay's compute_metrics.py already consumes, so its 20 metric sections plus
+the constant provenance `note` run unchanged on our data.
 
 ---
 
@@ -254,7 +256,11 @@ vrfkit/
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 236 tests. Counts measured per crate on 2026-08-01; the previous
+Total: 236 tests. The per-crate list above sums to 233, not 236, because it
+was taken excluding doc-tests for some crates and including them for others.
+Known wrong: vrf-frame is 5 not 3, vrf-export is 19 not 18 (0 unit + 17
+integration + 2 doc). Re-measure per crate before quoting any single row.
+Counts measured per crate on 2026-08-01; the previous
 breakdown in this document was wrong for six of the ten crates even though
 its total happened to be right.
 
@@ -334,9 +340,10 @@ build  blocks  malformed  fields  RPCs   skipped  oracle pass rate
 ```
 
 All three inspect and validate with exit 0. Full export also reaches exit 0 and
-writes complete output files, retaining all raw bits, but it is not decode-clean:
-the builds report 9, 18, and 19 FName SourceID decode errors respectively. These
-decode gaps are recorded, not hidden by the zero malformed count.
+writes its output files, but it is not decode-clean: the builds report 9, 18,
+and 19 FName SourceID decode errors respectively. Walkable rows retain raw bits;
+unresolved ClassNetCache streams remain counted as skipped bits and emit no row.
+These gaps are recorded, not hidden by the zero malformed count.
 
 The adjacent 12.08 C# fixture is intentionally unsupported. A real end-to-end
 `validate` run exits 1, names `++Ares-Core+release-12.08`, and lists the known
@@ -464,8 +471,9 @@ and re-applied edits using the write tool only.
 
 tools/to_valplay_bundle.py: reads vrfkit export (fields.parquet,
 movement.parquet, manifest.json) and writes a bundle that valplay's
-compute_metrics.py consumes unchanged. Reusing the 21 validated metric
-sections is the point; reimplementing would discard the validation.
+compute_metrics.py consumes unchanged. Reusing the 20 validated metric
+sections plus its constant provenance note is the point; reimplementing would
+discard the validation.
 
 Result: combat.per_player reproduces EXACTLY -- 27 fields x 10 players =
 270 comparisons, 0 mismatches. K/D/A/ADR/HS%/wallbangs/multikill/kd/
@@ -755,13 +763,37 @@ weapon_stats     OURS BETTER  by_weapon identical for all 23 weapons;
 ---------------------------------------------------------------------------
 ```
 
-EXACT: identical Python object equality. 16 of 21 sections, and the same
-       16 on all 11 cross-validated replays (section 6-A).
+EXACT: identical Python object equality. The harness prints 16 of 21, but
+       one of those keys is `note` -- a fixed provenance string
+       compute_metrics writes for any input, structurally incapable of
+       failing. The honest figure is 15 of 20 real metric sections, and the
+       same 15 on all 11 cross-validated replays (section 6-A).
+       NOTE ALSO: the table above lists `combat` twice; it is one section.
 OURS BETTER: our value is more complete/correct than the C# reference.
 BLOCKED: the data is present but a named defect prevents it being used.
-         No section is BLOCKED, and no section differs for a reason that is
-         not understood. Every remaining difference is a case where we carry
-         data the C# parser does not.
+         No section is BLOCKED.
+
+CORRECTION 2026-08-01. This block previously claimed "no section differs for
+a reason that is not understood" and "every remaining difference is a case
+where we carry data the C# parser does not". An audit refuted both. Three
+fields exist where the REFERENCE is higher than us:
+
+  2c9e88a0  tactical.clutch_attempts     ref 4   ours 1
+  45758459  tactical.clutch_attempts     ref 7   ours 5
+  500ce1a8  tactical.clutch_attempts     ref 6   ours 3
+  500ce1a8  tactical.clutch_wins         ref 2   ours 1
+  02d4d478  tactical.opening_duels_won   ref 11  ours 10
+            (with opening_duels_played conserved at 18)
+
+opening_duels_won is a strict subset of opening_duels_played, and the
+denominator is conserved -- so that one is a disagreement about a single
+duel's OUTCOME, not a data-volume difference. These are derived from the kill
+timeline, whose derivation is not monotonic in kill count, so carrying 13
+extra kills COULD lower a clutch count. No mechanism has been established.
+Treat this as an open question, not as understood.
+
+kast survived the same check cleanly: zero reference-higher values on any
+replay.
 
 Scoreboard metrics that Tracker.gg validated (K/D/A, ADR, HS%, KAST,
 FK/FD, MK, rank): reproduced exactly for all 10 players from vrfkit data.
@@ -779,18 +811,19 @@ missing.
 
 runs the full pipeline over all eleven and prints a section x replay matrix.
 
-Result (2026-08-01): **16 of 21 sections byte-identical on all 11 replays** --
-the same set measured on 02d4d478, so those figures generalise.
+Result (2026-08-01): the harness reports **16 of 21 keys byte-identical on all
+11 replays**. One is the constant provenance `note`, so 15 of 20 real metric
+sections are exact across all 11.
 
   ability_detail  ability_usage  economy      movement_detail
   movement_summary  objective    objective_detail  players
   posture         rounds         shot_rays    side_winrate
   spray_control   ultimate       weapons      (+ note)
 
-The five that vary do so per replay in the expected direction: kast,
-tactical and weapon_stats are EXACT on the replays where the C# parser
-missed nothing, and differ only where we recover data it dropped. combat and
-economy_detail differ on every replay, always because we carry more.
+The five that vary are combat, economy_detail, kast, tactical, and weapon_stats.
+Most differences align with data we recover and the C# parser drops, but five
+tactical values are reference-higher and their mechanism is not established;
+the correction and exact values above supersede the earlier direction claim.
 
 This is also what found the sparse-array crash: 1d898bfb produced no metrics
 at all until the padding fix. One replay could not have surfaced it.
@@ -905,11 +938,11 @@ The old 91.7% was intended as a share OF THE FAILURES, not of the replay;
 the uncapped current measurement is 97.283437%, reported below. Either way,
 the replay-level proportion is roughly one block in a hundred.
 
-WHAT IT COSTS TODAY: nothing measurable. All 21 metric sections compute
-without it, 16 of them byte-identical to the C# reference on 11 replays, and
-the other 5 differ only because we carry MORE than the reference. No consumer
-asks for this data. The C# parser cannot read it either -- it discards far
-more.
+WHAT IT COSTS TODAY: nothing measurable in the current 20 real metric sections.
+Fifteen are byte-identical to the C# reference on 11 replays; the five varying
+sections do not consume this missing ability-state stream. Their tactical
+direction discrepancy is a separate open question. No current consumer asks
+for this data, and the C# parser cannot read it either.
 
 Ability behaviour is already covered through other groups (30,493 field rows
 on 02d4d478: Wraith smoke zones, Smonk smoke, melee, the ability statistics
@@ -923,17 +956,36 @@ between "this ability was used" (which we have) and "this ability affected
 these players for this long" (which we do not). Interesting for coaching or
 pro analysis; irrelevant to replacing the C# parser.
 
-NOT LOST, ONLY UNNAMED: the raw bits are written to Parquet regardless, under
-the no-skip-path invariant. If a future build declares the group, replays
-already archived can be reinterpreted. The C# parser drops these blocks
-entirely, so its output can never be revisited.
+LOST, NOT MERELY UNNAMED. This section previously claimed "the raw bits are
+written to Parquet regardless ... replays already archived can be
+reinterpreted". That is FALSE and was never checked.
+
+`crates/vrf-net/src/field.rs:119` returns `Err` when `function_count == 0`
+BEFORE reading any bits. The caller only invokes `on_stream_failure`, which
+pushes a diagnostic string capped at 32 lines. No `on_field` or `on_rpc`
+fires, so no Parquet row is written. Measured: AbilitiesAndBuffsComponent
+accounts for 17,264,706 skipped bits on 02d4d478 but only 4,960 bits / 160
+rows in fields.parquet -- and all 6,365 failures are RPC-kind, so those 160
+rows are its RepLayout property path, which parses normally.
+
+Consequence: an archived Parquet export CANNOT be reinterpreted if a future
+build declares the group. You would have to re-run against the .vrf. Keep
+the source replays.
+
+This also qualifies NO SKIP PATH as written in section 8. "Every field emits
+(group_path, handle, name, bit_count, raw_bits) even when nothing is known"
+holds for fields inside a walkable block. A ClassNetCache block whose group
+cannot be resolved emits nothing at all -- it is counted and named in the
+oracle, which is the honest part, but its bits are not preserved.
 
 These blocks frame correctly (malformed framing 0); the group resolution
 returns function_count=0 and they are counted as failures.
 
-CORRECTED 2026-08-01: the earlier breakdown was wrong in two ways. A full,
-uncapped aggregation of all 1,047,182 stream failures across the 215-replay
-corpus accounts for every one of the 1,972,080,670 skipped bits and measures:
+CORRECTED 2026-08-01: the previous breakdown was not derivable from a committed
+tool. MAX_STREAM_FAILURE_RECORDS capped diagnostics at 32 lines, and the quoted
+percentages had been inferred from that truncated sample. A temporary uncapped
+aggregation of all 1,047,182 stream failures across the 215-replay corpus
+accounts for every one of the 1,972,080,670 skipped bits and measures:
 
   97.283437%  AbilitiesAndBuffsComponent  (1,918,507,857 bits / 752,483 blocks)
    1.545398%  PatchVolume                  (   30,476,488 bits /   3,432 blocks)
@@ -942,8 +994,15 @@ corpus accounts for every one of the 1,972,080,670 skipped bits and measures:
    0.181710%  AttackerAnnouncer            (    3,583,464 bits /   8,783 blocks)
    0.160508%  MapTargetingState            (    3,165,345 bits /  23,632 blocks)
 
-The previously quoted 91.7% share was not current, and MeleeAttackState is
-not in the failure set at all: 0 blocks and 0 bits corpus-wide.
+On 02d4d478, AbilitiesAndBuffs is 98.61%, PatchVolume is 0.66%, and
+RespawningWallPlate2_7 is 0.02% of skipped bits. The previously quoted 91.7%
+was not current. MeleeAttackState is absent from the failure set on both scopes:
+0 blocks and 0 bits corpus-wide; its already-resolved path emits 473 field rows
+on 02d4d478. There is nothing there to recover.
+
+If this breakdown needs to become routinely reproducible, first add a committed
+uncapped aggregation mode rather than drawing conclusions from the 32-line
+diagnostic. The wrong breakdown survived precisely because that mode is absent.
 
 AbilitiesAndBuffsComponent is the real ceiling. Until the game server
 declares its ClassNetCache group in the schema, no lookup can reach it.
@@ -1409,9 +1468,11 @@ These are load-bearing. Breaking any one silently corrupts downstream
 consumers without any test failing.
 
 NO SKIP PATH
-  Every field emits (group_path, handle, name, bit_count, raw_bits) even
-  when nothing is known. Overlay is additive: typed values fill value_*
-  columns; failure leaves them null with raw bits intact.
+  Every field inside a walkable block emits (group_path, handle, name,
+  bit_count, raw_bits) even when its type is unknown. Overlay is additive:
+  typed values fill value_* columns; decode failure leaves them null with raw
+  bits intact. An unresolved ClassNetCache block cannot be walked, emits no
+  row, and must remain a loud counted failure; retain the source `.vrf`.
   Rationale: a parser that silently drops data cannot be trusted even when
   it looks correct. The oracle's honesty matters more than its pass rate.
 
@@ -1538,8 +1599,9 @@ Parquet is the clear winner for a pipeline that reads the same data many
 times. Downside: not human-readable without a viewer.
 
 ### Adapter over rewriting compute_metrics.py
-The 21 metric sections were validated against Tracker.gg scoreboard data
-for 10 players. Rewriting them would discard that validation. The adapter
+The 20 real metric sections (plus a constant provenance note) were validated
+against Tracker.gg scoreboard data for 10 players. Rewriting them would discard
+that validation. The adapter
 adds a translation layer (~600 lines) but keeps the proven analytics code
 unchanged. Downside: any schema mismatch between vrfkit output and what
 the adapter produces causes a silent wrong value rather than an error.
@@ -1581,11 +1643,11 @@ the decode trait signature. Current approach works; refactoring is optional.
 
 ## 11. Delegate Coverage Audit (2026-08-01)
 
-This audit addressed the three input-coverage and resolver questions left in
-CODEX_TASK_BRIEF.md. Search and measurements were read-only except for copying
-three fixtures into vrfkit-owned machine-local baseline directories and adding
-their generated JSON baselines. The dirty C# reference repository and valplay
-were not modified.
+This audit addressed the two live input-coverage questions in CODEX_TASK_BRIEF.md
+and independently confirmed why its original resolver task was withdrawn.
+Search and measurements were read-only except for copying three fixtures into
+vrfkit-owned machine-local baseline directories and adding their generated JSON
+baselines. The dirty C# reference repository and valplay were not modified.
 
 ### 11-A. Non-Bomb mode coverage [INPUT-BLOCKED, UNMEASURED]
 
@@ -1653,7 +1715,7 @@ tests already cover the selector and ReplicationReader constructor; the real CLI
 run additionally proves the process boundary rejects it loudly with exit 1 and
 the unsupported branch name. No fallback transform is selected.
 
-### 11-C. MeleeAttackState resolver premise [DISPROVED; ALREADY DONE]
+### 11-C. MeleeAttackState resolver premise [WITHDRAWN; CONFIRMED FALSE]
 
 The proposed missing resolver work was already implemented. All five instance
 names reach the one replay-declared shared ClassNetCache, all measured rows emit,

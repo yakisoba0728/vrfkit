@@ -6,15 +6,102 @@ descriptor declarations and the actual wire format in build 13.01:
   - Actor bookkeeping fields "215"/"216" in non-weapon groups are variable-width
     (3 bits in 13.01), not Int32
 
-Run after extract_descriptors.py regenerates table.rs.
+Run after extract_descriptors.py regenerates table.rs, and BEFORE cargo fmt.
+
+That ordering is load-bearing and used to be silent. Two of the passes below
+match one-line literals, which is the shape extract_descriptors.py emits but
+not the shape rustfmt leaves behind, so running the corrector on an already
+formatted table applies nothing. The old script printed "Applied 0" and
+exited 0 for that case -- indistinguishable from "everything was already
+correct".
+
+So the script no longer trusts its own operation count. After writing, it
+verifies the END STATE of every correction against the parsed table and fails
+loudly if any is missing. That check is format-independent: if the
+application patterns ever rot again, the verification still catches it.
+
+Usage:
+    python tools/apply_type_corrections.py            # apply, then verify
+    python tools/apply_type_corrections.py --check    # verify only, no write
 """
+import re
 import sys
 from pathlib import Path
 
 TABLE_RS = Path(__file__).parent.parent / "crates" / "vrf-decode" / "src" / "table.rs"
 
+#: (group_path substring, field_name, required FieldType substring).
+#: One entry per correction the passes below make. Checked against the file
+#: after writing; a miss is a hard failure.
+EXPECTED = [
+    ("TimedBomb.TimedBomb_C", "TimeRemainingToExplode", "Double"),
+    ("TimedBomb.TimedBomb_C", "DefuseProgress", "Double"),
+    ("Comp_Ability_CooldownComponent_C", "StartTimeStamp", "Double"),
+    ("Comp_Ability_CooldownComponent_C", "CooldownSeconds", "Double"),
+]
+for _group in (
+    "TimedBomb.TimedBomb_C",
+    "EquippablePickupProjectile.EquippablePickupProjectile_C",
+    "EquippableGroundPickup.EquippableGroundPickup_C",
+    "OwnerExclusivePlayerInfo",
+    "Projectile_Phoenix_Q_FlameWall_ThroughWall.Projectile_Phoenix_Q_FlameWall_ThroughWall_C",
+):
+    for _field in ("215", "216"):
+        EXPECTED.append((_group, _field, "EnumRemainingBits"))
+EXPECTED += [
+    ("SmokeScreen", "ReplicatedMovement", "ByteComponents"),
+    ("MulticastNotifyDamage_Point", "DamagedBone", "Raw"),
+    ("AresEquippableDataTracker", "OriginalBuyerTeam", "Raw"),
+    ("MulticastNotifyDamage_Base", "EquippableUsed", "ObjectNetGuid"),
+    ("MulticastNotifyDamage_Point", "EquippableUsed", "ObjectNetGuid"),
+    ("MulticastNotifyDamage_Base", "DamageOrigin", "VectorNetQuantize { scale: 100 }"),
+    ("MulticastNotifyDamage_Point", "DamageOrigin", "VectorNetQuantize { scale: 100 }"),
+    ("MulticastNotifyDamage_Point", "DamageImpactLocation", "VectorNetQuantize { scale: 1 }"),
+    ("MulticastNotifyDamage_Point", "DamageImpactBoneRelativeLocation",
+     "VectorNetQuantize { scale: 1 }"),
+    ("MulticastNotifyDamage_Point", "DamageDirection", "VectorNetQuantizeNormal"),
+    ("MulticastNotifyDamage_Point", "DamageImpactNormal", "VectorNetQuantizeNormal"),
+]
+
+GROUP_RE = re.compile(r'group_path: "([^"]+)"')
+FIELD_RE = re.compile(r'field_name: "([^"]+)"')
+TYPE_RE = re.compile(r"field_type: (FieldType::.*?)(?:,\s*\n\s*\}|\s*\n\s*\},)", re.S)
+
+
+def parse_entries(content: str):
+    """Yield (group_path, field_name, field_type) for every OverlayEntry.
+
+    Split per `OverlayEntry {` block rather than matching one regex across the
+    whole entry. A single regex has to stop somewhere, and several field types
+    contain their own braces (`VectorNetQuantize { scale: 100 }`) or a nested
+    enum path, so it truncates them. Splitting first makes the extraction
+    brace-safe and independent of whether the file is one-line or rustfmt'd.
+    """
+    for block in content.split("    OverlayEntry {")[1:]:
+        group = GROUP_RE.search(block)
+        field = FIELD_RE.search(block)
+        ftype = TYPE_RE.search(block)
+        if group and field and ftype:
+            yield group.group(1), field.group(1), " ".join(ftype.group(1).split())
+
+
+def verify(content: str) -> list[str]:
+    """Return one line per correction that is NOT present in `content`."""
+    entries = list(parse_entries(content))
+    problems = []
+    for group_part, field, required in EXPECTED:
+        hits = [ft for g, f, ft in entries if group_part in g and f == field]
+        if not hits:
+            problems.append(f"{field} in *{group_part}*: entry not found at all")
+        elif not any(required in ft for ft in hits):
+            problems.append(
+                f"{field} in *{group_part}*: expected {required}, found {hits}"
+            )
+    return problems
+
 
 def main():
+    check_only = "--check" in sys.argv[1:]
     content = TABLE_RS.read_text(encoding="utf-8")
     count = 0
 
@@ -192,8 +279,25 @@ def main():
             break
     content = "    OverlayEntry {".join(blocks)
 
-    TABLE_RS.write_text(content, encoding="utf-8")
-    print(f"Applied {count} type corrections to {TABLE_RS}")
+    if not check_only:
+        TABLE_RS.write_text(content, encoding="utf-8")
+
+    # The operation count is a diagnostic, not the verdict. 0 is correct when
+    # the table was already corrected and wrong when the patterns are dead;
+    # only the end state distinguishes them.
+    problems = verify(content)
+    if problems:
+        print(f"FAILED: {len(problems)} of {len(EXPECTED)} corrections are "
+              f"missing from {TABLE_RS}", file=sys.stderr)
+        for line in problems:
+            print(f"  {line}", file=sys.stderr)
+        print("If table.rs was regenerated, run extract_descriptors.py, then "
+              "THIS script, and only then cargo fmt.", file=sys.stderr)
+        return 1
+
+    verb = "verified" if check_only else "applied"
+    print(f"{verb}: {count} replacement(s) made, "
+          f"all {len(EXPECTED)} corrections present in {TABLE_RS}")
     return 0
 
 
