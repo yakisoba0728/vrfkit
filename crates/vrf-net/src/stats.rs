@@ -82,7 +82,7 @@ pub struct NetStats {
 #[derive(Debug, Clone)]
 pub enum SkipReason {
     /// `content_bits` (from `ReadIntPacked`) exceeded `bits_remaining` in the
-    /// bunch payload — the stream is irrecoverably misaligned for this bunch.
+    /// bunch payload -- the stream is irrecoverably misaligned for this bunch.
     ContentBitsOverrun {
         /// The declared content payload size that was too large.
         declared_content_bits: u32,
@@ -94,7 +94,7 @@ pub enum SkipReason {
     HeaderReadError,
     /// Reading the `IntPacked` content-bits field itself failed.
     ContentBitsReadError,
-    /// Payload transform or field/RPC parsing failed — the decoded block was
+    /// Payload transform or field/RPC parsing failed -- the decoded block was
     /// garbage. Only the bits of that one block are skipped.
     ParseFailure,
 }

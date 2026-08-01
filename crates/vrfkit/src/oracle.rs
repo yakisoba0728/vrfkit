@@ -1,4 +1,4 @@
-//! `validate` subcommand — RepLayout grammar oracle.
+//! `validate` subcommand -- RepLayout grammar oracle.
 //!
 //! # What it proves
 //!
@@ -8,7 +8,7 @@
 //! ```text
 //! checksum_bit : 1 bit
 //! loop:
-//!   handle = IntPacked   (0 → end)
+//!   handle = IntPacked   (0 -> end)
 //!   payload_bits = IntPacked
 //!   consume payload_bits
 //! total consumed == declared bit_count
@@ -96,7 +96,7 @@
 //! | counter | reference | here |
 //! |---|---|---|
 //! | `MalformedContentBlockCount` | 0 | 0 |
-//! | `MalformedPayloadCount` | **34,292** | — |
+//! | `MalformedPayloadCount` | **34,292** | -- |
 //! | `ContentPayloadBitsSkipped` | **49,948,659** | **0** |
 //! | `ContentBlockCount` | 563,626 | 608,020 |
 //!
@@ -240,7 +240,7 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
         }
     }
 
-    // Diagnostic summary — always shown when events exist
+    // Diagnostic summary -- always shown when events exist
     if !stats.diagnostics.is_empty() {
         println!();
         println!(

@@ -10,24 +10,24 @@
 //! # Content block header bit layout
 //!
 //! ```text
-//! ┌──────────────────────────────────────────────────────────────────┐
-//! │ hasRepLayout        : 1 bit                                      │
-//! │ isActor             : 1 bit                                      │
-//! │ [if isActor → return immediately, actor uses channel state]      │
-//! │ objectNetGuid       : InternalLoadObject(...)                     │
-//! │ isStablyNamed       : 1 bit                                      │
-//! │ [if isStablyNamed → return: stably-named subobject]              │
-//! │ isDeleted           : 1 bit                                      │
-//! │ [if isDeleted]                                                   │
-//! │   deleteFlags       : 1 byte (8 bits)                            │
-//! │   → return as deleted                                            │
-//! │ classNetGuid        : InternalLoadObject(...)                     │
-//! │ [if classNetGuid invalid → return as deleted (flags=0)]          │
-//! │ bUseActorOuter      : 1 bit                                      │
-//! │ [if !bUseActorOuter]                                             │
-//! │   outerNetGuid      : InternalLoadObject(...)                    │
-//! │ → return as subobject                                            │
-//! └──────────────────────────────────────────────────────────────────┘
+//! +------------------------------------------------------------------+
+//! | hasRepLayout        : 1 bit                                      |
+//! | isActor             : 1 bit                                      |
+//! | [if isActor -> return immediately, actor uses channel state]     |
+//! | objectNetGuid       : InternalLoadObject(...)                    |
+//! | isStablyNamed       : 1 bit                                      |
+//! | [if isStablyNamed -> return: stably-named subobject]             |
+//! | isDeleted           : 1 bit                                      |
+//! | [if isDeleted]                                                   |
+//! |   deleteFlags       : 1 byte (8 bits)                            |
+//! |   -> return as deleted                                           |
+//! | classNetGuid        : InternalLoadObject(...)                    |
+//! | [if classNetGuid invalid -> return as deleted (flags=0)]         |
+//! | bUseActorOuter      : 1 bit                                      |
+//! | [if !bUseActorOuter]                                             |
+//! |   outerNetGuid      : InternalLoadObject(...)                    |
+//! | -> return as subobject                                           |
+//! +------------------------------------------------------------------+
 //! ```
 
 use vrf_bitio::BitReader;

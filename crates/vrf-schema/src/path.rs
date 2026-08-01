@@ -17,7 +17,7 @@ const DEFAULT_OBJECT_PREFIX: &str = "Default__";
 /// Produce all lookup keys for a given export-group path.
 ///
 /// The returned vector always starts with the original `path` and then includes
-/// any valid aliases (Default__ prefix toggle, /_Core/ ↔ / substitution).
+/// any valid aliases (Default__ prefix toggle, /_Core/ <-> / substitution).
 /// Order matches the C# `ReplayPath.LookupKeys` enumeration.
 #[must_use]
 pub fn replay_path_lookup_keys(path: &str) -> Vec<String> {

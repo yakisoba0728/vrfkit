@@ -82,7 +82,7 @@ fn parse_all_vrf_files() {
         let branch = &preamble.header.replay_version.branch;
         *branches.entry(branch.clone()).or_insert(0) += 1;
 
-        // (c) Oodle decompression — try first ReplayData chunk
+        // (c) Oodle decompression -- try first ReplayData chunk
         // A file with no ReplayData chunk at all is unusual but not a failure:
         // the loop just ends without recording an Oodle result either way.
         let mut iter = ChunkIterator::new(&data, preamble.remaining_offset);

@@ -20,7 +20,7 @@ use parquet::file::properties::{WriterProperties, WriterPropertiesBuilder};
 use crate::error::ExportError;
 use crate::schema::fields_schema_ref;
 
-/// Default number of rows per row group. 128 Ki ≈ 131 072 rows is a good
+/// Default number of rows per row group. 128 Ki approximately 131 072 rows is a good
 /// balance between memory use (~40 MB for this schema) and compression
 /// efficiency (column chunks are large enough for ZSTD to reach steady state).
 pub const DEFAULT_ROW_GROUP_SIZE: usize = 131_072;
@@ -160,7 +160,7 @@ impl<W: Write + Send> FieldWriter<W> {
         self.buffer.len()
     }
 
-    // ── internal ──────────────────────────────────────────────────────────
+    // -- internal ----------------------------------------------------------
 
     fn writer_properties(row_group_size: usize) -> WriterProperties {
         let builder: WriterPropertiesBuilder = WriterProperties::builder()

@@ -45,7 +45,7 @@ pub enum FieldType {
     RepMovement {
         rotation: RotatorQuantization,
     },
-    /// Dynamic arrays and custom decoders — not decoded, raw_bits suffices.
+    /// Dynamic arrays and custom decoders -- not decoded, raw_bits suffices.
     Raw,
     /// Explicitly skipped fields (`.Ignore()` in descriptors).
     Skip,
@@ -74,7 +74,7 @@ pub enum DecodeError {
 
 /// Decode raw bits according to the given [`FieldType`].
 ///
-/// Returns `Err(DecodeError::RawOrSkip)` for `Raw` and `Skip` types — these
+/// Returns `Err(DecodeError::RawOrSkip)` for `Raw` and `Skip` types -- these
 /// are never decoded and the caller should leave `value_*` as null.
 ///
 /// On success the reader is fully consumed. If bits remain after decoding,
@@ -130,7 +130,7 @@ fn dispatch_decode(
     }
 }
 
-// ── Scalar decoders ──────────────────────────────────────────────────────────
+// -- Scalar decoders ----------------------------------------------------------
 
 fn decode_bool(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeError> {
     Ok(DecodedValue::Bool(r.read_bit()?))
@@ -216,7 +216,7 @@ fn decode_object_net_guid(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeE
     Ok(DecodedValue::I64(i64::from(r.read_int_packed()?)))
 }
 
-/// 128-bit GUID: 4 × u32 LE → formatted as standard hex GUID.
+/// 128-bit GUID: 4 x u32 LE -> formatted as standard hex GUID.
 fn decode_guid(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeError> {
     let a = r.read_u32()?;
     let b = r.read_u32()?;
@@ -274,7 +274,7 @@ fn decode_byte_array(r: &mut BitReader<'_>, max_bytes: u32) -> Result<DecodedVal
     Ok(DecodedValue::Str(hex))
 }
 
-// ── Vector decoders ──────────────────────────────────────────────────────────
+// -- Vector decoders ----------------------------------------------------------
 
 fn decode_vector_float(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeError> {
     let v = read_float_vector(r)?;
@@ -322,7 +322,7 @@ fn decode_rep_movement(
     Ok(DecodedValue::Str(m.to_string()))
 }
 
-// ── Shared vector/rotation reading functions (public for tests) ──────────────
+// -- Shared vector/rotation reading functions (public for tests) --------------
 
 pub(crate) fn read_float_vector(r: &mut BitReader<'_>) -> Result<FVector, vrf_bitio::BitError> {
     Ok(FVector {
@@ -348,11 +348,11 @@ pub(crate) fn read_double_vector(r: &mut BitReader<'_>) -> Result<FVector, vrf_b
 ///   bit  [6]   = extraInfo (1 = scaled integer, 0 = float/double fallback)
 ///
 /// if componentBitCount > 0:
-///   3 × componentBitCount bits, sign-magnitude with sign at MSB
+///   3 x componentBitCount bits, sign-magnitude with sign at MSB
 ///   if extraInfo: divide by scaleFactor
 /// else:
-///   if extraInfo == 0: 3 × f32 (float vector)
-///   else:              3 × f64 (double vector)
+///   if extraInfo == 0: 3 x f32 (float vector)
+///   else:              3 x f64 (double vector)
 /// ```
 pub(crate) fn read_quantized_vector(
     r: &mut BitReader<'_>,
@@ -396,7 +396,7 @@ fn read_packed_quantized_vector(
     Ok(FVector { x, y, z })
 }
 
-/// Fixed-point normal vector: 3 × SerializedInt(65536), bias = 32768, scale = 32767.
+/// Fixed-point normal vector: 3 x SerializedInt(65536), bias = 32768, scale = 32767.
 pub(crate) fn read_fixed_vector_normal(
     r: &mut BitReader<'_>,
 ) -> Result<FVector, vrf_bitio::BitError> {

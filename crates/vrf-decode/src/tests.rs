@@ -1,7 +1,7 @@
 //! Tests ported from the C# reference:
 //! - PrimitiveDecodersScalarTests.cs
 //! - PrimitiveDecodersVectorTests.cs
-//! - RepLayoutArrayDecodersTests.cs (structural only — DynamicArray is Raw)
+//! - RepLayoutArrayDecodersTests.cs (structural only -- DynamicArray is Raw)
 
 #[cfg(test)]
 mod scalar {
@@ -165,7 +165,7 @@ mod vector {
     use crate::types::RotatorQuantization;
 
     /// Helper: build a quantized vector bitstream.
-    /// Format: SerializedInt(128) header + 3×componentBitCount signed components.
+    /// Format: SerializedInt(128) header + 3 x componentBitCount signed components.
     fn write_quantized_vector(
         x: f64,
         y: f64,
@@ -174,7 +174,7 @@ mod vector {
         component_bit_count: u32,
     ) -> (Vec<u8>, u32) {
         let mut bits: Vec<bool> = Vec::new();
-        // Header: info = componentBitCount | (1 << 6) — indicates scaled integer
+        // Header: info = componentBitCount | (1 << 6) -- indicates scaled integer
         let info = component_bit_count | (1 << 6);
         write_serialized_int(&mut bits, info, 1 << 7);
         // Components
@@ -406,7 +406,7 @@ mod vector {
         write_signed_bits(&mut bits, xi, 11);
         write_signed_bits(&mut bits, yi, 11);
         write_signed_bits(&mut bits, zi, 11);
-        // Rotation short: pitch=90°(16384), yaw=180°(32768), roll=270°(49152)
+        // Rotation short: pitch=90deg(16384), yaw=180deg(32768), roll=270deg(49152)
         write_compressed_short_rotator_component(&mut bits, 16384);
         write_compressed_short_rotator_component(&mut bits, 32768);
         write_compressed_short_rotator_component(&mut bits, 49152);
@@ -468,7 +468,7 @@ mod vector {
         write_signed_bits(&mut bits, xi, 11);
         write_signed_bits(&mut bits, yi, 11);
         write_signed_bits(&mut bits, zi, 11);
-        // Rotation byte: 64→90°, 128→180°, 192→270°
+        // Rotation byte: 64->90deg, 128->180deg, 192->270deg
         write_compressed_byte_rotator_component(&mut bits, 64);
         write_compressed_byte_rotator_component(&mut bits, 128);
         write_compressed_byte_rotator_component(&mut bits, 192);
@@ -776,7 +776,7 @@ mod overlay_tests {
         }];
         let table = OverlayTable::new(entries);
         let mut stats = OverlayStats::default();
-        let data = [0x01u8]; // only 1 bit — FString needs at least 32 bits for length
+        let data = [0x01u8]; // only 1 bit -- FString needs at least 32 bits for length
         let result = apply_overlay(&table, "/test", Some("Broken"), Some(&data), 1, &mut stats);
         // Should return Some but with all values None (decode failure)
         assert!(result.is_some());

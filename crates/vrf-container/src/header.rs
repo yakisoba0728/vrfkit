@@ -7,31 +7,31 @@
 //! | 0 | u32 | NetworkMagic (`0x2CF5A13D`) |
 //! | 4 | u32 | NetworkVersion (19) |
 //! | 8 | i32 | CustomVersionCount |
-//! | 12 | [20 × N] | CustomVersionEntries (skipped) |
-//! | … | u32 | NetworkChecksum |
-//! | … | u32 | EngineNetworkProtocolVersion (32) |
-//! | … | u32 | GameNetworkProtocolVersion |
-//! | … | [16B] | GUID (4 × u32) |
-//! | … | u16 | ReplayVersion.Major |
-//! | … | u16 | ReplayVersion.Minor |
-//! | … | u16 | ReplayVersion.Patch |
-//! | … | u32 | ReplayVersion.Changelist |
-//! | … | FString | ReplayVersion.Branch |
-//! | … | u32 | ValorantSkipByteCount |
-//! | … | [N] | Valorant-specific skip bytes |
-//! | … | u32 | UE4Version |
-//! | … | u32 | UE5Version |
-//! | … | u32 | PackageVersionLicense |
-//! | … | TupleArray | LevelNamesAndTimes |
-//! | … | u32 | Flags |
-//! | … | Array | GameSpecificData |
-//! | … | f32 | MinRecordHz |
-//! | … | f32 | MaxRecordHz |
-//! | … | f32 | FrameLimitInMs |
-//! | … | f32 | CheckpointLimitInMs |
-//! | … | FString | Platform |
-//! | … | u8 | BuildConfig |
-//! | … | u8 | BuildTargetType |
+//! | 12 | [20 x N] | CustomVersionEntries (skipped) |
+//! | ... | u32 | NetworkChecksum |
+//! | ... | u32 | EngineNetworkProtocolVersion (32) |
+//! | ... | u32 | GameNetworkProtocolVersion |
+//! | ... | [16B] | GUID (4 x u32) |
+//! | ... | u16 | ReplayVersion.Major |
+//! | ... | u16 | ReplayVersion.Minor |
+//! | ... | u16 | ReplayVersion.Patch |
+//! | ... | u32 | ReplayVersion.Changelist |
+//! | ... | FString | ReplayVersion.Branch |
+//! | ... | u32 | ValorantSkipByteCount |
+//! | ... | [N] | Valorant-specific skip bytes |
+//! | ... | u32 | UE4Version |
+//! | ... | u32 | UE5Version |
+//! | ... | u32 | PackageVersionLicense |
+//! | ... | TupleArray | LevelNamesAndTimes |
+//! | ... | u32 | Flags |
+//! | ... | Array | GameSpecificData |
+//! | ... | f32 | MinRecordHz |
+//! | ... | f32 | MaxRecordHz |
+//! | ... | f32 | FrameLimitInMs |
+//! | ... | f32 | CheckpointLimitInMs |
+//! | ... | FString | Platform |
+//! | ... | u8 | BuildConfig |
+//! | ... | u8 | BuildTargetType |
 
 use vrf_bitio::BitReader;
 
@@ -101,13 +101,13 @@ pub struct ReplayHeader {
 pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, ContainerError> {
     let mut reader = BitReader::new(payload);
 
-    // ─── Network magic ────────────────────────────────────────────────────
+    // --- Network magic ----------------------------------------------------
     let net_magic = read_u32(&mut reader, "network magic")?;
     if net_magic != NETWORK_MAGIC {
         return Err(ContainerError::NetworkMagicMismatch { actual: net_magic });
     }
 
-    // ─── Network version ──────────────────────────────────────────────────
+    // --- Network version --------------------------------------------------
     let network_version = read_u32(&mut reader, "network version")?;
     if network_version != EXPECTED_NETWORK_VERSION {
         return Err(ContainerError::UnexpectedNetworkVersion {
@@ -115,7 +115,7 @@ pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, Contai
         });
     }
 
-    // ─── Custom versions (skip) ───────────────────────────────────────────
+    // --- Custom versions (skip) -------------------------------------------
     let custom_version_count = read_i32(&mut reader, "custom version count")?;
     if !(0..=MAX_CUSTOM_VERSION_COUNT).contains(&custom_version_count) {
         return Err(ContainerError::CountOverflow {
@@ -130,10 +130,10 @@ pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, Contai
         .skip_bits(skip_bits)
         .map_err(|e| ContainerError::BitIo(e.to_string()))?;
 
-    // ─── Network checksum ─────────────────────────────────────────────────
+    // --- Network checksum -------------------------------------------------
     let network_checksum = read_u32(&mut reader, "network checksum")?;
 
-    // ─── Engine network protocol version ──────────────────────────────────
+    // --- Engine network protocol version ----------------------------------
     let engine_network_protocol_version = read_u32(&mut reader, "engine net proto version")?;
     if engine_network_protocol_version != EXPECTED_ENGINE_NET_PROTO_VERSION {
         return Err(ContainerError::UnexpectedEngineNetProtoVersion {
@@ -141,10 +141,10 @@ pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, Contai
         });
     }
 
-    // ─── Game network protocol version ────────────────────────────────────
+    // --- Game network protocol version ------------------------------------
     let game_network_protocol_version = read_u32(&mut reader, "game net proto version")?;
 
-    // ─── GUID ─────────────────────────────────────────────────────────────
+    // --- GUID -------------------------------------------------------------
     let guid = [
         read_u32(&mut reader, "guid")?,
         read_u32(&mut reader, "guid")?,
@@ -152,7 +152,7 @@ pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, Contai
         read_u32(&mut reader, "guid")?,
     ];
 
-    // ─── Replay version ───────────────────────────────────────────────────
+    // --- Replay version ---------------------------------------------------
     let major = read_u16(&mut reader, "replay version major")?;
     let minor = read_u16(&mut reader, "replay version minor")?;
     let patch = read_u16(&mut reader, "replay version patch")?;
@@ -167,19 +167,19 @@ pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, Contai
         branch,
     };
 
-    // ─── Valorant-specific skip bytes ─────────────────────────────────────
+    // --- Valorant-specific skip bytes -------------------------------------
     let valorant_skip_count = read_u32(&mut reader, "valorant skip byte count")?;
     let skip_bits_val = u64::from(valorant_skip_count) * 8;
     reader
         .skip_bits(skip_bits_val)
         .map_err(|e| ContainerError::BitIo(e.to_string()))?;
 
-    // ─── UE versions ──────────────────────────────────────────────────────
+    // --- UE versions ------------------------------------------------------
     let ue4_version = read_u32(&mut reader, "UE4 version")?;
     let ue5_version = read_u32(&mut reader, "UE5 version")?;
     let package_version_license = read_u32(&mut reader, "package version license")?;
 
-    // ─── Level names and times (TupleArray<FString, u32>) ─────────────────
+    // --- Level names and times (TupleArray<FString, u32>) -----------------
     let level_count = read_i32(&mut reader, "level names count")?;
     if !(0..=MAX_LEVEL_NAMES_AND_TIMES).contains(&level_count) {
         return Err(ContainerError::CountOverflow {
@@ -195,10 +195,10 @@ pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, Contai
         level_names_and_times.push((name, time));
     }
 
-    // ─── Flags ────────────────────────────────────────────────────────────
+    // --- Flags ------------------------------------------------------------
     let flags = read_u32(&mut reader, "flags")?;
 
-    // ─── Game-specific data (Array<FString>) ──────────────────────────────
+    // --- Game-specific data (Array<FString>) ------------------------------
     let gsd_count = read_i32(&mut reader, "game specific data count")?;
     if !(0..=MAX_GAME_SPECIFIC_DATA).contains(&gsd_count) {
         return Err(ContainerError::CountOverflow {
@@ -212,13 +212,13 @@ pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, Contai
         game_specific_data.push(read_fstring(&mut reader, "game specific data entry")?);
     }
 
-    // ─── Recording parameters ─────────────────────────────────────────────
+    // --- Recording parameters ---------------------------------------------
     let min_record_hz = read_f32(&mut reader, "min record hz")?;
     let max_record_hz = read_f32(&mut reader, "max record hz")?;
     let frame_limit_in_ms = read_f32(&mut reader, "frame limit")?;
     let checkpoint_limit_in_ms = read_f32(&mut reader, "checkpoint limit")?;
 
-    // ─── Platform and build info ──────────────────────────────────────────
+    // --- Platform and build info ------------------------------------------
     let platform = read_fstring(&mut reader, "platform")?;
     let build_config = reader
         .read_u8()
@@ -250,7 +250,7 @@ pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, Contai
     })
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 fn read_u32(reader: &mut BitReader<'_>, context: &'static str) -> Result<u32, ContainerError> {
     reader.read_u32().map_err(|_| ContainerError::Truncated {

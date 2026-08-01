@@ -144,27 +144,27 @@ impl RawPacketReader {
     ///
     /// ```text
     /// Bit layout (VALORANT replay):
-    /// ┌──────────────────────────────────────────────────────────────┐
-    /// │ bControl           : 1 bit                                   │
-    /// │ [if bControl]                                                │
-    /// │   bOpen            : 1 bit                                   │
-    /// │   bClose           : 1 bit                                   │
-    /// │   [if bClose]                                                │
-    /// │     CloseReason    : SerializedInt(15)                        │
-    /// │ bIsReplicationPaused : 1 bit                                 │
-    /// │ bReliable          : 1 bit                                   │
-    /// │ ChIndex            : IntPacked                                │
-    /// │ bHasPackageMapExports : 1 bit                                │
-    /// │ bHasMustBeMappedGUIDs : 1 bit                                │
-    /// │ bPartial           : 1 bit                                   │
-    /// │ [if bPartial]                                                │
-    /// │   bPartialInitial  : 1 bit                                   │
-    /// │   bPartialFinal    : 1 bit                                   │
-    /// │ <VALORANT>         : 1 bit (read and discarded)              │
-    /// │ [if bReliable || bOpen]                                      │
-    /// │   ChName           : FName (1 bit isHardcoded + IntPacked)   │
-    /// │ PayloadBitCount    : SerializedInt(16384)                     │
-    /// └──────────────────────────────────────────────────────────────┘
+    /// +--------------------------------------------------------------+
+    /// | bControl           : 1 bit                                   |
+    /// | [if bControl]                                                |
+    /// |   bOpen            : 1 bit                                   |
+    /// |   bClose           : 1 bit                                   |
+    /// |   [if bClose]                                                |
+    /// |     CloseReason    : SerializedInt(15)                       |
+    /// | bIsReplicationPaused : 1 bit                                 |
+    /// | bReliable          : 1 bit                                   |
+    /// | ChIndex            : IntPacked                               |
+    /// | bHasPackageMapExports : 1 bit                                |
+    /// | bHasMustBeMappedGUIDs : 1 bit                                |
+    /// | bPartial           : 1 bit                                   |
+    /// | [if bPartial]                                                |
+    /// |   bPartialInitial  : 1 bit                                   |
+    /// |   bPartialFinal    : 1 bit                                   |
+    /// | <VALORANT>         : 1 bit (read and discarded)              |
+    /// | [if bReliable || bOpen]                                      |
+    /// |   ChName           : FName (1 bit isHardcoded + IntPacked)   |
+    /// | PayloadBitCount    : SerializedInt(16384)                    |
+    /// +--------------------------------------------------------------+
     /// ```
     fn parse_bunch_header(
         &mut self,

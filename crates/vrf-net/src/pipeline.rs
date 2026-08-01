@@ -1,6 +1,6 @@
-﻿//! Top-level replication reader that drives the full pipeline.
+//! Top-level replication reader that drives the full pipeline.
 //!
-//! This module connects packets ??bunches ??content blocks ??fields into a
+//! This module connects packets -> bunches -> content blocks -> fields into a
 //! single pass. The caller provides:
 //!
 //! - A [`ReplicationSink`] to receive decoded events (fields, RPCs, actor
@@ -176,7 +176,7 @@ pub const PLAYER_CONTROLLER_LEAF: &str = "BaseReplayController";
 /// `Default__` prefix and a `_C` suffix, then compare the bare name.
 ///
 /// Getting this wrong is silent. The index byte below is simply not consumed,
-/// and every content block after it in that bunch is shifted by 8 bits ??which
+/// and every content block after it in that bunch is shifted by 8 bits -- which
 /// surfaces only as one malformed block and a few hundred skipped bits.
 fn is_player_controller_path(path: &str) -> bool {
     let segment = path.rsplit('/').next().unwrap_or(path);
@@ -215,7 +215,7 @@ impl GuidPathSink for PathInterceptSink<'_> {
 
 /// Per-bunch context carried through content-block framing for diagnostics.
 ///
-/// This is not part of the hot path ??it is only read when a diagnostic event
+/// This is not part of the hot path -- it is only read when a diagnostic event
 /// is emitted (malformed/skipped). Keeping it in a separate struct avoids
 /// adding more parameters to already-long function signatures.
 struct BunchContext {
@@ -461,7 +461,7 @@ impl ReplicationReader {
             let _ = Self::handle_channel_open(header, payload, channels, stats, pc_guids, sink);
         }
 
-        // Look up channel ??if not open, skip
+        // Look up channel -- if not open, skip
         let (actor_net_guid, is_open, archetype_net_guid) = match channels.get(&ch_index) {
             Some(ch) => (ch.actor_net_guid, ch.is_open, ch.archetype_net_guid),
             None => return,
@@ -476,7 +476,7 @@ impl ReplicationReader {
         // opened actor is a dynamic PlayerController. Without consuming this
         // byte, all subsequent content blocks in the bunch are shifted by 8 bits.
         //
-        // C# reference: ReadNetPlayerIndexStage.cs ??checks OpenedDynamicActor
+        // C# reference: ReadNetPlayerIndexStage.cs -- checks OpenedDynamicActor
         // && IsPlayerController(channel archetype/class/actor path).
         if header.b_open
             && actor_net_guid.is_dynamic()
@@ -909,16 +909,16 @@ impl ReplicationReader {
 /// ```text
 /// Bit layout:
 ///   hasValue         : 1 bit
-///   [if !hasValue ??return None]
+///   [if !hasValue -> return None]
 ///   isQuantized      : 1 bit
 ///   [if isQuantized]
 ///     componentInfo  : SerializedInt(128)
 ///     componentBitCount = info & 63
 ///     extraInfo = info >> 6
-///     [if componentBitCount > 0] ??packed quantized
-///     [else if extraInfo == 0]   ??3x f32
-///     [else]                     ??3x f64
-///   [else] ??3x f64
+///     [if componentBitCount > 0] -> packed quantized
+///     [else if extraInfo == 0]   -> 3 x f32
+///     [else]                     -> 3 x f64
+///   [else] -> 3 x f64
 /// ```
 /// Default spawn location and velocity when the wire omits them.
 const ORIGIN: crate::types::FVector = crate::types::FVector {
@@ -1120,7 +1120,7 @@ mod tests {
         let mut sink = TestSink::default();
 
         // Build a minimal packet containing one bunch that:
-        //   - Opens a channel (static actor GUID 3 = odd, non-dynamic ??no spawn data)
+        //   - Opens a channel (static actor GUID 3 = odd, non-dynamic -- no spawn data)
         //   - Has a content block header followed by a content_bits value that
         //     exceeds the remaining payload.
         //
@@ -1133,7 +1133,7 @@ mod tests {
         //
         // For simplicity, we construct raw bytes that the packet reader will parse
         // into a valid bunch with a known payload. The payload contains:
-        //   - Actor GUID (IntPacked 3 ??static, no spawn data)
+        //   - Actor GUID (IntPacked 3 -- static, no spawn data)
         //   - Content block header: has_rep_layout=0, is_actor=1
         //   - Content bits (IntPacked): a value larger than remaining
         //
@@ -1141,18 +1141,18 @@ mod tests {
         // `frame_content_blocks` with a controlled reader.
 
         // Simulate: bunch payload = 24 bits total
-        //   content block header: has_rep_layout=0 (1 bit), is_actor=1 (1 bit) ??2 bits
-        //   content_bits = IntPacked(999) ??16 bits (0x7CE in IntPacked encoding)
+        //   content block header: has_rep_layout=0 (1 bit), is_actor=1 (1 bit) -> 2 bits
+        //   content_bits = IntPacked(999) -> 16 bits (0x7CE in IntPacked encoding)
         //   remaining after header+content_bits = 24 - 2 - 16 = 6 bits
-        //   999 > 6 ??overrun
+        //   999 > 6 -> overrun
         let mut bits: Vec<bool> = Vec::new();
         // has_rep_layout = false
         bits.push(false);
         // is_actor = true
         bits.push(true);
         // IntPacked(999): 999 = 0x3E7
-        //   chunk0: (999 & 0x7F) = 0x67, more=1 ??byte = (0x67 << 1) | 1 = 0xCF
-        //   chunk1: (999 >> 7) = 7, more=0 ??byte = (7 << 1) | 0 = 0x0E
+        //   chunk0: (999 & 0x7F) = 0x67, more=1 -> byte = (0x67 << 1) | 1 = 0xCF
+        //   chunk1: (999 >> 7) = 7, more=0 -> byte = (7 << 1) | 0 = 0x0E
         let packed_bytes = [0xCF_u8, 0x0E];
         for &byte in &packed_bytes {
             for i in 0..8 {

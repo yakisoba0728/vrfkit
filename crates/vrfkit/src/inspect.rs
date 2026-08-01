@@ -1,4 +1,4 @@
-//! `inspect` subcommand — print replay info, header, and chunk summary.
+//! `inspect` subcommand -- print replay info, header, and chunk summary.
 
 use std::fs;
 

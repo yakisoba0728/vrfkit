@@ -1,4 +1,4 @@
-//! Net GUID loading — `InternalLoadObject` recursive reader.
+//! Net GUID loading -- `InternalLoadObject` recursive reader.
 //!
 //! This is the Unreal mechanism for serializing object references on the wire.
 //! A GUID is read, and if it carries export flags with a path, the path (and

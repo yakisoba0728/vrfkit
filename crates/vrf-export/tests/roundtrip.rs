@@ -1,7 +1,7 @@
 //! Round-trip and stress tests for the Parquet export writers.
 //!
 //! These tests verify:
-//! - Write → read round-trip preserves all values and nulls.
+//! - Write -> read round-trip preserves all values and nulls.
 //! - Large writes (>1 row group) produce multiple row groups.
 //! - Binary column data is preserved exactly.
 //! - Dictionary-encoded columns round-trip correctly.
@@ -20,7 +20,7 @@ use parquet::file::reader::{FileReader, SerializedFileReader};
 
 use vrf_export::{FieldRecord, FieldWriter, MovementRecord, MovementWriter};
 
-/// Test output directory — each test writes to a unique file.
+/// Test output directory -- each test writes to a unique file.
 fn test_dir() -> PathBuf {
     let dir = std::env::temp_dir().join("vrf_export_tests");
     fs::create_dir_all(&dir).unwrap();
@@ -95,7 +95,7 @@ fn read_all_batches(path: &std::path::Path) -> Vec<RecordBatch> {
     reader.collect::<Result<Vec<_>, _>>().unwrap()
 }
 
-// ─── Field Writer Tests ───────────────────────────────────────────────────
+// --- Field Writer Tests ---------------------------------------------------
 
 #[test]
 fn field_roundtrip_basic() {
@@ -253,7 +253,7 @@ fn field_binary_preservation() {
 
 #[test]
 fn field_multiple_row_groups() {
-    // 200_000 rows with row_group_size=65_536 → should produce at least 3 groups.
+    // 200_000 rows with row_group_size=65_536 -> should produce at least 3 groups.
     let row_count = 200_000u32;
     let row_group_size = 65_536;
     let path = test_dir().join("field_multiple_row_groups.parquet");
@@ -273,7 +273,7 @@ fn field_multiple_row_groups() {
     let metadata = file_reader.metadata();
     let num_row_groups = metadata.num_row_groups();
 
-    // 200_000 / 65_536 = 3.05 → expect at least 3 row groups.
+    // 200_000 / 65_536 = 3.05 -> expect at least 3 row groups.
     assert!(
         num_row_groups >= 3,
         "expected at least 3 row groups, got {num_row_groups}"
@@ -302,7 +302,7 @@ fn field_push_batch() {
     assert_eq!(total_rows, 300);
 }
 
-// ─── Movement Writer Tests ────────────────────────────────────────────────
+// --- Movement Writer Tests ------------------------------------------------
 
 #[test]
 fn movement_roundtrip_basic() {
@@ -416,7 +416,7 @@ fn movement_push_batch() {
     assert_eq!(total_rows, 500);
 }
 
-/// Write interop files for the Python verification step (requirement §6).
+/// Write interop files for the Python verification step (requirement section 6).
 #[test]
 fn write_interop_files() {
     let dir = test_dir().join("interop");

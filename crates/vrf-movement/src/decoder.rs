@@ -1,4 +1,4 @@
-//! Core movement decoder — translates the binary RPC payload into structured
+//! Core movement decoder -- translates the binary RPC payload into structured
 //! movement records.
 //!
 //! The decoder is streaming: it yields moves via a callback rather than
@@ -9,7 +9,7 @@ use vrf_bitio::BitReader;
 
 use crate::error::MovementError;
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// -- Constants ----------------------------------------------------------------
 
 /// Magic byte at the start of a movement section.
 const MOVEMENT_MAGIC: u8 = 0x52;
@@ -17,7 +17,7 @@ const MOVEMENT_MAGIC: u8 = 0x52;
 /// Scale for FixedVector: each u16 component maps to signed range via (raw - 0x8000) / 65536.
 const FIXED_VECTOR_SCALE: f64 = 1.0 / 65536.0;
 
-/// Angle conversion: raw u16 → degrees.
+/// Angle conversion: raw u16 -> degrees.
 const ANGLE_SCALE: f64 = 360.0 / 65536.0;
 
 /// Maximum padding bits at the end of a movement section before we stop
@@ -32,7 +32,7 @@ const REMOTE_CHARACTER_UPDATES_HANDLE: u32 = 1;
 const SHOOTER_CHARACTER_NET_GUID_HANDLE: u32 = 2;
 const COMPONENT_DATA_STREAM_HANDLE: u32 = 3;
 
-// ── Public types ─────────────────────────────────────────────────────────────
+// -- Public types -------------------------------------------------------------
 
 /// A single decoded movement sample (one "move" from one character update).
 #[derive(Debug, Clone, Copy)]
@@ -83,7 +83,7 @@ pub struct RpcDecodeResult {
     pub error_count: u32,
 }
 
-// ── Top-level RPC decoder ────────────────────────────────────────────────────
+// -- Top-level RPC decoder ----------------------------------------------------
 
 /// Decode the full movement RPC payload, calling `emit` for each decoded move.
 ///
@@ -137,7 +137,7 @@ pub fn decode_movement_rpc(
     Ok(result)
 }
 
-// ── Array-level decoder ──────────────────────────────────────────────────────
+// -- Array-level decoder ------------------------------------------------------
 
 /// Decode the RemoteCharacterUpdates array.
 fn decode_updates_array(
@@ -185,7 +185,7 @@ fn decode_updates_array(
     Ok(())
 }
 
-// ── Single character update ──────────────────────────────────────────────────
+// -- Single character update --------------------------------------------------
 
 /// Decode one RemoteCharacterUpdate.
 fn decode_single_update(
@@ -231,7 +231,7 @@ fn decode_single_update(
     Ok(())
 }
 
-// ── ComponentDataStream ──────────────────────────────────────────────────────
+// -- ComponentDataStream ------------------------------------------------------
 
 /// Decode a ComponentDataStream.
 ///
@@ -326,7 +326,7 @@ fn parse_movement_with_bit_count(
     Ok(())
 }
 
-// ── Movement section ─────────────────────────────────────────────────────────
+// -- Movement section ---------------------------------------------------------
 
 /// Parse the movement section: magic byte, then a sequence of moves.
 fn parse_movement_section(
@@ -375,7 +375,7 @@ fn parse_movement_section(
     Ok(())
 }
 
-/// Compute the next expected marker in the sequence 1→2→3→4→5→6→7→2→3→…
+/// Compute the next expected marker in the sequence 1->2->3->4->5->6->7->2->3->...
 ///
 /// The sequence wraps at 7 and skips 0 and 1 (except the initial 1).
 #[inline]
@@ -384,36 +384,36 @@ fn next_marker(marker: u8) -> u8 {
     if next < 2 { 1 } else { next }
 }
 
-// ── Single move record ───────────────────────────────────────────────────────
+// -- Single move record -------------------------------------------------------
 
 /// Parse one MovementMove from the stream.
 fn parse_single_move(
     reader: &mut BitReader<'_>,
     shooter_guid: u32,
 ) -> Result<MovementMove, MovementError> {
-    // ── 25-bit header ────────────────────────────────────────────────────
+    // -- 25-bit header ----------------------------------------------------
     let header = reader.read_bits(25)?;
     let move_type_flag = (header & 1) != 0; // bit 0
     let _rotation_yaw_multiplier = ((header >> 1) & 0xFF) as u8; // bits [1..9]
     let movement_state = ((header >> 9) & 0xFF) as u8; // bits [9..17]
     let _unused_byte = ((header >> 17) & 0xFF) as u8; // bits [17..25]
 
-    // ── FixedVector: rotationInput (48 bits) ─────────────────────────────
+    // -- FixedVector: rotationInput (48 bits) -----------------------------
     let _rotation_input = read_fixed_vector(reader)?;
 
-    // ── Timestamp (VLQ) ──────────────────────────────────────────────────
+    // -- Timestamp (VLQ) --------------------------------------------------
     let timestamp = read_vlq(reader)?;
 
-    // ── Position: QuantizedVector (scaleFactor=100) ──────────────────────
+    // -- Position: QuantizedVector (scaleFactor=100) ----------------------
     let (pos_x, pos_y, pos_z) = read_quantized_vector(reader, 100)?;
 
-    // ── Optional byte ────────────────────────────────────────────────────
+    // -- Optional byte ----------------------------------------------------
     let has_optional = reader.read_bit()?;
     if has_optional {
         let _optional_byte = reader.read_u8()?;
     }
 
-    // ── 33-bit flag + packed angles ──────────────────────────────────────
+    // -- 33-bit flag + packed angles --------------------------------------
     let flag_and_angles = reader.read_bits(33)?;
     let _flag48 = (flag_and_angles & 1) != 0;
     let packed_angles = (flag_and_angles >> 1) as u32;
@@ -423,7 +423,7 @@ fn parse_single_move(
     let yaw = f64::from(raw_yaw) * ANGLE_SCALE;
     let pitch = f64::from(raw_pitch) * ANGLE_SCALE;
 
-    // ── Variant-specific data ────────────────────────────────────────────
+    // -- Variant-specific data --------------------------------------------
     let (vel_x, vel_y, vel_z) = if move_type_flag {
         // Variant 1: has velocity.
         let _variant1_flag = reader.read_bit()?;
@@ -439,7 +439,7 @@ fn parse_single_move(
         (0.0, 0.0, 0.0)
     };
 
-    // ── Error sentinel ───────────────────────────────────────────────────
+    // -- Error sentinel ---------------------------------------------------
     let error_sentinel = reader.read_bit()?;
     if error_sentinel {
         return Err(MovementError::ErrorSentinel);
@@ -462,9 +462,9 @@ fn parse_single_move(
     })
 }
 
-// ── Vector primitives ────────────────────────────────────────────────────────
+// -- Vector primitives --------------------------------------------------------
 
-/// Read a FixedVector: 3 × u16 packed into 48 bits.
+/// Read a FixedVector: 3 x u16 packed into 48 bits.
 ///
 /// Each component is sign-offset: `(raw - 0x8000) * (1/65536)`.
 /// Result is in range approximately [-0.5, +0.5).
@@ -486,7 +486,7 @@ fn read_fixed_vector(reader: &mut BitReader<'_>) -> Result<(f64, f64, f64), Move
 /// ## Wire format
 ///
 /// ```text
-/// componentBitCountAndExtraInfo : SerializedInt(128)  — 7 bits via serialized_int
+/// componentBitCountAndExtraInfo : SerializedInt(128)  -- 7 bits via serialized_int
 ///   componentBits = value & 63
 ///   extraInfo = value >> 6
 ///
@@ -494,15 +494,15 @@ fn read_fixed_vector(reader: &mut BitReader<'_>) -> Result<(f64, f64, f64), Move
 ///   3 signed components of `componentBits` bits each
 ///   IF extraInfo > 0: divide each by scaleFactor
 /// ELIF extraInfo == 0:
-///   3 × f32 (raw IEEE-754)
+///   3 x f32 (raw IEEE-754)
 /// ELSE:
-///   3 × f64 (raw IEEE-754)
+///   3 x f64 (raw IEEE-754)
 /// ```
 fn read_quantized_vector(
     reader: &mut BitReader<'_>,
     scale_factor: i32,
 ) -> Result<(f64, f64, f64), MovementError> {
-    // SerializedInt(128) — uses up to 7 bits.
+    // SerializedInt(128) -- uses up to 7 bits.
     let info = reader.read_serialized_int(128)? as u64;
     let component_bits = (info & 63) as u32;
     let extra_info = info >> 6;
@@ -516,13 +516,13 @@ fn read_quantized_vector(
             Ok((x as f64, y as f64, z as f64))
         }
     } else if extra_info == 0 {
-        // 3 × f32
+        // 3 x f32
         let x = f64::from(reader.read_f32()?);
         let y = f64::from(reader.read_f32()?);
         let z = f64::from(reader.read_f32()?);
         Ok((x, y, z))
     } else {
-        // 3 × f64
+        // 3 x f64
         let x = reader.read_f64()?;
         let y = reader.read_f64()?;
         let z = reader.read_f64()?;
@@ -532,14 +532,14 @@ fn read_quantized_vector(
 
 /// Read 3 signed components of `component_bits` bits each.
 ///
-/// When the total (3 × component_bits) fits in 64 bits, all three are packed
+/// When the total (3 x component_bits) fits in 64 bits, all three are packed
 /// into a single read. Otherwise they are read individually.
 fn read_signed_quantized_components(
     reader: &mut BitReader<'_>,
     component_bits: u32,
 ) -> Result<(i64, i64, i64), MovementError> {
     if component_bits == 0 || component_bits > 62 {
-        // Out of sane range — treat as zero vector.
+        // Out of sane range -- treat as zero vector.
         return Ok((0, 0, 0));
     }
 
@@ -573,7 +573,7 @@ fn sign_extend(raw: u64, bit_count: u32) -> i64 {
     (raw ^ sign_bit).wrapping_sub(sign_bit) as i64
 }
 
-// ── VLQ reader ───────────────────────────────────────────────────────────────
+// -- VLQ reader ---------------------------------------------------------------
 
 /// Read a VLQ-encoded u32.
 ///
@@ -585,7 +585,7 @@ fn sign_extend(raw: u64, bit_count: u32) -> i64 {
 /// within each byte (IntPacked: high 7 are payload, low 1 is continue;
 /// VLQ here: low 1 is continue, high 7 shifted right by 1 are payload).
 ///
-/// Wait — looking at C# more carefully, it's the same as IntPacked:
+/// Wait -- looking at C# more carefully, it's the same as IntPacked:
 /// `value |= (uint)(((b >> 1) & 0x7F) << shift)` and `(b & 1) == 0` means stop.
 /// That IS IntPacked. Let me just use IntPacked.
 fn read_vlq(reader: &mut BitReader<'_>) -> Result<u32, MovementError> {
@@ -593,7 +593,7 @@ fn read_vlq(reader: &mut BitReader<'_>) -> Result<u32, MovementError> {
     Ok(reader.read_int_packed()?)
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+// -- Tests --------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -692,7 +692,7 @@ mod tests {
         w.write_u8(3); // movementState
         w.write_u8(0); // unused
 
-        // FixedVector rotationInput: 3 × u16 = 48 bits (all zero = center)
+        // FixedVector rotationInput: 3 x u16 = 48 bits (all zero = center)
         w.write_serialized_int(0x8000, 0x10000);
         w.write_serialized_int(0x8000, 0x10000);
         w.write_serialized_int(0x8000, 0x10000);
@@ -701,8 +701,8 @@ mod tests {
         w.write_int_packed(timestamp);
 
         // Position: QuantizedVector(scaleFactor=100)
-        // Use componentBits=0, extraInfo=0 → 3 × f32
-        w.write_serialized_int(0, 128); // info = 0 → componentBits=0, extraInfo=0
+        // Use componentBits=0, extraInfo=0 -> 3 x f32
+        w.write_serialized_int(0, 128); // info = 0 -> componentBits=0, extraInfo=0
         w.write_f32(x);
         w.write_f32(y);
         w.write_f32(z);
@@ -721,7 +721,7 @@ mod tests {
             let info = 10u32 | (1 << 6); // componentBits=10, extraInfo=1
             w.write_serialized_int(info, 128);
             // 3 signed components of 10 bits each = 30 bits total
-            // velocity = (4.0, 5.0, 6.0) → scaled by 10 = (40, 50, 60)
+            // velocity = (4.0, 5.0, 6.0) -> scaled by 10 = (40, 50, 60)
             let vx = 40i64 as u64 & 0x3FF;
             let vy = 50i64 as u64 & 0x3FF;
             let vz = 60i64 as u64 & 0x3FF;
@@ -781,7 +781,7 @@ mod tests {
         // Build the updates array
         let mut array = BitWriter::new();
         array.write_int_packed(1); // updateCount = 1
-        array.write_int_packed(1); // encodedIndex = 1 → index 0
+        array.write_int_packed(1); // encodedIndex = 1 -> index 0
         array.write_other(&update);
         array.write_int_packed(0); // array terminator
 
@@ -863,7 +863,7 @@ mod tests {
 
     #[test]
     fn empty_rpc_returns_zero() {
-        // Zero bits → empty
+        // Zero bits -> empty
         let data = [0u8; 0];
         let mut reader = BitReader::with_bit_len(&data, 0);
 
