@@ -623,7 +623,7 @@ class _ShotContext(NamedTuple):
 
 def _build_shot_event(
     ctx: _ShotContext,
-    time_ms, packet_id, actor_net_guid, channel_index,
+    time_ms, packet_id, actor_net_guid, object_net_guid, channel_index,
     scalar_params: dict, blobs: _EffectBlobs,
 ) -> dict:
     """Build a valorant_shot_received event from decoded RPC params.
@@ -748,7 +748,11 @@ def _build_shot_event(
 
     shot = {
         "effect_id": effect_id,
-        "start_movement_time": start_time,
+        # Float32 on the wire; the reference prints its shortest round-trip
+        # (12.780108) rather than the widened value. Same treatment as the
+        # spawn and position coordinates -- it was simply missed there.
+        "start_movement_time": _f32_shortest(start_time)
+        if isinstance(start_time, float) else start_time,
         "source_id": source_id,
         "is_local_effect": bool(is_local) if is_local is not None else False,
         "is_transient": bool(is_transient) if is_transient is not None else True,
@@ -761,7 +765,8 @@ def _build_shot_event(
         "rotation": rot_obj,
         "ammo_remaining": ammo,
         "num_projectiles": num_proj or 1,
-        "random_seed": random_seed,
+        "random_seed": _f32_shortest(random_seed)
+        if isinstance(random_seed, float) else random_seed,
         "tracer_option": tracer_opt,
         "burst_shot_number": burst,
         "yaw_switch": yaw_switch,
@@ -780,7 +785,11 @@ def _build_shot_event(
         "time_ms": time_ms,
         "packet_id": packet_id,
         "actor_net_guid": actor_net_guid,
-        "object_net_guid": actor_net_guid,
+        # Both were previously substitutes: object_net_guid repeated the actor
+        # guid and channel was hardcoded 0. fields.parquet carries the real
+        # values on every shot row, and the reference disagrees with both
+        # substitutes on all 2,647 events (object 22 vs actor 2, channel 1).
+        "object_net_guid": object_net_guid,
         "channel": channel_index,
         "shot": shot,
     }
@@ -1165,6 +1174,7 @@ class _FieldColumns(NamedTuple):
     packet_id: list
     actor: list
     obj: list
+    channel: list
     group_path: list
     handle: list
     field_name: list
@@ -1202,6 +1212,7 @@ def _load_field_columns(fields_path: Path, verbose: bool) -> _FieldColumns:
             if 'object_net_guid' in table.schema.names
             else [None] * n_rows
         ),
+        channel=table.column('channel_index').to_pylist(),
         group_path=table.column('group_path').cast('string').to_pylist(),
         handle=table.column('handle').to_pylist(),
         field_name=table.column('field_name').cast('string').to_pylist(),
@@ -1513,8 +1524,11 @@ def _build_rpc_events(cols: _FieldColumns, rpc_groups: dict, shot_ctx: _ShotCont
             # effect events the reference emits, and requiring a blob dropped
             # them entirely rather than letting them reach the "unknown"
             # bucket built for exactly this case.
+            first = row_indices[0]
             shot_event = _build_shot_event(
-                shot_ctx, ms, pid, actor, 0, payload,
+                shot_ctx, ms, pid, actor,
+                cols.obj[first] if cols.obj[first] is not None else actor,
+                cols.channel[first], payload,
                 _EffectBlobs(float_blob, object_blob, vector_blob),
             )
             events.append((pid, ms, shot_event))
@@ -1631,8 +1645,19 @@ def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> int
                     "y": _f32_shortest(mv_vy[i]),
                     "z": _f32_shortest(mv_vz[i]),
                 },
-                "yaw": _f32_shortest(mv_yaw[i]),
-                "pitch": _f32_shortest(mv_pitch[i]),
+                # yaw and pitch are NOT shortened. The reference serializes
+                # these two through a different path from position/velocity
+                # and writes the widened float32 (253.289794921875), not its
+                # shortest round-trip. Measured over 4,000 reference rows:
+                # yaw and pitch are exactly float32-representable 4000/4000,
+                # position.x only 25/4000 -- the discriminating signal.
+                #
+                # Applying _f32_shortest here was a regression introduced in
+                # 3d37c68 alongside the position fix, and it moved 1,821,648
+                # yaw and 1,699,418 pitch rows away from the reference. It
+                # changed no metric, which is exactly why it survived.
+                "yaw": mv_yaw[i],
+                "pitch": mv_pitch[i],
             }
             f.write(json.dumps(rec, separators=(',', ':'), ensure_ascii=True))
             f.write('\n')
