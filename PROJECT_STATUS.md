@@ -50,9 +50,11 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 242 passed, 0 failed across all crates.
+# Expected: 243 passed, 0 failed across all crates (measured 2026-08-02).
 # Sum the per-target lines; the last line is one target, not the total.
-# This figure has been stale twice. Re-measure before quoting it.
+# This figure has been stale THREE times now. Re-measure before quoting it:
+# it said 242 while HEAD had 243, because the count was written before the
+# commits that follow 14a9e93 landed.
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
@@ -73,8 +75,25 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
 # Baseline: blocks 136,545,822  fields 98,883,979  rpcs 75,571,092
 #           malformed 0  skipped 1,972,080,670    (~30s, runs 16-wide)
+python tools\check_decode_errors_corpus.py .\target\release\vrfkit.exe `
+  "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
+# Expected: OK: every replay reported Decode errors: 0   (~70s, 8-wide)
+# RUN THIS AFTER ANY table.rs CHANGE. `vrfkit validate` does not print the
+# overlay counters -- only `export` does -- so validate_corpus.py cannot see
+# a decode error and never could. A wrong overlay type moves NONE of the
+# counters validate_corpus.py reads: the row still emits, the block still
+# walks, blocks/fields/rpcs/malformed/skipped are all identical. This is
+# also the only check that can catch a per-class type whose two candidate
+# readings are indistinguishable on 02d4d478 but not on some other replay.
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # Expected: OK: 4 replays match the baseline
+# CURRENTLY DRIFTS, and it is the INPUT that moved, not the parser. As of
+# 2026-08-02 %LOCALAPPDATA%\VALORANT\Saved\Demos holds three files named
+# 1.vrf / 2.vrf / 3.vrf, and none of the four UUID-named replays the
+# baseline pins. The three are different matches, not renames: no per-file
+# block/field/RPC triple matches any baseline entry. All three still parse
+# with malformed framing 0 (98.28% - 99.25% pass rate). Do NOT --update
+# this to make it quiet; restore the four demos or re-pin deliberately.
 python tools\check_export_baseline.py --baseline tools\baselines\export_02d4d478.json
 # Expected: OK ... 3 printed counters cross-check against their Parquet files.
 # The strongest single guard: it pins all 21 export counters plus every Parquet
@@ -393,8 +412,12 @@ movement rows      : 1,839,607
 actors.parquet rows:   3,827  (2028 opens + 1799 closes)
 net_guids.parquet  :  16,167  (14,480 carry an outer GUID)
 decode errors      :       0
-typed (value_*)    :    36.0%  (356,290 decoded, up from 35.7% / 353,334
-                                after the 7-J and geometry type corrections)
+typed (value_*)    :    36.8%  (364,101 decoded)
+                   RE-MEASURED 2026-08-02. This line read "36.0% (356,290
+                   decoded)" and was stale by two commits' worth of work: a
+                   clean export at HEAD before section 13-J printed
+                   Decoded OK 358,184 / Typed 36.2%, and 13-J took it to
+                   364,101 / 36.8%. Print the block, do not quote this line.
 oracle pass rate   :  98.95%
 ```
 
@@ -1797,6 +1820,9 @@ NO UNSAFE
   extract_golden.py      -- generates golden_vectors.rs
   extract_descriptors.py -- generates table.rs (type overlay)
   apply_type_corrections.py -- wire/declaration mismatches
+  check_decode_errors_corpus.py -- asserts Decode errors: 0 corpus-wide.
+                            The ONLY check that sees overlay decode failures:
+                            `validate` does not print those counters at all
   compare_combat_report.py  -- CombatReport cross-check vs C#
   compare_rpc_params.py     -- RPC parameter cross-check vs C#
   compare_with_csharp.py    -- structural cross-check
@@ -1824,7 +1850,10 @@ NO UNSAFE
 
                   TABLE.RS DEPENDS ON A BRANCH THERE, NOT ON origin/main.
                   Generating from origin/main yields 680 overlay entries;
-                  from local main 666; the committed table has 1,058.
+                  from local main 666; the committed table has 1,150
+                  (1,058 before 13-J added 92 across 20 groups). It is now
+                  generated from `local/pawn-descriptors` (ced9379), which
+                  branches from `local/vrfkit-descriptors` (f67ea66).
                   The difference is the descriptor work on
                   branch `local/vrfkit-descriptors` (fe5343a, 2026-08-02):
                   weapons, ItemSlot, PurchasedItemComponent,
@@ -2224,7 +2253,7 @@ fields. The earlier check compared `location` alone, which is why the other two
 stayed wrong through two rounds of "spawns match". **A comparison only defends
 the fields it reads.**
 
-### 13-F. What is still untyped, and why it is not a bug
+### 13-F. What is still untyped, and why it is not a bug [SUPERSEDED by 13-J]
 
 30 `ReplicatedGravityDirection` rows across four classes with **no descriptor on
 either side**: `Smonk_PostDeath_PC` (14), `Pawn_Hunter_E_Drone` (8),
@@ -2233,6 +2262,11 @@ decodes none of them. Writing those descriptors is new upstream work, not a fix.
 
 5,216 `ReplicatedMovement` rows stay raw for the same reason, across 17
 ability/projectile classes.
+
+That upstream work was done on 2026-08-02; all 5,246 rows now decode. See 13-J.
+One count above is worth keeping straight: the two lists overlap.
+`Pawn_Aggrobot_SeekerNade` carries **both** fields, so the union is **20**
+distinct classes, not 21.
 
 ### 13-G. Verification run for this session
 
@@ -2244,6 +2278,26 @@ ability/projectile classes.
     check_corpus_baseline.py x4         OK (12.10, 12.11, 13.00, 13.02)
     validate_metrics_corpus.py          16/21 sections exact on all 11 replays
 
+Re-run at 13-J (2026-08-02), same list plus the new decode-error guard:
+
+    cargo test --workspace              243 passed, 0 failed  (242 was stale)
+    cargo clippy -- -D warnings         clean
+    cargo fmt --check                   clean
+    validate_corpus.py                  215/215, malformed 0, five totals exact
+    check_decode_errors_corpus.py       215/215, decode errors 0
+    check_export_baseline.py            4 explained drift lines, then updated
+    check_corpus_baseline.py x3         OK (12.10, 12.11, 13.00)
+    check_corpus_baseline.py 13.02      DRIFT -- the input moved, see QUICK START
+    compare_combat_report.py            ALL INTERESTING SHAPES MATCH
+    validate_metrics_corpus.py          16/21 sections exact on all 11 replays
+
+"16/21 held" is the weak form of that last line and is not what was checked.
+`out/xval_summary.json` was diffed cell by cell against the run from before
+this change: all **231** cells (11 replays x 21 sections) are identical, and
+the only key that moved anywhere in the file is `elapsed_s`. A section
+flipping exact -> non-exact and another flipping back would leave the count at
+16; it cannot leave the matrix identical. Diff the file, not the total.
+
 The export baseline was updated twice in this session -- both times because the
 guard caught a counter move unprompted, and both times the move was explained
 before the baseline was rewritten. Row counts never changed; only byte sizes and
@@ -2254,3 +2308,126 @@ overlay counters did.
 The C# repo's "17 uncommitted entries" figure in the brief is stale. That work
 was committed as fe5343a; the tree is now clean at f67ea66 on
 `local/vrfkit-descriptors`, with `main` still untouched.
+
+### 13-J. The ability pawns and projectiles got descriptors [DONE 2026-08-02]
+
+Closes 13-F. Twenty actor classes replicated `ReplicatedMovement` or
+`ReplicatedGravityDirection` with no descriptor on either side. They now have
+one, on C# branch `local/pawn-descriptors` (ced9379, based on f67ea66).
+
+Nothing here is a new layout. Every (wire name, type) pair is copied from a
+descriptor that already declares that name, and the field-name census from
+`fields.parquet` was checked against the candidate descriptor per class first:
+
+| wire names on the class | descriptor reused |
+|---|---|
+| bReplicateMovement, Owner, Instigator, PlayerState, Controller, ReplayLastTransformUpdateTimeStamp, ReplicatedGravityDirection, ReplicatedMovementMode, bCrouchHeld | `GenericAgentDescriptor` |
+| ReplicatedMovement + Owner + Instigator | `MageWallDescriptor` / `NeonTunnelDescriptor` (Byte) or `DarkCoverAbilityDescriptor` / `CoveAbilityDescriptor` (Short) |
+
+Counters on 02d4d478, before -> after, and they close exactly:
+
+```
+Decoded OK      358,184 -> 364,101   +5,917
+Raw/Skip         71,427 ->  72,060     +633
+Not in table    525,839 -> 519,289   -6,550   = 5,917 + 633
+No field name    33,529 ->  33,529        0
+Rows offered    988,979 -> 988,979        0
+Decode errors         0 ->       0
+```
+
+The +5,917 is `ReplicatedMovement` 5,216, `ReplicatedGravityDirection` 30,
+`Owner` 267, `Instigator` 265, `ReplicatedMovementMode` 41, `Controller` 33,
+`bReplicateMovement` 30, `PlayerState` 24, `bCrouchHeld` 11. The +633 is
+`ReplayLastTransformUpdateTimeStamp`, which `GenericAgentDescriptor` declares
+`Ignore()`, on the four pawn classes: 506 + 57 + 54 + 16. Joined row by row,
+the change is purely additive -- **0 rows lost a value and 0 changed one**.
+
+**The rotator quantization is the one thing not on the wire.** It is a
+per-class descriptor choice and the two readings differ by 8 bits per set
+rotator axis, so a wrong choice makes the strict decoder EOF or leave residual
+bits. Decided per class by which reading consumes every payload to its exact
+end: 13 classes ByteComponents (short-wide fails on 6%-100% of payloads),
+1 class ShortComponents (`Pawn_Aggrobot_SeekerNade`; byte-wide fails on 4 of 6).
+
+Three classes -- Clove's `GameObject_Smonk_NewSmoke`, `_PDS` and
+`GameObject_Smonk_Q_DecayExplosion` -- **never replicate a rotation at all**, so
+both readings consume the same bits and produce the same values. Say that
+plainly rather than claiming the wire chose: on this corpus the choice is
+unobservable. It is bounded, not guessed. Flipping all three to ByteComponents
+and re-running the whole 215-replay corpus leaves **every overlay counter
+identical** (decoded OK 83,467,121, decode errors 0) and 02d4d478's
+`fields.parquet` **byte-identical** (SHA-256 4c9f02f8...). They take the C#
+builder default.
+
+An earlier draft of this section justified that by "all three sibling
+smoke/zone descriptors take the default". **That was false**, and this
+repository had already proved it false: `apply_type_corrections.py` rewrites
+`ProjectileSmokeScreenDescriptor` (Viper) from Short to **Byte**, because a
+Short read runs off the end of 137 payloads, and its comment calls the bare
+`.ReplicatedMovement()` call "an oversight rather than a deliberate
+difference". The real state of the precedent is split: `DarkCover` (Omen) is
+Short but unobservable itself (0 of 7,007 rotator flags), `CoveAbility` (Astra)
+is Short and contradicted by nothing in the corpus but absent from 02d4d478,
+and `ProjectileSmokeScreen` is Short and **wrong**. The builder default is the
+only clean tiebreaker, and if these three classes are ever seen replicating a
+rotation, that correction is the precedent to check first.
+
+Two independent checks that the values are real, not merely bit-exact:
+
+  * **gravity.** All 30 newly-covered rows decode to exactly `(0,0,-1)`,
+    magnitude 1.0, on all four classes -- identical to all 10 rows the seven
+    agent classes already decoded. Exact consumption proves nothing here
+    (`FVectorNetQuantizeNormal` is a fixed 48 bits and every row is 48 bits),
+    so the value is the only evidence.
+  * **movement location.** Decoded per class and compared against the spawn
+    coordinate `actors.parquet` already carries for the same class. The
+    *undivided* quantized integer lands on the spawn coordinate class by class:
+    `Projectile_Wraith_4_Smoke` raw x [-4197, 6635] against spawn x
+    [-4196.9, 6634.6]; `GameObject_Smonk_NewSmoke` [-1242, 6119] against
+    [-1241.9, 6118.6]. Two decoders derived independently -- vrf-decode's Rust
+    and a Python reimplementation written for this task -- agree to the row:
+    the Python probe predicted 553 failures for a ShortComponents read of
+    `Projectile_Wushu_4_Smoke` (495 EOF + 58 residual) and the Rust build
+    reported exactly 553.
+
+**A pre-existing scale quirk this surfaced, deliberately NOT changed.** The C#
+`ReplicatedMovementDecoder` reads the location with `VectorNetQuantize100`,
+i.e. an unconditional divide by 100. The wire's 7-bit vector header carries the
+component width and an is-integer flag but *not* the scale, and the two are not
+consistent across classes: 18 of the 19 classes here quantize to whole units,
+so the divide makes `location` **100x smaller than the true world coordinate**,
+while `Pawn_Aggrobot_SeekerNade` quantizes to two decimals (component width 21
+instead of 14) and the divide lands correctly. This is not introduced here --
+`Zone_Wraith_4_Smoke` and `EquippablePickupProjectile` already decoded this way
+and were matched member-for-member against the reference on 8,610 shared keys
+in 13-B. Changing it would break that agreement, and no metric section consumes
+the field. Recorded as a known divergence from world coordinates, not a bug to
+fix silently.
+
+**Left alone, deliberately:**
+
+  * `215` / `216` on all 20 classes (1,099 + 1,112 rows). These are the
+    anonymous actor bookkeeping handles, and the wire sends them **3 bits**
+    wide, not 32 -- `FlameWallDescriptor` and `EquippablePickupProjectile`
+    declare them `Int32()` and `apply_type_corrections.py` already rewrites
+    exactly those to `EnumRemainingBits`. Declaring them here would mean
+    extending that correction list to 13 more group paths, which is a separate
+    change with its own evidence. Not attempted.
+  * `bAIControlled`, `Started Planting`, `SeekingActive` on
+    `Pawn_Aggrobot_SeekerNade` (1 bit each). No existing descriptor declares
+    these names, so there is nothing to reuse and typing them would be
+    invention. Left undeclared.
+  * The 359 group paths in `fields.parquet` with zero overlay entries -- 93 of
+    them `/Game/Characters/*_C` -- are untouched apart from these 20. The
+    brief's framing as "21 actor classes" double-counted
+    `Pawn_Aggrobot_SeekerNade`, which carries both fields.
+
+**New guard, and it was driven to failure before being trusted.**
+`tools/check_decode_errors_corpus.py` exports every replay and asserts
+`Decode errors: 0`, because `vrfkit validate` never prints the overlay counters
+and `validate_corpus.py` therefore could not see a decode error and never
+could. Proven both directions: with `Projectile_Wushu_4_Smoke` flipped to
+ShortComponents it exits **1** naming 16 offending replays on a 20-replay slice
+(7,801 errors; 75,286 over the full corpus, 160 of 215 replays affected), and
+exits **0** on the restored build. `Decoded OK` fell by exactly the error count
+in both runs.
