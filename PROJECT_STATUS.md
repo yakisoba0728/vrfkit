@@ -90,7 +90,9 @@ parser does not:
 What is actually left: **nothing in section 7 is open.** Every item is either
 done, or closed with a measurement showing it cannot or should not be done.
 
-  7-C  measured ceiling -- the game never declares the group
+  7-C  measured ceiling -- the game never declares the group. Read 7-C for
+       the proportion before quoting the raw bit count: it is 1.05% of
+       blocks and costs nothing measurable today
   7-F  measured -- the parallelisable slice is 3.4%, the rest is
        order-dependent. The process-level win was taken instead (11x)
   7-H  CLOSED NOT SOLVABLE. The export-gap check that fixed cf97ecf was run
@@ -277,6 +279,9 @@ corpus totals
                                    counter that stops printing now warns
                                    instead of reading as zero.
   unattributed bits: 1,972,080,670 (~246 MB, 91.7% is AbilitiesAndBuffsComponent)
+                     That 91.7% is a share of the FAILURES, not of the
+                     replay. Per replay it is ~2.1% of bits and ~1.05% of
+                     blocks, and no metric depends on it -- see 7-C.
 ```
 
 Reference replay 02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf:
@@ -851,11 +856,45 @@ looking only at the rows that differed.
 Lesson: "the differences are all -N" does not imply "everything is shifted
 by N". Check how many values match before inferring a constant offset.
 
-### 7-C. Unattributed ClassNetCache blocks [MEDIUM IMPACT, BOUNDED]
+### 7-C. Unattributed ClassNetCache blocks [NO CURRENT IMPACT, BOUNDED]
 
-1,972,080,670 bits across 215 replays cannot be attributed to any export
-group. These blocks frame correctly (malformed framing 0) but the group
-resolution returns function_count=0 and they are counted as failures.
+Read the proportion before the raw number, because the raw number misleads.
+"1,972,080,670 bits" and "91.7% AbilitiesAndBuffsComponent" both sound
+alarming and have been quoted that way in this document; measured against
+what we DO read, on 02d4d478:
+
+    named and decoded   822,744,224 bits   97.9%
+    unattributed         17,507,210 bits    2.1%
+    blocks failed             6,365 of 608,020   1.05%
+
+The 91.7% is a share OF THE FAILURES, not of the replay. Roughly one block
+in a hundred.
+
+WHAT IT COSTS TODAY: nothing measurable. All 21 metric sections compute
+without it, 16 of them byte-identical to the C# reference on 11 replays, and
+the other 5 differ only because we carry MORE than the reference. No consumer
+asks for this data. The C# parser cannot read it either -- it discards far
+more.
+
+Ability behaviour is already covered through other groups (30,493 field rows
+on 02d4d478: Wraith smoke zones, Smonk smoke, melee, the ability statistics
+replicator, Hunter bolts, ...), which is why ability_usage and ability_detail
+are both EXACT.
+
+WHAT IT WOULD ADD: this component carries ability and buff/debuff STATE --
+charge counts over time, who was blinded or slowed and for how long, ult
+gauge between casts, heal and shield application. That is the difference
+between "this ability was used" (which we have) and "this ability affected
+these players for this long" (which we do not). Interesting for coaching or
+pro analysis; irrelevant to replacing the C# parser.
+
+NOT LOST, ONLY UNNAMED: the raw bits are written to Parquet regardless, under
+the no-skip-path invariant. If a future build declares the group, replays
+already archived can be reinterpreted. The C# parser drops these blocks
+entirely, so its output can never be revisited.
+
+These blocks frame correctly (malformed framing 0); the group resolution
+returns function_count=0 and they are counted as failures.
 
 Breakdown:
   91.7%  AbilitiesAndBuffsComponent  -- no cache group declared in schema
