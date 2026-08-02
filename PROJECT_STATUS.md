@@ -2056,7 +2056,7 @@ NO UNSAFE
                   TABLE.RS DEPENDS ON A BRANCH THERE, NOT ON origin/main.
                   Generating from origin/main yields 680 overlay entries;
                   from local main 666. The committed table is regenerated
-                  from `local/vrfkit-descriptors` at f0dd7e7, which merges
+                  from `local/vrfkit-descriptors` at 8824794, whose history merges
                   the pawn/projectile descriptors (13-J) into the Gekko
                   casing fix (13-C). Both delegate branches are merged and
                   their worktrees removed; regenerating from that branch
@@ -3044,7 +3044,7 @@ pairs -- is entirely the reference's JSON dropping Unreal's `b` prefix. Its
 against 158 C# path literals, normalised to lowercase with separators stripped:
 zero groups match only after normalisation. Fuzzy match at ratio >= 0.93: zero.
 
-### 15-B. One dead table entry, and it is a real upstream gap [OPEN]
+### 15-B. One dead table entry, and it was a real upstream gap [FIXED, 8824794]
 
 `/Script/ShooterGame.AresGameStateBase:MulticastResetForRespawn` declares
 `SpawnTransform` as `FieldType::Transform`. It is the **only** `Transform`
@@ -3081,9 +3081,27 @@ The reference loses the same three fields: its `events.ndjson` emits
 {BitCount, Data}}` and nothing else. This is upstream absence, not our
 regression.
 
-NOT DONE, deliberately: it needs a C# descriptor change and a `table.rs`
-regeneration, and a delegate session was mid-run against that checkout with a
-pinned export baseline. Do it when that lands.
+FIXED 2026-08-02 on `local/vrfkit-descriptors` (8824794). `SpawnTransform`
+is replaced by `Translation` and `Scale3D`, both `.FVector()`, copied from the
+smoke-screen declaration rather than chosen. Handle 249 is left unnamed, for
+the reason above.
+
+Downstream: overlay decoded 369,395 -> 369,741, exactly +346 = 2 fields x 173
+invocations, not-in-table down by the same 346, raw/skip unchanged. Decode
+errors stay 0 across all 215 replays -- the falsifiable half, since a wrong
+type would fail to consume the payload.
+
+The values are physically sensible, not merely well-formed. `Scale3D` is
+`(1,1,1)` on all 173, which is what a respawn should carry, and `Translation`
+has 48 distinct map coordinates, all 173 of which fall inside the bounding box
+of the spawn coordinates `actors.parquet` independently carries.
+
+The C# test that pinned this function now pins both new names, and was driven
+to failure first: removing the `Translation` declaration fails it by name,
+restoring it passes 86/86.
+
+Vacuity, stated so the figure is not read as stronger than it is: `Scale3D`
+has exactly one distinct value. `Translation`'s 48 carry the evidence.
 
 ### 15-C. Bomb_CombatReportComponent [CLOSED -- not a gap]
 
