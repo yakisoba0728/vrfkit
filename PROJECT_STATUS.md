@@ -3087,9 +3087,10 @@ That also explains `compare_combat_report.py` reporting ALL INTERESTING SHAPES
 MATCH without contradiction -- both sides decode the same named set, and the
 comparison covers exactly that set.
 
-The 22 typed overlay entries that go unhit are the second decode path for the
-same group, superseded by the struct-array path. They are dead weight, not a
-defect; see 15-D's unhit-entry sweep.
+The typed overlay entries that go unhit on this group are its second decode
+path, superseded by the struct-array path. They are dead weight, not a defect.
+No count is given: three measurements of it produced 17, 22 and 27 depending on
+the matching rule, so the figure is not reliable. See 16-A.
 
 ### 15-D. What this triage does NOT establish
 
@@ -3113,8 +3114,143 @@ above rests on the current C# source; the bundle is corroboration only.
 that 14-B did not reach.
 
 **Unhit-entry sweep**: 195 of 1,192 entries plus 84 aliases go unhit across 11
-replays. 102 are `Skip` and 26 are `Raw`, so they are unhit by construction;
-the typed remainder are struct-member names reached under nested spellings. All
-84 `OverlayHandleEntry` aliases resolve to `(group, handle)` pairs the replays
-really declare; 2 are load-bearing, none dead. `SpawnTransform` is the only
-genuinely dead typed entry.
+replays. 102 are `Skip` and 26 are `Raw`, so they are unhit by construction.
+All 84 `OverlayHandleEntry` aliases resolve to `(group, handle)` pairs the
+replays really declare; 2 are load-bearing, none dead.
+
+RETRACTED 2026-08-02: this paragraph used to end "the typed remainder are
+struct-member names reached under nested spellings; `SpawnTransform` is the
+only genuinely dead typed entry." **That was relayed from a subagent report and
+written down without being measured, and it is false.** Between 166 and 175
+typed entries never resolve in groups the wire does present, depending on how a
+descriptor path is matched to its wire group, and nobody has separated "dead"
+from "optional RPC parameter that no invocation carried". See 16-A. What
+survives is the narrower fact in 15-B: `FieldType::Transform` occurs exactly
+once and never resolves.
+
+---
+
+## 16. Falsification pass over this session's own claims (2026-08-02)
+
+Ten claims made today were handed to a dedicated adversarial audit with
+instructions to break them. Nine survived. One did not, and it is one this
+document asserted rather than one the code does.
+
+The audit's method is worth recording because it is reusable: it rebuilt the
+Rust overlay classifier in Python from `overlay.rs` and `sink.rs` -- including
+`find_rpc_param_group_path`, since the Parquet `group_path` is **not** the
+overlay key for RPC rows -- and reproduced **six** pinned counter sets exactly
+from raw Parquet plus the manifest, with no rebuild. That is an independent
+implementation agreeing with the parser, not the parser agreeing with itself.
+
+### 16-A. REFUTED: "SpawnTransform is the only genuinely dead typed entry"
+
+Section 15-D said that. It is false, and worse, **it was never measured -- it
+was relayed from a subagent report and written down as fact.** That is the
+exact failure this document keeps recording in other people's work.
+
+Measured across the 11 cross-validated replays, with exact `(group_path,
+field_name)` matching plus nested and array-index spellings:
+
+    typed entries in table.rs                     871
+    never resolved on any of the 11 replays       273
+      of which in groups the wire does present    166   (method-dependent)
+
+The audit, using a different rule for mapping RPC descriptor paths to wire
+groups, measured 175 never-resolved and 90 in exercised groups. **The
+disagreement is the finding**: the count depends on how a descriptor path like
+`DamageableComponent:MulticastNotifyDamage_Point` is matched to the wire group
+`DamageableComponent_ClassNetCache`, and neither rule is obviously right.
+
+Much of the residue is legitimate. An RPC parameter that no invocation happens
+to carry is absent, not dead -- the two largest buckets under my rule are
+`MulticastNotifyDamage_Point` (37) and `_Base` (27), which are exactly that
+shape. So the honest statement is:
+
+**The number of genuinely dead typed entries is unknown, larger than one, and
+nobody has separated "dead" from "optional and unexercised". Do not quote a
+figure for it until someone does.**
+
+The commit's narrower sentence survives: `FieldType::Transform` occurs exactly
+once in the table and never resolves (15-B).
+
+Also retracted: 15-C and the tail triage both say "22 typed entries" on
+`Bomb_CombatReportComponent`. Three measurements give 17, 22 and 27 depending
+on the matching rule. The figure is not reliable and has been removed rather
+than replaced.
+
+### 16-B. Vacuity disclosures for the parity claims
+
+All nine surviving claims were confirmed, but several "N of N match" figures
+rest on values with almost no variety. Recorded so nobody quotes them as
+stronger evidence than they are:
+
+    claim                          non-trivial evidence
+    spawn locations                1,441 distinct locations, 1,120 rotations
+    ReplicatedMovement             location 6,581 distinct, velocity 1,603,
+                                   rotation 1,595 -- but 5 of the 8 members are
+                                   single-valued across all 8,610 payloads
+    static actor paths             148 distinct class paths, 148 archetypes
+    MulticastNotifyDamage_Base     4 fields, distinct values 2 / 2 / 2 / 1
+                                   (IsQueued is false on all 51)
+    gravity "all 40 read (0,0,-1)" 1 distinct value, 369/369 across 11 replays
+
+And on 13-C: 3,077 of the 3,077 rows that moved to raw/skip are
+`ReplayLastTransformUpdateTimeStamp`, which the descriptor declares `Ignore()`.
+85% of that "recovery" is data the descriptor deliberately discards. The
+commit says so; the summary figure alone does not.
+
+### 16-C. Two gaps nobody claimed [OPEN]
+
+**The reference emits an export group we emit nothing for.** On
+`/Game/Characters/_Core/BaseReplayController.BaseReplayController_C` -- the
+RepLayout group, not the `_ClassNetCache` -- the reference emits 20
+`export_group_received` events carrying decoded `PlayerState` and
+`SpawnLocation`. We emit **zero rows**. `table.rs` already holds both entries;
+they are dead for want of rows, so this is a parser-side gap, not an extractor
+one.
+
+Not a regression from today: the count is 0 in exports from Jul 31, Aug 1 and
+Aug 2 alike. It is the **only** reference-only export group in the whole
+bundle, which makes it worth one session's attention.
+
+**`spawn_scale` and `spawn_velocity` are read and then dropped.**
+`pipeline.rs:617/634` reads both; nothing writes them to any artifact. The
+reference carries 466 non-zero velocities and 3 non-unit scales on 02d4d478.
+So 13-A's fix is correct at source for all three vectors, and observable for
+one. Adding the other two is a schema change; worth doing only if a consumer
+wants them.
+
+### 16-D. Corrections to this session's own supporting text
+
+**A fourth class never replicates a rotation.** 13-J enumerates three classes
+whose rotator quantization is unobservable because both readings are
+bit-identical. `Zone_Wraith_4_Smoke` is a fourth -- 27,438 rows, one distinct
+rotation value, all zero -- and it is declared `ShortComponents`. The safety
+argument for the other three is otherwise confirmed: every `ByteComponents`
+class has 7 to 22,844 distinct rotations, so the discriminator really does fire
+where it can.
+
+**13-J's coverage is per-replay, not corpus-wide.** "0 untyped" holds on
+02d4d478. Across the other 10 replays 290 of 659 gravity rows and 34,765 of
+126,973 movement rows are still untyped, in classes those replays contain and
+02d4d478 does not.
+
+**The ReplicatedMovement join key is not unique.** `(time_ms, group path, actor
+GUID, object GUID)` collides 17 times on our side with differing payloads, zero
+times on the reference's. All 17 fall outside the 8,610 shared keys so the
+result stands, but a last-wins dict join was luckier than it was careful.
+
+**`check_corpus_baseline.py` SKIPs on a missing corpus and exits 0.** So the
+13.02 failure mode that 3a4b04a fixed -- a game-owned directory changing under
+the baseline -- would have passed *silently* had the directory been emptied
+rather than repopulated. It was caught because the game left three different
+files behind. That is luck, not the guard working.
+
+### 16-E. What the audit did not check
+
+- The tail triage's "zero extractor bugs in 386 groups" (section 15-A) was not
+  independently reproduced; doing so means redoing that triage's own work.
+- The merge's "231/231 cells identical" was not re-derived; only the current
+  16/21 state was confirmed.
+- The 215-replay corpus runs were substituted with 11-replay evidence.
