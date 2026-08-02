@@ -3648,3 +3648,111 @@ for this path rests on two other legs instead:
   still is: it prints Decoded OK 352,702 / Raw/Skip 72,519 / Not in table
   530,229 / Typed 35.7% against a measured 369,741 / 73,984 / 511,914 / 37.4%.
   Left alone deliberately rather than half-corrected.
+
+---
+
+## 18. `Ping` -- encoding settled, deliberately not typed (2026-08-02)
+
+`Ping` on `/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C` is the
+largest single wire-declared field with no table entry: **222,855 rows** across
+the 11 cross-validated replays, declared in 11 of 11 manifests, `bit_count == 16`
+on every row. **The string `Ping` appears nowhere in the C# reference**, so
+unlike every field typed so far there is no existing declaration to copy from.
+
+### 18-A. The encoding
+
+**A fixed 16-bit little-endian unsigned integer**: `raw[0] + 256 * raw[1]`.
+
+Not IntPacked, refuted on two independent axes:
+
+    test                            Ping                 16-bit NetGUID controls
+    byte 0 continuation bit set     111,438 / 222,855    8,774 / 8,774
+                                    50.00%               100.00%
+
+A coin flip against a field that is genuinely IntPacked in the same group at the
+same width. The second axis is stronger still: UE RepLayout only sends a
+property that **changed**, so a correct reading must give nonzero consecutive
+deltas. Zero-deltas per channel are 0.010% under little-endian and **32.7%**
+under IntPacked -- the wire says the value changed on a third of the updates
+where the IntPacked reading says it did not.
+
+Byte order is settled by **continuity across the 256 boundary**, not by variance
+analysis. Big-endian is ~256x little-endian on 99.985% of rows, which is nearly
+an affine transform, so F and eta-squared cannot discriminate it -- do not cite
+them for byte order. Across the 47 crossings, little-endian traces smooth spike
+ramps (`18, 85, 157, 262, 460, 550, 237, 365, 17`) where big-endian jumps
+incoherently (`4608, 21760, 40192, 1537, 52225, ...`) over the identical rows.
+
+"A byte plus another field" is refuted too: the 33 high-byte rows sit in 14
+channels across 10 replays, and rows adjacent to them have byte-0 p90 of 157
+against 22 corpus-wide. The high byte only fires inside latency spikes, so it is
+the top of the same number.
+
+The surviving candidates are one candidate, not four. `SerializeInt(ValueMax)`
+for any max in (35017, 65541] reads exactly 16 bits and yields the identical
+integer as uint16 LE, so uint16 / int16 / SerializedInt / a 16-bit quantized
+read are indistinguishable here. Bit 15 is never set (max 2249), so **signed
+versus unsigned is unobservable on this corpus.**
+
+### 18-B. It behaves like latency in milliseconds
+
+    min 5   p5 9   p50 14   p90 22   p99 36   p99.9 79   max 2249
+    191 distinct values, mod-4 histogram uniform (so NOT ms/4 compressed)
+    per-replay medians 11-18, minima 5-9, consistent across all 11
+    10 actors per replay, ~1,700-2,500 updates each, dt_ms p50 626
+    65.1% of updates change by exactly +/-1; 91.2% by <= 3
+
+One actor's opening series -- `39, 34, 21, 12, 11, 12, 11, 12, 13, 12, 11, 9` --
+is a connection settling to a stable 12.
+
+**The units are inferred, not established.** The shape is milliseconds and ms/4
+is ruled out, but nothing in the corpus or the reference bundle pins the scale:
+the reference carries no latency figure at all. Per-replay eta-squared ranges
+0.021-0.669; quote the range, not the pooled F.
+
+### 18-C. A reusable lever: checksums as a type-equality test
+
+The manifest's `compatible_checksum` is a CRC chain over the property name and
+type. CRC is affine, so `ck_A ^ ck_B == M_L(c_A ^ c_B)` is an **exact
+type-equality test that needs no knowledge of the type string**. Validated on
+positive controls: `PlayerId`/`CompetitiveTier`/`NumUltimatePoints` match at
+L=24; the `b`-prefixed booleans at L=24; six object references at L=32.
+
+`Ping`'s checksum (1482599241, identical in all 11 replays) matches **none** of
+them at any L in 0..400. So it is not int32, not float, not bool, not uint8, not
+an object reference, not `FRepMovement` or `FUniqueNetIdRepl`. The base rate was
+checked before leaning on this -- 979 of 1,768 pairs are singletons, so "Ping is
+a singleton" alone would be weak; the *elimination* is what carries.
+
+This technique generalises to any untyped field and nobody had used it before.
+
+### 18-D. Not typed, and why
+
+`FieldType::SerializedInt { max: 65536 }` would work -- verified by reading
+`read_serialized_int`, which computes `value_bits = max.ilog2()` = 16, reads 16
+bits LSB-first, and satisfies `decode_field`'s `NotFullyConsumed` guard. No new
+enum variant needed.
+
+It is still the wrong move today:
+
+- It breaches the standing rule twice. The rule is that a field gets a type when
+  the wire supplies the name **and** an existing descriptor declares that name's
+  type. Neither half holds: no descriptor declares `Ping`, and its meaning is
+  inferred from behaviour.
+- `table.rs` is generated, so this needs a C# descriptor entry on the branch
+  (the 13-J pattern) or a new `apply_type_corrections.py` rule. Real cost.
+- **No metric consumes it.** The reference has no latency figure to compare
+  against, so there is nothing to be right or wrong about downstream.
+
+The encoding is recorded here as established. Typing it becomes a short job the
+day something wants a per-player latency series -- and the thing that would
+settle the units is an external latency source to correlate against, not more
+analysis of these bits.
+
+### 18-E. Not checked
+
+The other 204 replays -- "declared nowhere else" is scoped to 5,445 export
+groups across 11 manifests. Non-Bomb modes. Signedness, which this corpus
+cannot observe. The literal UE type string: meet-in-the-middle on the checksum
+saturates, with 68^6 candidates against 2^32 giving ~23 expected random
+collisions.
