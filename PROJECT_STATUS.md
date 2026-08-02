@@ -3255,14 +3255,56 @@ commit says so; the summary figure alone does not.
 **The reference emits an export group we emit nothing for.** On
 `/Game/Characters/_Core/BaseReplayController.BaseReplayController_C` -- the
 RepLayout group, not the `_ClassNetCache` -- the reference emits 20
-`export_group_received` events carrying decoded `PlayerState` and
-`SpawnLocation`. We emit **zero rows**. `table.rs` already holds both entries;
-they are dead for want of rows, so this is a parser-side gap, not an extractor
-one.
+`export_group_received` events. We emit **zero rows**. `table.rs` already holds
+`PlayerState` and `SpawnLocation`; they are dead for want of rows, so this is a
+parser-side gap, not an extractor one.
 
-Not a regression from today: the count is 0 in exports from Jul 31, Aug 1 and
-Aug 2 alike. It is the **only** reference-only export group in the whole
-bundle, which makes it worth one session's attention.
+Not a regression: the count is 0 in exports from Jul 31, Aug 1 and Aug 2 alike.
+It is the **only** reference-only export group in the whole bundle.
+
+INVESTIGATED 2026-08-02, narrowed but not closed.
+
+**The gap is two fields, not twenty events.** 19 of the 20 reference events
+carry `payload: {}`. The reference emits one event per content block; we emit
+one row per field, so a block with no readable fields is zero rows here by
+design and the two models cannot agree on those 19. Only the event at t=8
+carries anything: `PlayerState: 4` and
+`SpawnLocation: {2382.22, -10417.90, 400.00}`.
+
+**One hypothesis was tested and refuted by measurement.** The replay declares
+four handles on that group (216, 215, PlayerState, SpawnLocation), so the data
+is on the wire. `pipeline.rs`'s net-player-index byte is consumed only when
+`pc_guids` already contains the archetype or actor GUID, and for GUID 2 -- the
+first dynamic actor, which opens before any package-map export declares the
+controller's path -- that set is still empty. `read_dynamic_actor_spawn_data`
+has an explicit `|| actor_net_guid.0 == 2` fallback for exactly that reason and
+the index-byte check does not, which looked like the same asymmetry.
+
+Adding the fallback **made it worse**: 7 real subobject rows disappeared
+(`ViewTargetComponent.bIsActive`, `ScreenTransitionComponent.bIsActive`,
+`FreeCamComponent.bIsActive`, `ReplayEffectComponent.bIsActive`,
+`SpectateInOrder`, `FreeCamPlayspaceComponent`, and one preserved payload) and
+one garbage row appeared. So the byte must NOT be consumed there, and our
+current framing of that bunch is correct. Reverted.
+
+**Worth recording: `skipped` went DOWN and that was corruption, not progress.**
+The broken build read 236 more bits and had 4 fewer not-in-table rows, while
+`malformed` stayed 0. Every headline counter moved in the direction that reads
+as an improvement. Only a row-level diff against the previous export showed the
+loss. Do not accept a drop in skipped bits as evidence of anything.
+
+**What is still unexplained.** The reference decides the index byte from a
+static descriptor registry -- `ReadNetPlayerIndexStage.cs` asks
+`GetExportGroupKind(path) == PlayerController` against
+`ReplicationClassPath`/`ArchetypePath`/`ActorPath` -- where we ask whether a
+GUID was seen in a package-map export. Different mechanisms that happen to
+agree on the byte. Why the reference then reads a property block on that
+channel and we do not is not established.
+
+Size check before anyone spends more on this: the recoverable data is one
+`PlayerState` reference and one spawn location for the spectator camera. No
+metric consumes either. `SpawnLocation` is a value `actors.parquet` already
+carries independently.
 
 **`spawn_scale` and `spawn_velocity` are read and then dropped.**
 `pipeline.rs:617/634` reads both; nothing writes them to any artifact. The
