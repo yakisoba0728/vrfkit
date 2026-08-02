@@ -1118,6 +1118,49 @@ public sealed class UnrelatedDescriptor : ExportGroupDescriptor<UnrelatedDescrip
         )
         self.assertEqual(HANDLE_ENTRY_RE.findall(output), [])
 
+    def test_duplicate_raw_wrapper_owner_class_name_fails_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "SharedBaseDescriptors.cs": r'''
+namespace RawSide
+{
+    public abstract class SharedBase<T> : ExportGroupDescriptor<T>
+    {
+        protected void AddValue(
+            uint handle,
+            Expression<Func<T, ValorantRawPayload?>> property,
+            string typeName) =>
+            AddPropertyHandle(handle, property, ExportCategory.Effects)
+                .Decode(RawPayload(typeName));
+    }
+}
+
+namespace TypedSide
+{
+    public abstract class SharedBase<T> : ExportGroupDescriptor<T>
+    {
+        protected PropertyDescriptor AddValue(
+            uint handle,
+            Expression<Func<T, uint>> property) =>
+            AddPropertyHandle(handle, property, ExportCategory.GameState);
+    }
+
+    public sealed class TypedDescriptor : SharedBase<TypedDescriptor>
+    {
+        public override string Path => "/test/typed-side";
+        protected override void Configure()
+        {
+            AddValue(7, x => x.TypedValue).UInt32();
+        }
+    }
+}
+'''
+            }
+        )
+
+        self.assertIn("ambiguous raw-wrapper owner SharedBase", error)
+        self.assertIn("duplicate class declarations", error)
+
     def test_commented_raw_wrapper_call_is_not_emitted(self):
         output = self.run_generator(
             {
@@ -1485,6 +1528,36 @@ internal static class AgentClassNetCacheDescriptors
             },
         )
 
+    def test_nested_local_return_cannot_supply_runtime_name(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors) =>
+        agentDescriptors.Select(agent => new ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache", [CreateKillRpc()])).ToArray();
+
+    private static RpcDescriptor CreateKillRpc()
+    {
+        RpcDescriptor Decoy()
+        {
+            return new RpcDescriptor { Name = "WrongRpc" };
+        }
+
+        _ = Decoy;
+        var result = new RpcDescriptor { Name = "RightRpc" };
+        return result;
+    }
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
+        self.assertIn("returned RpcDescriptor initializer not found", error)
+
     def test_nested_local_constant_does_not_shadow_owning_class_constant(self):
         output = self.run_generator(
             {
@@ -1537,6 +1610,32 @@ internal static class AgentClassNetCacheDescriptors
             },
         )
 
+    def test_direct_local_constant_shadow_fails_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    private const string RpcName = "ClassRpc";
+
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors) =>
+        agentDescriptors.Select(agent => new ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache", [CreateKillRpc()])).ToArray();
+
+    private static RpcDescriptor CreateKillRpc()
+    {
+        const string RpcName = "LocalRpc";
+        return new RpcDescriptor { Name = RpcName };
+    }
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
+        self.assertIn("local constant RpcName shadows direct member", error)
+
     def test_local_runtime_factory_shadow_fails_loudly(self):
         error = self.run_generator_expecting_failure(
             {
@@ -1566,6 +1665,60 @@ internal static class AgentClassNetCacheDescriptors
 
         self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
         self.assertIn("local factory shadows", error)
+
+    def test_local_factory_delegate_shadow_fails_loudly(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors)
+    {
+        Func<RpcDescriptor> CreateKillRpc = () => new RpcDescriptor
+        {
+            Name = "LocalRpc",
+        };
+
+        return agentDescriptors.Select(agent => new ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache", [CreateKillRpc()])).ToArray();
+    }
+
+    private static RpcDescriptor CreateKillRpc() => new RpcDescriptor
+    {
+        Name = "ClassRpc",
+    };
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache factory CreateKillRpc", error)
+        self.assertIn("local factory delegate shadows direct member", error)
+
+    def test_comment_bracket_cannot_truncate_runtime_factory_list(self):
+        error = self.run_generator_expecting_failure(
+            {
+                "AgentClassNetCacheDescriptors.cs": r'''
+internal static class AgentClassNetCacheDescriptors
+{
+    public static IReadOnlyList<ClassNetCacheDescriptor> Create(
+        IEnumerable<ExportGroupDescriptor> agentDescriptors) =>
+        agentDescriptors.Select(agent => new ClassNetCacheDescriptor(
+            agent.Path + "_ClassNetCache",
+            [FirstRpc() /* ] */, SecondRpc()])).ToArray();
+
+    private static RpcDescriptor FirstRpc() =>
+        new RpcDescriptor { Name = "FirstRpc" };
+    private static RpcDescriptor SecondRpc() =>
+        new RpcDescriptor { Name = "SecondRpc" };
+}
+'''
+            }
+        )
+
+        self.assertIn("runtime ClassNetCache", error)
+        self.assertIn("unsupported factory list", error)
 
     def test_multiple_or_trailing_runtime_factories_fail_loudly(self):
         factory_lists = ("[FirstRpc(), SecondRpc()]", "[FirstRpc(),]")

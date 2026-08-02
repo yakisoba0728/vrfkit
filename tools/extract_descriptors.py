@@ -931,17 +931,18 @@ def extract_returned_rpc_name_initializer(
 ) -> tuple[str, str]:
     """Return the exhaustive Name initializer of one returned RpcDescriptor."""
     factory_view = csharp_code_view(factory_body)
+    direct_factory_view = direct_member_code_view(factory_body)
     object_shape = (
         r'new\s+(?:@?RpcDescriptor\s*(?:\(\s*\))?|\(\s*\))\s*\{'
     )
     returned_re = re.compile(rf'\breturn\s+{object_shape}')
-    candidates = list(returned_re.finditer(factory_view))
+    candidates = list(returned_re.finditer(direct_factory_view))
     if not candidates:
-        expression = re.match(rf'\s*{object_shape}', factory_view)
+        expression = re.match(rf'\s*{object_shape}', direct_factory_view)
         if expression is not None:
             candidates = [expression]
     if len(candidates) != 1:
-        all_initializers = list(re.finditer(object_shape, factory_view))
+        all_initializers = list(re.finditer(object_shape, direct_factory_view))
         if len(all_initializers) > 1:
             raise ValueError(
                 f"ambiguous RpcDescriptor initializer "
@@ -1047,9 +1048,11 @@ def main(argv: list[str]) -> int:
     # a derived descriptor can use wrappers declared in any source file while
     # an unrelated class with a same-named method cannot inherit that meaning.
     raw_wrapper_names_by_class: dict[str, set[str]] = {}
-    for _, source, code_view in sources:
+    class_declarations_by_name: dict[str, list[Path]] = {}
+    for cs_file, source, code_view in sources:
         for class_match in MULTI_CLASS_RE.finditer(code_view):
             class_name = class_match.group(1)
+            class_declarations_by_name.setdefault(class_name, []).append(cs_file)
             raw_base = class_match.group(2)
             if raw_base:
                 base_class = raw_base.strip().split("<")[0].strip()
@@ -1071,6 +1074,15 @@ def main(argv: list[str]) -> int:
                 raw_wrapper_names_by_class.setdefault(class_name, set()).update(
                     wrapper_names
                 )
+
+    for class_name in sorted(raw_wrapper_names_by_class):
+        declarations = class_declarations_by_name.get(class_name, [])
+        if len(declarations) > 1:
+            locations = ", ".join(str(path) for path in declarations)
+            raise SystemExit(
+                f"ambiguous raw-wrapper owner {class_name}: "
+                f"duplicate class declarations at {locations}"
+            )
 
     def effective_raw_wrapper_names(class_name: str) -> set[str]:
         names: set[str] = set()
@@ -1094,7 +1106,7 @@ def main(argv: list[str]) -> int:
         rf'@?ClassNetCacheDescriptor\s*\(\s*'
         rf'{CSHARP_IDENTIFIER_TOKEN}\s*\.\s*@?Path\s*\+\s*'
         r'"(?P<suffix>[^"]+)"\s*,\s*'
-        r'\[(?P<factories>[^\]]*)\]',
+        r'\[',
         re.DOTALL,
     )
     factory_call_re = re.compile(
@@ -1104,14 +1116,19 @@ def main(argv: list[str]) -> int:
         for runtime_match in runtime_cache_re.finditer(source):
             if code_view[runtime_match.start()] == " ":
                 continue
-            factories_start, factories_end = runtime_match.span("factories")
+            factories_start = runtime_match.end()
+            factories_end = code_view.find("]", factories_start)
+            if factories_end == -1:
+                raise SystemExit(
+                    "runtime ClassNetCache: unterminated factory list"
+                )
             factory_call = factory_call_re.fullmatch(
                 code_view[factories_start:factories_end]
             )
             if factory_call is None:
                 raise SystemExit(
                     "runtime ClassNetCache: unsupported factory list "
-                    f"{runtime_match.group('factories').strip()!r}"
+                    f"{source[factories_start:factories_end].strip()!r}"
                 )
             factory_name = factory_call.group("factory")
 
@@ -1142,16 +1159,28 @@ def main(argv: list[str]) -> int:
                 method_start, method_end = max(
                     containing_blocks, key=lambda body_range: body_range[0]
                 )
+                containing_method_view = owning_code_view[
+                    method_start:method_end
+                ]
                 local_factory_re = re.compile(
                     rf'\b[\w@.<>,?\[\]]+\s+@?{re.escape(factory_name)}'
                     r'\s*\(\s*\)\s*(?:=>|\{)'
                 )
-                if local_factory_re.search(
-                    owning_code_view[method_start:method_end]
-                ):
+                if local_factory_re.search(containing_method_view):
                     raise SystemExit(
                         f"runtime ClassNetCache factory {factory_name}: "
                         "local factory shadows direct member"
+                    )
+                local_factory_delegate_re = re.compile(
+                    rf'\bFunc\s*<\s*RpcDescriptor\s*>\s+'
+                    rf'@?{re.escape(factory_name)}\s*='
+                )
+                if local_factory_delegate_re.search(
+                    direct_member_code_view(containing_method_view)
+                ):
+                    raise SystemExit(
+                        f"runtime ClassNetCache factory {factory_name}: "
+                        "local factory delegate shadows direct member"
                     )
 
             try:
@@ -1174,6 +1203,17 @@ def main(argv: list[str]) -> int:
                 if initializer_kind == "literal":
                     function_name = initializer_value
                 else:
+                    local_constant_re = re.compile(
+                        rf'\bconst\s+string\s+'
+                        rf'@?{re.escape(initializer_value)}\b'
+                    )
+                    if local_constant_re.search(
+                        direct_member_code_view(factory_body)
+                    ):
+                        raise ValueError(
+                            f"local constant {initializer_value} "
+                            "shadows direct member"
+                        )
                     function_name = resolve_direct_string_constant(
                         owning_source,
                         owning_member_view,
