@@ -7,20 +7,22 @@ VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
 
 ## 상태
 
-작업 중. 현재 검증된 범위 (`cargo test` 190 통과, `clippy -D warnings` 0, `fmt` 0):
+작업 중. 현재 검증된 범위 (`cargo test --workspace` 252 통과, `clippy -D warnings` 0, `fmt` 0):
+
+크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표는 `f5feb82` 시점이고, 이 숫자들은 지금까지 여러 번 낡은 채로 방치됐습니다.
 
 | 레이어 | 크레이트 | 상태 |
 |---|---|---|
 | 비트 리더 / UE 와이어 포맷 | `vrf-bitio` | ✅ 22 테스트 |
-| 페이로드 변환 (5개 빌드) | `vrf-transform` | ✅ 골든 벡터 55/55 바이트 일치 |
+| 페이로드 변환 (5개 빌드) | `vrf-transform` | ✅ 22 테스트, 골든 벡터 55/55 바이트 일치 |
 | 컨테이너 (info/header/chunk, Oodle) | `vrf-container` | ✅ 32 테스트 + **실전 215/215 파일** |
-| DemoFrame 순회 | `vrf-frame` | ✅ 3 테스트 |
-| 리플레이 동적 스키마 + GUID 캐시 | `vrf-schema` | ✅ 34 테스트 |
-| 리플리케이션 (packet/bunch/content block/field) | `vrf-net` | ✅ 28 테스트 |
-| 필드 디코더 + 중첩 배열 + 타입 오버레이 | `vrf-decode` | ✅ 32 테스트 |
+| DemoFrame 순회 | `vrf-frame` | ✅ 6 테스트 |
+| 리플레이 동적 스키마 + GUID 캐시 | `vrf-schema` | ✅ 47 테스트 |
+| 리플리케이션 (packet/bunch/content block/field) | `vrf-net` | ✅ 32 테스트 |
+| 필드 디코더 + 중첩 배열 + 타입 오버레이 | `vrf-decode` | ✅ 58 테스트 |
 | movement 디코더 | `vrf-movement` | ✅ 5 테스트 |
-| Parquet 내보내기 | `vrf-export` | ✅ 12 테스트, NDJSON 대비 8~25× 작음 |
-| 통합 CLI | `vrfkit` | ✅ `inspect` / `validate` / `export` |
+| Parquet 내보내기 | `vrf-export` | ✅ 20 테스트, NDJSON 대비 8~25× 작음 |
+| 통합 CLI | `vrfkit` | ✅ 8 테스트, `inspect` / `validate` / `export` |
 
 ## 기존 파서와의 대조 결과
 
@@ -110,19 +112,26 @@ totals   : 136,545,822 content blocks / 98,883,979 fields / 75,571,092 RPCs
 
 걸을 수 있는 필드의 원시 비트는 항상 내보내고, 타입을 아는 필드는 `value_*` 컬럼을 **추가로** 채웁니다. 타입을 몰라도, 디코드가 실패해도 그 행의 `raw_bits`는 남습니다. 그룹을 찾지 못해 내부 스트림 자체를 걸을 수 없는 ClassNetCache 블록은 예외이며, loud failure와 skipped bits만 남습니다.
 
-오버레이 테이블은 C# 디스크립터에서 기계적으로 추출합니다(`tools/extract_descriptors.py`) — 123개 그룹 1,054개 필드. 손으로 옮기지 않는 이유는 S-box·골든 벡터와 같습니다.
+오버레이 테이블은 C# 디스크립터에서 기계적으로 추출합니다(`tools/extract_descriptors.py`) — 172개 그룹 1,193개 항목. 손으로 옮기지 않는 이유는 S-box·골든 벡터와 같습니다.
 
-`02d4d478` 기준:
+`02d4d478` 기준 (`f5feb82`에서 측정):
 
 ```
-Decoded OK:   352,702      Decode errors:      0
-Raw/Skip:      72,519      Not in table: 530,229
-No field name: 33,529      Typed:          35.7%
+Decoded OK:   369,743      Decode errors:      0
+Raw/Skip:      73,984      Not in table: 511,916
+No field name: 33,340      Typed:          37.4%
 ```
 
-`Typed` 는 내보낸 1,239,406행 중 `value_*` 컬럼이 채워진 비율입니다. 분모에 RPC 파라미터가 전부 들어가서 낮게 나옵니다 — `Not in table` 530,229건의 대부분이 C# 디스크립터가 없는 RPC 파라미터와 398개 그룹입니다. 타입을 모르는 행도 `raw_bits` 는 그대로 실려 나가므로 손실이 아니라 **미해석**입니다.
+**이 숫자는 자주 바뀝니다. 인용하기 전에 직접 재세요** — 여섯 개 중 네 개가 낡은 채로 방치된 적이 있습니다:
 
-**디코드 에러 0**은 표본 20개 리플레이에서도 유지됩니다(커버리지 50.9~59.1%, 중앙값 55.2%). 여기까지 오는 과정에서 와이어와 C# 선언이 어긋나는 지점 세 종류를 찾아 `tools/apply_type_corrections.py`에 근거와 함께 기록했습니다.
+```
+cargo build --release
+.\target\release\vrfkit.exe export <replay.vrf> --out out\probe
+```
+
+`Typed` 는 내보낸 1,246,812행 중 `value_*` 컬럼이 채워진 비율입니다. 분모에 RPC 파라미터가 전부 들어가서 낮게 나옵니다 — `Not in table` 의 대부분이 C# 디스크립터가 없는 RPC 파라미터와, 리플레이가 선언한 475개 그룹 중 테이블에 없는 나머지입니다. 타입을 모르는 행도 `raw_bits` 는 그대로 실려 나가므로 손실이 아니라 **미해석**입니다.
+
+**디코드 에러 0**은 215개 리플레이 전부에서 유지되며, `tools/check_decode_errors_corpus.py` 가 코퍼스 단위로 검사합니다. `vrfkit validate` 는 오버레이 카운터를 출력하지 않아서 `validate_corpus.py` 로는 잘못된 타입을 볼 수 없기 때문에 만든 가드입니다. 여기까지 오는 과정에서 와이어와 C# 선언이 어긋나는 지점 세 종류를 찾아 `tools/apply_type_corrections.py`에 근거와 함께 기록했습니다.
 
 | 증상 | 실제 | 근거 |
 |---|---|---|
