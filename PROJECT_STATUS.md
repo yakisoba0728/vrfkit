@@ -276,22 +276,28 @@ the constant provenance `note` run unchanged on our data.
 ## 2. Repository State (2026-08-02)
 
 ```
-verification : codex/needs-work in an isolated worktree; master was not moved
-               or merged by the delegate
+measured at  : 8be0b8d, 2026-08-02, after every delegate branch was merged
+branches     : master only. No worktrees, no stashes, no remote
 commits      : run `git rev-list --count HEAD`. No number is written here
                on purpose: the two that were had both gone stale, and this
                one would be wrong the moment the line was committed
-tests        : 252 passing, 0 failed (249 regular + 3 doctests). Re-measured
-               2026-08-02 at section 17's commit; the doctests are vrf_export
-               (2) and vrf_transform (1). This line said 246/243+3 and was
-               already stale by three before section 17 added three more
+tests        : 257 passing, 0 failed (254 regular + 3 doctests: vrf_export 2,
+               vrf_transform 1). This line has been stale FOUR times -- 238,
+               246, 249, 252. Re-measure with `cargo test --workspace`
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
+ascii        : 61 tracked Rust files, clean; --self-test passes
 working tree : clean
+corpus       : 215/215, malformed 0, decode errors 0 across all 215
+overlay      : 369,743 decoded / 73,984 raw-skip / 511,916 not-in-table /
+               33,340 no-field-name; typed 37.4%; table 1,185 entries
+guards       : export baseline OK; build_1210/1211/1300/1302 OK;
+               compare_combat_report ALL INTERESTING SHAPES MATCH;
+               validate_metrics_corpus 16/21 with all 231 cells stable
 valplay repo : 0 modified files (never written to; scripts run by absolute
                path, and compute_metrics.py is always pointed at a directory
                under vrfkit's out/ so it cannot write metrics.json into it)
-ValorantReplayParser : clean, on branch local/vrfkit-descriptors at f67ea66.
+ValorantReplayParser : clean, on branch local/vrfkit-descriptors at 8824794.
                main untouched at 2d2e05e -- the commit the reference bundles
                were built from. Do not move it (QUICK START says why)
 ```
@@ -425,18 +431,20 @@ now carry this warning rather than a correction.
 succeeded          : 215 / 215
 failed             : 0
 
-oracle pass rate  (measured 2026-08-01 from validate_corpus.py output;
-                   the median and max previously recorded here, ~98.9% and
-                   99.99%, were never measured and were both wrong -- the
-                   tool also reports "below 99.99%: 215", i.e. no replay
-                   reaches 99.99%)
-  min              : 97.487010%  (936a0967-7a14-46bf-ab7e-b33f7e228cc4.vrf)
-  median           : 99.323286%
-  max              : 99.681958%
+oracle pass rate  (re-measured 2026-08-02 at 8be0b8d; the median and max once
+                   recorded here, ~98.9% and 99.99%, were never measured and
+                   were both wrong -- the tool also reports "below 99.99%:
+                   215", i.e. no replay reaches 99.99%. The 2026-08-01 figures
+                   97.487010 / 99.323286 / 99.681958 were correct at the time
+                   and were lifted by 17-A, which recovered 287 bits per
+                   replay.)
+  min              : 97.487378%  (936a0967-7a14-46bf-ab7e-b33f7e228cc4.vrf)
+  median           : 99.323434%
+  max              : 99.682485%
 
-corpus totals
+corpus totals   (2026-08-02 at 8be0b8d)
   content blocks   : 136,545,822
-  fields emitted   :  98,883,979
+  fields emitted   :  98,884,839
   RPCs emitted     :  75,571,092
   malformed framing:           0   <-- container/bunch/block framing perfect
                                    MEASURED for the first time on 2026-08-01.
@@ -448,7 +456,7 @@ corpus totals
                                    9cb7a24; the value is genuinely 0, and a
                                    counter that stops printing now warns
                                    instead of reading as zero.
-  unattributed bits: 1,972,080,670 (~246 MB; 97.283437% is
+  unattributed bits: 1,972,018,965 (~246 MB; 97.283437% is
                      AbilitiesAndBuffsComponent)
                      That 97.283437% is a share of the FAILURES, not of the
                      replay. Per replay it is ~2.1% of bits and ~1.05% of

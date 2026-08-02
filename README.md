@@ -77,7 +77,7 @@ MulticastNotifyKilledEnemy.KillerCharacter       119  132  우리가 +13
 ```
 succeeded: 215/215        failed: 0
 branches : 215  ++Ares-Core+release-13.01
-pass rate: min 97.487010%  median 99.323286%  max 99.681958%
+pass rate: min 97.487378%  median 99.323434%  max 99.682485%
 totals   : 136,545,822 content blocks / 98,884,839 fields / 75,571,092 RPCs
            malformed framing 0        unattributed 1,972,018,965 bits
 ```
