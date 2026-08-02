@@ -3215,6 +3215,13 @@ field_name)` matching plus nested and array-index spellings:
     never resolved on any of the 11 replays       273
       of which in groups the wire does present    166   (method-dependent)
 
+SUPERSEDED IN PART, 2026-08-02: the table has since gone 872 -> 864 typed
+entries (19-A removed 8 that could never match), and the leaf-name and
+nine-bit-framing fixes moved rows into groups. The never-resolved counts above
+were measured before all of that and have NOT been re-derived. Treat the
+*method* finding -- that the count depends on an unsettled matching rule -- as
+the durable part, and re-measure before quoting any number here.
+
 The audit, using a different rule for mapping RPC descriptor paths to wire
 groups, measured 175 never-resolved and 90 in exercised groups. **The
 disagreement is the finding**: the count depends on how a descriptor path like
@@ -3756,3 +3763,84 @@ groups across 11 manifests. Non-Bomb modes. Signedness, which this corpus
 cannot observe. The literal UE type string: meet-in-the-middle on the checksum
 saturates, with 68^6 candidates against 2^32 giving ~23 expected random
 collisions.
+
+---
+
+## 19. Generator and array-walker fixes (2026-08-02)
+
+### 19-A. The extractor never read `ExportGroupKind` [FIXED, 18dce16]
+
+`tools/extract_descriptors.py` flattened every C# descriptor into
+`(path, property_name)` overlay rows as if all of them were `Kind = Actor`. Two
+kinds cannot be:
+
+- **`FastArray`** describes an array element struct, never an export group at
+  all -- `RemoteCharacterUpdate`, 2 entries.
+- **`AttributeSet`** declares one property per attribute where the wire
+  replicates a generic `BaseValue`/`CurrentValue` pair per attribute subobject
+  -- `AresAttributeSet`, 6 entries.
+
+8 entries that could never match anything. **The only generator bug among
+16-A's 122 dead entries**; the other 114 are C# build drift the reference
+cannot decode either.
+
+**The brief for this task was wrong where it mattered, and the fix caught it.**
+It asserted "every C# descriptor declares a Kind". Four
+`ExportGroupDescriptor` subclasses with live paths never override it and take
+`Unknown` from the parameterless constructor's default -- `CoveAbility`,
+`DarkCoverAbility`, `ProjectileSmokeScreen`, `SmokeScreenManager` -- and their
+fields decode on the corpus today. **A dispatch that defaulted to "drop" would
+have deleted them, and every headline counter would still have looked fine.**
+It is now a policy table with one row per enum member, and an unclassified Kind
+is a hard failure rather than a silent default.
+
+All seven enum members appear in the C#: Actor 35, Component 19, ClassNetCache
+17, PlayerController 1, Unknown 1, AttributeSet 1, FastArray 1.
+
+Table 1,193 -> 1,185 entries, Typed 872 -> 864; Raw 157, Skip 164 and all 84
+handle aliases untouched. Regenerating from the C# reproduces 1,185 exactly.
+
+**The proof is that nothing moved.** All four Parquet files are SHA-256
+identical to a pre-change export and every overlay counter is unchanged. That
+is load-bearing rather than incidental: `not_in_table` holding at 511,916 is
+exactly what a removed entry that HAD been matching would have disturbed. The
+export baseline drifted on nothing; there was no `--update` to explain.
+
+The argument for each removal is **structural, not statistical** -- which is
+what separates it from the trap 16-A records. An unexercised RPC parameter is
+absent, not dead; these 8 cannot be overlay keys by construction.
+
+9 tests added, each driven to failure first: 8 mutations, 8 caught, generator
+byte-identical after each restore.
+
+Disclosed rather than changed: phase 3c iterates Kind-bearing classes but gates
+on the Agent category instead of Kind. No effect today -- both filtered
+descriptors are Movement/Ability, and the delta being exactly 8 proves it.
+
+### 19-B. The array walker asked a second copy for its types [FIXED, f5feb82]
+
+The combat-report walker typed leaves from a hardcoded handle->type match in
+`sink.rs` -- a duplicate of what the generated table already holds, and
+incomplete. It now asks the table first, keyed on the name **the replay
+declares** for that handle, since UE flattens an array's element members into
+consecutive handles on the enclosing group and `resolve_field_name` was already
+reading exactly that. The hardcoded match remains as a floor.
+
+8,609 leaves gained a value on 02d4d478; null leaves on that group fell from
+11,641 to 3,032. Row-level diff: identity columns identical, 8,609 value cells
+newly filled, **0 lost and 0 altered**, all inside
+`Bomb_CombatReportComponent`.
+
+**I suspected this was wrong before trusting it, and the suspicion was
+misplaced.** The declared names repeat -- `StateRemainingTime` at handles 7, 15,
+32 and 67 -- and game-clock names on a per-report leaf looked like a lookup
+landing in the wrong handle space. It is not: UE flattens the same struct at
+several nesting positions, so one member name legitimately maps to one type at
+several handles.
+
+What settled it is consumption, not plausibility. Per handle the bit count is
+single-valued and matches the declared type -- 32 for the floats, 8 for the
+enum byte, 192 for `DeathLocation`'s three doubles -- with **zero decode
+failures**. A wrong type here does not produce a wrong value; it fails to
+consume the payload and the row stays null. The three `HUDConfig` handles still
+read that way (16 bits, 1,043 rows, 0 decoded), unchanged from before.
