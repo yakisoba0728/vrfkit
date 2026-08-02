@@ -1992,5 +1992,283 @@ public sealed class BoundedPayloadDescriptor : ExportGroupDescriptor<BoundedPayl
         )
 
 
+    # ---- ExportGroupKind ----
+    #
+    # A descriptor's ExportGroupKind decides whether its properties can be wire
+    # field names. Two kinds say no, and every other kind must say yes --
+    # including Unknown, which is the C# default from the protected
+    # parameterless constructor and NOT a "we did not look" marker.
+
+    def entries(self, output: str) -> set[tuple[str, str]]:
+        return {
+            (group, field) for group, field, _ in ENTRY_RE.findall(output)
+        }
+
+    def test_fast_array_descriptor_contributes_nothing(self):
+        output = self.run_generator(
+            {
+                "RemoteCharacterUpdateDescriptor.cs": r'''
+public sealed class RemoteCharacterUpdateDescriptor : ExportGroupDescriptor<RemoteCharacterUpdateDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.RemoteCharacterUpdate";
+    public override ExportGroupKind Kind => ExportGroupKind.FastArray;
+    protected override void Configure()
+    {
+        AddProperty(x => x.ShooterCharacterNetGuidValue).UInt32();
+        AddProperty(x => x.ShooterCharacterNetGuid).ObjectNetGuid();
+    }
+}
+'''
+            }
+        )
+
+        self.assertEqual(self.entries(output), set())
+        # The group must not survive in the header's group count either --
+        # a group with no entries would still be counted as covered.
+        self.assertIn("0 entries from 0 groups.", output)
+
+    def test_fast_array_kind_is_inherited_by_a_derived_descriptor(self):
+        output = self.run_generator(
+            {
+                "Elements.cs": r'''
+public abstract class FastArrayElementDescriptor<T> : ExportGroupDescriptor<T>
+{
+    public override ExportGroupKind Kind => ExportGroupKind.FastArray;
+}
+
+public sealed class DerivedElementDescriptor : FastArrayElementDescriptor<DerivedElementDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.DerivedElement";
+    protected override void Configure()
+    {
+        AddProperty(x => x.Value).Float();
+    }
+}
+'''
+            }
+        )
+
+        self.assertEqual(self.entries(output), set())
+
+    def test_attribute_set_keeps_only_the_replicated_pair(self):
+        output = self.run_generator(
+            {
+                "AresAttributeSetDescriptor.cs": r'''
+public sealed class AresAttributeSetDescriptor : ExportGroupDescriptor<AresAttributeSetDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.AresAttributeSet";
+    public override ExportGroupKind Kind => ExportGroupKind.AttributeSet;
+    protected override void Configure()
+    {
+        AddProperty(x => x.Health, ExportCategory.Ability).Float();
+        AddProperty(x => x.MaxHealth, ExportCategory.Ability).Float();
+        AddProperty(x => x.Shield, ExportCategory.Ability).Float();
+        AddProperty(x => x.MaxShield, ExportCategory.Ability).Float();
+        AddProperty(x => x.Healing, ExportCategory.Ability).Float();
+        AddProperty(x => x.Damage, ExportCategory.Ability).Float();
+        AddProperty(x => x.BaseValue, ExportCategory.Ability).Float();
+        AddProperty(x => x.CurrentValue, ExportCategory.Ability).Float();
+    }
+}
+'''
+            }
+        )
+
+        self.assertEqual(
+            self.entries(output),
+            {
+                ("/Script/ShooterGame.AresAttributeSet", "BaseValue"),
+                ("/Script/ShooterGame.AresAttributeSet", "CurrentValue"),
+            },
+        )
+
+    def test_attribute_set_without_the_replicated_pair_fails(self):
+        stderr = self.run_generator_expecting_failure(
+            {
+                "RenamedAttributeSetDescriptor.cs": r'''
+public sealed class RenamedAttributeSetDescriptor : ExportGroupDescriptor<RenamedAttributeSetDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.RenamedAttributeSet";
+    public override ExportGroupKind Kind => ExportGroupKind.AttributeSet;
+    protected override void Configure()
+    {
+        AddProperty(x => x.Health, ExportCategory.Ability).Float();
+    }
+}
+'''
+            }
+        )
+
+        self.assertIn("RenamedAttributeSetDescriptor", stderr)
+        self.assertIn("BaseValue", stderr)
+
+    def test_descriptor_that_declares_no_kind_keeps_every_field(self):
+        """Four live descriptors never override Kind, so they resolve to the
+        C# default. Unknown must emit, or their fields vanish silently."""
+        output = self.run_generator(
+            {
+                "SmokeScreenManagerDescriptor.cs": r'''
+public sealed class SmokeScreenManagerDescriptor : ExportGroupDescriptor<SmokeScreenManagerDescriptor>
+{
+    public override string Path => "/Game/Characters/Pandemic/Manager.Manager_C";
+    protected override void Configure()
+    {
+        AddProperty(x => x.Owner).ObjectNetGuid();
+        AddProperty(x => x.CurrentFuelLevel).Float();
+    }
+}
+'''
+            }
+        )
+
+        self.assertEqual(
+            self.entries(output),
+            {
+                ("/Game/Characters/Pandemic/Manager.Manager_C", "Owner"),
+                (
+                    "/Game/Characters/Pandemic/Manager.Manager_C",
+                    "CurrentFuelLevel",
+                ),
+            },
+        )
+
+    def test_explicitly_unknown_kind_keeps_every_field(self):
+        output = self.run_generator(
+            {
+                "BaseReplayPlayerState.cs": r'''
+public sealed class BaseReplayPlayerState : ExportGroupDescriptor<BaseReplayPlayerState>
+{
+    public override string Path => "/Game/GameModes/Common/BaseReplayPlayerState.BaseReplayPlayerState_C";
+    public override ExportGroupKind Kind => ExportGroupKind.Unknown;
+    protected override void Configure()
+    {
+        AddProperty(x => x.Owner).ObjectNetGuid();
+        AddProperty(x => x.bOnlySpectator).Bool();
+    }
+}
+'''
+            }
+        )
+
+        self.assertEqual(
+            self.entries(output),
+            {
+                (
+                    "/Game/GameModes/Common/BaseReplayPlayerState.BaseReplayPlayerState_C",
+                    "Owner",
+                ),
+                (
+                    "/Game/GameModes/Common/BaseReplayPlayerState.BaseReplayPlayerState_C",
+                    "bOnlySpectator",
+                ),
+            },
+        )
+
+    def test_each_emitting_kind_keeps_every_field(self):
+        for kind in ("Actor", "PlayerController", "Component", "ClassNetCache"):
+            with self.subTest(kind=kind):
+                output = self.run_generator(
+                    {
+                        "KindDescriptor.cs": f'''
+public sealed class KindDescriptor : ExportGroupDescriptor<KindDescriptor>
+{{
+    public override string Path => "/Script/ShooterGame.Kinded";
+    public override ExportGroupKind Kind => ExportGroupKind.{kind};
+    protected override void Configure()
+    {{
+        AddProperty(x => x.Health).Float();
+        AddProperty(x => x.BaseValue).Float();
+    }}
+}}
+'''
+                    }
+                )
+
+                self.assertEqual(
+                    self.entries(output),
+                    {
+                        ("/Script/ShooterGame.Kinded", "Health"),
+                        ("/Script/ShooterGame.Kinded", "BaseValue"),
+                    },
+                )
+
+    def test_unhandled_kind_is_a_hard_failure(self):
+        """A new C# enum member must be classified by a human. Defaulting it
+        to "emit" would ship dead entries; defaulting it to "drop" would
+        delete live ones. Neither is safe, so neither is the default."""
+        stderr = self.run_generator_expecting_failure(
+            {
+                "FutureDescriptor.cs": r'''
+public sealed class FutureDescriptor : ExportGroupDescriptor<FutureDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.Future";
+    public override ExportGroupKind Kind => ExportGroupKind.SparseDelta;
+    protected override void Configure()
+    {
+        AddProperty(x => x.Value).Float();
+    }
+}
+'''
+            }
+        )
+
+        self.assertIn("FutureDescriptor", stderr)
+        self.assertIn("SparseDelta", stderr)
+
+    def test_unsupported_kind_override_shape_is_a_hard_failure(self):
+        """Reading an unparseable override as absent would resolve the class to
+        Unknown, which emits everything -- a failure shaped like success."""
+        stderr = self.run_generator_expecting_failure(
+            {
+                "ComputedKindDescriptor.cs": r'''
+public sealed class ComputedKindDescriptor : ExportGroupDescriptor<ComputedKindDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.Computed";
+    public override ExportGroupKind Kind
+    {
+        get { return ExportGroupKind.FastArray; }
+    }
+    protected override void Configure()
+    {
+        AddProperty(x => x.Value).Float();
+    }
+}
+'''
+            }
+        )
+
+        self.assertIn("ComputedKindDescriptor", stderr)
+        self.assertIn("ExportGroupKind", stderr)
+
+    def test_class_net_cache_functions_are_not_filtered_by_kind(self):
+        """Phases 3b/3c build from ClassNetCacheDescriptor, a separate C#
+        hierarchy with no Kind property at all. The filter must not reach
+        them."""
+        output = self.run_generator(
+            {
+                "EffectCache.cs": r'''
+public sealed class EffectManagerComponentClassNetCacheDescriptor : ClassNetCacheDescriptor<EffectManagerComponentClassNetCacheDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.EffectManagerComponent_ClassNetCache";
+    protected override void Configure()
+    {
+        AddFunction("MulticastPlayOneShotEffect", "SomePath");
+    }
+}
+'''
+            }
+        )
+
+        self.assertEqual(
+            self.entries(output),
+            {
+                (
+                    "/Script/ShooterGame.EffectManagerComponent_ClassNetCache",
+                    "MulticastPlayOneShotEffect",
+                ),
+            },
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
