@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-02. Includes the replay-coverage audit through 8eb5909,
 the concurrent master audit corrections through 101c33a, the code audit fixes
-in section 12, and the Codex needs-work results in section 14.
+in section 12, and the Codex needs-work results through 45223c9 in section 14.
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -257,8 +257,17 @@ ValorantReplayParser : clean, on branch local/vrfkit-descriptors at f67ea66.
 ### Commit list
 
 ```
+45223c9 fix(tools): reject lexical descriptor shadows
+81d4f88 fix(tools): scope descriptor source resolution
+519de0b fix(tools): harden descriptor source parsing
+7e0051f fix: anchor ASCII scan to repository root
+23fb6aa fix(tools): detect empty effect corruption
+4ddac84 docs: record safe category parsing
 b5b74db fix(tools): parse category overrides safely
+7515cfc docs: align the rotating 13.02 path reference
+7e0a8de docs: clarify concurrent integration requirements
 b10467b fix(tools): respect descriptor category overrides
+aef30de docs: record needs-work measurements and baseline
 a0ea2b4 chore: enforce ASCII Rust sources
 b68baaa fix(decode): complete descriptor handle fallback
 e1eb220 fix(decode): preserve explicit descriptor handles
@@ -353,7 +362,7 @@ vrfkit/
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 246 tests, measured at b5b74db (243 regular targets plus 3 doctests).
+Total: 246 tests, measured at 45223c9 (243 regular targets plus 3 doctests).
 The earlier 242 figure omitted one existing test; Task B then added three.
 DO NOT trust the per-crate rows above: they were
 taken excluding doc-tests for some crates and including them for others, so
@@ -423,9 +432,15 @@ typed (value_*)    : 374,143 rows with any value_* column set
 oracle pass rate   :  98.95%
 ```
 
-13.02 replays (4 local demos, pinned by tools/check_corpus_baseline.py):
+Historical 2026-08-01 snapshot (four then-local 13.02 demos):
   all 4 parse, malformed 0, pass rate 97.959041% - 99.329325%
   blocks 3,117,920  fields 2,279,512  rpcs 1,713,576  skipped 74,573,628
+
+Those four files are no longer the current corpus or a valid live baseline
+source. `Saved\Demos` rotates and now contains 1.vrf/2.vrf/3.vrf; this delegate
+branch's old JSON therefore reports an input-set mismatch. Current master
+commit 3a4b04 supersedes it with one stable copied replay under vrfkit's own
+baseline directory. Preserve that master version during integration.
 
 Earlier measurement of two of them:
 ```
@@ -1301,20 +1316,21 @@ same sections was spawn coordinates: Float32 widened to Python float printed
 
 ### 7-E. 13.02 regression guard [DONE 2026-08-01]
 
-Done in commit 9cb7a24. tools/check_corpus_baseline.py pins per-file and
-total oracle figures in JSON and fails on any difference:
+Historical state at commit 9cb7a24: tools/check_corpus_baseline.py pinned
+per-file and total oracle figures in JSON and failed on any difference:
 
     python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 
-tools/baselines/build_1302.json covers the four local 13.02 demos --
+At that time, tools/baselines/build_1302.json covered four local 13.02 demos --
 blocks 3,117,920, fields 2,279,512, rpcs 1,713,576, malformed 0,
 skipped 74,573,628, pass rate 97.96-99.33%.
 
-Those replays live under %LOCALAPPDATA% and are machine-local, so an absent
-corpus SKIPs with a message rather than failing. A guard that fails on
-someone else's machine gets disabled, and a disabled guard protects nothing.
-The guard was proven to fail: perturbing the baseline produced the expected
-DRIFT lines and exit 1.
+That design is superseded. `Saved\Demos` is a rotating game-owned directory;
+this delegate JSON expects four vanished UUID files and now reports the
+input-set mismatch against 1.vrf/2.vrf/3.vrf. Concurrent master commit 3a4b04
+pins one stable copied replay under `%LOCALAPPDATA%\vrfkit\baseline-corpora`
+instead. The historical guard was proven to fail: perturbing its baseline
+produced the expected DRIFT lines and exit 1.
 
 This work also uncovered a worse problem -- see the malformed-counter note
 in section 4.
@@ -1779,21 +1795,25 @@ ASCII ONLY IN CODE AND COMMENTS
   points. The inventory scans complete file contents, including comments,
   doc comments, literals, BOMs, and malformed encoding bytes.
 
-  `python tools/check_ascii.py --check` now enumerates tracked `*.rs` files
-  with `git ls-files -z`, scans their raw bytes, and rejects every byte above
-  0x7f. It reports stable file/line/column/byte diagnostics and fails loudly
-  if Git enumeration or a read fails. The post-cleanup inventory is 61 files,
-  0 affected files, 0 affected lines, and 0 non-ASCII bytes.
+  `python tools/check_ascii.py --check` now anchors itself to the repository
+  root, enumerates tracked `*.rs` files with `git -C <root> ls-files -z`, scans
+  their raw bytes, and rejects every byte above 0x7f. It reports stable repo-
+  relative file/line/column/byte diagnostics and fails loudly if Git
+  enumeration or a read fails. Root and nested-crate invocations both scan all
+  61 files. The post-cleanup inventory is 61 files, 0 affected files, 0
+  affected lines, and 0 non-ASCII bytes.
 
   This guard was observed failing twice: first on the real 510-line tree, then
   after planting `o` with an umlaut in a tracked Rust file (1 line / 2 UTF-8
   bytes, exit 1). The exact original SHA-256 was restored and the default
   scan returned exit 0. A separate `--self-test` exercises the same scanner.
 
-  ASCII `??` corruption is outside the guard's detection domain. Task D also
-  restored the damaged vrf-net field/lib/pipeline docs and vrfkit sink mapping
-  comments from Git history, removed three BOMs, and verified zero remaining
-  literal `??` sites in the four affected files.
+  ASCII `??` corruption is outside the guard's detection domain. Task D used
+  clean historical revisions to restore vrf-net field and vrfkit sink mapping
+  comments. No clean pre-damage revision exists for vrf-net lib/pipeline, so
+  those two were reconstructed from their surviving labels and local execution
+  context. It also removed three BOMs and verified zero remaining literal `??`
+  sites in the four affected files.
 
 NO UNSAFE
   #![forbid(unsafe_code)] everywhere. Oodle decompression is the only
@@ -1975,8 +1995,9 @@ baselines. The dirty C# reference repository and valplay were not modified.
 
 ### 11-A. Non-Bomb mode coverage [INPUT-BLOCKED, UNMEASURED]
 
-Recursive searches of all three scopes below found the same four physical
-replays and no additional `.vrf` files:
+Historical audit snapshot on 2026-08-01: recursive searches of all three
+scopes below found the same four physical replays and no additional `.vrf`
+files:
 
 ```
 %LOCALAPPDATA%\VALORANT\Saved\Demos   4
@@ -1984,8 +2005,8 @@ replays and no additional `.vrf` files:
 %LOCALAPPDATA%\VALORANT               4
 ```
 
-All four are 13.02, inspect/export/validate successfully, have malformed,
-transform, and field-stream failures of zero, and exactly reproduce the pinned
+At that time all four were 13.02, inspect/export/validate succeeded, had malformed,
+transform, and field-stream failures of zero, and exactly reproduced the pinned
 build_1302 totals in section 4. Their runtime schemas and emitted replay events
 contain BombGameState, BombPlayerState, BombDestination, TimedBomb, and spike
 plant/defuse/explosion evidence.
@@ -1996,6 +2017,10 @@ playerLoadouts but no mode, queue, or playlist key, and modes such as Spike Rush
 Swiftplay, or Premier may reuse Bomb assets. The CLI has no independent game-mode
 detector. Therefore the defensible inventory is the task brief's four Bomb-labelled
 inputs and **zero mode-labelled non-Bomb inputs**.
+
+This is retained as dated evidence, not a current inventory. `Saved\Demos`
+has since rotated to 1.vrf/2.vrf/3.vrf, the delegate's four-file JSON no longer
+matches, and master 3a4b04 now guards one stable copied 13.02 replay.
 
 No non-Bomb baseline was created and no claim about non-Bomb parsing is made.
 To close this item, supply at least one replay per desired non-Bomb mode together
@@ -2324,15 +2349,18 @@ This section records the four delegated items. Work was committed on the
 isolated `codex/needs-work` branch; master, valplay, and the C# source tree were
 not modified or merged by the delegate.
 
-### 14-A. Live effect decoder guard (fb41b96)
+### 14-A. Live effect decoder guard (fb41b96, 23fb6aa)
 
 The brief's count of eight Rust examples was stale: `effect.rs` contains nine.
 The new `tools/check_effect_decoder.py --check` runs those nine through the
 live Python decoder, adds two independently expected C# reference-bundle cases,
-and pins Python's partial-list malformed-input contract. All 12 pass. A
-deliberately corrupted byte produced exit 1; restoring it produced exit 0.
+and pins Python's partial-list malformed-input contract. All 12 pass. Review
+found that flipping bit 0 in the three one-byte empty arrays was observationally
+unchanged by that partial-list contract. Commit 23fb6aa flips the second bit
+(mask 0x02) for those empty payloads and pins every named case. All 12 deliberate
+corruptions now produce exit 1; the unmodified set produces exit 0.
 
-### 14-B. Untyped-row investigation and descriptor extraction (e1eb220, b68baaa, b10467b, b5b74db)
+### 14-B. Untyped-row investigation and descriptor extraction (e1eb220, b68baaa, b10467b, b5b74db, 519de0b, 81d4f88, 45223c9)
 
 Every count below uses the explicit denominator: 871,595 rows with every
 `value_*` column null, out of 1,240,444 total fields.parquet rows on 02d4d478.
@@ -2362,16 +2390,17 @@ field name exists.
 
 The generator also learned three previously invisible C# declaration shapes:
 11 `AddRaw` wrapper entries, 2 called BombGameState helper entries, and 29
-runtime agent-cache entries. Current generated output is 152 groups / 1,100
-name entries: Raw 164, Skip 154, Typed 782, plus 84 separately sorted
-explicit-handle aliases. No prior name key was deleted or type-changed.
+runtime agent-cache entries. Fresh raw generator output before the 24 pinned
+type corrections is 152 groups / 1,100 name entries: Raw 164, Skip 154, Typed
+782, plus 84 separately sorted explicit-handle aliases. Task B deleted no
+previously generated name key.
 
 Fix round 2 (b10467b) makes an explicit descriptor category override take
 precedence over an inherited Agent category, matching the C# catalog's
 effective `HasFlag(Agent)` filter. This prevents three Ability subclasses on
 current master's pawn-descriptor branch from receiving fabricated runtime
 ClassNetCaches. Unknown categories and unsupported override syntax now fail
-loudly. The f67 input remains byte-identical to the tracked 1,100-entry table.
+loudly. The f67 input retains the tracked 1,100-entry canonical table.
 
 Fix round 3 (b5b74db) closes the parser boundary exposed by review. A
 same-length C# code view masks comments and literal bodies before class and
@@ -2379,10 +2408,62 @@ category discovery, including nested interpolated expressions and braces in
 comments. Qualified and `global::` category type/member names are supported;
 real unknown or unsupported overrides still fail loudly. Regression tests pin
 qualified Ability suppression, `Agent | Ability`, `All`, comment/string
-decoys, and class-boundary braces. The complete Python tool suite is 13/13.
-Both live generations retain 29 real Agent caches and exclude the same three
-phantoms; the corrected/rustfmt f67 output remains byte-identical to the
-tracked table (SHA-256 `1E9BF29DA6B1B1618CEED8637FBB2628DBEC160976B228039B52228BDAA2DE69`).
+decoys, and class-boundary braces. At b5b74db the complete Python tool suite
+was 13/13. Both live generations retained 29 real Agent caches and excluded
+the same three phantoms.
+
+Fix round 4 (519de0b) closes the fail-silent source-parser boundaries then
+found by whole-branch review. It recognizes delimiter-counted plain and
+interpolated C# raw strings; limits category, Path, and Configure discovery to
+direct class members; bounds block and expression-bodied Configure methods;
+anchors literal handles to AddPropertyHandle or the discovered handle wrapper;
+and requires runtime-cache structural captures to be live code rather than
+comments or strings. Qualified/global identifiers remain supported. Alias and
+escaped-alias category return types are deliberately unsupported but now fail
+loudly with the owning class instead of silently inheriting.
+
+Fix round 5 (81d4f88) binds those structural matches to their actual C# owner.
+Raw-wrapper discovery is live-code-only and follows only the declaring class's
+base chain. Field names are extracted from aligned raw/code statements, so
+comment or string decoys cannot supply a name or type. Runtime caches are
+anchored to a live `ClassNetCacheDescriptor` constructor in the innermost
+owning type; their unique direct-member factory, returned `RpcDescriptor`
+initializer, complete `Name` RHS, and direct owning-class constant must all be
+unambiguous. Local factory shadowing, unsupported RHS expressions, and
+multi/trailing factory lists fail loudly instead of emitting or omitting data.
+Escaped class identifiers and the escaped runtime descriptor type are
+normalized. The first bounded review reported Critical 0 / Important 0 /
+Minor 0; two exact cross-reviews then found five additional lexical-boundary
+cases in the same modified surface.
+
+Fix round 6 (45223c9) pins those five cases. A direct factory-local constant or
+containing-method `Func<RpcDescriptor>` that shadows a class member now fails
+loudly. Runtime factory arrays find their closing bracket in the live aligned
+code view, so `]` inside a comment cannot truncate a multi-factory list. Only a
+direct factory-body return can supply the returned `RpcDescriptor` initializer,
+and duplicate declarations of an actual raw-wrapper owner cannot merge wrapper
+semantics across namespaces. All five fixtures failed before the fix and pass
+after it. The single bounded implementation review reported Critical 0 /
+Important 0 / Minor 0; the two original cross-reviewers then re-ran only their
+exact repros against the committed fix.
+
+This extractor is still a source-subset tool, not a general C# front end. This
+round did not add arbitrary escaped member spellings such as `@Path` or
+`@Configure`, qualified base-name resolution, same-name raw/typed wrapper
+overload resolution, or general ClassNetCache helper/comment/brace grammar.
+None of those shapes occurs in either pinned f67 or d2 descriptor input. If a
+future source tree introduces one, add a fixture and either support it or fail
+loudly before regenerating the table.
+
+The final Python tools suite is 53/53. Fresh raw f67 generation still yields
+1,100 names / 152 groups / Raw 164 / Skip 154 / Typed 782 / 84 aliases / 29
+runtime caches. After all 24 pinned type corrections, the ordered f67 entries
+and aliases are semantically identical to the tracked table. Raw d2 generation
+still yields 1,192 / 172 / 164 / 164 / 864 / 84, retains 29 real caches, and
+omits the three phantom paths. The raw artifact uses a one-struct-per-line,
+pre-correction layout and is not itself the canonical byte format; the tracked
+canonical Git blob remains unchanged at SHA-256
+`1E9BF29DA6B1B1618CEED8637FBB2628DBEC160976B228039B52228BDAA2DE69`.
 
 Fresh 02d4d478 export measurement:
 
@@ -2411,15 +2492,19 @@ Section 7-C contains the three-replay cost table, timing protocol, exact
 14,755-row round-trip audit, and the production decision gate. No Task C
 production source or baseline change was committed.
 
-### 14-D. Complete Rust ASCII enforcement (a0ea2b4)
+### 14-D. Complete Rust ASCII enforcement (a0ea2b4, 7e0051f)
 
 Task D translated every tracked Rust comment/doc/diagram to meaning-preserving
-ASCII, removed the three BOMs, and restored the net/sink mojibake and `??`
-damage from history. Pre-cleanup: 61 tracked Rust files, 44 affected files,
+ASCII and removed the three BOMs. It restored field/sink text from clean
+history and reconstructed lib/pipeline text from surviving context because no
+clean historical revision exists for those two files. Pre-cleanup: 61 tracked
+Rust files, 44 affected files,
 510 affected lines, 8,984 non-ASCII scalars over 28 code points. Post-cleanup:
 61 files, zero violations. `tools/check_ascii.py` scans complete raw file
-contents, not line-local string patterns. The real dirty tree and a planted
-tracked violation both failed before the restored tree passed.
+contents, not line-local string patterns. Commit 7e0051f anchors enumeration
+and reads to the repository root; root and nested-crate invocations both scan
+61 files. The real dirty tree and a planted tracked violation both failed
+before the restored tree passed.
 
 ### 14-E. Explained export baseline drift
 
@@ -2450,7 +2535,7 @@ cargo test --workspace                  243 regular + 3 doctests, 0 failed
 cargo clippy --workspace --all-targets  clean with -D warnings
 cargo fmt --check                       clean
 cargo build --release                   exit 0
-Python descriptor/adapter tests          13/13
+Python tools tests                       53/53
 effect decoder guard                     12/12
 ASCII guard                              61/61 tracked Rust files
 validate_corpus.py (13.01)              215/215; malformed 0
@@ -2458,6 +2543,7 @@ validate_corpus.py (13.01)              215/215; malformed 0
                                         fields 98,883,979
                                         RPCs 75,571,092
                                         skipped 1,972,080,670
+master check_decode_errors_corpus.py     215/215; unreadable 0; decode errors 0
 check_export_baseline.py                PASS after the explained 4-line update
 check_corpus_baseline.py 12.10/12.11/13.00  PASS
 compare_combat_report.py                ALL INTERESTING SHAPES MATCH
@@ -2487,12 +2573,15 @@ Current master depends on a separate clean C# worktree at
 `local/pawn-descriptors@d2b76f2`. It is a descendant of f67ea66 and contributes
 92 name entries across 20 ability groups that do not overlap Task B's 42 new
 name entries. After obtaining merge authority, preserve master's fixed
-build_1302 baseline and decode-error guard. Preserve b10467b and b5b74db:
-together they apply the nearest explicit category override, safely discover
-qualified overrides outside comments/literals, and prevent three phantom
-Ability ClassNetCaches. Then run that extractor against the d2b76f2 worktree,
+build_1302 baseline and decode-error guard. Preserve b10467b, b5b74db,
+519de0b, 81d4f88, and 45223c9: together they apply the nearest explicit
+category override, safely discover qualified overrides outside
+comments/literals/raw strings and nested types, scope wrapper/factory/name
+resolution to live owning declarations, reject ambiguous lexical shadows, and
+prevent three phantom Ability ClassNetCaches. Then run that extractor against
+the d2b76f2 worktree,
 followed by type corrections and rustfmt. A temporary clean generation with
-b5b74db produced exactly 1,192 names / 172 groups / Raw 164 / Skip 164 / Typed
+45223c9 produced exactly 1,192 names / 172 groups / Raw 164 / Skip 164 / Typed
 864 / 84 handle aliases, retained all 29 real runtime Agent caches, and omitted
 the three phantom paths. Regenerate -- never hand-merge -- the tracked table.
 
