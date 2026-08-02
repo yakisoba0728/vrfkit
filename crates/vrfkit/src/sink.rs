@@ -1165,12 +1165,48 @@ impl FieldSink for ExportSink<'_> {
                 let schema = self.get_array_schema(field_name.as_deref());
                 let flattened = decode_struct_array(raw, bit_count, schema, &mut self.stats.array);
                 let parent_name = field_name.as_deref().unwrap_or("_array");
-                for f in &flattened {
+                // Resolve every leaf's type before touching `self.records`.
+                //
+                // The overlay table is asked first, keyed on the name the
+                // REPLAY declares for that handle. UE flattens an array's
+                // element members into consecutive handles on the enclosing
+                // group, so the group's own net field export names them -- and
+                // the generated table already carries a type for most of them,
+                // straight from the C# descriptor.
+                //
+                // Before this, the only source was `decode_array_leaf`'s
+                // hardcoded handle->type match, which is a second copy of
+                // knowledge the table already holds and was missing entries.
+                // `DeathLocation` is the demonstrable case: handle 104, declared
+                // by the replay, typed `VectorDouble` in the table, arriving
+                // 3,492 times on 02d4d478 and emitted as an all-null `_h104`
+                // because the match had no arm for it.
+                //
+                // The hardcoded match stays as the fallback: it covers handles
+                // whose declared name has no table entry, and dropping it would
+                // trade one gap for another.
+                let leaf_types: Vec<Option<vrf_decode::FieldType>> = flattened
+                    .iter()
+                    .map(|f| {
+                        self.resolve_field_name(f.handle)
+                            .and_then(|n| TABLE.lookup(&self.current_group_path, &n))
+                            .filter(|ft| {
+                                !matches!(
+                                    ft,
+                                    vrf_decode::FieldType::Raw | vrf_decode::FieldType::Skip
+                                )
+                            })
+                    })
+                    .collect();
+
+                for (f, declared) in flattened.iter().zip(leaf_types) {
                     // Build full field name: "Rounds[0].RoundNumber" etc.
                     let full_name = format!("{parent_name}{}", f.path);
 
-                    // Decode leaf fields using known handle->type mapping.
-                    let (vi, vf, vb, vs) = decode_array_leaf(f.handle, &f.raw_bits, f.bit_count);
+                    let (vi, vf, vb, vs) = match declared {
+                        Some(ft) => decode_leaf_with(ft, &f.raw_bits, f.bit_count),
+                        None => decode_array_leaf(f.handle, &f.raw_bits, f.bit_count),
+                    };
 
                     self.records.fields.push(FieldRecord {
                         time_ms: self.time_ms,
@@ -1604,8 +1640,32 @@ fn resolve_known_subobject_class_path(object_path: &str) -> Option<&'static str>
         .map(|(_, class_path)| *class_path)
 }
 
-/// Decode a leaf field from a CombatRoundReports array using the known
-/// handle->type mapping.
+/// Decode one array leaf with a type the caller already resolved.
+///
+/// Split out so the overlay-driven path and the hardcoded-handle fallback share
+/// one decode-and-widen, rather than each growing its own copy of the match on
+/// `DecodedValue`.
+fn decode_leaf_with(
+    field_type: vrf_decode::FieldType,
+    raw: &[u8],
+    bit_count: u32,
+) -> (Option<i64>, Option<f64>, Option<bool>, Option<String>) {
+    use vrf_decode::{DecodeError, decode_field};
+
+    match decode_field(field_type, raw, bit_count) {
+        Ok(vrf_decode::DecodedValue::I64(v)) => (Some(v), None, None, None),
+        Ok(vrf_decode::DecodedValue::F64(v)) => (None, Some(v), None, None),
+        Ok(vrf_decode::DecodedValue::Bool(v)) => (None, None, Some(v), None),
+        Ok(vrf_decode::DecodedValue::Str(v)) => (None, None, None, Some(v)),
+        Err(DecodeError::RawOrSkip) | Err(_) => (None, None, None, None),
+    }
+}
+
+/// Fallback leaf typing for handles the overlay table cannot name.
+///
+/// The caller asks the table first, keyed on the name the replay declares for
+/// the handle. This map only sees what that misses, so it is a floor rather
+/// than the source of truth it used to be.
 ///
 /// Returns (value_i64, value_f64, value_bool, value_str). All None if the
 /// handle is not recognized or decoding fails.
@@ -1623,7 +1683,7 @@ fn decode_array_leaf(
     raw: &[u8],
     bit_count: u32,
 ) -> (Option<i64>, Option<f64>, Option<bool>, Option<String>) {
-    use vrf_decode::{DecodeError, FieldType, decode_field};
+    use vrf_decode::FieldType;
 
     let field_type = match handle {
         3 | 5 | 19 | 21 | 46 | 81 | 96 => FieldType::Int32,
@@ -1636,13 +1696,7 @@ fn decode_array_leaf(
         _ => return (None, None, None, None),
     };
 
-    match decode_field(field_type, raw, bit_count) {
-        Ok(vrf_decode::DecodedValue::I64(v)) => (Some(v), None, None, None),
-        Ok(vrf_decode::DecodedValue::F64(v)) => (None, Some(v), None, None),
-        Ok(vrf_decode::DecodedValue::Bool(v)) => (None, None, Some(v), None),
-        Ok(vrf_decode::DecodedValue::Str(v)) => (None, None, None, Some(v)),
-        Err(DecodeError::RawOrSkip) | Err(_) => (None, None, None, None),
-    }
+    decode_leaf_with(field_type, raw, bit_count)
 }
 
 #[cfg(test)]
