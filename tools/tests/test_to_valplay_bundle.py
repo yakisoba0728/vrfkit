@@ -206,5 +206,77 @@ class BlockPayloadExclusionTests(unittest.TestCase):
             self.assertNotIn(self.marker.encode(), events)
 
 
+class CombatReportLeafNameTests(unittest.TestCase):
+    """The bundle keys combat-report leaves on the handle, not on the wire name.
+
+    The parser labels each leaf with the name the replay declares. Two of those
+    declarations would break this bundle if they reached it: Riot's own typos
+    and 'b'-prefixed booleans are not what compute_metrics.py reads, and the
+    quartet HUDConfig/StateRemainingTime/GameTime/GamePhase is declared at
+    several handles in the SAME flattened element, so keying on the name would
+    merge distinct values into one JSON key.
+    """
+
+    GROUP = ("/Game/GameModes/Bomb/Bomb_CombatReportComponent"
+             ".Bomb_CombatReportComponent_C")
+
+    def relabel(self, field_name, handle):
+        return bundle._combat_report_leaf_name(self.GROUP, field_name, handle)
+
+    def test_wire_spelling_is_mapped_back_to_the_reference_member_name(self):
+        # Riot's typo, the 'b' prefix, and the Participant* prefix.
+        self.assertEqual(
+            self.relabel("Rounds[0].Reports[0].Interactions[0].DamageRecieved", 20),
+            "Rounds[0].Reports[0].Interactions[0].DamageReceived",
+        )
+        self.assertEqual(
+            self.relabel("Rounds[0].Reports[0].Interactions[0].bDidKill", 22),
+            "Rounds[0].Reports[0].Interactions[0].DidKill",
+        )
+        self.assertEqual(
+            self.relabel("Rounds[0].Reports[0].Interactions[0].ParticipantSubject", 11),
+            "Rounds[0].Reports[0].Interactions[0].Subject",
+        )
+        self.assertEqual(
+            self.relabel("Rounds[0].RoundNum", 3), "Rounds[0].RoundNumber",
+        )
+
+    def test_repeated_declared_names_stay_distinct_keys(self):
+        # Handles 6, 99 and 105 ALL declare 'HUDConfig' at the Reports level.
+        # Keying on the name would collapse three values into one.
+        labels = {
+            self.relabel("Rounds[0].Reports[0].HUDConfig", h) for h in (6, 99, 105)
+        }
+        self.assertEqual(
+            labels,
+            {
+                "Rounds[0].Reports[0]._h6",
+                "Rounds[0].Reports[0]._h99",
+                "Rounds[0].Reports[0]._h105",
+            },
+        )
+
+    def test_container_segments_and_foreign_groups_are_untouched(self):
+        # Only the last segment moves; the container segments already match.
+        self.assertEqual(
+            self.relabel(
+                "Rounds[0].Reports[0].Interactions[0].DealtInteractions[0]"
+                ".Regions[0].bIsWallPen",
+                48,
+            ),
+            "Rounds[0].Reports[0].Interactions[0].DealtInteractions[0]"
+            ".Regions[0].IsWallPen",
+        )
+        # A different group with a same-shaped name is not rewritten.
+        self.assertEqual(
+            bundle._combat_report_leaf_name(
+                "/Game/Something/Else_C", "Rounds[0].Reports[0].bDidKill", 22
+            ),
+            "Rounds[0].Reports[0].bDidKill",
+        )
+        # The bare array container row has no leaf segment to replace.
+        self.assertEqual(self.relabel("Rounds", 2), "Rounds")
+
+
 if __name__ == "__main__":
     unittest.main()

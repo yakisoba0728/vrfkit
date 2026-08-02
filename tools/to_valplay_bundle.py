@@ -873,6 +873,101 @@ def _build_shot_event(
 
 
 # ---------------------------------------------------------------------------
+# Combat report leaf labels
+#
+# The parser labels each flattened array leaf with the name the REPLAY declares
+# for that handle, which is the wire's own statement and the right thing for
+# fields.parquet to archive. It is NOT the right thing for this bundle, for two
+# independent reasons, and both are load-bearing.
+#
+# 1. compute_metrics.py is read-only and reads these keys by name: Subject,
+#    Team, DidKill, Died, AssistType, DamageDealt, DamageReceived, HitsDealt,
+#    HitsReceived, DealtInteractions[].Regions[].{Region,Hits,IsWallPen}. The
+#    wire spells six of those differently -- `bDidKill`, `bDied`, `bIsWallPen`,
+#    `ParticipantSubject`, and Riot's own typos `DamageRecieved` and
+#    `HitsRecieved`. Passing those through silently zeroes every metric that
+#    reads them.
+#
+# 2. The declared names are NOT unique within one flattened element. UE flattens
+#    the same four-member struct (HUDConfig / StateRemainingTime / GameTime /
+#    GamePhase) at eight nesting positions, so handles 6, 99 and 105 all declare
+#    `HUDConfig` at the Reports level, and 27/31, 62/66 pair up one level down.
+#    A payload is a JSON object built by last-wins assignment, so under the
+#    declared names those keys merge: measured on 02d4d478, 3,405 of 20,298
+#    distinct payload paths would collapse and their values would be destroyed
+#    with no counter moving. fields.parquet keeps the `handle` column and loses
+#    nothing; this projection has no such escape hatch.
+#
+# So the bundle keys on the handle, not on the emitted name: the reference's
+# member name where the C# parser has one, `_h{handle}` -- the label this bundle
+# already carried -- where it does not. That keeps events.ndjson byte-identical
+# across this change, which is what makes the metrics comparison meaningful.
+#
+# This is the "no hardcoded names in the parser" invariant working as intended:
+# the Rust side emits what the wire says, and the table that renames it for a
+# downstream consumer lives here, where labelling is a presentation concern.
+# ---------------------------------------------------------------------------
+COMBAT_REPORT_GROUP = "CombatReportComponent"
+
+# handle -> the member name the C# reference emits for it. Leaf handles only;
+# the container handles (4 Reports, 10 Interactions, 26 DealtInteractions,
+# 61 ReceivedInteractions, 44/79 Regions) are path segments the parser takes
+# from its own schema and never renames.
+COMBAT_REPORT_REFERENCE_NAMES = {
+    3: "RoundNumber",              # wire: RoundNum
+    5: "RoundNumber",
+    11: "Subject",                 # wire: ParticipantSubject
+    12: "Team",                    # wire: ParticipantTeamName
+    13: "CharacterIcon",           # wire: ParticipantCharacterIcon
+    18: "DamageDealt",
+    19: "HitsDealt",
+    20: "DamageReceived",          # wire: DamageRecieved (Riot's typo)
+    21: "HitsReceived",            # wire: HitsRecieved (Riot's typo)
+    22: "DidKill",                 # wire: bDidKill
+    23: "AssistType",
+    24: "KillerPlayerState",       # wire: ParticipantsKillerState
+    25: "WasKiller",               # wire: bWasKiller
+    45: "Region",
+    46: "Hits",
+    47: "Damage",
+    48: "IsWallPen",               # wire: bIsWallPen
+    49: "IsKill",                  # wire: bIsKill
+    50: "DestroyedArmor",
+    80: "Region",
+    81: "Hits",
+    82: "Damage",
+    83: "IsWallPen",               # wire: bIsWallPen
+    84: "IsKill",                  # wire: bIsKill
+    85: "DestroyedArmor",
+    96: "CombatReportIndex",
+    98: "ResurrectorPlayerState",
+    103: "Died",                   # wire: bDied
+}
+
+
+def _combat_report_leaf_name(group_path: str, field_name: str, handle) -> str:
+    """Relabel one combat-report array leaf for the bundle.
+
+    Only the LAST path segment is touched: everything before it is a container
+    segment the parser names from its own schema, so it already matches.
+    """
+    if not group_path or COMBAT_REPORT_GROUP not in group_path:
+        return field_name
+    if not field_name.startswith("Rounds["):
+        return field_name
+    head, dot, _leaf = field_name.rpartition(".")
+    if not dot:
+        return field_name
+    name = COMBAT_REPORT_REFERENCE_NAMES.get(handle)
+    if name is None:
+        # No reference name for this handle: keep the handle-derived label the
+        # bundle has always used. Its uniqueness is the whole point -- the
+        # declared name is not unique at this nesting level.
+        name = f"_h{handle}"
+    return head + dot + name
+
+
+# ---------------------------------------------------------------------------
 # Field rows -> nested payloads
 # ---------------------------------------------------------------------------
 def _normalize_prop_field_name(field_name: str, is_bool: bool) -> str:
@@ -1477,6 +1572,7 @@ def _build_property_events(cols: _FieldColumns, prop_groups: dict):
     """Build export_group_received events from the replicated-property groups."""
     col_time = cols.time_ms
     col_fn = cols.field_name
+    col_handle = cols.handle
     col_bits = cols.bit_count
     col_raw = cols.raw_bits
     col_i64 = cols.value_i64
@@ -1514,6 +1610,11 @@ def _build_property_events(cols: _FieldColumns, prop_groups: dict):
             )
             if value is None and not is_raw:
                 continue
+
+            # Combat report array leaves are labelled from the wire; the bundle
+            # wants the reference's member names. Keyed on the handle because
+            # the declared names are not unique within one element.
+            fn = _combat_report_leaf_name(gp, fn, col_handle[ri])
 
             # Normalize boolean field names (strip 'b' prefix)
             is_bool = col_bool[ri] is not None

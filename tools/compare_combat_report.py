@@ -8,13 +8,29 @@ wrong decoder -- a bit-level error would change the values themselves, not just
 their addresses.
 
 Restricted to the fields valplay actually derives metrics from.
+
+The two sides no longer spell these leaves the same way. `fields.parquet` now
+labels each array leaf with the name the REPLAY declares for its handle, which
+for six of the ten shapes below is not what the C# reference calls it: the wire
+says `DamageRecieved` and `HitsRecieved` (Riot's typos), `bDidKill`,
+`bIsWallPen`, and `ParticipantSubject`. So our side is relabelled through the
+same handle -> reference-name table the bundle adapter uses before the shapes
+are compared. Sharing that table is deliberate -- a second copy could drift, and
+this comparison is what would then quietly stop testing anything.
+
+`INTERESTING` stays in the C# spelling because the C# side of this comparison is
+read straight from the reference's own `events.ndjson`.
 """
 
 import collections
 import json
+import sys
 from pathlib import Path
 
 import pyarrow.parquet as pq
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from to_valplay_bundle import _combat_report_leaf_name  # noqa: E402
 
 CS = Path(
     r"C:\Users\yakihyuk0728\Documents\GitHub\valplay\pipeline\exports"
@@ -89,7 +105,8 @@ with CS.open("rb") as f:
 t = pq.read_table("out/nested/fields.parquet")
 cols = {
     n: t.column(n).to_pylist()
-    for n in ("group_path", "field_name", "value_i64", "value_f64", "value_bool", "value_str")
+    for n in ("group_path", "field_name", "handle",
+              "value_i64", "value_f64", "value_bool", "value_str")
 }
 ours = collections.defaultdict(collections.Counter)
 for i, g in enumerate(cols["group_path"]):
@@ -98,7 +115,7 @@ for i, g in enumerate(cols["group_path"]):
     n = cols["field_name"][i]
     if not n or not n.startswith("Rounds"):
         continue
-    s = shape(n)
+    s = shape(_combat_report_leaf_name(g, n, cols["handle"][i]))
     if s not in INTERESTING:
         continue
     for c in ("value_i64", "value_f64", "value_bool", "value_str"):

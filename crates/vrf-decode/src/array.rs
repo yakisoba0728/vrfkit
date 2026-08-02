@@ -100,16 +100,30 @@ pub struct ArrayDecodeStats {
 ///
 /// If `schema` is None, we treat all elements as opaque structs and emit each
 /// field without attempting to recurse into sub-arrays.
+/// `declared` carries the names the REPLAY itself declares for this group's
+/// handles, indexed by handle: slot `h` holds the declared name for handle `h`,
+/// or `None` where the replay declares nothing there. Pass `&[]` when no
+/// declaration is available; the schema's own names are then the only source.
+/// See [`resolve_leaf_label`] for how the two sources are ordered.
 pub fn decode_struct_array(
     data: &[u8],
     bit_count: u32,
     schema: Option<&ArrayFieldSchema>,
+    declared: &[Option<&str>],
     stats: &mut ArrayDecodeStats,
 ) -> Vec<FlattenedField> {
     let mut output = Vec::new();
     let mut reader = BitReader::with_bit_len(data, u64::from(bit_count));
     let mut path_buf = String::with_capacity(64);
-    decode_array_level(&mut reader, schema, 0, &mut path_buf, &mut output, stats);
+    decode_array_level(
+        &mut reader,
+        schema,
+        declared,
+        0,
+        &mut path_buf,
+        &mut output,
+        stats,
+    );
     output
 }
 
@@ -133,6 +147,7 @@ pub struct ArrayFieldSchema {
 fn decode_array_level(
     reader: &mut BitReader<'_>,
     schema: Option<&ArrayFieldSchema>,
+    declared: &[Option<&str>],
     depth: u32,
     path_buf: &mut String,
     output: &mut Vec<FlattenedField>,
@@ -191,7 +206,7 @@ fn decode_array_level(
         let _ = write!(path_buf, "[{index}]");
 
         // Decode struct fields within this element.
-        decode_struct_fields(reader, schema, depth, path_buf, output, stats);
+        decode_struct_fields(reader, schema, declared, depth, path_buf, output, stats);
 
         // Restore path buffer.
         path_buf.truncate(path_prefix_len);
@@ -202,6 +217,7 @@ fn decode_array_level(
 fn decode_struct_fields(
     reader: &mut BitReader<'_>,
     schema: Option<&ArrayFieldSchema>,
+    declared: &[Option<&str>],
     depth: u32,
     path_buf: &mut String,
     output: &mut Vec<FlattenedField>,
@@ -281,6 +297,7 @@ fn decode_struct_fields(
                 decode_array_level(
                     &mut sub_reader,
                     Some(sub),
+                    declared,
                     depth + 1,
                     path_buf,
                     output,
@@ -301,7 +318,7 @@ fn decode_struct_fields(
 
             let path_prefix_len = path_buf.len();
             use std::fmt::Write;
-            let field_label = resolve_field_label(schema, handle);
+            let field_label = resolve_leaf_label(declared, schema, handle);
             let _ = write!(path_buf, ".{field_label}");
             output.push(FlattenedField {
                 path: path_buf.clone(),
@@ -337,6 +354,34 @@ fn emit_remaining_raw(
         bit_count: remaining as u32,
         raw_bits: raw,
     });
+}
+
+/// Resolve a LEAF handle's label, preferring the name the replay declares.
+///
+/// Order: the replay's own net field export, then the hardcoded schema, then
+/// `_h{handle}`.
+///
+/// The replay wins because it is the wire's own statement about the field, and
+/// the schema is a transcription of the C# reference that can disagree with it:
+/// handle 3 is `RoundNum` on the wire and `RoundNumber` in the schema, and
+/// Riot's spellings carry typos (`DamageRecieved`, `HitsRecieved`) that the
+/// schema silently corrected. The schema stays as the floor for handles a
+/// replay does not declare.
+///
+/// Only LEAF labels use this. Container segments -- the path components a
+/// sub-array introduces -- keep [`resolve_field_label`], because the schema is
+/// what decides the nesting in the first place and the declaration adds nothing
+/// there: handles 44 and 79 both declare `RegionalDamageInteractions`, so the
+/// wire cannot tell the two apart where the schema can.
+fn resolve_leaf_label(
+    declared: &[Option<&str>],
+    schema: Option<&ArrayFieldSchema>,
+    handle: u32,
+) -> String {
+    if let Some(name) = declared.get(handle as usize).copied().flatten() {
+        return name.to_owned();
+    }
+    resolve_field_label(schema, handle)
 }
 
 /// Resolve a handle to a human-readable field label using the schema's name map.
@@ -528,7 +573,7 @@ mod tests {
         let data = bits_to_bytes(&bits);
         let bit_count = bits.len() as u32;
         let mut stats = ArrayDecodeStats::default();
-        let fields = decode_struct_array(&data, bit_count, None, &mut stats);
+        let fields = decode_struct_array(&data, bit_count, None, &[], &mut stats);
 
         assert_eq!(stats.elements_decoded, 2);
         assert_eq!(stats.fields_emitted, 2);
@@ -586,13 +631,161 @@ mod tests {
         };
 
         let mut stats = ArrayDecodeStats::default();
-        let fields = decode_struct_array(&data, bit_count, Some(&OUTER), &mut stats);
+        let fields = decode_struct_array(&data, bit_count, Some(&OUTER), &[], &mut stats);
 
         assert_eq!(stats.elements_decoded, 2); // 1 outer + 1 inner
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].path, "[0].Reports[0]._h7");
         assert_eq!(fields[0].handle, 7);
         assert_eq!(fields[0].bit_count, 16);
+    }
+
+    /// One element carrying handles 3 (schema-named), 7 (schema-unnamed) and
+    /// 40 (declared by neither).
+    fn one_element_with_handles(handles: &[(u32, u32)]) -> (Vec<u8>, u32) {
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 1); // elementCount
+        write_int_packed(&mut bits, 1); // encodedIndex=1 -> index 0
+        for &(handle, payload) in handles {
+            write_int_packed(&mut bits, handle + 1);
+            write_int_packed(&mut bits, payload);
+            bits.extend(std::iter::repeat_n(true, payload as usize));
+        }
+        write_int_packed(&mut bits, 0); // end of element
+        write_int_packed(&mut bits, 0); // array terminator
+        let bit_count = bits.len() as u32;
+        (bits_to_bytes(&bits), bit_count)
+    }
+
+    /// The replay's declaration outranks the hardcoded schema on a leaf.
+    ///
+    /// Handle 3 is the live case: `COMBAT_ROUNDS_SCHEMA` calls it `RoundNumber`
+    /// and every replay declares it `RoundNum`.
+    #[test]
+    fn a_declared_leaf_name_beats_the_schema_name() {
+        let (data, bit_count) = one_element_with_handles(&[(3, 32)]);
+        let mut declared: Vec<Option<&str>> = vec![None; 8];
+        declared[3] = Some("RoundNum");
+
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(
+            &data,
+            bit_count,
+            Some(&COMBAT_ROUNDS_SCHEMA),
+            &declared,
+            &mut stats,
+        );
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].path, "[0].RoundNum");
+    }
+
+    /// A handle the schema cannot name is labelled by the replay, not `_hN`.
+    #[test]
+    fn a_declared_leaf_name_replaces_the_handle_placeholder() {
+        let (data, bit_count) = one_element_with_handles(&[(7, 32)]);
+        let mut declared: Vec<Option<&str>> = vec![None; 8];
+        declared[7] = Some("StateRemainingTime");
+
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(
+            &data,
+            bit_count,
+            Some(&COMBAT_ROUNDS_SCHEMA),
+            &declared,
+            &mut stats,
+        );
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].path, "[0].StateRemainingTime");
+    }
+
+    /// With no declaration the schema still names what it can, and an
+    /// undeclared, unschematised handle still falls through to `_hN`.
+    #[test]
+    fn an_undeclared_leaf_falls_back_to_schema_then_placeholder() {
+        let (data, bit_count) = one_element_with_handles(&[(3, 32), (7, 32)]);
+
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(
+            &data,
+            bit_count,
+            Some(&COMBAT_ROUNDS_SCHEMA),
+            &[],
+            &mut stats,
+        );
+
+        assert_eq!(fields.len(), 2);
+        // Schema names handle 3; nothing names handle 7.
+        assert_eq!(fields[0].path, "[0].RoundNumber");
+        assert_eq!(fields[1].path, "[0]._h7");
+    }
+
+    /// A declaration shorter than the handle it is asked about must not panic
+    /// and must fall through, not silently mislabel.
+    #[test]
+    fn a_handle_past_the_end_of_the_declaration_falls_back() {
+        let (data, bit_count) = one_element_with_handles(&[(7, 32)]);
+        // Only handles 0..=3 declared; handle 7 is past the end.
+        let declared: Vec<Option<&str>> = vec![None, None, None, Some("RoundNum")];
+
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(
+            &data,
+            bit_count,
+            Some(&COMBAT_ROUNDS_SCHEMA),
+            &declared,
+            &mut stats,
+        );
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].path, "[0]._h7");
+    }
+
+    /// Container segments keep the schema's name even when the replay declares
+    /// a different one, because the schema is what decides the nesting.
+    #[test]
+    fn a_container_segment_keeps_its_schema_name() {
+        // Outer element 0 carries handle 4 (Reports, a sub-array) whose single
+        // element carries handle 5.
+        let mut inner = Vec::new();
+        write_int_packed(&mut inner, 1); // inner elementCount
+        write_int_packed(&mut inner, 1); // encodedIndex=1
+        write_int_packed(&mut inner, 6); // encodedHandle=6 -> handle 5
+        write_int_packed(&mut inner, 32);
+        inner.extend(std::iter::repeat_n(true, 32));
+        write_int_packed(&mut inner, 0); // end inner element
+        write_int_packed(&mut inner, 0); // inner terminator
+
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 1); // outer elementCount
+        write_int_packed(&mut bits, 1); // encodedIndex=1
+        write_int_packed(&mut bits, 5); // encodedHandle=5 -> handle 4
+        write_int_packed(&mut bits, inner.len() as u32);
+        bits.extend(inner);
+        write_int_packed(&mut bits, 0); // end outer element
+        write_int_packed(&mut bits, 0); // outer terminator
+
+        let data = bits_to_bytes(&bits);
+        let bit_count = bits.len() as u32;
+
+        // Declare a DIFFERENT name for the container handle 4, and the real
+        // declared name for the leaf handle 5.
+        let mut declared: Vec<Option<&str>> = vec![None; 8];
+        declared[4] = Some("NotReports");
+        declared[5] = Some("RoundNumber");
+
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(
+            &data,
+            bit_count,
+            Some(&COMBAT_ROUNDS_SCHEMA),
+            &declared,
+            &mut stats,
+        );
+
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].path, "[0].Reports[0].RoundNumber");
     }
 
     #[test]
@@ -604,7 +797,7 @@ mod tests {
         let data = bits_to_bytes(&bits);
         let bit_count = bits.len() as u32;
         let mut stats = ArrayDecodeStats::default();
-        let fields = decode_struct_array(&data, bit_count, None, &mut stats);
+        let fields = decode_struct_array(&data, bit_count, None, &[], &mut stats);
 
         assert!(fields.is_empty());
         assert_eq!(stats.elements_decoded, 0);
