@@ -31,3 +31,6 @@ Thumbs.db
 # Agent worktrees created by the Claude Code harness. Transient scratch
 # checkouts of this same repo; never part of a commit.
 /.claude/
+
+# Local linked worktrees used for isolated feature development.
+/.worktrees/
