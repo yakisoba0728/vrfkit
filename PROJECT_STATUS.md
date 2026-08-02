@@ -2965,3 +2965,134 @@ At final delegate verification, the primary C# repository was clean at
 `local/vrfkit-descriptors@f67ea66`, the separate pawn-descriptor worktree was
 clean at d2b76f2, C# main remained `2d2e05e`, and valplay was clean at
 `main@4578a5a`.
+
+---
+
+## 15. The untyped tail, triaged (2026-08-02)
+
+860,384 of 02d4d478's 1,240,444 `fields.parquet` rows carry no decoded value,
+across 406 groups. Section 14-B triaged the five largest (756,053 rows). This
+covers the remaining **386 groups / 104,331 rows**, which nobody had looked at.
+
+### 15-A. Bottom line: nothing in the tail is an extractor bug
+
+**Zero case-1 findings.** No group in the tail is one the C# describes and our
+generator fails to read. No near-miss spellings, no dead handle aliases, no
+cross-replay anomalies.
+
+    verdict                                          groups     rows
+    no descriptor for these FIELDS (group is bound;      57   36,294
+      residue is C# Ignore(), .Decode()-Raw, or
+      names C# never declares)
+    no C# descriptor for the class                     215   34,723
+    no ClassNetCacheDescriptor for the class            46   20,870
+    stably-named subobject, class not on the wire       68   12,444
+      (7-H territory)
+
+The hunt was run two independent ways and both came back negative:
+
+- **Name diff, C# to table.rs**, using a from-scratch extractor rather than
+  `extract_descriptors.py` so a bug in the generator could not hide itself.
+  142 paths / 1,125 name pairs; only 3 names absent from the table, none
+  recovering a row. That independent extractor was validated against the two
+  known shapes first -- it recovers `AddDeathFields(32)`'s four names (13-D)
+  and base-class `AddSharedFields()`.
+- **Method-agnostic**, comparing the reference's emitted payload keys against
+  our all-null groups. Two apparent hits, both false: `TeamEconomy` and
+  `RoundResults` on `BombGameState_C`, where we emit the array container as Raw
+  *and* fully decoded children (`RoundResults[0..17].{RoundNumber, RoundResult,
+  WinningTeam, WinningTeamRole}`, 72 rows, 0 null). A representation
+  difference, not a loss.
+
+A second apparent class -- "the reference decodes a key we have no row for", 16
+pairs -- is entirely the reference's JSON dropping Unreal's `b` prefix. Its
+`CrouchHeld` is our `bCrouchHeld`: 326 rows on Hunter_PC, zero null.
+
+**The `AggroBot` casing bug (13-C) is not present again.** 386 tail paths
+against 158 C# path literals, normalised to lowercase with separators stripped:
+zero groups match only after normalisation. Fuzzy match at ratio >= 0.93: zero.
+
+### 15-B. One dead table entry, and it is a real upstream gap [OPEN]
+
+`/Script/ShooterGame.AresGameStateBase:MulticastResetForRespawn` declares
+`SpawnTransform` as `FieldType::Transform`. It is the **only** `Transform`
+entry among all 1,192 and it is never hit on any of the 11 replays.
+
+The descriptor's model of the wire is wrong.
+`MulticastResetForRespawnParameters.cs:16-22` declares one `FTransform?
+SpawnTransform` via `AddProperty(...).Transform()`. The replay's net field
+export declares **four** handles for that group:
+
+    handle 0  ShooterCharacter    173 rows, all null (Raw on both sides)
+    handle 1  249                 173 rows, all null
+    handle 2  Translation         173 rows, all null
+    handle 3  Scale3D             173 rows, all null
+
+So the transform is replicated as separate named components, not as one
+`FTransform`. `SpawnTransform` matches nothing, and 519 rows stay raw.
+
+**This is fixable and the evidence for it already exists in the table.**
+`MulticastAddSmokeScreenPoint` declares both `Translation` and `Scale3D` as
+`FieldType::VectorDouble` -- the same names, with a settled type. That is the
+13-J pattern exactly: the wire supplies the names and an existing descriptor
+already declares them.
+
+`249` is unnamed and unknown. An `FTransform` is rotation + translation +
+scale, and the other two are accounted for, so rotation is the obvious
+hypothesis -- but it is a hypothesis, and the falsifiable test is the strict
+one this repository already has: a wrong type produces `Err` and moves
+`Decode errors` off zero. Do not type it on the strength of the reasoning
+alone.
+
+The reference loses the same three fields: its `events.ndjson` emits
+`MulticastResetForRespawn` 173 times with a payload of `{"ShooterCharacter":
+{BitCount, Data}}` and nothing else. This is upstream absence, not our
+regression.
+
+NOT DONE, deliberately: it needs a C# descriptor change and a `table.rs`
+regeneration, and a delegate session was mid-run against that checkout with a
+pinned export baseline. Do it when that lands.
+
+### 15-C. Bomb_CombatReportComponent [OPEN, unverified]
+
+Outside the tail by size (11,641 null rows of 21,268, so it sits with the head
+groups) and outside 14-B's five, so nobody has triaged it.
+
+22 typed table entries for this group are never hit on any of the 11 replays,
+while the null rows are nested array leaves the struct-array decoder produced:
+`Rounds[12].Reports[0].Interactions[0]._hK` and similar. So this group has
+**two** decode paths -- the overlay table and `decode_struct_array` via
+`COMBAT_ROUNDS_SCHEMA` -- and the overlay half appears to be dead while the
+struct half leaves some leaves untyped.
+
+`compare_combat_report.py` reports ALL INTERESTING SHAPES MATCH, so whatever
+the gap is, it does not move anything that harness reads. Worth one session;
+not this one.
+
+### 15-D. What this triage does NOT establish
+
+Recorded because the strength of the evidence is uneven across the table, and
+reading it as uniform would be wrong.
+
+**Direct reference evidence covers 35 of 386 groups / 29,606 of 104,331 rows.**
+The other 351 groups rest on a reading of the C# source. In particular: the
+reference emits only 41 distinct `export_group_path` values under
+`parse_profile: viewer` against 475 declared groups, so "absent from both the
+emitted set and the filtered summary" -- 143 groups, 31,869 rows -- means the
+profile never asked for it, **not** that the reference tried and failed. That
+bucket is not parity evidence.
+
+**The reference bundle is `parser_version 1.0.0+2d2e05e`**, which predates both
+`f67ea66` (13-C) and `f0dd7e7` (13-J). Its `was_decoded: false` set still
+contains AggroBot and the pawn classes current source covers. Every verdict
+above rests on the current C# source; the bundle is corroboration only.
+
+**The 20 head groups (756,053 rows) were out of scope here**, including the 15
+that 14-B did not reach.
+
+**Unhit-entry sweep**: 195 of 1,192 entries plus 84 aliases go unhit across 11
+replays. 102 are `Skip` and 26 are `Raw`, so they are unhit by construction;
+the typed remainder are struct-member names reached under nested spellings. All
+84 `OverlayHandleEntry` aliases resolve to `(group, handle)` pairs the replays
+really declare; 2 are load-bearing, none dead. `SpawnTransform` is the only
+genuinely dead typed entry.
