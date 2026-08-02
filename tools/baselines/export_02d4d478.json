@@ -19,14 +19,14 @@
   "overlay_decoded_ok": 369741,
   "overlay_decode_errors": 0,
   "overlay_raw_skip": 73984,
-  "overlay_not_in_table": 511725,
-  "overlay_no_field_name": 33529,
+  "overlay_not_in_table": 511914,
+  "overlay_no_field_name": 33340,
   "overlay_rows_offered": 988979
  },
  "parquet": {
   "fields": {
    "rows": 1246809,
-   "bytes": 13567436
+   "bytes": 13566472
   },
   "movement": {
    "rows": 1839607,
