@@ -1125,6 +1125,10 @@ impl GuidPathSink for ExportSink<'_> {
         };
         self.cache.set_net_guid_path(guid, path.to_string(), outer);
     }
+
+    fn path_for_guid(&self, guid: u32) -> Option<&str> {
+        self.cache.get_path_by_guid(guid)
+    }
 }
 
 /// The field-name prefix used for RPC parameters.

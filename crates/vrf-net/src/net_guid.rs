@@ -21,6 +21,22 @@ use crate::types::{ExportFlags, MAX_NET_GUID_RECURSION, NetworkGuid};
 pub trait GuidPathSink {
     /// A GUID path was read from the wire.
     fn register_path(&mut self, guid: u32, path: &str, outer_guid: NetworkGuid);
+
+    /// The path this GUID is known by, if the receiver keeps one.
+    ///
+    /// The replication layer needs this to decide the net-player-index byte the
+    /// same way the reference does -- `ReadNetPlayerIndexStage.cs` resolves the
+    /// channel's archetype and actor paths and asks whether either names a
+    /// PlayerController. Answering from the receiver's cache rather than from a
+    /// set this layer maintains itself is what makes the two agree: paths reach
+    /// the cache by more routes than pass through here, so a set built only
+    /// from `register_path` calls is missing entries the cache already has.
+    ///
+    /// Defaulted to `None` so a sink that keeps no cache need not implement it.
+    /// A sink that returns `None` gets the pre-cache behaviour.
+    fn path_for_guid(&self, _guid: u32) -> Option<&str> {
+        None
+    }
 }
 
 /// Read a net GUID reference (and any associated export data) from the stream.

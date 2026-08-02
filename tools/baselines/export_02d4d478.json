@@ -5,28 +5,28 @@
   "packets": 530401,
   "export_groups": 475,
   "content_blocks": 608020,
-  "rep_layout_blocks": 258891,
-  "class_net_cache_blocks": 349120,
-  "fields": 429633,
+  "rep_layout_blocks": 258892,
+  "class_net_cache_blocks": 349119,
+  "fields": 429637,
   "rpcs": 342735,
   "actor_opens": 2028,
   "actor_closes": 1799,
   "bunches": 530401,
   "malformed_packets": 0,
-  "skipped_bits": 17507210,
+  "skipped_bits": 17506923,
   "movement_rows": 1839607,
   "net_guid_rows": 16167,
-  "overlay_decoded_ok": 369741,
+  "overlay_decoded_ok": 369743,
   "overlay_decode_errors": 0,
   "overlay_raw_skip": 73984,
-  "overlay_not_in_table": 511914,
+  "overlay_not_in_table": 511916,
   "overlay_no_field_name": 33340,
-  "overlay_rows_offered": 988979
+  "overlay_rows_offered": 988983
  },
  "parquet": {
   "fields": {
-   "rows": 1246809,
-   "bytes": 13566472
+   "rows": 1246812,
+   "bytes": 13567554
   },
   "movement": {
    "rows": 1839607,

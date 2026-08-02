@@ -486,10 +486,25 @@ impl ReplicationReader {
         //
         // C# reference: ReadNetPlayerIndexStage.cs -- checks OpenedDynamicActor
         // && IsPlayerController(channel archetype/class/actor path).
-        if header.b_open
-            && actor_net_guid.is_dynamic()
-            && !payload.at_end()
-            && (pc_guids.contains(&archetype_net_guid.0) || pc_guids.contains(&actor_net_guid.0))
+        //
+        // The path comes from the sink's cache, not from `pc_guids`. That set is
+        // filled only by paths passing through `PathInterceptSink`, while
+        // `vrf-schema`'s reader writes chunk-level GUID exports straight into
+        // the cache -- so for the controller, which opens as the first dynamic
+        // actor, the cache knows the archetype path and the set does not.
+        //
+        // Missing this byte does not desync visibly. Combined with the spawn
+        // velocity bit below it started the controller's opening bunch nine bits
+        // early, and the misframed header happened to re-synchronise: it
+        // consumed 11 bits where the real header consumes 2, so the content-bit
+        // count was read at the same offset and every later block framed
+        // identically. The controller's own property block was simply routed to
+        // the ClassNetCache path and never walked. See PROJECT_STATUS 17-A.
+        let is_player_controller = [archetype_net_guid.0, actor_net_guid.0]
+            .iter()
+            .filter_map(|&g| sink.path_for_guid(g))
+            .any(is_player_controller_path);
+        if header.b_open && actor_net_guid.is_dynamic() && !payload.at_end() && is_player_controller
         {
             let _ = payload.read_u8();
         }
@@ -623,24 +638,20 @@ impl ReplicationReader {
         }
         // Scale -- defaults to unit scale, not to the origin.
         state.spawn_scale = read_optional_quantized_vector(payload, 10, UNIT_SCALE)?;
-        // Velocity -- only serialized when the actor class has
-        // bReplicateMovement == true. PlayerController actors (the
-        // BaseReplayController in VALORANT) set this to false, so their spawn
-        // data omits velocity entirely. Detection relies on the archetype or
-        // actor GUID having been registered as a PlayerController path in an
-        // earlier package-map export bunch.
+        // Velocity -- unconditional, exactly as NewActorSerializer.cs:69-72
+        // reads it.
         //
-        // For the very first dynamic actor (GUID 2), the package-map export
-        // has not yet arrived so pc_guids is empty. Since the first dynamic
-        // actor in VALORANT replays is always the BaseReplayController (which
-        // does NOT replicate movement), we also skip velocity when the actor
-        // GUID equals 2 -- the lowest possible dynamic GUID.
-        let is_pc = sink.pc_guids.contains(&state.archetype_net_guid.0)
-            || sink.pc_guids.contains(&state.actor_net_guid.0)
-            || state.actor_net_guid.0 == 2;
-        if !is_pc {
-            state.spawn_velocity = read_optional_quantized_vector(payload, 10, ORIGIN)?;
-        }
+        // This used to be gated on the actor being a PlayerController, on the
+        // stated premise that "PlayerController actors set bReplicateMovement ==
+        // false, so their spawn data omits velocity entirely". That premise was
+        // invented; nothing in the reference or the wire supports it. The bit is
+        // present with value 0, which is exactly why the reference reports a
+        // zero velocity rather than none.
+        //
+        // Skipping it cost one bit at the head of the controller's opening
+        // bunch. See PROJECT_STATUS 17-A for why one bit was invisible and why
+        // this must be fixed together with the net-player-index byte.
+        state.spawn_velocity = read_optional_quantized_vector(payload, 10, ORIGIN)?;
         Ok(())
     }
 
