@@ -89,14 +89,19 @@ cargo build --release -p vrfkit
 .\target\release\vrfkit.exe export `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf\02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf" `
   --out out\nested
-# Must NOT change: content blocks 608020, fields 429633, RPCs 342735,
+# Must NOT change: content blocks 608020, fields 429637, RPCs 342735,
 #                  movement 1839607, NetGUID rows 16167, decode errors 0
 python tools\compare_combat_report.py
 # Must print: ALL INTERESTING SHAPES MATCH
 python tools\validate_corpus.py .\target\release\vrfkit.exe `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
-# Baseline: blocks 136,545,822  fields 98,883,979  rpcs 75,571,092
-#           malformed 0  skipped 1,972,080,670    (~30s, runs 16-wide)
+# Baseline: blocks 136,545,822  fields 98,884,839  rpcs 75,571,092
+#           malformed 0  skipped 1,972,018,965    (~30s, runs 16-wide)
+# `fields` and `skipped` were re-measured against an unmodified HEAD binary on
+# 2026-08-02 (18-A). db42e6a moved both and refreshed every build baseline
+# without updating this block, so it read 429633 / 98,883,979 / 1,972,080,670
+# for two commits. The dated per-section records further down still quote the
+# pre-db42e6a figures and are left as the historical measurements they are.
 python tools\check_decode_errors_corpus.py .\target\release\vrfkit.exe `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
 # Expected: OK: every replay reported Decode errors: 0   (~70s, 8-wide)
@@ -3118,6 +3123,14 @@ Flagged as an unverified lead when this triage was written, then checked. It is
 the same verdict as the rest of the tail: upstream absence, and we are ahead of
 the reference rather than behind it.
 
+SUPERSEDED 2026-08-02 by f5feb82 and ce02f1a, see 18. Both halves of the next
+paragraph are now false: the null count fell from 11,641 to 3,032 when the
+walker started asking the overlay table for leaf types, and "a handle we have no
+name for" no longer describes anything -- the REPLAY names all 70 handles this
+group declares, and the leaf label now comes from that declaration. What
+survives is the verdict: those handles are ones the C# reference does not read,
+and we keep their bits where it discards them.
+
 11,641 of its 21,268 rows carry no decoded value. They are not overlay-table
 misses -- this group is decoded by `decode_struct_array` against
 `COMBAT_ROUNDS_SCHEMA`, and `array.rs:355` labels any handle the schema does not
@@ -3648,3 +3661,117 @@ for this path rests on two other legs instead:
   still is: it prints Decoded OK 352,702 / Raw/Skip 72,519 / Not in table
   530,229 / Typed 35.7% against a measured 369,741 / 73,984 / 511,914 / 37.4%.
   Left alone deliberately rather than half-corrected.
+
+---
+
+## 18. Array leaf names now come from the replay (2026-08-02)
+
+f5feb82 made the combat-report walker ask the overlay table for leaf TYPES,
+keyed on the name the replay declares for each handle. It left the NAMES on
+`COMBAT_ROUNDS_SCHEMA`, a hardcoded handle->name map, so the job was half done
+in two visible ways: 8,609 recovered leaves shipped as `_h{handle}`, and where
+the schema did name a handle it sometimes contradicted the wire -- the schema
+calls handle 3 `RoundNumber`, every replay declares it `RoundNum`.
+
+`ce02f1a` closes it. `decode_struct_array` now takes the group's declared names
+indexed by handle, and `resolve_leaf_label` orders them declaration -> schema ->
+`_h{handle}`. The schema stays as the floor for handles a replay does not
+declare, and it still decides the NESTING: container path segments keep their
+schema name, because handles 44 and 79 both declare `RegionalDamageInteractions`
+and the wire cannot tell those apart where the schema can.
+
+### 18-A. What moved, at row level
+
+All 11 cross-validated replays exported before and after and compared
+POSITIONALLY, not by join. Same row count on every replay, and all NINE of
+`time_ms`, `packet_id`, `channel_index`, `actor_net_guid`, `object_net_guid`,
+`group_path`, `handle`, `bit_count`, `raw_bits` identical at every position.
+
+```
+rows that changed field_name : 193,241   (15,560 on 02d4d478)
+rows that gained a value     : 0
+rows that LOST a value       : 0
+rows whose value CHANGED     : 0
+groups touched               : 1  (Bomb_CombatReportComponent, all 11 replays)
+movement/actors/net_guids    : byte-identical on all 11
+```
+
+49 distinct path shapes move on 02d4d478. 34 are `_hN` placeholders gaining a
+real name -- the `HUDConfig` / `StateRemainingTime` / `GameTime` / `GamePhase`
+quartet at each nesting position, plus `DamageType` and `_h104` ->
+`DeathLocation`. The other 15 are the wire correcting us: `RoundNum`,
+`bDidKill`, `bDied`, `bWasKiller`, `bIsKill`, `bIsWallPen`, `ParticipantSubject`,
+`ParticipantTeamName`, `ParticipantCharacterIcon`, `ParticipantsKillerState`,
+and Riot's own typos `DamageRecieved` and `HitsRecieved`.
+
+Per-column check, stronger than the row diff: of the 14 columns in
+`fields.parquet`, exactly ONE changed its compressed bytes -- `field_name`,
+675,934 -> 677,634. The other 13, including all four value columns, are
+byte-identical page for page. That is the whole of the single export-baseline
+DRIFT line (13,584,643 -> 13,586,343 bytes, row count unchanged).
+
+### 18-B. The bundle deliberately does NOT follow, and that is the load-bearing half
+
+The declared names are NOT unique within one flattened element. UE flattens the
+same four-member struct at eight nesting positions, so handles 6, 99 and 105 all
+declare `HUDConfig` at the Reports level, and 27/31 and 62/66 pair up one level
+down. A bundle payload is a JSON object built by last-wins assignment, so keying
+it on the declared name MERGES those.
+
+Measured on the pre-change export, before any of this was written: 3,405 of
+20,298 distinct payload paths would collapse. Then measured directly, by
+building one bundle with the adapter mapping deliberately disabled: the
+combat-report leaf values in `events.ndjson` fall from 26,640 to **22,417**.
+4,223 values destroyed, and NOTHING in the sweep would have seen it --
+`fields.parquet` stays 1:1 because only `field_name` moves, and
+`compute_metrics.py` reads none of these names, so 16/21 and all 231 cells stay
+green over the loss. This is another change whose damage is invisible to every
+counter, the third recorded this session.
+
+So `to_valplay_bundle.py` keys combat-report leaves on the HANDLE: the C#
+reference's member name where it has one, `_h{handle}` -- the label the bundle
+already carried -- where it does not. `fields.parquet` keeps the `handle` column
+and loses nothing; this projection has no such escape hatch. That is the "no
+hardcoded names in the parser" invariant working as intended, with the renaming
+table in the adapter where labelling is a presentation concern.
+`compare_combat_report.py` imports that same table rather than growing a second
+copy that could drift.
+
+Result: all 44 bundle files (11 replays x 4) are BYTE-IDENTICAL before and
+after, and all 231 `xval_summary.json` cells carry an identical verdict. 16/21
+unchanged.
+
+### 18-C. Guards, each seen failing
+
+- The two behaviour tests in `array.rs` were driven to failure first against a
+  `resolve_leaf_label` that ignored the declaration. The other three -- schema
+  fallback, handle past the end of the declaration, container segment keeps its
+  schema name -- passed from the start, which is correct: they pin what must NOT
+  change.
+- `test_to_valplay_bundle.py`'s three new cases fail (3 of 9) when the wire name
+  is passed through instead of mapped.
+- `compare_combat_report.py` goes red on three shapes against a deliberately
+  wrong handle-20 mapping and a removed handle 22.
+
+### 18-D. What this did not do, and what it corrects
+
+- The corpus totals were re-measured on an UNMODIFIED HEAD binary because two of
+  the five in this document were already stale: `fields` 98,884,839 (doc said
+  98,883,979) and `skipped` 1,972,018,965 (doc said 1,972,080,670). db42e6a
+  moved both and refreshed every build baseline without updating the prose. The
+  before and after runs of this change agree exactly on all five, so the change
+  moves none of them -- but the sweep instruction to expect the documented
+  numbers would have failed for the wrong reason. QUICK START is corrected;
+  the dated per-section records are left as the historical measurements they are.
+- 15-C is contradicted and is marked SUPERSEDED in place.
+- Only the 11 cross-validated replays were diffed at row level. The other 204
+  were checked at counter level only (five totals unchanged, decode errors 0
+  across all 215).
+- `README.md`'s type-overlay block is still stale, as 17-G already recorded.
+  Left alone rather than half-corrected.
+- The container segments still carry schema names, so the emitted path is a
+  hybrid: `DealtInteractions` is ours, `DamageDealt` under it is the wire's.
+  Deliberate -- the wire declares `DealtIteractions` (Riot's typo) at handle 26
+  and the same `RegionalDamageInteractions` at both 44 and 79, so adopting the
+  declaration there would lose the one distinction the schema provides and buy
+  nothing.
