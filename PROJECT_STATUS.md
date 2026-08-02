@@ -68,7 +68,7 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 249 passed, 0 failed across all targets (246 regular + 3 doctests).
+# Expected: 252 passed, 0 failed across all targets (249 regular + 3 doctests).
 # Sum the per-target lines; the last line is one target, not the total.
 # This figure has been stale THREE times now. Re-measure before quoting it:
 # it said 242 while HEAD had 243, because the count was written before the
@@ -273,7 +273,10 @@ verification : codex/needs-work in an isolated worktree; master was not moved
 commits      : run `git rev-list --count HEAD`. No number is written here
                on purpose: the two that were had both gone stale, and this
                one would be wrong the moment the line was committed
-tests        : 246 passing, 0 failed (243 regular + 3 doctests)
+tests        : 252 passing, 0 failed (249 regular + 3 doctests). Re-measured
+               2026-08-02 at section 17's commit; the doctests are vrf_export
+               (2) and vrf_transform (1). This line said 246/243+3 and was
+               already stale by three before section 17 added three more
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
 working tree : clean
@@ -1681,7 +1684,8 @@ YIELD, by evidential strength, over the 11 cross-validated replays:
 
     route                          rows    share   nature
     A  handle-set uniqueness    174,077    43.3%   determination
-    B  plain unique_leaf_match    1,183     0.3%   existing rule, never called
+    B  plain unique_leaf_match    1,183     0.3%   existing rule, now called
+                                                   (FIXED, section 17)
     C  stem-strip leaf            3,413     0.8%   name heuristic (weakest)
     union                       176,585    43.9%   0 conflicts between routes
 
@@ -3536,10 +3540,18 @@ for this path rests on two other legs instead:
 
 - Non-Bomb game modes, still input-blocked (section 11-A).
 - Checkpoint chunks, still never parsed (7-H's own standing caveat).
-- Whether the 21,474 corpus-wide moved rows outside the 11 cross-validated
+- Whether the 20,291 corpus-wide moved rows outside the 11 cross-validated
   replays bind correctly. Only the 11 were diffed at row level; the other 204
   replays were checked at counter level only (five totals unchanged, decode
-  errors 0).
+  errors 0). The exposure is bounded but not zero: `AresWorldSettings` moves
+  85-86 rows on every one of the 11, so at ~86 x 215 roughly 18,500 of the
+  21,474 corpus-wide moves are the exact-leaf binding on the group with the
+  strongest independent evidence, leaving the weaker `"_C"` arm under about
+  14%. What the counters cannot see is the failure this would produce: a row
+  bound to a wrong group whose handle misses a populated slot keeps
+  `field_name = None`, stays counted in `no_field_name`, and the arithmetic
+  closes identically. That count is a measured 0 of 1,183 on the 11 and an
+  inference on the other 204.
 - `README.md`'s type-overlay block was already stale before this change and
   still is: it prints Decoded OK 352,702 / Raw/Skip 72,519 / Not in table
   530,229 / Typed 35.7% against a measured 369,741 / 73,984 / 511,914 / 37.4%.
