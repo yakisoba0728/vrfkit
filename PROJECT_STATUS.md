@@ -3271,6 +3271,11 @@ design and the two models cannot agree on those 19. Only the event at t=8
 carries anything: `PlayerState: 4` and
 `SpawnLocation: {2382.22, -10417.90, 400.00}`.
 
+**CORRECTED 2026-08-02, later the same day. Everything from here to the end of
+this entry was wrong, and the mechanism is now known at bit precision. See 17-A.
+The short version: the byte IS consumed, our framing was NOT correct, and the
+experiment below failed because it was one bit short of nine.**
+
 **One hypothesis was tested and refuted by measurement.** The replay declares
 four handles on that group (216, 215, PlayerState, SpawnLocation), so the data
 is on the wire. `pipeline.rs`'s net-player-index byte is consumed only when
@@ -3312,6 +3317,93 @@ reference carries 466 non-zero velocities and 3 non-unit scales on 02d4d478.
 So 13-A's fix is correct at source for all three vectors, and observable for
 one. Adding the other two is a schema change; worth doing only if a consumer
 wants them.
+
+---
+
+## 17. The controller's property block, found (2026-08-02)
+
+### 17-A. vrfkit frames one bunch nine bits early [MECHANISM FOUND, FIX PENDING]
+
+16-C asked why we emit zero rows on the `BaseReplayController` RepLayout group
+and concluded "the byte must NOT be consumed there, and our current framing of
+that bunch is correct". **Both clauses are false.** That entry now carries the
+retraction; this one carries the mechanism.
+
+**Two independent divergences, nine bits total, on the one bunch that opens the
+controller channel. Either alone is fatal.**
+
+1. `pipeline.rs:638-643` gates the spawn-velocity read behind `is_pc`. The
+   reference reads it **unconditionally** -- `NewActorSerializer.cs:69-72` has
+   no condition around `SpawnVelocity` at all. **Our comment's premise, that
+   "PlayerController actors set bReplicateMovement == false so their spawn data
+   omits velocity entirely", is a fabricated invariant.** The bit is on the
+   wire with value 0, which is exactly why the reference reports
+   `velocity: (0,0,0)` rather than null. Cost: **1 bit**.
+2. `pipeline.rs:489-495` gates the net-player-index byte on `pc_guids`, which is
+   empty for GUID 2 -- the controller opens before any package-map export
+   declares its path. Cost: **8 bits**.
+
+**Why it stayed invisible: the misframed header re-synchronises.** Starting nine
+bits early, `content.rs:84-109` reads the velocity bit as `has_rep_layout=false`,
+the index byte's bit 0 as `is_actor=false`, the next eight bits as an object GUID
+(`0x80` -> 64), and the reference's `is_actor` bit as `is_stably_named=true` --
+which returns early *before* the `is_deleted` check, and that is what lets the
+ghost header survive. It consumes 3 + 8 = 11 bits where the correct header
+consumes 2, so both parsers arrive at the content-bit count at the identical
+offset 119, read the same 287-bit payload, and frame blocks 1-9 at identical
+offsets. The bunch consumes to exactly 831 bits with zero remainder either way.
+
+So the block is not dropped. It is routed to the ClassNetCache path, where
+`function_count == 0` and `field.rs` refuses to walk it -- and since Task C it
+is preserved as an unresolved payload under `<unknown:64>`.
+
+**Confirmed independently, without any code change.** The reference reports
+`SpawnLocation = (2382.2236328125, -10417.9013671875, 399.999267578125)`. Packed
+as three little-endian f64 -- which is what `table.rs` declares `SpawnLocation`
+to be on that group -- that byte sequence occurs in the `<unknown:64>` payload at
+**bit offset 87**. The same triple as three f32 occurs nowhere. The bits we throw
+away are the property block, and the type we already have is the right one.
+
+**Why 16-C's experiment misled me.** It added `|| actor_net_guid.0 == 2` to the
+index-byte check alone: eight bits of a nine-bit correction. That lands one bit
+off, destroys seven real subobject rows, and produces one garbage row -- which I
+read as "the byte must not be consumed" when it actually meant "eight is not
+nine". The six subobject rows it destroyed are real; that part of 16-C was right
+and its explanation was wrong.
+
+**Ghost plausibility, which is the transferable lesson.** In **6 of 11 replays**
+the misframed block is attributed to a named, real-looking component --
+`TotemLoadoutComponent`, `SprayLoadoutComponent`, `BasicCombatStatsComponent` --
+because GUID 64 resolves to a different real object in each. A wrong frame did
+not produce garbage; it produced a plausible component name. `field.rs` already
+carries a test warning that plausibility is not evidence of correctness. This is
+an instance of it, and it is the third time today that a well-formed value hid a
+defect.
+
+**A trap for anyone comparing block counts.** The reference bundle is a filtered
+projection, not a census: `ReplayExportSink.cs:96` drops every
+`ExportGroupReceived` whose payload is null or undecoded. The reference frames
+all ten blocks in that bunch and exports one. Do not diff block counts against
+`events.ndjson`.
+
+**The general defect behind the specific one.** `pc_guids` is a parallel,
+incomplete mirror of path knowledge the cache already holds:
+`vrf-schema/src/reader.rs:204` writes GUID paths straight into the cache from
+chunk-level exports, bypassing the intercept sink that fills `pc_guids`. The
+cache knows GUID 9 -> `Default__BaseReplayController_C` at packet 0 while
+`pc_guids` does not. Any check keyed on `pc_guids` inherits that blind spot.
+
+**Measured effect of the fix** (run and reverted): per replay **-1 row** (the
+`<unknown:64>` preserved payload) and **+4 rows** on the controller's RepLayout
+group, handles 3, 12, 14 and 18. `PlayerState` and `SpawnLocation` match the
+reference exactly on all 11 replays. `actors`, `movement` and `net_guids`
+unchanged. All tests pass -- nothing pinned the old behaviour.
+
+NOT YET APPLIED. The proper form of divergence 2 replaces `pc_guids` with a
+cache path lookup and `is_player_controller_path`, which needs a lookup method on
+`GuidPathSink` and therefore touches `sink.rs`, which another session was
+rewriting when this landed. Apply both together -- one without the other is the
+one-bit-off failure above. Do not apply divergence 1 alone.
 
 ### 16-D. Corrections to this session's own supporting text
 
