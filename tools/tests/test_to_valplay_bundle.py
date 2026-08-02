@@ -277,6 +277,18 @@ class CombatReportLeafNameTests(unittest.TestCase):
         # The bare array container row has no leaf segment to replace.
         self.assertEqual(self.relabel("Rounds", 2), "Rounds")
 
+    def test_synthesised_rows_keep_the_parser_label(self):
+        # emit_remaining_raw's row carries handle u32::MAX; rewriting it would
+        # produce '_h4294967295'.
+        self.assertEqual(
+            self.relabel("Rounds[0]._raw", (1 << 32) - 1), "Rounds[0]._raw",
+        )
+        # The depth-limit row carries a CONTAINER handle and already has the
+        # schema's name; rewriting it would produce '_h4'.
+        self.assertEqual(
+            self.relabel("Rounds[0].Reports", 4), "Rounds[0].Reports",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -945,18 +945,34 @@ COMBAT_REPORT_REFERENCE_NAMES = {
 }
 
 
+# Handles the parser treats as sub-array containers, not leaves. A row carrying
+# one of these is a container the walker gave its schema name to, so it is
+# already the reference's spelling and must be left alone.
+COMBAT_REPORT_CONTAINER_HANDLES = frozenset({4, 10, 26, 44, 61, 79})
+
+
 def _combat_report_leaf_name(group_path: str, field_name: str, handle) -> str:
     """Relabel one combat-report array leaf for the bundle.
 
     Only the LAST path segment is touched: everything before it is a container
     segment the parser names from its own schema, so it already matches.
+
+    Two rows the walker SYNTHESISES rather than reads are excluded, because for
+    them the parser's own label is already right and rewriting it would be a
+    regression: `emit_remaining_raw`'s `..._raw` row (handle u32::MAX, which
+    would otherwise become `_h4294967295`), and the depth-limit row that carries
+    a container handle. Neither occurs on the corpus -- MAX_ELEMENTS is 4096
+    against a real peak near 50, and MAX_RECURSION_DEPTH is 12 against a real
+    depth of 5 -- so this is an unreachable edge being closed, not a fix.
     """
     if not group_path or COMBAT_REPORT_GROUP not in group_path:
         return field_name
     if not field_name.startswith("Rounds["):
         return field_name
-    head, dot, _leaf = field_name.rpartition(".")
+    head, dot, leaf = field_name.rpartition(".")
     if not dot:
+        return field_name
+    if leaf == "_raw" or handle in COMBAT_REPORT_CONTAINER_HANDLES:
         return field_name
     name = COMBAT_REPORT_REFERENCE_NAMES.get(handle)
     if name is None:

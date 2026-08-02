@@ -100,11 +100,13 @@ pub struct ArrayDecodeStats {
 ///
 /// If `schema` is None, we treat all elements as opaque structs and emit each
 /// field without attempting to recurse into sub-arrays.
+///
 /// `declared` carries the names the REPLAY itself declares for this group's
 /// handles, indexed by handle: slot `h` holds the declared name for handle `h`,
 /// or `None` where the replay declares nothing there. Pass `&[]` when no
 /// declaration is available; the schema's own names are then the only source.
-/// See [`resolve_leaf_label`] for how the two sources are ordered.
+/// A LEAF label is resolved declaration -> schema -> `_h{handle}`; container
+/// segments come from the schema alone. See `resolve_leaf_label`.
 pub fn decode_struct_array(
     data: &[u8],
     bit_count: u32,

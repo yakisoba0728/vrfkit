@@ -3696,13 +3696,28 @@ groups touched               : 1  (Bomb_CombatReportComponent, all 11 replays)
 movement/actors/net_guids    : byte-identical on all 11
 ```
 
-49 distinct path shapes move on 02d4d478. 34 are `_hN` placeholders gaining a
-real name -- the `HUDConfig` / `StateRemainingTime` / `GameTime` / `GamePhase`
-quartet at each nesting position, plus `DamageType` and `_h104` ->
-`DeathLocation`. The other 15 are the wire correcting us: `RoundNum`,
-`bDidKill`, `bDied`, `bWasKiller`, `bIsKill`, `bIsWallPen`, `ParticipantSubject`,
-`ParticipantTeamName`, `ParticipantCharacterIcon`, `ParticipantsKillerState`,
-and Riot's own typos `DamageRecieved` and `HitsRecieved`.
+49 distinct path shapes move, and the set is IDENTICAL on all 11 replays --
+union 49, intersection 49, no replay carrying a shape another lacks. That is the
+whole mapping, not a sample from one replay.
+
+The split is 35 / 14, counted from the diff rather than by eye:
+
+- **35** are `_hN` placeholders gaining a real name. 32 of those are the
+  `HUDConfig` / `StateRemainingTime` / `GameTime` / `GamePhase` quartet at its
+  eight nesting positions (handles 6-9, 14-17, 27-30, 31-34, 62-65, 66-69,
+  99-102, 105-108); the other three are `DamageType` at 35 and 70, and `_h104`
+  -> `DeathLocation`.
+- **14** are named leaves the wire corrects, spelling out **12** distinct
+  renames -- `IsKill` and `IsWallPen` each occupy two shapes, at handles 49/84
+  and 48/83. The twelve: `RoundNumber`->`RoundNum`, `Subject`->
+  `ParticipantSubject`, `Team`->`ParticipantTeamName`, `CharacterIcon`->
+  `ParticipantCharacterIcon`, `KillerPlayerState`->`ParticipantsKillerState`,
+  `DidKill`->`bDidKill`, `Died`->`bDied`, `WasKiller`->`bWasKiller`,
+  `IsKill`->`bIsKill`, `IsWallPen`->`bIsWallPen`, and Riot's own typos
+  `DamageReceived`->`DamageRecieved` and `HitsReceived`->`HitsRecieved`.
+
+An earlier draft of this section and of ce02f1a's message said 34 / 15. That was
+counted by hand and was wrong; 35 + 14 = 49 is what the diff says.
 
 Per-column check, stronger than the row diff: of the 14 columns in
 `fields.parquet`, exactly ONE changed its compressed bytes -- `field_name`,
@@ -3752,6 +3767,11 @@ unchanged.
   is passed through instead of mapped.
 - `compare_combat_report.py` goes red on three shapes against a deliberately
   wrong handle-20 mapping and a removed handle 22.
+- The `_raw` / container-handle exclusion fails its own test when removed.
+- The byte-identity of the bundles is itself falsifiable and was falsified: with
+  the adapter mapping disabled, 02d4d478's `events.ndjson` loses 4,223 leaf
+  values while keeping all 576,247 lines. A byte-identical bundle is therefore
+  a result, not a tautology.
 
 ### 18-D. What this did not do, and what it corrects
 
@@ -3775,3 +3795,18 @@ unchanged.
   and the same `RegionalDamageInteractions` at both 44 and 79, so adopting the
   declaration there would lose the one distinction the schema provides and buy
   nothing.
+- **The schema's LEAF names are now unreachable for this group, and the text
+  above should not be read as saying otherwise.** "The schema stays as the floor
+  for handles a replay does not declare" is true as a rule but currently vacuous
+  here: the replay declares all 70 handles, and a sweep of the after-export
+  finds ZERO leaves still labelled `_hN` across all 11 replays. So only
+  `COMBAT_ROUNDS_SCHEMA`'s `sub_arrays` and its container names still do work;
+  its leaf `field_names` entries fire for nothing this corpus contains. They are
+  kept because a replay that declares a shorter group would need them, which is
+  a claim about robustness, not one about current behaviour.
+- Two rows the walker SYNTHESISES are excluded from the adapter's relabelling
+  after review: `emit_remaining_raw`'s `_raw` row (handle u32::MAX, which would
+  have become `_h4294967295`) and the depth-limit container row (which would
+  have become `_h4`). Both are unreachable -- a sweep of all 11 after-exports
+  finds zero `_raw` rows -- so this closed an edge rather than fixing a defect,
+  and the byte-identical bundles were already evidence neither fired.
