@@ -18,7 +18,10 @@ use arrow_array::{
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 
-use vrf_export::{FieldRecord, FieldWriter, MovementRecord, MovementWriter};
+use vrf_export::{
+    FieldRecord, FieldWriter, MovementRecord, MovementWriter,
+    UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME,
+};
 
 /// Test output directory -- each test writes to a unique file.
 fn test_dir() -> PathBuf {
@@ -249,6 +252,76 @@ fn field_binary_preservation() {
         .downcast_ref::<BinaryArray>()
         .unwrap();
     assert_eq!(raw_bits.value(0), payload.as_slice());
+}
+
+#[test]
+fn unresolved_class_net_cache_payload_marker_roundtrips_exact_bits() {
+    let path = test_dir().join("unresolved_class_net_cache_payload.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = FieldWriter::with_row_group_size(file, 1024).unwrap();
+        writer
+            .push(FieldRecord {
+                time_ms: 1234,
+                packet_id: 56,
+                channel_index: 7,
+                actor_net_guid: 89,
+                object_net_guid: Some(144),
+                group_path: "AbilitiesAndBuffsComponent".into(),
+                handle: u32::MAX,
+                field_name: Some(UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME.into()),
+                bit_count: 7,
+                raw_bits: Some(vec![0x66]),
+                value_i64: None,
+                value_f64: None,
+                value_bool: None,
+                value_str: None,
+            })
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    let batches = read_all_batches(&path);
+    assert_eq!(batches.len(), 1);
+    let batch = &batches[0];
+    assert_eq!(batch.num_rows(), 1);
+
+    let handle = batch
+        .column(batch.schema().index_of("handle").unwrap())
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .unwrap();
+    assert_eq!(handle.value(0), u32::MAX);
+
+    let field_name = batch
+        .column(batch.schema().index_of("field_name").unwrap())
+        .as_dictionary::<Int32Type>()
+        .downcast_dict::<StringArray>()
+        .unwrap();
+    assert_eq!(
+        field_name.value(0),
+        UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME
+    );
+
+    let bit_count = batch
+        .column(batch.schema().index_of("bit_count").unwrap())
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .unwrap();
+    assert_eq!(bit_count.value(0), 7);
+
+    let raw_bits = batch
+        .column(batch.schema().index_of("raw_bits").unwrap())
+        .as_any()
+        .downcast_ref::<BinaryArray>()
+        .unwrap();
+    assert_eq!(raw_bits.value(0), &[0x66]);
+    assert_eq!(raw_bits.value(0)[0] >> 7, 0);
+
+    for name in ["value_i64", "value_f64", "value_bool", "value_str"] {
+        let column = batch.column(batch.schema().index_of(name).unwrap());
+        assert!(column.is_null(0), "{name} must stay null");
+    }
 }
 
 #[test]

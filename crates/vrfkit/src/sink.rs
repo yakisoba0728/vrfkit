@@ -4,8 +4,10 @@
 //!
 //! Every field/RPC is emitted, even if we cannot resolve the group path or field
 //! name. In that case we emit `group_path = "<unknown:{guid}>"` and
-//! `field_name = None`. This ensures the Parquet output is a **lossless**
-//! representation of the stream.
+//! `field_name = None`. When an unresolved ClassNetCache function table makes
+//! the block unsplittable, its whole payload is emitted as one explicitly
+//! marked preservation row instead of fabricated fields. This keeps the
+//! Parquet output a **lossless** representation of the stream.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,7 +17,9 @@ use vrf_decode::{
     ArrayDecodeStats, COMBAT_ROUNDS_SCHEMA, OVERLAY_HANDLE_TABLE, OVERLAY_TABLE, OverlayStats,
     OverlayTable, apply_overlay_with_handle, decode_struct_array,
 };
-use vrf_export::{ActorRecord, FieldRecord, MovementRecord};
+use vrf_export::{
+    ActorRecord, FieldRecord, MovementRecord, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME,
+};
 use vrf_net::content::ContentBlockHeader;
 use vrf_net::field::FieldSink;
 use vrf_net::net_guid::GuidPathSink;
@@ -1482,6 +1486,25 @@ impl ReplicationSink for ExportSink<'_> {
         self.stats.content_blocks += 1;
     }
 
+    fn on_unresolved_class_net_cache_payload(&mut self, failure: StreamFailure, payload: &[u8]) {
+        self.records.fields.push(FieldRecord {
+            time_ms: self.time_ms,
+            packet_id: self.packet_id,
+            channel_index: self.current_channel,
+            actor_net_guid: self.current_actor_guid,
+            object_net_guid: self.current_object_guid,
+            group_path: self.current_group_path.clone(),
+            handle: u32::MAX,
+            field_name: Some(UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME.to_owned()),
+            bit_count: failure.bit_count,
+            raw_bits: Some(payload.to_vec()),
+            value_i64: None,
+            value_f64: None,
+            value_bool: None,
+            value_str: None,
+        });
+    }
+
     /// Attach the resolved group path to a stream failure.
     ///
     /// The replication layer knows the bit offsets but not the names; this is the
@@ -1648,5 +1671,65 @@ mod tests {
             "an actor block ignores the GUID"
         );
         assert_eq!(object_guid_for(false, 99), Some(99), "subobject block");
+    }
+
+    /// A whole unresolved block is one preservation row, not an RPC or a set
+    /// of invented fields. The reserved field name is its sole discriminator.
+    #[test]
+    fn unresolved_class_net_cache_payload_emits_one_distinguished_row() {
+        let mut cache = NetGuidCache::new();
+        cache.set_net_guid_path(144, "AbilitiesAndBuffsComponent".to_owned(), None);
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        sink.time_ms = 1234;
+        sink.packet_id = 56;
+
+        let header = ContentBlockHeader {
+            has_rep_layout: false,
+            is_actor: false,
+            object_net_guid: NetworkGuid(144),
+            is_stably_named: true,
+            ..ContentBlockHeader::default()
+        };
+        let function_count = sink.on_content_block(7, NetworkGuid(89), &header);
+        assert_eq!(function_count, 0);
+
+        let failure = StreamFailure {
+            kind: vrf_net::pipeline::StreamKind::Rpc,
+            actor_net_guid: NetworkGuid(89),
+            bit_count: 7,
+            function_count: 0,
+            consumed_bits: 0,
+            remaining_bits: 7,
+        };
+        sink.on_unresolved_class_net_cache_payload(failure, &[0x66]);
+
+        assert_eq!(sink.records.fields.len(), 1);
+        let row = &sink.records.fields[0];
+        assert_eq!(row.time_ms, 1234);
+        assert_eq!(row.packet_id, 56);
+        assert_eq!(row.channel_index, 7);
+        assert_eq!(row.actor_net_guid, 89);
+        assert_eq!(row.object_net_guid, Some(144));
+        assert_eq!(row.group_path, "AbilitiesAndBuffsComponent");
+        assert_eq!(row.handle, u32::MAX);
+        assert_eq!(
+            row.field_name.as_deref(),
+            Some(vrf_export::UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME)
+        );
+        assert_eq!(row.bit_count, 7);
+        assert_eq!(row.raw_bits.as_deref(), Some(&[0x66][..]));
+        assert!(row.value_i64.is_none());
+        assert!(row.value_f64.is_none());
+        assert!(row.value_bool.is_none());
+        assert!(row.value_str.is_none());
+        assert_eq!(sink.stats.fields_emitted, 0);
+        assert_eq!(sink.stats.rpcs_emitted, 0);
+        assert_eq!(sink.stats.overlay.decoded_ok, 0);
+        assert_eq!(sink.stats.overlay.decoded_err, 0);
+        assert_eq!(sink.stats.overlay.raw_or_skip, 0);
+        assert_eq!(sink.stats.overlay.not_in_table, 0);
+        assert_eq!(sink.stats.overlay.no_field_name, 0);
     }
 }

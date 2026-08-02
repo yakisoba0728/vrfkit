@@ -2,8 +2,9 @@
 
 Last updated: 2026-08-02. Includes the replay-coverage audit through 8eb5909,
 the concurrent master audit corrections through 101c33a, the code audit fixes
-in section 12, and the Codex needs-work results through 45223c9 in section 14.
-All numbers come from direct tool runs, not estimates.
+in section 12, the Codex needs-work results through 45223c9 in section 14, and
+production whole-block ClassNetCache payload preservation in section 7-C. All
+numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
 measurement, then implemented and verified at 100%. See
@@ -67,7 +68,7 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 246 passed, 0 failed across all targets (243 regular + 3 doctests).
+# Expected: 249 passed, 0 failed across all targets (246 regular + 3 doctests).
 # Sum the per-target lines; the last line is one target, not the total.
 # This figure has been stale THREE times now. Re-measure before quoting it:
 # it said 242 while HEAD had 243, because the count was written before the
@@ -118,6 +119,8 @@ python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # back at Saved\Demos.
 python tools\check_export_baseline.py --baseline tools\baselines\export_02d4d478.json
 # Expected: OK ... 3 printed counters cross-check against their Parquet files.
+# Production fields baseline: 1,246,809 rows, 13,564,140 bytes. The additional
+# 6,365 rows preserve unresolved whole blocks; all other counters/files stay put.
 # The strongest single guard: it pins all 21 export counters plus every Parquet
 # file's rows AND bytes, and caught every counter move this session before
 # anything else did. On DRIFT, explain each line before passing --update. The
@@ -150,7 +153,7 @@ Get-ChildItem out\nested\*.parquet | Sort-Object Name |
   ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash, $_.Name }
 # 02d4d478, re-measured 2026-08-02 at HEAD:
 #   84076CF7CA398C957C3E67148D0622F72E809CB4E2157F66CD4F18B197E65D7B  actors.parquet
-#   43006C26AE546FB30AFFD9A36BA3C19649AE71322AEFB9121589521E69EB6856  fields.parquet
+#   CADB420689DE6FAD15899ED818440E1B217DB0DE17F69C9D780AB75465E7AD46  fields.parquet
 #   1242BBB15B29BE267BA4B0326BCBC508B5E2AC6C7CD8A1570035C335C04D9363  movement.parquet
 #   501CABC678770431D0FEC9C37C4E21ED06193BB93263313959E87865625BBA0F  net_guids.parquet
 ```
@@ -201,9 +204,9 @@ describe all five varying sections as understood or as monotonic gains.
 What is actually left: **nothing in section 7 is open.** Every item is either
 done, or closed with a measurement showing it cannot or should not be done.
 
-  7-C  measured ceiling -- the game never declares the group. Read 7-C for
-       the proportion before quoting the raw bit count: it is 1.05% of
-       blocks and costs nothing measurable today
+  7-C  whole-block payload preservation is implemented. The semantic ceiling
+       remains because the game never declares the function table. The adapter
+       excludes preservation rows, so current metrics are unchanged
   7-F  measured -- the parallelisable slice of the DECODE path is 3.4%, the
        rest is order-dependent. The process-level win was taken instead
        (11x). The three hot spots 7-F named were then optimized in 5-P:
@@ -235,9 +238,9 @@ python "C:\...\valplay\pipeline\metrics\compute_metrics.py" `
 ### Key invariant (never break)
 Every field inside a walkable block emits (group_path, handle, name, bit_count,
 raw_bits), even when its type is unknown. Overlay is additive. An unresolved
-ClassNetCache block cannot be walked and emits no Parquet rows; it returns Err
-and its skipped bits are counted and named, never hidden behind a guessed
-capacity. Keep the source `.vrf` if future reinterpretation may be needed.
+ClassNetCache block cannot be split into fields. It still returns Err and its
+skipped bits remain counted, while its exact whole payload is preserved once as
+an explicitly marked Parquet row. No field or RPC structure is fabricated.
 
 
 ---
@@ -250,8 +253,9 @@ C# parser (ValorantReplayParser, MIT) that the valplay Python analytics
 pipeline depends on. The C# parser discards roughly 26% of content blocks
 because it abandons any bunch whose payload has no registered descriptor.
 vrfkit preserves every field it can walk, including raw bits for unknown
-types; an unresolved ClassNetCache block is instead counted as a loud stream
-failure and emits no field/RPC rows.
+types; an unresolved ClassNetCache block remains a loud stream failure and
+emits no fabricated field/RPC rows, but its whole payload is preserved as one
+explicitly marked row.
 
 Primary outputs: fields.parquet, movement.parquet, actors.parquet,
 net_guids.parquet, manifest.json -- all written by `vrfkit export`. A Python adapter
@@ -445,16 +449,18 @@ Reference replay 02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf:
 content blocks     : 608,020
   malformed framing:       0
   RPC stream failed:   6,365  (unresolved group, function_count=0)
+  whole-block rows:    6,365  (preserved, still counted as skipped)
 fields emitted     : 429,633
 RPCs emitted       : 342,735
 movement rows      : 1,839,607
 actors.parquet rows:   3,827  (2028 opens + 1799 closes)
 net_guids.parquet  :  16,167  (14,480 carry an outer GUID)
 decode errors      :       0
-typed (value_*)    : 374,143 rows with any value_* column set
-                     30.162% of all 1,240,444 rows; 37.831% of the
+fields.parquet rows: 1,246,809
+typed (value_*)    : 380,060 rows with any value_* column set
+                     30.483% of all 1,246,809 rows; 38.430% of the
                      988,979 rows offered to the overlay. The distinct
-                     overlay decoded-ok counter is 363,478; do not conflate
+                     overlay decoded-ok counter is 369,395; do not conflate
                      that counter with non-null Parquet rows.
 oracle pass rate   :  98.95%
 ```
@@ -489,7 +495,8 @@ build  blocks  malformed  fields  RPCs   skipped  oracle pass rate
 All three inspect and validate with exit 0. Full export also reaches exit 0 and
 writes its output files, but it is not decode-clean: the builds report 9, 18,
 and 19 FName SourceID decode errors respectively. Walkable rows retain raw bits;
-unresolved ClassNetCache streams remain counted as skipped bits and emit no row.
+unresolved ClassNetCache streams remain skipped failures and emit one marked
+whole-block preservation row.
 These gaps are recorded, not hidden by the zero malformed count.
 
 The adjacent 12.08 C# fixture is intentionally unsupported. A real end-to-end
@@ -1185,7 +1192,7 @@ looking only at the rows that differed.
 Lesson: "the differences are all -N" does not imply "everything is shifted
 by N". Check how many values match before inferring a constant offset.
 
-### 7-C. Unattributed ClassNetCache blocks [MEASURED; PRODUCTION DECISION PENDING]
+### 7-C. Unattributed ClassNetCache blocks [IMPLEMENTED AND VERIFIED; PAYLOAD PRESERVED, STILL UNPARSED]
 
 Read the proportion before the raw number, because the raw number misleads.
 "1,972,080,670 bits" and the old "91.7% AbilitiesAndBuffsComponent" figure
@@ -1218,58 +1225,77 @@ between "this ability was used" (which we have) and "this ability affected
 these players for this long" (which we do not). Interesting for coaching or
 pro analysis; irrelevant to replacing the C# parser.
 
-LOST, NOT MERELY UNNAMED. This section previously claimed "the raw bits are
-written to Parquet regardless ... replays already archived can be
-reinterpreted". That is FALSE and was never checked.
+PRE-PRODUCTION BEHAVIOUR (fixed 2026-08-02): `parse_class_net_cache` returned
+`Err` when `function_count == 0` before reading any payload bits. The caller
+only invoked `on_stream_failure`, which retained a diagnostic capped at 32
+lines. No `on_field` or `on_rpc` fired, so the decoded payload disappeared.
 
-`crates/vrf-net/src/field.rs:119` returns `Err` when `function_count == 0`
-BEFORE reading any bits. The caller only invokes `on_stream_failure`, which
-pushes a diagnostic string capped at 32 lines. No `on_field` or `on_rpc`
-fires, so no Parquet row is written. Measured: AbilitiesAndBuffsComponent
-accounts for 17,264,706 skipped bits on 02d4d478 but only 4,960 bits / 160
-rows in fields.parquet -- and all 6,365 failures are RPC-kind, so those 160
-rows are its RepLayout property path, which parses normally.
+PRODUCTION BEHAVIOUR: the parser now exposes that exact decoded whole-block
+payload before reporting the same failure. Export writes exactly one row with
 
-Consequence: an archived Parquet export CANNOT be reinterpreted if a future
-build declares the group. You would have to re-run against the .vrf. Keep
-the source replays.
+    field_name == "__vrfkit_unresolved_class_net_cache_payload__"
 
-This also qualifies NO SKIP PATH as written in section 8. "Every field emits
-(group_path, handle, name, bit_count, raw_bits) even when nothing is known"
-holds for fields inside a walkable block. A ClassNetCache block whose group
-cannot be resolved emits nothing at all -- it is counted and named in the
-oracle, which is the honest part, but its bits are not preserved.
+The row is not a field or RPC: `handle == u32::MAX` is only a secondary
+invariant, all `value_*` columns are null, and no per-field split is invented.
+The exact reserved field name is the sole consumer predicate because ordinary
+array-truncation rows may also use `u32::MAX`. A pre-change export and scan of
+all 215 corpus replays (281,557,231 existing rows) found zero exact marker
+matches. The self-checking proof is `out/task3_collision_proof`.
 
-These blocks frame correctly (malformed framing 0); the group resolution
-returns function_count=0 and they are counted as failures.
+These blocks still frame correctly (malformed framing 0), still return the
+same failure, and still count every payload bit as skipped/not parsed. The
+32-line diagnostic cap is unchanged; it is not the data path.
 
-PRESERVATION COST, measured 2026-08-02 before any production change. A
-temporary instrumented build wrote each unresolved whole-block payload as one
-sentinel row; it never fabricated a per-field split. Each replay used one
-warmup and 10 interleaved OFF/ON pairs with the same instrumented release
-binary. Clean HEAD and instrumented OFF were byte-identical for all four
-Parquet files, and 14,755 sentinel rows were audited in order from the parser
-boundary through Parquet, including exact metadata, bit counts, raw bytes,
-byte lengths, and zero high padding bits.
+PRODUCTION ROUND-TRIP AUDIT: three replay exports compared the parser-boundary
+tuple and payload to marker-filtered Parquet rows in original order. The tuple
+covered time, packet, channel, actor/object GUIDs, group path, bit count, and
+raw bytes. It also checked `ceil(bit_count/8)` lengths, every final-byte high
+padding bit, marker/handle/value invariants, ON-OFF row deltas, and non-fields
+Parquet hashes.
 
 ```text
-replay    rows added   fields.parquet ZSTD bytes added   paired timing result
-08aec1e1          928                            37,136   not measurable
-02d4d478        6,365                           229,274   not measurable
-252168ae        7,462                           245,938   not measurable
+replay       rows         bits   raw bytes   non-byte rows
+08aec1e1       928      629,141      79,053             885
+02d4d478     6,365   17,507,210   2,191,622           6,252
+252168ae     7,462    7,400,586     927,439           7,322
+TOTAL       14,755   25,536,937   3,198,114          14,459
 ```
 
-The median paired deltas were -6.4944 ms, -0.1204 ms, and +19.3544 ms;
-fixed-seed bootstrap 95% confidence intervals all included zero. Existing
-parser/overlay counters and every non-fields Parquet file were invariant.
+All 14,755 rows matched exactly. The aggregate bit-remainder buckets were
+`[296, 2338, 973, 811, 593, 2453, 4694, 2597]`; padding violations were zero.
 
-This measurement is NOT a production implementation. No source change or
-baseline update from Task C was committed. If preservation is approved later,
-the adapter must explicitly ignore the sentinel row before metrics processing,
-and `skipped_bits` must keep its current meaning of "not parsed". On the
-post-Task-B 02d4d478 export, the expected production-only change is fields
-rows 1,240,444 -> 1,246,809 and bytes 13,255,044 -> 13,484,318. Do not mix
-those forecast values into the current baseline before that decision.
+PRODUCTION COST: the timing build used the current production row path behind
+an experimental OFF/ON switch in one release binary. Each replay had one
+warmup per mode and 10 adjacent, alternating OFF/ON pairs. The fixed-seed
+10,000-resample paired-median bootstrap confidence intervals all include zero.
+
+```text
+replay    rows added   fields ZSTD bytes added   paired median   bootstrap 95% CI
+08aec1e1          928                    38,544        -6.481 ms   [-22.023,  8.154]
+02d4d478        6,365                   230,008        -8.949 ms   [-63.254, 50.843]
+252168ae        7,462                   247,651        +8.347 ms   [-23.564, 87.695]
+```
+
+Evidence caveat: the raw timing summary pins the measurement executable as
+SHA-256 `8140184A...D5D1E`, but a later same-source relink replaced the saved
+file with `780CE881...5339`; no copy of the measured executable remains to
+rehash. The 60 timed rows and bootstrap calculation were independently
+recomputed from the preserved CSV, but the timing bundle is not fully
+self-contained.
+
+The export wall-clock effect is therefore not measurable. Existing parser and
+overlay counters were invariant, and actors.parquet, movement.parquet, and
+net_guids.parquet were byte-identical on all three replays.
+
+ADAPTER GUARD: removing its exact-name exclusion changed 02d events.ndjson
+from 576,246 to 582,611 lines. All 6,365 preservation rows leaked as fake
+`export_group_received` events. Restoring the predicate returned it to 576,246
+lines; events, movement, and manifest were byte-identical to the pre-change
+bundle. The 11-replay metrics matrix stayed identical in all 231 section cells.
+
+The production 02d4d478 baseline is now 1,246,809 rows / 13,564,140 bytes,
+from 1,240,444 / 13,334,132 (+6,365 rows / +230,008 bytes). No other baseline
+line changed.
 
 CORRECTED 2026-08-01: the previous breakdown was not derivable from a committed
 tool. MAX_STREAM_FAILURE_RECORDS capped diagnostics at 32 lines, and the quoted
@@ -1300,8 +1326,9 @@ This may change in a future build.
 
 CONFIRMED 2026-08-01: searched all 475 declared export groups in
 02d4d478's manifest -- zero contain the substring "AbilitiesAndBuffs".
-This is now a measured fact rather than an assumption. Do not spend
-time trying to recover those bits.
+This is now a measured fact rather than an assumption. No schema-driven
+semantic decode is possible today, but the preserved whole-block rows support
+offline investigation and future reinterpretation.
 
 MeleeAttackState1/2/3/4/_Alt were already recovered by the schema-driven
 instance-name resolver in commit 6e6d544. The replay declares exactly one
@@ -1322,7 +1349,8 @@ The numeric names reach the shared group by the existing trailing-digit
 fallback followed by the replay-declared `Component_ClassNetCache` candidate;
 `_Alt` reaches it through underscore-segment stripping. No hardcoded name or
 new lookup rule is needed. Corpus skipped bits before and after this audit are
-identical at 1,972,080,670 because there is no parser change to make.
+identical at 1,972,080,670. The later preservation path also leaves that
+"not parsed" counter unchanged.
 
 ### 7-D. Ability/item class display names [DONE 2026-08-01]
 
@@ -1691,10 +1719,10 @@ FOUR MORE STATEMENTS IN THIS SECTION ARE WRONG:
    break a string rule is ONE-to-many, which this section never demonstrates.
 
 3. "33,529 of 429,633 field rows in 02d4d478 (7.8%)". Arithmetically right for
-   the denominator named, but "field rows" now means the 1,240,444-row
-   fields.parquet (429,633 RepLayout + 810,811 RPC parameters). Measured
-   replacement: 2.70% of field rows, 7.80% of RepLayout field rows. Quote the
-   denominator.
+   the denominator named. The pre-preservation file had 1,240,444 decoded
+   field/RPC rows; production fields.parquet has 1,246,809 total rows including
+   6,365 non-field preservation rows. Measured replacement: 2.69% of all
+   current Parquet rows, 7.80% of RepLayout field rows. Quote the denominator.
 
 4. "the affected fields are ammo-level detail in weapon_stats and posture /
    fire-mode refinement." The largest block is 13,043 rows -- 38.9% of the gap
@@ -1867,8 +1895,9 @@ NO SKIP PATH
   Every field inside a walkable block emits (group_path, handle, name,
   bit_count, raw_bits) even when its type is unknown. Overlay is additive:
   typed values fill value_* columns; decode failure leaves them null with raw
-  bits intact. An unresolved ClassNetCache block cannot be walked, emits no
-  row, and must remain a loud counted failure; retain the source `.vrf`.
+  bits intact. An unresolved ClassNetCache block cannot be walked into fields.
+  It remains a loud counted failure, while one distinguished row preserves the
+  exact whole payload for later reinterpretation.
   Rationale: a parser that silently drops data cannot be trusted even when
   it looks correct. The oracle's honesty matters more than its pass rate.
 
@@ -2731,7 +2760,8 @@ corruptions now produce exit 1; the unmodified set produces exit 0.
 
 ### 14-B. Untyped-row investigation and descriptor extraction (e1eb220, b68baaa, b10467b, b5b74db, 519de0b, 81d4f88, 45223c9)
 
-Every count below uses the explicit denominator: 871,595 rows with every
+This is a historical pre-preservation measurement. Every count below uses the
+explicit denominator: 871,595 rows with every
 `value_*` column null, out of 1,240,444 total fields.parquet rows on 02d4d478.
 The requested descriptor-present/descriptor-absent binary was itself too
 coarse; several groups contain a mixture of intentional raw data, movement
@@ -2858,8 +2888,9 @@ raw representation and the typed representation with identical geometry.
 ### 14-C. Whole-block payload preservation measurement
 
 Section 7-C contains the three-replay cost table, timing protocol, exact
-14,755-row round-trip audit, and the production decision gate. No Task C
-production source or baseline change was committed.
+14,755-row round-trip audit, and the historical pre-production measurement.
+Production preservation was later implemented and verified as documented in
+section 7-C and the current export baseline.
 
 ### 14-D. Complete Rust ASCII enforcement (a0ea2b4, 7e0051f)
 
@@ -2888,8 +2919,9 @@ fields.parquet bytes 13,187,104 -> 13,255,044
 ```
 
 These are precisely the Task B reclassification identity and its populated
-values described in 14-B. Task A and Task D do not affect export data; Task C
-was measurement-only and its ON values are excluded. After documenting this
+values described in 14-B. At that delegate checkpoint, Task A and Task D did
+not affect export data and Task C was measurement-only, so its ON values were
+excluded. After documenting this
 attribution, the baseline was updated. Its JSON diff contains exactly those
 four values, and an immediate ordinary check passes with all three printed
 counter/Parquet row identities intact. Any additional drift is a failure.

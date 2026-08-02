@@ -8,7 +8,11 @@
 use arrow_schema::{DataType, Field, Schema};
 use std::sync::Arc;
 
-/// Schema for the `fields` table (long format: one row = one decoded field).
+/// Schema for the `fields` table (long format).
+///
+/// Most rows represent one decoded field. A whole ClassNetCache block whose
+/// function table is unresolved is preserved as one explicitly marked row;
+/// it is not split into fabricated fields. The schema itself stays unchanged.
 ///
 /// Column ordering is deliberate: the "address" columns come first (time,
 /// packet, channel, actor, group, handle, name) so that predicate pushdown on
