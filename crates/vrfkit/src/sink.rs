@@ -496,6 +496,34 @@ impl<'a> ExportSink<'a> {
         group.get_field(handle).map(|f| f.name.clone())
     }
 
+    /// Every name the replay declares for `group_path`, indexed by handle.
+    ///
+    /// This is `resolve_field_name` for a whole group at once, borrowed rather
+    /// than cloned. The array walker needs the declaration for each of an
+    /// element's flattened members, and calling `resolve_field_name` per leaf
+    /// would re-resolve the group and allocate a `String` every time.
+    ///
+    /// Empty when the group is unknown, which is exactly the "no declaration"
+    /// case `decode_struct_array` falls back from.
+    ///
+    /// An associated function over `&NetGuidCache` rather than a `&self` method
+    /// on purpose: the result borrows for as long as the walker runs, and a
+    /// `&self` method would hold all of `self` and collide with the `&mut
+    /// self.stats` the same call site needs.
+    fn declared_handle_names<'g>(
+        cache: &'g NetGuidCache,
+        group_path: &str,
+    ) -> Vec<Option<&'g str>> {
+        let Some(group) = cache.get_group_by_path(group_path) else {
+            return Vec::new();
+        };
+        group
+            .fields
+            .iter()
+            .map(|slot| slot.as_ref().map(|f| f.name.as_str()))
+            .collect()
+    }
+
     /// Check if a field name is a known DynamicArray that should be flattened.
     fn is_known_array_field(&self, field_name: Option<&str>) -> bool {
         match field_name {
@@ -1163,7 +1191,9 @@ impl FieldSink for ExportSink<'_> {
         if is_array {
             if let Some(ref raw) = raw_bits {
                 let schema = self.get_array_schema(field_name.as_deref());
-                let flattened = decode_struct_array(raw, bit_count, schema, &mut self.stats.array);
+                let declared = Self::declared_handle_names(self.cache, &self.current_group_path);
+                let flattened =
+                    decode_struct_array(raw, bit_count, schema, &declared, &mut self.stats.array);
                 let parent_name = field_name.as_deref().unwrap_or("_array");
                 // Resolve every leaf's type before touching `self.records`.
                 //
@@ -1188,8 +1218,11 @@ impl FieldSink for ExportSink<'_> {
                 let leaf_types: Vec<Option<vrf_decode::FieldType>> = flattened
                     .iter()
                     .map(|f| {
-                        self.resolve_field_name(f.handle)
-                            .and_then(|n| TABLE.lookup(&self.current_group_path, &n))
+                        declared
+                            .get(f.handle as usize)
+                            .copied()
+                            .flatten()
+                            .and_then(|n| TABLE.lookup(&self.current_group_path, n))
                             .filter(|ft| {
                                 !matches!(
                                     ft,

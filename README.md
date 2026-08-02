@@ -7,9 +7,9 @@ VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
 
 ## 상태
 
-작업 중. 현재 검증된 범위 (`cargo test --workspace` 252 통과, `clippy -D warnings` 0, `fmt` 0):
+작업 중. 현재 검증된 범위 (`cargo test --workspace` 257 통과, `clippy -D warnings` 0, `fmt` 0):
 
-크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표는 `f5feb82` 시점이고, 이 숫자들은 지금까지 여러 번 낡은 채로 방치됐습니다.
+크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표는 `5e39fd4` 병합 시점이고, 이 숫자들은 지금까지 여러 번 낡은 채로 방치됐습니다.
 
 | 레이어 | 크레이트 | 상태 |
 |---|---|---|
@@ -19,7 +19,7 @@ VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
 | DemoFrame 순회 | `vrf-frame` | ✅ 6 테스트 |
 | 리플레이 동적 스키마 + GUID 캐시 | `vrf-schema` | ✅ 47 테스트 |
 | 리플리케이션 (packet/bunch/content block/field) | `vrf-net` | ✅ 32 테스트 |
-| 필드 디코더 + 중첩 배열 + 타입 오버레이 | `vrf-decode` | ✅ 58 테스트 |
+| 필드 디코더 + 중첩 배열 + 타입 오버레이 | `vrf-decode` | ✅ 63 테스트 |
 | movement 디코더 | `vrf-movement` | ✅ 5 테스트 |
 | Parquet 내보내기 | `vrf-export` | ✅ 20 테스트, NDJSON 대비 8~25× 작음 |
 | 통합 CLI | `vrfkit` | ✅ 8 테스트, `inspect` / `validate` / `export` |
@@ -78,8 +78,8 @@ MulticastNotifyKilledEnemy.KillerCharacter       119  132  우리가 +13
 succeeded: 215/215        failed: 0
 branches : 215  ++Ares-Core+release-13.01
 pass rate: min 97.487010%  median 99.323286%  max 99.681958%
-totals   : 136,545,822 content blocks / 98,883,979 fields / 75,571,092 RPCs
-           malformed framing 0        unattributed 1,972,080,670 bits
+totals   : 136,545,822 content blocks / 98,884,839 fields / 75,571,092 RPCs
+           malformed framing 0        unattributed 1,972,018,965 bits
 ```
 
 `malformed framing 0` 은 컨테이너·번치·콘텐츠 블록 프레이밍이 전 코퍼스에서 한 건도 어긋나지 않는다는 뜻입니다. 통과율이 100%가 아닌 이유는 **프레이밍이 아니라 귀속**입니다. 블록은 정확히 잘라내지만, 일부는 어느 `_ClassNetCache` 그룹의 것인지 확정할 수 없어 handle 폭을 모르고, 그래서 레코드로 풀지 못합니다.
@@ -112,9 +112,9 @@ totals   : 136,545,822 content blocks / 98,883,979 fields / 75,571,092 RPCs
 
 걸을 수 있는 필드의 원시 비트는 항상 내보내고, 타입을 아는 필드는 `value_*` 컬럼을 **추가로** 채웁니다. 타입을 몰라도, 디코드가 실패해도 그 행의 `raw_bits`는 남습니다. 그룹을 찾지 못해 내부 스트림 자체를 걸을 수 없는 ClassNetCache 블록은 예외이며, loud failure와 skipped bits만 남습니다.
 
-오버레이 테이블은 C# 디스크립터에서 기계적으로 추출합니다(`tools/extract_descriptors.py`) — 172개 그룹 1,193개 항목. 손으로 옮기지 않는 이유는 S-box·골든 벡터와 같습니다.
+오버레이 테이블은 C# 디스크립터에서 기계적으로 추출합니다(`tools/extract_descriptors.py`) — 171개 그룹 1,185개 항목. 손으로 옮기지 않는 이유는 S-box·골든 벡터와 같습니다.
 
-`02d4d478` 기준 (`f5feb82`에서 측정):
+`02d4d478` 기준 (`5e39fd4` 병합 시점에서 측정):
 
 ```
 Decoded OK:   369,743      Decode errors:      0
@@ -151,7 +151,7 @@ vrfkit validate <file.vrf> [--diagnostics]
 vrfkit export   <file.vrf> --out <dir>
 ```
 
-`02d4d478`(48MB) 기준 export 1.8초, `fields.parquet` 10.9MB / 784,566행, `movement.parquet` 30.7MB / 1,839,607행.
+`02d4d478`(48MB) 기준 export 1.8초, `fields.parquet` 13.6MB / 1,246,812행, `movement.parquet` 30.7MB / 1,839,607행.
 
 ## 설계
 

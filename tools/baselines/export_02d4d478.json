@@ -26,7 +26,7 @@
  "parquet": {
   "fields": {
    "rows": 1246812,
-   "bytes": 13584643
+   "bytes": 13586343
   },
   "movement": {
    "rows": 1839607,

@@ -89,7 +89,7 @@ cargo build --release -p vrfkit
 .\target\release\vrfkit.exe export `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf\02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf" `
   --out out\nested
-# Must NOT change: content blocks 608020, fields 429633, RPCs 342735,
+# Must NOT change: content blocks 608020, fields 429637, RPCs 342735,
 #                  movement 1839607, NetGUID rows 16167, decode errors 0
 python tools\compare_combat_report.py
 # Must print: ALL INTERESTING SHAPES MATCH
@@ -99,10 +99,12 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 #           malformed 0  skipped 1,972,018,965    (~30s, runs 16-wide)
 # `fields` and `skipped` moved at db42e6a: the controller's opening bunch was
 # framed nine bits early (17-A), so 215 replays x 4 handles and x 287 bits came
-# back. That commit refreshed every baseline FILE and left this comment stale --
-# a new session would have compared against the old numbers and "failed" a green
-# run. Dated figures further down are historical measurements and stay as they
-# are; this block is the one that has to track HEAD.
+# back. That commit refreshed every baseline FILE and left this comment stale
+# for two commits -- it read 429633 / 98,883,979 / 1,972,080,670, so a new
+# session would have compared a green run against the wrong numbers and gone
+# hunting for a regression that was not there. Dated figures further down are
+# historical measurements at their own commits and stay as they are; this block
+# is the one that has to track HEAD.
 python tools\check_decode_errors_corpus.py .\target\release\vrfkit.exe `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
 # Expected: OK: every replay reported Decode errors: 0   (~70s, 8-wide)
@@ -3124,6 +3126,14 @@ Flagged as an unverified lead when this triage was written, then checked. It is
 the same verdict as the rest of the tail: upstream absence, and we are ahead of
 the reference rather than behind it.
 
+SUPERSEDED 2026-08-02 by f5feb82 and ce02f1a, see 18. Both halves of the next
+paragraph are now false: the null count fell from 11,641 to 3,032 when the
+walker started asking the overlay table for leaf types, and "a handle we have no
+name for" no longer describes anything -- the REPLAY names all 70 handles this
+group declares, and the leaf label now comes from that declaration. What
+survives is the verdict: those handles are ones the C# reference does not read,
+and we keep their bits where it discards them.
+
 11,641 of its 21,268 rows carry no decoded value. They are not overlay-table
 misses -- this group is decoded by `decode_struct_array` against
 `COMBAT_ROUNDS_SCHEMA`, and `array.rs:355` labels any handle the schema does not
@@ -3463,207 +3473,6 @@ files behind. That is luck, not the guard working.
 
 ---
 
-## 17. Route B closed: the actor path now does the leaf lookup (2026-08-02)
-
-`sink.rs`'s three group-path resolvers were asymmetric. The class path
-(`resolve_subobject_group_path`, primary) and the subobject path (same
-function, secondary) each fell back to `NetGuidCache::unique_leaf_match`
-before giving up and returning the raw NetGUID path. The actor-GUID fallback
-in `resolve_actor_group_path` did not: it tried the lookup keys and then
-`return actor_path.to_owned()`. So a static actor whose own path is an exact,
-unique leaf of a declared group -- `AresWorldSettings` against
-`/Script/ShooterGame.AresWorldSettings` -- shipped as a bare instance name
-with every field it carried unnamed. 7-H measured that gap at 1,183 rows over
-the 11 cross-validated replays and called it route B.
-
-The fix is the same four lines the other two call sites already have,
-including the `!is_cnc || ends_with("_ClassNetCache")` guard.
-
-### 17-A. What moved, at row level
-
-`out/xval` was exported before and after and the two `fields.parquet` trees
-compared POSITIONALLY, not by join: same row count, and every one of
-`time_ms`, `packet_id`, `channel_index`, `actor_net_guid`, `object_net_guid`,
-`handle`, `bit_count`, `raw_bits` identical at every position in all 11
-replays. That proves the 1:1 row correspondence rather than assuming it, so
-differences in the remaining columns can be attributed to specific rows.
-
-```
-rows that changed group_path: 1,183
-rows that gained field_name : 1,183
-rows that gained a value    : 0
-rows that LOST a value      : 0
-rows whose value CHANGED    : 0
-```
-
-The eight moves, all on actor blocks (`object_net_guid` null on every one),
-none of them to a `_ClassNetCache` group:
-
-```
-   945  AresWorldSettings              -> /Script/ShooterGame.AresWorldSettings          exact leaf
-   196  Switch_BlackMarket_2           -> /Game/Interactable/...Switch_BlackMarket_2_C   "_C" arm
-    14  MinimapSiteA                   -> /Game/UI/...MinimapSiteA_C                     "_C" arm
-     8  SoundBarrier                   -> /Game/Blueprint/SoundBarrier.SoundBarrier_C    "_C" arm
-     6  MinimapSiteB                   -> /Game/UI/...MinimapSiteB_C                     "_C" arm
-     6  MinimapSiteC                   -> /Game/UI/...MinimapSiteC_C                     "_C" arm
-     6  AmbientAudio_Jam_OS_Peacock_2  -> /Game/Audio/...Peacock_2_C                     "_C" arm
-     2  BombDestination_C              -> /Game/GameModes/Bomb/BombDestination.BombDestination_C
- -----
- 1,183
-```
-
-This split was PREDICTED before the after-run, from two independent
-measurements -- a pre-fix instrumented build counting per-actor-path blocks,
-and a per-bare-name row count over the before export -- and reproduced term by
-term, not just in total.
-
-### 17-B. Why the binding is right, and where the evidence is weaker
-
-All 1,183 rows gained a `field_name`. `resolve_field_name` returns `Some` only
-when the handle indexes a POPULATED declared slot of the bound group, so
-1,183/1,183 named means zero out-of-range and zero empty-slot handles. A wrong
-group is what produces those.
-
-The names and their wire widths corroborate independently:
-
-```
-/Script/ShooterGame.AresWorldSettings   handle 15  32 bits  WorldGravityZ
-                                        handle 17  32 bits  TimeDilation
-                                        handles 3, 12  3 bits  "216" / "215"
-Switch_BlackMarket_2_C                  handle 15  64 bits  LastUsedTime
-                                        handle 18  64 bits  GameplayStartTime
-                                        handle 16   1 bit   HasPlayed
-                                        handle 17   1 bit   IsDisabled
-                                        handle 19   1 bit   LeverDown
-```
-
-`WorldGravityZ` and `TimeDilation` are exactly the two floats an Unreal
-`AWorldSettings` replicates; the booleans are 1 bit and the timestamps 64.
-Handles 3 and 12 carry the 3-bit `216`/`215` pair every actor replicates.
-
-WEAKER HALF, stated as such: 947 of the 1,183 rows bind through the exact-leaf
-arm (945 `AresWorldSettings` + 2 `BombDestination_C`). The other 236 bind
-through `unique_leaf_match`'s `"_C"` arm, which is beyond C# and rests on the
-Unreal convention that a level-placed Blueprint instance takes its class's
-name. `Switch_BlackMarket_2` is 196 of those 236; 7-H's CNC-derived route
-reached the same actor independently, which corroborates the identification
-from a different direction. The remaining 40 rows are five map props and
-minimap markers.
-
-### 17-C. The ClassNetCache path is untouched, by construction and by count
-
-`resolve_function_count` runs its own instance-name resolver
-(`resolve_cnc_for_instance_name`) and only while `current_group_path` is still
-a bare name, so a RepLayout group returned by the new call would silence it and
-hand `ReadSerializedInt` the wrong capacity. It cannot: `by_leaf` keys are the
-text after the last `.`, and the two suffix arms append `Component` and `_C`,
-so `path.ends_with("_ClassNetCache")` can only hold if the actor's own path
-ends with `_ClassNetCache`.
-
-Measured, not just argued. The instrumented pre-fix build counted 315
-ClassNetCache actor blocks across the 11 replays where the leaf rule would
-fire; every one matched a `_C` group, so the guard rejected all 315. Zero rows
-with a `_ClassNetCache` target appear in the row diff.
-
-### 17-D. Counters, and the arithmetic closing
-
-Per replay, and in total over the 11:
-
-```
-overlay_no_field_name  -1,183
-overlay_not_in_table   +1,183
-overlay_decoded_ok          0
-overlay_decode_errors       0
-overlay_raw_skip            0
-overlay_rows_offered        0
-```
-
-No non-overlay counter moved on any replay: chunks, packets, export_groups,
-content_blocks, rep_layout_blocks, class_net_cache_blocks, fields, rpcs,
-actor_opens, actor_closes, bunches, malformed_packets, skipped_bits,
-movement_rows and net_guid_rows are all identical. That is the shape a
-reclassification has and a reparse does not.
-
-The five corpus totals over 215 replays are unchanged: blocks 136,545,822,
-fields 98,883,979, rpcs 75,571,092, malformed 0, skipped 1,972,080,670.
-Corpus-wide the overlay moves `not in table` 116,447,827 -> 116,469,301
-(+21,474) with `decoded OK`, `raw/skip` and `rows offered` all unchanged, so
-21,474 rows move across the full corpus against 1,183 on the 11.
-
-### 17-E. Metrics and bundle
-
-All 231 cells of `out/xval_summary.json` (11 replays x 21 sections) carry an
-identical verdict before and after, and 16/21 is unchanged. Stronger: every one
-of the 147,041 metric leaf values across the 11 `metrics.json` files is
-identical. 7-H's "no metric section changes" is now measured, not predicted.
-
-The BUNDLE does change, and only in one way. `movement.ndjson` and
-`manifest.json` are identical on all 11 replays. `events.ndjson` has the same
-line count on all 11, and 1,077 `export_group_received` lines differ; on each,
-exactly two keys change -- `export_group_path` from the bare instance name to
-the declared group, and `payload` from `{}` to the named fields. No event
-appears, disappears or changes type. `_group_path_to_class` and
-`_group_path_to_archetype` are NOT reached: they live in the adapter's legacy
-fallback for a missing `actors.parquet`, and `guid_class` is filled from
-`actors.parquet`'s spawn `class_path`, which this change does not touch.
-
-The C# reference bundle cannot corroborate this. Its `events.ndjson` for
-02d4d478 carries 117,841 `export_group_received` events over just 41 distinct
-export group paths -- a curated gameplay whitelist -- with zero bare-name paths
-and none of the eight groups above.
-
-### 17-F. The 7-H safety audit does NOT transfer, and this is why
-
-7-H's "87 spoke, 87 correct, 0 mismatches" was route A (handle-set uniqueness)
-applied to groups whose class was already known. The actor-path analogue --
-for every actor block resolved by a HIGHER-priority branch, does
-`unique_leaf_match(actor_path)` stay silent or agree? -- was run on an
-instrumented build over all 11 replays and has a population of THREE:
-
-```
-4,926,463  actor blocks with no actor path at all (archetype/package resolved)
-        3  actor blocks resolved above the fallback that DO have an actor path
-           (2 RepLayout, 1 ClassNetCache), all three leaf-none
-    1,667  actor blocks that fell through to the raw actor path where the leaf
-           rule fires (1,352 RepLayout -> bound; 315 CNC -> rejected by guard)
-   13,844  actor blocks that fell through where it does not fire
-```
-
-Zero disagreements out of three opportunities is not evidence. The population
-is empty because an actor GUID only has a path when it is a static actor, and
-static actors are exactly the ones that fall through. So the safety argument
-for this path rests on two other legs instead:
-
-1. Uniqueness. `AMBIGUOUS_LEAF` makes the rule bind or stay silent, never
-   choose. Pinned by `an_ambiguous_actor_leaf_binds_to_nothing`, which was
-   driven to failure against a naive first-match implementation before being
-   kept.
-2. Handle coverage. 1,183 of 1,183 bound rows landed on populated declared
-   slots (17-B).
-
-### 17-G. What this did not check
-
-- Non-Bomb game modes, still input-blocked (section 11-A).
-- Checkpoint chunks, still never parsed (7-H's own standing caveat).
-- Whether the 20,291 corpus-wide moved rows outside the 11 cross-validated
-  replays bind correctly. Only the 11 were diffed at row level; the other 204
-  replays were checked at counter level only (five totals unchanged, decode
-  errors 0). The exposure is bounded but not zero: `AresWorldSettings` moves
-  85-86 rows on every one of the 11, so at ~86 x 215 roughly 18,500 of the
-  21,474 corpus-wide moves are the exact-leaf binding on the group with the
-  strongest independent evidence, leaving the weaker `"_C"` arm under about
-  14%. What the counters cannot see is the failure this would produce: a row
-  bound to a wrong group whose handle misses a populated slot keeps
-  `field_name = None`, stays counted in `no_field_name`, and the arithmetic
-  closes identically. That count is a measured 0 of 1,183 on the 11 and an
-  inference on the other 204.
-- `README.md`'s type-overlay block was already stale before this change and
-  still is: it prints Decoded OK 352,702 / Raw/Skip 72,519 / Not in table
-  530,229 / Typed 35.7% against a measured 369,741 / 73,984 / 511,914 / 37.4%.
-  Left alone deliberately rather than half-corrected.
-
----
-
 ## 18. `Ping` -- encoding settled, deliberately not typed (2026-08-02)
 
 `Ping` on `/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C` is the
@@ -3850,3 +3659,353 @@ enum byte, 192 for `DeathLocation`'s three doubles -- with **zero decode
 failures**. A wrong type here does not produce a wrong value; it fails to
 consume the payload and the row stays null. The three `HUDConfig` handles still
 read that way (16 bits, 1,043 rows, 0 decoded), unchanged from before.
+
+## 20. Route B closed: the actor path now does the leaf lookup (2026-08-02)
+
+`sink.rs`'s three group-path resolvers were asymmetric. The class path
+(`resolve_subobject_group_path`, primary) and the subobject path (same
+function, secondary) each fell back to `NetGuidCache::unique_leaf_match`
+before giving up and returning the raw NetGUID path. The actor-GUID fallback
+in `resolve_actor_group_path` did not: it tried the lookup keys and then
+`return actor_path.to_owned()`. So a static actor whose own path is an exact,
+unique leaf of a declared group -- `AresWorldSettings` against
+`/Script/ShooterGame.AresWorldSettings` -- shipped as a bare instance name
+with every field it carried unnamed. 7-H measured that gap at 1,183 rows over
+the 11 cross-validated replays and called it route B.
+
+The fix is the same four lines the other two call sites already have,
+including the `!is_cnc || ends_with("_ClassNetCache")` guard.
+
+### 20-A. What moved, at row level
+
+`out/xval` was exported before and after and the two `fields.parquet` trees
+compared POSITIONALLY, not by join: same row count, and every one of
+`time_ms`, `packet_id`, `channel_index`, `actor_net_guid`, `object_net_guid`,
+`handle`, `bit_count`, `raw_bits` identical at every position in all 11
+replays. That proves the 1:1 row correspondence rather than assuming it, so
+differences in the remaining columns can be attributed to specific rows.
+
+```
+rows that changed group_path: 1,183
+rows that gained field_name : 1,183
+rows that gained a value    : 0
+rows that LOST a value      : 0
+rows whose value CHANGED    : 0
+```
+
+The eight moves, all on actor blocks (`object_net_guid` null on every one),
+none of them to a `_ClassNetCache` group:
+
+```
+   945  AresWorldSettings              -> /Script/ShooterGame.AresWorldSettings          exact leaf
+   196  Switch_BlackMarket_2           -> /Game/Interactable/...Switch_BlackMarket_2_C   "_C" arm
+    14  MinimapSiteA                   -> /Game/UI/...MinimapSiteA_C                     "_C" arm
+     8  SoundBarrier                   -> /Game/Blueprint/SoundBarrier.SoundBarrier_C    "_C" arm
+     6  MinimapSiteB                   -> /Game/UI/...MinimapSiteB_C                     "_C" arm
+     6  MinimapSiteC                   -> /Game/UI/...MinimapSiteC_C                     "_C" arm
+     6  AmbientAudio_Jam_OS_Peacock_2  -> /Game/Audio/...Peacock_2_C                     "_C" arm
+     2  BombDestination_C              -> /Game/GameModes/Bomb/BombDestination.BombDestination_C
+ -----
+ 1,183
+```
+
+This split was PREDICTED before the after-run, from two independent
+measurements -- a pre-fix instrumented build counting per-actor-path blocks,
+and a per-bare-name row count over the before export -- and reproduced term by
+term, not just in total.
+
+### 20-B. Why the binding is right, and where the evidence is weaker
+
+All 1,183 rows gained a `field_name`. `resolve_field_name` returns `Some` only
+when the handle indexes a POPULATED declared slot of the bound group, so
+1,183/1,183 named means zero out-of-range and zero empty-slot handles. A wrong
+group is what produces those.
+
+The names and their wire widths corroborate independently:
+
+```
+/Script/ShooterGame.AresWorldSettings   handle 15  32 bits  WorldGravityZ
+                                        handle 17  32 bits  TimeDilation
+                                        handles 3, 12  3 bits  "216" / "215"
+Switch_BlackMarket_2_C                  handle 15  64 bits  LastUsedTime
+                                        handle 18  64 bits  GameplayStartTime
+                                        handle 16   1 bit   HasPlayed
+                                        handle 17   1 bit   IsDisabled
+                                        handle 19   1 bit   LeverDown
+```
+
+`WorldGravityZ` and `TimeDilation` are exactly the two floats an Unreal
+`AWorldSettings` replicates; the booleans are 1 bit and the timestamps 64.
+Handles 3 and 12 carry the 3-bit `216`/`215` pair every actor replicates.
+
+WEAKER HALF, stated as such: 947 of the 1,183 rows bind through the exact-leaf
+arm (945 `AresWorldSettings` + 2 `BombDestination_C`). The other 236 bind
+through `unique_leaf_match`'s `"_C"` arm, which is beyond C# and rests on the
+Unreal convention that a level-placed Blueprint instance takes its class's
+name. `Switch_BlackMarket_2` is 196 of those 236; 7-H's CNC-derived route
+reached the same actor independently, which corroborates the identification
+from a different direction. The remaining 40 rows are five map props and
+minimap markers.
+
+### 20-C. The ClassNetCache path is untouched, by construction and by count
+
+`resolve_function_count` runs its own instance-name resolver
+(`resolve_cnc_for_instance_name`) and only while `current_group_path` is still
+a bare name, so a RepLayout group returned by the new call would silence it and
+hand `ReadSerializedInt` the wrong capacity. It cannot: `by_leaf` keys are the
+text after the last `.`, and the two suffix arms append `Component` and `_C`,
+so `path.ends_with("_ClassNetCache")` can only hold if the actor's own path
+ends with `_ClassNetCache`.
+
+Measured, not just argued. The instrumented pre-fix build counted 315
+ClassNetCache actor blocks across the 11 replays where the leaf rule would
+fire; every one matched a `_C` group, so the guard rejected all 315. Zero rows
+with a `_ClassNetCache` target appear in the row diff.
+
+### 20-D. Counters, and the arithmetic closing
+
+Per replay, and in total over the 11:
+
+```
+overlay_no_field_name  -1,183
+overlay_not_in_table   +1,183
+overlay_decoded_ok          0
+overlay_decode_errors       0
+overlay_raw_skip            0
+overlay_rows_offered        0
+```
+
+No non-overlay counter moved on any replay: chunks, packets, export_groups,
+content_blocks, rep_layout_blocks, class_net_cache_blocks, fields, rpcs,
+actor_opens, actor_closes, bunches, malformed_packets, skipped_bits,
+movement_rows and net_guid_rows are all identical. That is the shape a
+reclassification has and a reparse does not.
+
+The five corpus totals over 215 replays are unchanged: blocks 136,545,822,
+fields 98,883,979, rpcs 75,571,092, malformed 0, skipped 1,972,080,670.
+Corpus-wide the overlay moves `not in table` 116,447,827 -> 116,469,301
+(+21,474) with `decoded OK`, `raw/skip` and `rows offered` all unchanged, so
+21,474 rows move across the full corpus against 1,183 on the 11.
+
+### 20-E. Metrics and bundle
+
+All 231 cells of `out/xval_summary.json` (11 replays x 21 sections) carry an
+identical verdict before and after, and 16/21 is unchanged. Stronger: every one
+of the 147,041 metric leaf values across the 11 `metrics.json` files is
+identical. 7-H's "no metric section changes" is now measured, not predicted.
+
+The BUNDLE does change, and only in one way. `movement.ndjson` and
+`manifest.json` are identical on all 11 replays. `events.ndjson` has the same
+line count on all 11, and 1,077 `export_group_received` lines differ; on each,
+exactly two keys change -- `export_group_path` from the bare instance name to
+the declared group, and `payload` from `{}` to the named fields. No event
+appears, disappears or changes type. `_group_path_to_class` and
+`_group_path_to_archetype` are NOT reached: they live in the adapter's legacy
+fallback for a missing `actors.parquet`, and `guid_class` is filled from
+`actors.parquet`'s spawn `class_path`, which this change does not touch.
+
+The C# reference bundle cannot corroborate this. Its `events.ndjson` for
+02d4d478 carries 117,841 `export_group_received` events over just 41 distinct
+export group paths -- a curated gameplay whitelist -- with zero bare-name paths
+and none of the eight groups above.
+
+### 20-F. The 7-H safety audit does NOT transfer, and this is why
+
+7-H's "87 spoke, 87 correct, 0 mismatches" was route A (handle-set uniqueness)
+applied to groups whose class was already known. The actor-path analogue --
+for every actor block resolved by a HIGHER-priority branch, does
+`unique_leaf_match(actor_path)` stay silent or agree? -- was run on an
+instrumented build over all 11 replays and has a population of THREE:
+
+```
+4,926,463  actor blocks with no actor path at all (archetype/package resolved)
+        3  actor blocks resolved above the fallback that DO have an actor path
+           (2 RepLayout, 1 ClassNetCache), all three leaf-none
+    1,667  actor blocks that fell through to the raw actor path where the leaf
+           rule fires (1,352 RepLayout -> bound; 315 CNC -> rejected by guard)
+   13,844  actor blocks that fell through where it does not fire
+```
+
+Zero disagreements out of three opportunities is not evidence. The population
+is empty because an actor GUID only has a path when it is a static actor, and
+static actors are exactly the ones that fall through. So the safety argument
+for this path rests on two other legs instead:
+
+1. Uniqueness. `AMBIGUOUS_LEAF` makes the rule bind or stay silent, never
+   choose. Pinned by `an_ambiguous_actor_leaf_binds_to_nothing`, which was
+   driven to failure against a naive first-match implementation before being
+   kept.
+2. Handle coverage. 1,183 of 1,183 bound rows landed on populated declared
+   slots (17-B).
+
+### 20-G. What this did not check
+
+- Non-Bomb game modes, still input-blocked (section 11-A).
+- Checkpoint chunks, still never parsed (7-H's own standing caveat).
+- Whether the 20,291 corpus-wide moved rows outside the 11 cross-validated
+  replays bind correctly. Only the 11 were diffed at row level; the other 204
+  replays were checked at counter level only (five totals unchanged, decode
+  errors 0). The exposure is bounded but not zero: `AresWorldSettings` moves
+  85-86 rows on every one of the 11, so at ~86 x 215 roughly 18,500 of the
+  21,474 corpus-wide moves are the exact-leaf binding on the group with the
+  strongest independent evidence, leaving the weaker `"_C"` arm under about
+  14%. What the counters cannot see is the failure this would produce: a row
+  bound to a wrong group whose handle misses a populated slot keeps
+  `field_name = None`, stays counted in `no_field_name`, and the arithmetic
+  closes identically. That count is a measured 0 of 1,183 on the 11 and an
+  inference on the other 204.
+- `README.md`'s type-overlay block was stale here and left alone deliberately
+  rather than half-corrected. FIXED SINCE, at 4624fef -- and it turned out to be
+  stale in three blocks, not one: the overlay figures, the test counts (header
+  190 against 252, five of eight per-crate rows wrong), and a decode-error
+  sentence still scoped to 20 sample replays. Both blocks now carry the command
+  that produces them.
+
+---
+
+## 21. Array leaf names now come from the replay (2026-08-02)
+
+f5feb82 made the combat-report walker ask the overlay table for leaf TYPES,
+keyed on the name the replay declares for each handle. It left the NAMES on
+`COMBAT_ROUNDS_SCHEMA`, a hardcoded handle->name map, so the job was half done
+in two visible ways: 8,609 recovered leaves shipped as `_h{handle}`, and where
+the schema did name a handle it sometimes contradicted the wire -- the schema
+calls handle 3 `RoundNumber`, every replay declares it `RoundNum`.
+
+`ce02f1a` closes it. `decode_struct_array` now takes the group's declared names
+indexed by handle, and `resolve_leaf_label` orders them declaration -> schema ->
+`_h{handle}`. The schema stays as the floor for handles a replay does not
+declare, and it still decides the NESTING: container path segments keep their
+schema name, because handles 44 and 79 both declare `RegionalDamageInteractions`
+and the wire cannot tell those apart where the schema can.
+
+### 21-A. What moved, at row level
+
+All 11 cross-validated replays exported before and after and compared
+POSITIONALLY, not by join. Same row count on every replay, and all NINE of
+`time_ms`, `packet_id`, `channel_index`, `actor_net_guid`, `object_net_guid`,
+`group_path`, `handle`, `bit_count`, `raw_bits` identical at every position.
+
+```
+rows that changed field_name : 193,241   (15,560 on 02d4d478)
+rows that gained a value     : 0
+rows that LOST a value       : 0
+rows whose value CHANGED     : 0
+groups touched               : 1  (Bomb_CombatReportComponent, all 11 replays)
+movement/actors/net_guids    : byte-identical on all 11
+```
+
+49 distinct path shapes move, and the set is IDENTICAL on all 11 replays --
+union 49, intersection 49, no replay carrying a shape another lacks. That is the
+whole mapping, not a sample from one replay.
+
+The split is 35 / 14, counted from the diff rather than by eye:
+
+- **35** are `_hN` placeholders gaining a real name. 32 of those are the
+  `HUDConfig` / `StateRemainingTime` / `GameTime` / `GamePhase` quartet at its
+  eight nesting positions (handles 6-9, 14-17, 27-30, 31-34, 62-65, 66-69,
+  99-102, 105-108); the other three are `DamageType` at 35 and 70, and `_h104`
+  -> `DeathLocation`.
+- **14** are named leaves the wire corrects, spelling out **12** distinct
+  renames -- `IsKill` and `IsWallPen` each occupy two shapes, at handles 49/84
+  and 48/83. The twelve: `RoundNumber`->`RoundNum`, `Subject`->
+  `ParticipantSubject`, `Team`->`ParticipantTeamName`, `CharacterIcon`->
+  `ParticipantCharacterIcon`, `KillerPlayerState`->`ParticipantsKillerState`,
+  `DidKill`->`bDidKill`, `Died`->`bDied`, `WasKiller`->`bWasKiller`,
+  `IsKill`->`bIsKill`, `IsWallPen`->`bIsWallPen`, and Riot's own typos
+  `DamageReceived`->`DamageRecieved` and `HitsReceived`->`HitsRecieved`.
+
+An earlier draft of this section and of ce02f1a's message said 34 / 15. That was
+counted by hand and was wrong; 35 + 14 = 49 is what the diff says.
+
+Per-column check, stronger than the row diff: of the 14 columns in
+`fields.parquet`, exactly ONE changed its compressed bytes -- `field_name`,
+675,934 -> 677,634. The other 13, including all four value columns, are
+byte-identical page for page. That is the whole of the single export-baseline
+DRIFT line (13,584,643 -> 13,586,343 bytes, row count unchanged).
+
+### 21-B. The bundle deliberately does NOT follow, and that is the load-bearing half
+
+The declared names are NOT unique within one flattened element. UE flattens the
+same four-member struct at eight nesting positions, so handles 6, 99 and 105 all
+declare `HUDConfig` at the Reports level, and 27/31 and 62/66 pair up one level
+down. A bundle payload is a JSON object built by last-wins assignment, so keying
+it on the declared name MERGES those.
+
+Measured on the pre-change export, before any of this was written: 3,405 of
+20,298 distinct payload paths would collapse. Then measured directly, by
+building one bundle with the adapter mapping deliberately disabled: the
+combat-report leaf values in `events.ndjson` fall from 26,640 to **22,417**.
+4,223 values destroyed, and NOTHING in the sweep would have seen it --
+`fields.parquet` stays 1:1 because only `field_name` moves, and
+`compute_metrics.py` reads none of these names, so 16/21 and all 231 cells stay
+green over the loss. This is another change whose damage is invisible to every
+counter, the third recorded this session.
+
+So `to_valplay_bundle.py` keys combat-report leaves on the HANDLE: the C#
+reference's member name where it has one, `_h{handle}` -- the label the bundle
+already carried -- where it does not. `fields.parquet` keeps the `handle` column
+and loses nothing; this projection has no such escape hatch. That is the "no
+hardcoded names in the parser" invariant working as intended, with the renaming
+table in the adapter where labelling is a presentation concern.
+`compare_combat_report.py` imports that same table rather than growing a second
+copy that could drift.
+
+Result: all 44 bundle files (11 replays x 4) are BYTE-IDENTICAL before and
+after, and all 231 `xval_summary.json` cells carry an identical verdict. 16/21
+unchanged.
+
+### 21-C. Guards, each seen failing
+
+- The two behaviour tests in `array.rs` were driven to failure first against a
+  `resolve_leaf_label` that ignored the declaration. The other three -- schema
+  fallback, handle past the end of the declaration, container segment keeps its
+  schema name -- passed from the start, which is correct: they pin what must NOT
+  change.
+- `test_to_valplay_bundle.py`'s three new cases fail (3 of 9) when the wire name
+  is passed through instead of mapped.
+- `compare_combat_report.py` goes red on three shapes against a deliberately
+  wrong handle-20 mapping and a removed handle 22.
+- The `_raw` / container-handle exclusion fails its own test when removed.
+- The byte-identity of the bundles is itself falsifiable and was falsified: with
+  the adapter mapping disabled, 02d4d478's `events.ndjson` loses 4,223 leaf
+  values while keeping all 576,247 lines. A byte-identical bundle is therefore
+  a result, not a tautology.
+
+### 21-D. What this did not do, and what it corrects
+
+- The corpus totals were re-measured on an UNMODIFIED HEAD binary because two of
+  the five in this document were already stale: `fields` 98,884,839 (doc said
+  98,883,979) and `skipped` 1,972,018,965 (doc said 1,972,080,670). db42e6a
+  moved both and refreshed every build baseline without updating the prose. The
+  before and after runs of this change agree exactly on all five, so the change
+  moves none of them -- but the sweep instruction to expect the documented
+  numbers would have failed for the wrong reason. QUICK START is corrected;
+  the dated per-section records are left as the historical measurements they are.
+- 15-C is contradicted and is marked SUPERSEDED in place.
+- Only the 11 cross-validated replays were diffed at row level. The other 204
+  were checked at counter level only (five totals unchanged, decode errors 0
+  across all 215).
+- `README.md`'s type-overlay block was stale when this landed; fixed since at
+  4624fef (see 20-G).
+- The container segments still carry schema names, so the emitted path is a
+  hybrid: `DealtInteractions` is ours, `DamageDealt` under it is the wire's.
+  Deliberate -- the wire declares `DealtIteractions` (Riot's typo) at handle 26
+  and the same `RegionalDamageInteractions` at both 44 and 79, so adopting the
+  declaration there would lose the one distinction the schema provides and buy
+  nothing.
+- **The schema's LEAF names are now unreachable for this group, and the text
+  above should not be read as saying otherwise.** "The schema stays as the floor
+  for handles a replay does not declare" is true as a rule but currently vacuous
+  here: the replay declares all 70 handles, and a sweep of the after-export
+  finds ZERO leaves still labelled `_hN` across all 11 replays. So only
+  `COMBAT_ROUNDS_SCHEMA`'s `sub_arrays` and its container names still do work;
+  its leaf `field_names` entries fire for nothing this corpus contains. They are
+  kept because a replay that declares a shorter group would need them, which is
+  a claim about robustness, not one about current behaviour.
+- Two rows the walker SYNTHESISES are excluded from the adapter's relabelling
+  after review: `emit_remaining_raw`'s `_raw` row (handle u32::MAX, which would
+  have become `_h4294967295`) and the depth-limit container row (which would
+  have become `_h4`). Both are unreachable -- a sweep of all 11 after-exports
+  finds zero `_raw` rows -- so this closed an edge rather than fixing a defect,
+  and the byte-identical bundles were already evidence neither fired.
