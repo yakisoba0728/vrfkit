@@ -153,7 +153,7 @@ Get-ChildItem out\nested\*.parquet | Sort-Object Name |
   ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash, $_.Name }
 # 02d4d478, re-measured 2026-08-02 at HEAD:
 #   84076CF7CA398C957C3E67148D0622F72E809CB4E2157F66CD4F18B197E65D7B  actors.parquet
-#   CADB420689DE6FAD15899ED818440E1B217DB0DE17F69C9D780AB75465E7AD46  fields.parquet
+#   D14CD5D548C0C452885E91BA54ADCBE1E0BB09C4D113E316ED974554A09A0DD9  fields.parquet
 #   1242BBB15B29BE267BA4B0326BCBC508B5E2AC6C7CD8A1570035C335C04D9363  movement.parquet
 #   501CABC678770431D0FEC9C37C4E21ED06193BB93263313959E87865625BBA0F  net_guids.parquet
 ```
@@ -1695,7 +1695,12 @@ keys and then `return actor_path.to_owned()`. `AresWorldSettings` ->
 `/Script/ShooterGame.AresWorldSettings` is an exact unique leaf the parser
 already trusts on the other two paths. Fixing it is a few lines.
 
-VALUE: STILL DO NOT DO IT. No metric section changes. Every section is EXACT,
+FIXED 2026-08-02, and the 1,183 figure reproduced exactly. See section 17.
+
+VALUE (of the remaining routes A and C): STILL DO NOT DO IT. No metric section
+changes -- and section 17 now confirms that empirically for route B, which was
+done anyway because it was our own asymmetry rather than a new rule.
+Every section is EXACT,
 MATCH or OURS BETTER and none is BLOCKED; 7-A's tier-2 resolver already covers
 100% of shots and says explicitly that resolving InventoryComponent is not
 needed. The correct verdict is "solvable for 43.9%, buys nothing measurable" --
@@ -3346,3 +3351,196 @@ files behind. That is luck, not the guard working.
 - The merge's "231/231 cells identical" was not re-derived; only the current
   16/21 state was confirmed.
 - The 215-replay corpus runs were substituted with 11-replay evidence.
+
+---
+
+## 17. Route B closed: the actor path now does the leaf lookup (2026-08-02)
+
+`sink.rs`'s three group-path resolvers were asymmetric. The class path
+(`resolve_subobject_group_path`, primary) and the subobject path (same
+function, secondary) each fell back to `NetGuidCache::unique_leaf_match`
+before giving up and returning the raw NetGUID path. The actor-GUID fallback
+in `resolve_actor_group_path` did not: it tried the lookup keys and then
+`return actor_path.to_owned()`. So a static actor whose own path is an exact,
+unique leaf of a declared group -- `AresWorldSettings` against
+`/Script/ShooterGame.AresWorldSettings` -- shipped as a bare instance name
+with every field it carried unnamed. 7-H measured that gap at 1,183 rows over
+the 11 cross-validated replays and called it route B.
+
+The fix is the same four lines the other two call sites already have,
+including the `!is_cnc || ends_with("_ClassNetCache")` guard.
+
+### 17-A. What moved, at row level
+
+`out/xval` was exported before and after and the two `fields.parquet` trees
+compared POSITIONALLY, not by join: same row count, and every one of
+`time_ms`, `packet_id`, `channel_index`, `actor_net_guid`, `object_net_guid`,
+`handle`, `bit_count`, `raw_bits` identical at every position in all 11
+replays. That proves the 1:1 row correspondence rather than assuming it, so
+differences in the remaining columns can be attributed to specific rows.
+
+```
+rows that changed group_path: 1,183
+rows that gained field_name : 1,183
+rows that gained a value    : 0
+rows that LOST a value      : 0
+rows whose value CHANGED    : 0
+```
+
+The eight moves, all on actor blocks (`object_net_guid` null on every one),
+none of them to a `_ClassNetCache` group:
+
+```
+   945  AresWorldSettings              -> /Script/ShooterGame.AresWorldSettings          exact leaf
+   196  Switch_BlackMarket_2           -> /Game/Interactable/...Switch_BlackMarket_2_C   "_C" arm
+    14  MinimapSiteA                   -> /Game/UI/...MinimapSiteA_C                     "_C" arm
+     8  SoundBarrier                   -> /Game/Blueprint/SoundBarrier.SoundBarrier_C    "_C" arm
+     6  MinimapSiteB                   -> /Game/UI/...MinimapSiteB_C                     "_C" arm
+     6  MinimapSiteC                   -> /Game/UI/...MinimapSiteC_C                     "_C" arm
+     6  AmbientAudio_Jam_OS_Peacock_2  -> /Game/Audio/...Peacock_2_C                     "_C" arm
+     2  BombDestination_C              -> /Game/GameModes/Bomb/BombDestination.BombDestination_C
+ -----
+ 1,183
+```
+
+This split was PREDICTED before the after-run, from two independent
+measurements -- a pre-fix instrumented build counting per-actor-path blocks,
+and a per-bare-name row count over the before export -- and reproduced term by
+term, not just in total.
+
+### 17-B. Why the binding is right, and where the evidence is weaker
+
+All 1,183 rows gained a `field_name`. `resolve_field_name` returns `Some` only
+when the handle indexes a POPULATED declared slot of the bound group, so
+1,183/1,183 named means zero out-of-range and zero empty-slot handles. A wrong
+group is what produces those.
+
+The names and their wire widths corroborate independently:
+
+```
+/Script/ShooterGame.AresWorldSettings   handle 15  32 bits  WorldGravityZ
+                                        handle 17  32 bits  TimeDilation
+                                        handles 3, 12  3 bits  "216" / "215"
+Switch_BlackMarket_2_C                  handle 15  64 bits  LastUsedTime
+                                        handle 18  64 bits  GameplayStartTime
+                                        handle 16   1 bit   HasPlayed
+                                        handle 17   1 bit   IsDisabled
+                                        handle 19   1 bit   LeverDown
+```
+
+`WorldGravityZ` and `TimeDilation` are exactly the two floats an Unreal
+`AWorldSettings` replicates; the booleans are 1 bit and the timestamps 64.
+Handles 3 and 12 carry the 3-bit `216`/`215` pair every actor replicates.
+
+WEAKER HALF, stated as such: 947 of the 1,183 rows bind through the exact-leaf
+arm (945 `AresWorldSettings` + 2 `BombDestination_C`). The other 236 bind
+through `unique_leaf_match`'s `"_C"` arm, which is beyond C# and rests on the
+Unreal convention that a level-placed Blueprint instance takes its class's
+name. `Switch_BlackMarket_2` is 196 of those 236; 7-H's CNC-derived route
+reached the same actor independently, which corroborates the identification
+from a different direction. The remaining 40 rows are five map props and
+minimap markers.
+
+### 17-C. The ClassNetCache path is untouched, by construction and by count
+
+`resolve_function_count` runs its own instance-name resolver
+(`resolve_cnc_for_instance_name`) and only while `current_group_path` is still
+a bare name, so a RepLayout group returned by the new call would silence it and
+hand `ReadSerializedInt` the wrong capacity. It cannot: `by_leaf` keys are the
+text after the last `.`, and the two suffix arms append `Component` and `_C`,
+so `path.ends_with("_ClassNetCache")` can only hold if the actor's own path
+ends with `_ClassNetCache`.
+
+Measured, not just argued. The instrumented pre-fix build counted 315
+ClassNetCache actor blocks across the 11 replays where the leaf rule would
+fire; every one matched a `_C` group, so the guard rejected all 315. Zero rows
+with a `_ClassNetCache` target appear in the row diff.
+
+### 17-D. Counters, and the arithmetic closing
+
+Per replay, and in total over the 11:
+
+```
+overlay_no_field_name  -1,183
+overlay_not_in_table   +1,183
+overlay_decoded_ok          0
+overlay_decode_errors       0
+overlay_raw_skip            0
+overlay_rows_offered        0
+```
+
+No non-overlay counter moved on any replay: chunks, packets, export_groups,
+content_blocks, rep_layout_blocks, class_net_cache_blocks, fields, rpcs,
+actor_opens, actor_closes, bunches, malformed_packets, skipped_bits,
+movement_rows and net_guid_rows are all identical. That is the shape a
+reclassification has and a reparse does not.
+
+The five corpus totals over 215 replays are unchanged: blocks 136,545,822,
+fields 98,883,979, rpcs 75,571,092, malformed 0, skipped 1,972,080,670.
+Corpus-wide the overlay moves `not in table` 116,447,827 -> 116,469,301
+(+21,474) with `decoded OK`, `raw/skip` and `rows offered` all unchanged, so
+21,474 rows move across the full corpus against 1,183 on the 11.
+
+### 17-E. Metrics and bundle
+
+All 231 cells of `out/xval_summary.json` (11 replays x 21 sections) carry an
+identical verdict before and after, and 16/21 is unchanged. Stronger: every one
+of the 147,041 metric leaf values across the 11 `metrics.json` files is
+identical. 7-H's "no metric section changes" is now measured, not predicted.
+
+The BUNDLE does change, and only in one way. `movement.ndjson` and
+`manifest.json` are identical on all 11 replays. `events.ndjson` has the same
+line count on all 11, and 1,077 `export_group_received` lines differ; on each,
+exactly two keys change -- `export_group_path` from the bare instance name to
+the declared group, and `payload` from `{}` to the named fields. No event
+appears, disappears or changes type. `_group_path_to_class` and
+`_group_path_to_archetype` are NOT reached: they live in the adapter's legacy
+fallback for a missing `actors.parquet`, and `guid_class` is filled from
+`actors.parquet`'s spawn `class_path`, which this change does not touch.
+
+The C# reference bundle cannot corroborate this. Its `events.ndjson` for
+02d4d478 carries 117,841 `export_group_received` events over just 41 distinct
+export group paths -- a curated gameplay whitelist -- with zero bare-name paths
+and none of the eight groups above.
+
+### 17-F. The 7-H safety audit does NOT transfer, and this is why
+
+7-H's "87 spoke, 87 correct, 0 mismatches" was route A (handle-set uniqueness)
+applied to groups whose class was already known. The actor-path analogue --
+for every actor block resolved by a HIGHER-priority branch, does
+`unique_leaf_match(actor_path)` stay silent or agree? -- was run on an
+instrumented build over all 11 replays and has a population of THREE:
+
+```
+4,926,463  actor blocks with no actor path at all (archetype/package resolved)
+        3  actor blocks resolved above the fallback that DO have an actor path
+           (2 RepLayout, 1 ClassNetCache), all three leaf-none
+    1,667  actor blocks that fell through to the raw actor path where the leaf
+           rule fires (1,352 RepLayout -> bound; 315 CNC -> rejected by guard)
+   13,844  actor blocks that fell through where it does not fire
+```
+
+Zero disagreements out of three opportunities is not evidence. The population
+is empty because an actor GUID only has a path when it is a static actor, and
+static actors are exactly the ones that fall through. So the safety argument
+for this path rests on two other legs instead:
+
+1. Uniqueness. `AMBIGUOUS_LEAF` makes the rule bind or stay silent, never
+   choose. Pinned by `an_ambiguous_actor_leaf_binds_to_nothing`, which was
+   driven to failure against a naive first-match implementation before being
+   kept.
+2. Handle coverage. 1,183 of 1,183 bound rows landed on populated declared
+   slots (17-B).
+
+### 17-G. What this did not check
+
+- Non-Bomb game modes, still input-blocked (section 11-A).
+- Checkpoint chunks, still never parsed (7-H's own standing caveat).
+- Whether the 21,474 corpus-wide moved rows outside the 11 cross-validated
+  replays bind correctly. Only the 11 were diffed at row level; the other 204
+  replays were checked at counter level only (five totals unchanged, decode
+  errors 0).
+- `README.md`'s type-overlay block was already stale before this change and
+  still is: it prints Decoded OK 352,702 / Raw/Skip 72,519 / Not in table
+  530,229 / Typed 35.7% against a measured 369,741 / 73,984 / 511,914 / 37.4%.
+  Left alone deliberately rather than half-corrected.

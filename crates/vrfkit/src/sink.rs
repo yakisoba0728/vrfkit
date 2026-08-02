@@ -310,6 +310,30 @@ impl<'a> ExportSink<'a> {
                     }
                 }
             }
+            // UniqueLeafMatch, exactly as the class path and the subobject path
+            // already apply it below. A static actor arrives as a bare instance
+            // name (`AresWorldSettings`) and the lookup keys above can only
+            // match a group whose declared path is that same bare string; the
+            // declared group is `/Script/ShooterGame.AresWorldSettings`, so the
+            // block fell through to the raw name and every field it carried
+            // stayed unnamed. Ambiguous leaves still bind to nothing -- see
+            // NetGuidCache::unique_leaf_match -- so this determines the group
+            // rather than guessing one.
+            //
+            // The `_ClassNetCache` guard is load-bearing on this path, not
+            // decoration. Below this point `resolve_function_count` runs its own
+            // instance-name resolver, and it only runs while current_group_path
+            // is still a bare name; a RepLayout group returned here would
+            // silence it and hand ReadSerializedInt the wrong capacity. The
+            // guard cannot be satisfied by a leaf match unless the actor's own
+            // path ends with `_ClassNetCache`, because by_leaf keys are the text
+            // after the last `.` and the two suffix arms append `Component` and
+            // `_C`, so on a ClassNetCache block this call is inert.
+            if let Some(g) = self.cache.unique_leaf_match(actor_path) {
+                if !is_cnc || g.path.ends_with("_ClassNetCache") {
+                    return g.path.clone();
+                }
+            }
             return actor_path.to_owned();
         }
 
@@ -1731,5 +1755,102 @@ mod tests {
         assert_eq!(sink.stats.overlay.raw_or_skip, 0);
         assert_eq!(sink.stats.overlay.not_in_table, 0);
         assert_eq!(sink.stats.overlay.no_field_name, 0);
+    }
+
+    /// Build a cache holding `groups` as declared export groups and mapping
+    /// `guid` to `guid_path`, then run one actor content block through a sink
+    /// and report the group path it resolved to.
+    fn actor_group_path_for(
+        groups: &[&str],
+        guid: u32,
+        guid_path: &str,
+        has_rep_layout: bool,
+    ) -> String {
+        let mut cache = NetGuidCache::new();
+        for (i, path) in groups.iter().enumerate() {
+            cache.add_export_group(vrf_schema::NetFieldExportGroup::new(
+                (*path).to_owned(),
+                i as u32 + 1,
+                4,
+            ));
+        }
+        cache.set_net_guid_path(guid, guid_path.to_owned(), None);
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        let header = ContentBlockHeader {
+            has_rep_layout,
+            is_actor: true,
+            ..ContentBlockHeader::default()
+        };
+        // No archetype is registered for this channel, so package/archetype
+        // resolution yields nothing and the actor-GUID fallback is the only
+        // path left -- which is the case this test is about.
+        sink.on_content_block(3, NetworkGuid(guid), &header);
+        sink.current_group_path.clone()
+    }
+
+    /// An actor whose own NetGUID path is an exact, unique leaf of a declared
+    /// group must reach that group.
+    ///
+    /// The class path (`sink.rs` `resolve_subobject_group_path`, primary) and
+    /// the subobject path (same function, secondary) both call
+    /// `unique_leaf_match` before falling back to the raw path. The actor-GUID
+    /// fallback did not, so `AresWorldSettings` -- an exact unique leaf of
+    /// `/Script/ShooterGame.AresWorldSettings` -- shipped as a bare instance
+    /// name with every one of its fields unnamed.
+    #[test]
+    fn an_actor_path_that_is_a_unique_leaf_reaches_its_declared_group() {
+        assert_eq!(
+            actor_group_path_for(
+                &["/Script/ShooterGame.AresWorldSettings"],
+                42,
+                "AresWorldSettings",
+                true,
+            ),
+            "/Script/ShooterGame.AresWorldSettings",
+        );
+    }
+
+    /// Ambiguity stays silent. Two declared groups sharing a leaf mark it
+    /// `AMBIGUOUS_LEAF`, and the actor keeps its raw path rather than binding
+    /// to whichever group happened to be registered first. This is the
+    /// property that makes leaf matching a determination and not a guess.
+    #[test]
+    fn an_ambiguous_actor_leaf_binds_to_nothing() {
+        assert_eq!(
+            actor_group_path_for(
+                &[
+                    "/Script/ShooterGame.AresWorldSettings",
+                    "/Game/Maps/Ascent.AresWorldSettings",
+                ],
+                42,
+                "AresWorldSettings",
+                true,
+            ),
+            "AresWorldSettings",
+        );
+    }
+
+    /// A ClassNetCache actor block must NOT be captured by a RepLayout group.
+    ///
+    /// `resolve_function_count` has its own instance-name resolver
+    /// (`resolve_cnc_for_instance_name`) that runs only while
+    /// `current_group_path` is still a bare name. Returning a RepLayout group
+    /// here would silence that resolver and hand `ReadSerializedInt` the wrong
+    /// capacity, so the `_ClassNetCache` guard has to reject the match and
+    /// leave the bare name in place.
+    #[test]
+    fn a_class_net_cache_actor_block_is_not_captured_by_a_rep_layout_leaf() {
+        assert_eq!(
+            actor_group_path_for(
+                &["/Script/ShooterGame.AresWorldSettings"],
+                42,
+                "AresWorldSettings",
+                false,
+            ),
+            "AresWorldSettings",
+        );
     }
 }
