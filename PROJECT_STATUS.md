@@ -95,8 +95,14 @@ python tools\compare_combat_report.py
 # Must print: ALL INTERESTING SHAPES MATCH
 python tools\validate_corpus.py .\target\release\vrfkit.exe `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
-# Baseline: blocks 136,545,822  fields 98,883,979  rpcs 75,571,092
-#           malformed 0  skipped 1,972,080,670    (~30s, runs 16-wide)
+# Baseline: blocks 136,545,822  fields 98,884,839  rpcs 75,571,092
+#           malformed 0  skipped 1,972,018,965    (~30s, runs 16-wide)
+# `fields` and `skipped` moved at db42e6a: the controller's opening bunch was
+# framed nine bits early (17-A), so 215 replays x 4 handles and x 287 bits came
+# back. That commit refreshed every baseline FILE and left this comment stale --
+# a new session would have compared against the old numbers and "failed" a green
+# run. Dated figures further down are historical measurements and stay as they
+# are; this block is the one that has to track HEAD.
 python tools\check_decode_errors_corpus.py .\target\release\vrfkit.exe `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
 # Expected: OK: every replay reported Decode errors: 0   (~70s, 8-wide)
