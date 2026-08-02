@@ -25,7 +25,20 @@ use crate::schema::fields_schema_ref;
 /// efficiency (column chunks are large enough for ZSTD to reach steady state).
 pub const DEFAULT_ROW_GROUP_SIZE: usize = 131_072;
 
-/// A single field record ready for export.
+/// Reserved `field_name` for a whole ClassNetCache block whose function table
+/// was unresolved.
+///
+/// Such a row is not a field or RPC. Consumers distinguish it with the single
+/// predicate `field_name == UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME`.
+/// The handle is not a discriminator because ordinary array-truncation rows
+/// may also use `u32::MAX`.
+pub const UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME: &str =
+    "__vrfkit_unresolved_class_net_cache_payload__";
+
+/// A single fields-table record ready for export.
+///
+/// Most records represent one decoded field. The reserved whole-block record
+/// represents an unresolved ClassNetCache payload and carries no typed value.
 ///
 /// The caller constructs these from the decoded replay stream. All "address"
 /// fields are non-optional; the value overlay fields are `Option` because a

@@ -6,10 +6,12 @@ parser by converting vrfkit's flat Parquet rows back into the nested JSON
 events that compute_metrics.py already understands. No metrics code is
 reimplemented -- only the serialization format is bridged.
 
-The Parquet schema stores one row per decoded field. Replicated properties are
-grouped by (packet_id, actor_net_guid, group_path) into export_group_received
-events. RPCs (group_path contains '_ClassNetCache') are grouped by
-(packet_id, actor_net_guid, group_path, handle) into rpc_received events.
+The Parquet schema stores one row per decoded field, plus explicitly marked
+whole-block payload rows for unresolved ClassNetCache groups. Those block rows
+are excluded before grouping. Replicated properties are grouped by (packet_id,
+actor_net_guid, group_path) into export_group_received events. RPCs (group_path
+contains '_ClassNetCache') are grouped by (packet_id, actor_net_guid,
+group_path, handle) into rpc_received events.
 
 Shot data: ReplayPlayContinuousEffectAtLocation RPCs carry FloatValues,
 ObjectValues, VectorValues blobs. These are decoded in Python using the
@@ -63,6 +65,14 @@ from equippable_table import EQUIPPABLE_BY_PATH  # noqa: E402
 # value. Real chains observed in 02d4d478 are one hop, but a bounded loop is
 # what keeps a malformed self-referential chain from hanging the adapter.
 MAX_OUTER_DEPTH = 16
+
+# A whole unresolved ClassNetCache block is preservation data, not a field or
+# RPC. This exact reserved field name is the production discriminator shared
+# with vrf-export. Exclude it before actor lifetime tracking as well as event
+# grouping, because unresolved paths do not necessarily carry a CNC suffix.
+UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME = (
+    "__vrfkit_unresolved_class_net_cache_payload__"
+)
 
 # Substrings that mark a firing state as the weapon's secondary fire cycle.
 # Copied from ValorantShotFireModeResolver.AlternateMarkers; matched
@@ -1329,8 +1339,12 @@ def _group_rows(cols: _FieldColumns):
     col_obj = cols.obj
     col_gp = cols.group_path
     col_handle = cols.handle
+    col_fn = cols.field_name
 
     for i in range(cols.n_rows):
+        if col_fn[i] == UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME:
+            continue
+
         actor = col_actor[i]
         gp = col_gp[i]
         pid = col_pid[i]

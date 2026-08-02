@@ -18,7 +18,7 @@ use vrf_transform::TransformVersion;
 
 use crate::bunch::{PartialBunchAccumulator, RawBunchHeader};
 use crate::content::{self, ContentBlockHeader};
-use crate::error::Result;
+use crate::error::{NetError, Result};
 use crate::field::{self, FieldSink};
 use crate::net_guid::{self, GuidPathSink};
 use crate::packet::RawPacketReader;
@@ -128,6 +128,14 @@ pub trait ReplicationSink: GuidPathSink + FieldSink {
     /// way. Override it to attach the names the sink holds -- the resolved group
     /// path in particular, which the replication layer does not know.
     fn on_stream_failure(&mut self, _failure: StreamFailure) {}
+
+    /// Preserve one whole decoded ClassNetCache payload whose function table
+    /// could not be resolved.
+    ///
+    /// This is a block-level data event, not a fabricated RPC. `payload` has
+    /// exactly `ceil(failure.bit_count / 8)` bytes, with unused high bits in
+    /// the final byte cleared. The parser has consumed no payload bits.
+    fn on_unresolved_class_net_cache_payload(&mut self, _failure: StreamFailure, _payload: &[u8]) {}
 }
 
 /// The main replication reader. Drives the full pipeline for one replay.
@@ -888,16 +896,20 @@ impl ReplicationReader {
         let mut rpc_reader = BitReader::with_bit_len(scratch, bit_count as u64);
         match field::parse_class_net_cache(&mut rpc_reader, function_count, sink) {
             Ok(count) => stats.rpcs += count as u64,
-            Err(_) => {
+            Err(error) => {
                 let remaining = rpc_reader.bits_remaining();
-                sink.on_stream_failure(StreamFailure {
+                let failure = StreamFailure {
                     kind: StreamKind::Rpc,
                     actor_net_guid,
                     bit_count: bit_count as u32,
                     function_count,
                     consumed_bits: rpc_reader.position(),
                     remaining_bits: remaining,
-                });
+                };
+                if matches!(error, NetError::UnresolvedFunctionCount) {
+                    sink.on_unresolved_class_net_cache_payload(failure, &scratch[..byte_count]);
+                }
+                sink.on_stream_failure(failure);
                 stats.rpc_stream_failures += 1;
                 stats.skipped_bits += remaining;
             }
@@ -1040,6 +1052,7 @@ mod tests {
     struct TestSink {
         fields: Vec<(u32, u32)>,
         rpcs: Vec<(u32, u32)>,
+        unresolved_payloads: Vec<(StreamFailure, Vec<u8>)>,
         opens: Vec<u32>,
         closes: Vec<u32>,
         paths: Vec<(u32, String)>,
@@ -1082,6 +1095,14 @@ mod tests {
             _header: &ContentBlockHeader,
         ) {
         }
+
+        fn on_unresolved_class_net_cache_payload(
+            &mut self,
+            failure: StreamFailure,
+            payload: &[u8],
+        ) {
+            self.unresolved_payloads.push((failure, payload.to_vec()));
+        }
     }
 
     #[test]
@@ -1105,6 +1126,44 @@ mod tests {
         let mut sink = TestSink::default();
         reader.process_packet(&[0x00, 0x00], 0, &mut sink);
         assert_eq!(reader.stats().malformed_packets, 1);
+    }
+
+    /// The unresolved callback receives the exact decoded block, not the wire
+    /// bytes or the reusable scratch tail. The 7-bit literal is a golden V13.01
+    /// transform vector: wire 0xBF for actor 2 decodes to 0x66.
+    #[test]
+    fn unresolved_class_net_cache_exposes_the_decoded_whole_payload() {
+        let wire = [0xBF];
+        let mut payload = BitReader::with_bit_len(&wire, 7);
+        let mut scratch = vec![0xFF; 16];
+        let mut stats = NetStats::default();
+        let mut sink = TestSink::default();
+
+        ReplicationReader::decode_and_parse_class_net_cache(
+            &mut payload,
+            7,
+            NetworkGuid(2),
+            0,
+            TransformVersion::V1301,
+            &mut scratch,
+            &mut stats,
+            &mut sink,
+        );
+
+        assert_eq!(payload.position(), 7);
+        assert_eq!(sink.unresolved_payloads.len(), 1);
+        let (failure, decoded) = &sink.unresolved_payloads[0];
+        assert_eq!(failure.kind, StreamKind::Rpc);
+        assert_eq!(failure.actor_net_guid, NetworkGuid(2));
+        assert_eq!(failure.bit_count, 7);
+        assert_eq!(failure.function_count, 0);
+        assert_eq!(failure.consumed_bits, 0);
+        assert_eq!(failure.remaining_bits, 7);
+        assert_eq!(decoded, &[0x66]);
+        assert_eq!(decoded[0] >> 7, 0, "high padding bit must stay zero");
+        assert_eq!(stats.rpcs, 0);
+        assert_eq!(stats.rpc_stream_failures, 1);
+        assert_eq!(stats.skipped_bits, 7);
     }
 
     /// Verifies that a content-block overrun produces a DiagnosticEvent with

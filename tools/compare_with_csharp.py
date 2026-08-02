@@ -33,6 +33,11 @@ from typing import Iterator
 
 import pyarrow.parquet as pq
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from to_valplay_bundle import (  # noqa: E402
+    UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME,
+)
+
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -172,6 +177,11 @@ def compare_group_field_coverage(cs_events_path: Path, vk_parquet_path: Path) ->
     vk_pairs: set[tuple[str, str]] = set()
     for gp, fn in zip(tbl.column("group_path").to_pylist(),
                        tbl.column("field_name").to_pylist()):
+        # A preserved whole-block payload is not a field, so it is not a pair
+        # this comparison is about. Without this it lands in "vrfkit only" for
+        # every unresolved group and reads as coverage we do not have.
+        if fn == UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME:
+            continue
         vk_pairs.add((gp, fn))
 
     lines.append(f"  Distinct (group, field) pairs from vrfkit: {len(vk_pairs):,}")

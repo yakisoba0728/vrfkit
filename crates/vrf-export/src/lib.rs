@@ -12,8 +12,9 @@
 //!
 //! ## `fields` table -- sparse value columns vs. Union
 //!
-//! Every field record carries at most one typed value (i64, f64, bool, or str).
-//! We represent this as **four nullable columns** rather than an Arrow
+//! Every ordinary decoded-field record carries at most one typed value (i64,
+//! f64, bool, or str); whole-block preservation records carry none. We
+//! represent this as **four nullable columns** rather than an Arrow
 //! DenseUnion because:
 //!
 //! 1. **Compression**: nullable columns where >90 % of values are null compress
@@ -42,7 +43,8 @@
 //!
 //! # Public API
 //!
-//! - [`FieldWriter`] -- streams field records to a Parquet file.
+//! - [`FieldWriter`] -- streams decoded-field and whole-block preservation
+//!   records to a Parquet file.
 //! - [`MovementWriter`] -- streams movement samples to a Parquet file.
 //! - [`FieldRecord`] / [`MovementRecord`] -- the input structs.
 //! - [`ExportError`] -- all fallible operations funnel through this.
@@ -58,6 +60,6 @@ mod schema;
 
 pub use actor_writer::{ActorRecord, ActorWriter};
 pub use error::ExportError;
-pub use field_writer::{FieldRecord, FieldWriter};
+pub use field_writer::{FieldRecord, FieldWriter, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME};
 pub use movement_writer::{MovementRecord, MovementWriter};
 pub use net_guid_writer::{NetGuidRecord, NetGuidWriter};
