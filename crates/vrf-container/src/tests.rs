@@ -2,9 +2,9 @@
 
 use super::*;
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test helpers — synthetic byte builders mirroring the C# test patterns
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
+// Test helpers -- synthetic byte builders mirroring the C# test patterns
+// ===============================================================================
 
 mod helpers {
     pub fn add_u16(buf: &mut Vec<u8>, v: u16) {
@@ -179,9 +179,9 @@ mod helpers {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
 // ReplayInfo tests
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
 
 #[test]
 fn info_empty_input_rejected() {
@@ -224,7 +224,7 @@ fn info_bad_file_version_rejected() {
     let mut data = Vec::new();
     helpers::add_u32(&mut data, 0x43F4_EFDD);
     helpers::add_u32(&mut data, 6); // wrong version
-    // Don't need more — should fail at version check
+    // Don't need more -- should fail at version check
     // Add enough bytes for the parse to reach the check
     data.extend_from_slice(&[0u8; 100]);
     let result = info::parse_replay_info(&data);
@@ -367,9 +367,9 @@ fn info_truncated_input_rejected() {
     assert!(result.is_err());
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
 // ReplayHeader tests
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
 
 #[test]
 fn header_valid_parses_all_fields() {
@@ -451,9 +451,9 @@ fn header_truncated_rejected() {
     assert!(result.is_err());
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
 // ChunkIterator tests
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
 
 #[test]
 fn chunk_iter_empty_returns_none() {
@@ -499,7 +499,7 @@ fn chunk_iter_multiple_chunks() {
 
 #[test]
 fn chunk_iter_truncated_header_rejected() {
-    // Only 6 bytes — not enough for the 8-byte chunk header
+    // Only 6 bytes -- not enough for the 8-byte chunk header
     let data = [0u8; 6];
     let mut iter = ChunkIterator::new(&data, 0);
     assert!(matches!(
@@ -548,9 +548,9 @@ fn chunk_type_unknown_preserved() {
     assert_eq!(chunk.chunk_type, ChunkType::Unknown(0xFFFF_FFFF));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
 // Preamble tests
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
 
 #[test]
 fn preamble_valid_file() {
@@ -609,9 +609,9 @@ fn preamble_no_header_chunk_rejected() {
     ));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
 // ReplayData meta parsing tests
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===============================================================================
 
 #[test]
 fn replay_data_meta_valid() {

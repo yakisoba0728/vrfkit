@@ -1,7 +1,7 @@
 //! Crate-wide error type.
 //!
 //! All public fallible operations return [`ExportError`]. We keep the surface
-//! small — IO and Parquet are the two failure domains — so callers can match
+//! small -- IO and Parquet are the two failure domains -- so callers can match
 //! exhaustively without a catch-all.
 
 use thiserror::Error;

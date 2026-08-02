@@ -77,9 +77,9 @@ impl NetworkGuid {
 ///
 /// ```text
 /// Bit layout: 1 byte (8 bits), only low 3 meaningful
-///   bit 0 — HasPath
-///   bit 1 — NoLoad
-///   bit 2 — HasNetworkChecksum
+///   bit 0 -- HasPath
+///   bit 1 -- NoLoad
+///   bit 2 -- HasNetworkChecksum
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct ExportFlags(pub u8);

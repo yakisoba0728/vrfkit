@@ -13,11 +13,11 @@
 //! Three of the wire primitives are Unreal-specific and consume a *variable*
 //! number of bits, so the exact implementation is part of the format:
 //!
-//! * [`BitReader::read_int_packed`] — 7 bits of payload per byte, low bit is the
+//! * [`BitReader::read_int_packed`] -- 7 bits of payload per byte, low bit is the
 //!   continuation flag, capped at five bytes.
-//! * [`BitReader::read_serialized_int`] — `floor(log2(max))` bits, plus one more
+//! * [`BitReader::read_serialized_int`] -- `floor(log2(max))` bits, plus one more
 //!   bit only when the value could still reach `max`.
-//! * [`BitReader::read_fstring`] — a signed length that selects UTF-8 (positive)
+//! * [`BitReader::read_fstring`] -- a signed length that selects UTF-8 (positive)
 //!   or UTF-16 (negative), null-terminated either way.
 //!
 //! Getting the consumed bit count wrong on any of these desynchronises the rest

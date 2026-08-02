@@ -2,7 +2,7 @@
 
 use crate::types::ChannelCloseReason;
 
-/// Parsed bunch header — all fields that describe one bunch within a packet.
+/// Parsed bunch header -- all fields that describe one bunch within a packet.
 ///
 /// See [`crate::packet::RawPacketReader::parse_bunch_header`] for bit layout.
 #[derive(Debug, Clone, Default)]

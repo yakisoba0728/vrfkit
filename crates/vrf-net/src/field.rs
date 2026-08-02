@@ -1,4 +1,4 @@
-﻿//! Field stream parsing ??self-describing property and RPC iteration.
+//! Field stream parsing -- self-describing property and RPC iteration.
 //!
 //! # Design: no skipping, no descriptors
 //!
@@ -13,12 +13,25 @@
 //! # RepLayout field stream bit layout
 //!
 //! ```text
-//! ?뚢????????????????????????????????????????????????????????????//! ??propertyChecksum     : 1 bit (ignored)                   ??//! ??loop:                                                    ??//! ??  encodedHandle      : IntPacked                         ??//! ??  [if encodedHandle == 0 ??break]                        ??//! ??  handle = encodedHandle - 1                             ??//! ??  payloadBitCount    : IntPacked                         ??//! ??  fieldPayload       : sub-reader of payloadBitCount     ??//! ??  ??emit (handle, payloadBitCount, fieldPayload)         ??//! ?붴????????????????????????????????????????????????????????????//! ```
+//! propertyChecksum: 1 bit (ignored)
+//! loop:
+//!   encodedHandle: IntPacked
+//!   if encodedHandle == 0 -> break
+//!   handle = encodedHandle - 1
+//!   payloadBitCount: IntPacked
+//!   fieldPayload: sub-reader of payloadBitCount
+//!   emit (handle, payloadBitCount, fieldPayload)
+//! ```
 //!
 //! # ClassNetCache (RPC) stream bit layout
 //!
 //! ```text
-//! ?뚢????????????????????????????????????????????????????????????//! ??loop:                                                    ??//! ??  handle             : SerializedInt(max(fn_count, 2))   ??//! ??  payloadBitCount    : IntPacked                         ??//! ??  rpcPayload         : sub-reader of payloadBitCount     ??//! ??  ??emit (handle, payloadBitCount, rpcPayload)           ??//! ?붴????????????????????????????????????????????????????????????//! ```
+//! loop:
+//!   handle: SerializedInt(max(function_count, 2))
+//!   payloadBitCount: IntPacked
+//!   rpcPayload: sub-reader of payloadBitCount
+//!   emit (handle, payloadBitCount, rpcPayload)
+//! ```
 
 use vrf_bitio::BitReader;
 
@@ -44,7 +57,7 @@ pub trait FieldSink {
 ///
 /// Returns the number of fields emitted.
 pub fn parse_rep_layout(reader: &mut BitReader<'_>, sink: &mut dyn FieldSink) -> Result<u32> {
-    // Property checksum bit ??always present, always ignored.
+    // Property checksum bit -- always present, always ignored.
     let _checksum = reader.read_bit()?;
 
     let mut field_count = 0u32;
@@ -83,7 +96,8 @@ pub fn parse_rep_layout(reader: &mut BitReader<'_>, sink: &mut dyn FieldSink) ->
 
 /// Parse a ClassNetCache RPC stream, emitting every invocation to the sink.
 ///
-/// `function_count` is the number of functions in the class's net cache ??/// this is the upper bound for `read_serialized_int`. The caller provides it
+/// `function_count` is the number of functions in the class's net cache --
+/// this is the upper bound for `read_serialized_int`. The caller provides it
 /// because this layer does not have access to descriptors.
 ///
 /// # Handle-read clamp (minimum of two)
@@ -139,7 +153,7 @@ pub fn parse_class_net_cache(
         let handle = reader.read_serialized_int(handle_max)?;
 
         if reader.bits_remaining() < 8 {
-            // Not enough bits for a payload length ??malformed tail.
+            // Not enough bits for a payload length -- malformed tail.
             reader.skip_remaining();
             break;
         }
@@ -223,7 +237,7 @@ mod tests {
     fn rep_layout_single_field() {
         let mut bits = Vec::new();
         bits.push(false); // checksum bit
-        write_int_packed(&mut bits, 1); // encodedHandle = 1 ??handle = 0
+        write_int_packed(&mut bits, 1); // encodedHandle = 1 -> handle = 0
         write_int_packed(&mut bits, 32); // 32 bits payload
         // 32 bits of payload data
         bits.extend(std::iter::repeat_n(true, 32));

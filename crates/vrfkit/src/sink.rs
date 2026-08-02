@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 use vrf_bitio::BitReader;
 use vrf_decode::{
-    ArrayDecodeStats, COMBAT_ROUNDS_SCHEMA, OVERLAY_TABLE, OverlayStats, OverlayTable,
-    apply_overlay, decode_struct_array,
+    ArrayDecodeStats, COMBAT_ROUNDS_SCHEMA, OVERLAY_HANDLE_TABLE, OVERLAY_TABLE, OverlayStats,
+    OverlayTable, apply_overlay_with_handle, decode_struct_array,
 };
 use vrf_export::{ActorRecord, FieldRecord, MovementRecord};
 use vrf_net::content::ContentBlockHeader;
@@ -24,7 +24,7 @@ use vrf_net::types::NetworkGuid;
 use vrf_schema::{NetGuidCache, class_net_cache_lookup_keys, replay_path_lookup_keys};
 
 /// Static overlay table built from C# descriptors.
-static TABLE: OverlayTable = OverlayTable::new(&OVERLAY_TABLE);
+static TABLE: OverlayTable = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
 
 /// Well-known subobject leaf names that map to a fixed class path.
 ///
@@ -70,12 +70,12 @@ struct RpcParamGroupMemo {
 ///
 /// The replay pipeline creates a fresh `ExportSink` for every packet (to
 /// satisfy borrow-checker constraints around `NetGuidCache` mutability). This
-/// struct holds the state that *must* persist across those boundaries ??namely
+/// struct holds the state that *must* persist across those boundaries -- namely
 /// the archetype GUID assigned when a channel is opened, which is needed later
 /// to resolve ClassNetCache export groups when content blocks arrive.
 #[derive(Debug, Clone, Default)]
 pub struct ChannelState {
-    /// channel_index ??archetype NetworkGuid.
+    /// channel_index -> archetype NetworkGuid.
     archetypes: HashMap<u32, NetworkGuid>,
     /// See [`RpcParamGroupMemo`].
     rpc_param_groups: RpcParamGroupMemo,
@@ -151,9 +151,9 @@ pub struct RecordBuffers {
 ///
 /// The sink borrows the `NetGuidCache` mutably because `vrf-net` calls
 /// `GuidPathSink::register_path` during packet processing (for package-map
-/// export bunches that declare new GUID?뭦ath mappings inline).
+/// export bunches that declare new GUID->path mappings inline).
 pub struct ExportSink<'a> {
-    /// Schema cache ??mutable because in-packet path registrations need it.
+    /// Schema cache -- mutable because in-packet path registrations need it.
     pub cache: &'a mut NetGuidCache,
     /// Persistent per-channel state (archetype mappings survive across packets).
     channel_state: &'a mut ChannelState,
@@ -166,7 +166,7 @@ pub struct ExportSink<'a> {
     /// Stats.
     pub stats: ExportStats,
 
-    // ?? per-content-block context (set by on_content_block) ??????????????
+    // -- per-content-block context (set by on_content_block) ----------------
     current_channel: u32,
     current_actor_guid: u32,
     /// Subobject GUID of the block being walked; `None` for actor blocks.
@@ -224,7 +224,7 @@ impl<'a> ExportSink<'a> {
         }
     }
 
-    /// Actor path resolution ??mirrors `ResolveCachedActorExportGroupPath` /
+    /// Actor path resolution -- mirrors `ResolveCachedActorExportGroupPath` /
     /// `ResolveCachedActorClassPath` from the C# reference.
     ///
     /// Priority order (matching C# `ResolveActorPackageOrClassPath`):
@@ -309,7 +309,7 @@ impl<'a> ExportSink<'a> {
             return actor_path.to_owned();
         }
 
-        // Return the best candidate even if it doesn't match a group ??the
+        // Return the best candidate even if it doesn't match a group -- the
         // export format requires a path, and downstream still gets the raw bits.
         combined
             .or(package_path)
@@ -370,7 +370,7 @@ impl<'a> ExportSink<'a> {
         Some(combined)
     }
 
-    /// Subobject path resolution ??mirrors `ResolveSubobjectExportGroupPath` /
+    /// Subobject path resolution -- mirrors `ResolveSubobjectExportGroupPath` /
     /// `ResolveSubobjectClassPath` from C#.
     fn resolve_subobject_group_path(
         &self,
@@ -410,7 +410,7 @@ impl<'a> ExportSink<'a> {
         // Secondary: use object_net_guid for path lookup.
         if header.object_net_guid.0 != 0 {
             if let Some(obj_path) = self.cache.get_path_by_guid(header.object_net_guid.0) {
-                // Try outer path (component ??owning class).
+                // Try outer path (component -> owning class).
                 if let Some(outer) = self.cache.get_outer_path(header.object_net_guid.0) {
                     for key in lookup_keys_fn(outer) {
                         if let Some(g) = self.cache.get_group_by_path(&key) {
@@ -894,7 +894,7 @@ impl<'a> ExportSink<'a> {
         // Parse the RepLayout stream inside the RPC payload.
         let mut rpc_reader = reader;
 
-        // Property checksum bit (1 bit) ??always present for FunctionParameters.
+        // Property checksum bit (1 bit) -- always present for FunctionParameters.
         if rpc_reader.read_bit().is_err() {
             return false;
         }
@@ -966,10 +966,11 @@ impl<'a> ExportSink<'a> {
             // Apply type overlay using the parameter group path as group_path.
             let overlay_group = param_group_path_ref.unwrap_or(&self.current_group_path);
             let overlay_field = param_name.as_deref().unwrap_or(&full_field_name);
-            let (value_i64, value_f64, value_bool, value_str) = match apply_overlay(
+            let (value_i64, value_f64, value_bool, value_str) = match apply_overlay_with_handle(
                 &TABLE,
                 overlay_group,
                 Some(overlay_field),
+                param_handle,
                 raw_bits.as_deref(),
                 payload_bits,
                 &mut self.stats.overlay,
@@ -1011,7 +1012,7 @@ impl<'a> ExportSink<'a> {
     ///
     /// Strategy:
     /// 1. Try stripping `_ClassNetCache` from current_group_path and appending
-    ///    `:<function_name>` ??this works when the CNC group matches the
+    ///    `:<function_name>` -- this works when the CNC group matches the
     ///    parameter group's class (e.g. DamageableComponent).
     /// 2. Search all registered groups for one whose path ends with
     ///    `:<function_name>`. If exactly one matches, use it (unique leaf match).
@@ -1136,7 +1137,7 @@ impl FieldSink for ExportSink<'_> {
                     // Build full field name: "Rounds[0].RoundNumber" etc.
                     let full_name = format!("{parent_name}{}", f.path);
 
-                    // Decode leaf fields using known handle?뭪ype mapping.
+                    // Decode leaf fields using known handle->type mapping.
                     let (vi, vf, vb, vs) = decode_array_leaf(f.handle, &f.raw_bits, f.bit_count);
 
                     self.records.fields.push(FieldRecord {
@@ -1172,10 +1173,11 @@ impl FieldSink for ExportSink<'_> {
         }
 
         // Apply the type overlay: decode raw_bits into a typed value if possible.
-        let (value_i64, value_f64, value_bool, value_str) = match apply_overlay(
+        let (value_i64, value_f64, value_bool, value_str) = match apply_overlay_with_handle(
             &TABLE,
             &self.current_group_path,
             field_name.as_deref(),
+            handle,
             raw_bits.as_deref(),
             bit_count,
             &mut self.stats.overlay,
@@ -1289,7 +1291,7 @@ impl FieldSink for ExportSink<'_> {
                 });
             }
         } else {
-            // Zero-bit RPC ??just emit a marker row.
+            // Zero-bit RPC -- just emit a marker row.
             self.records.fields.push(FieldRecord {
                 time_ms: self.time_ms,
                 packet_id: self.packet_id,
@@ -1502,13 +1504,13 @@ impl ReplicationSink for ExportSink<'_> {
     }
 }
 
-// ?? Free helper functions ????????????????????????????????????????????????????
+// -- Free helper functions --------------------------------------------------
 
 /// Extract the class name from an archetype path by taking the leaf and
 /// stripping a `Default__` prefix if present.
 ///
 /// Example: `/Game/Characters/AggroBot/AggroBot_PC.Default__AggroBot_PC_C`
-/// ??`AggroBot_PC_C`.
+/// -> `AggroBot_PC_C`.
 fn extract_class_name_from_archetype(archetype_path: &str) -> Option<&str> {
     if archetype_path.is_empty() {
         return None;
@@ -1552,12 +1554,12 @@ fn resolve_known_subobject_class_path(object_path: &str) -> Option<&'static str>
 }
 
 /// Decode a leaf field from a CombatRoundReports array using the known
-/// handle?뭪ype mapping.
+/// handle->type mapping.
 ///
 /// Returns (value_i64, value_f64, value_bool, value_str). All None if the
 /// handle is not recognized or decoding fails.
 ///
-/// Handle?뭪ype mapping derived from `CombatRoundReportsDecoder`:
+/// Handle->type mapping derived from `CombatRoundReportsDecoder`:
 /// - Int32 handles: 3, 5, 19, 21, 46, 81, 96
 /// - Float handles: 18, 20, 47, 82
 /// - Bool handles: 22, 25, 48, 49, 83, 84, 103

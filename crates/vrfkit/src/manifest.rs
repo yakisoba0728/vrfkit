@@ -1,6 +1,6 @@
 //! Hand-rolled JSON serialization for manifest.json.
 //!
-//! No external dependencies (serde_json, etc.) — just plain formatting.
+//! No external dependencies (serde_json, etc.) -- just plain formatting.
 //! The manifest is small (~500 fields in the export groups array), so generating
 //! it as a String is fine.
 

@@ -7,16 +7,16 @@
 //! | 0 | u32 | FileMagic (`0x43F4EFDD`) |
 //! | 4 | u32 | LegacyFileVersion (must be 7) |
 //! | 8 | i32 | CustomVersionCount |
-//! | 12 | [20 × N] | CustomVersionEntries (GUID 16B + i32 version) |
-//! | … | i32 | LengthInMs |
-//! | … | u32 | NetworkVersion (must be 19) |
-//! | … | u32 | Changelist |
-//! | … | FString | FriendlyName |
-//! | … | u32 | IsLive (bool as u32) |
-//! | … | i64 | Timestamp (Windows ticks) |
-//! | … | u32 | Compressed (bool as u32) |
-//! | … | u32 | Encrypted (bool as u32) |
-//! | … | i32+[u8] | EncryptionKey (length-prefixed byte array) |
+//! | 12 | [20 x N] | CustomVersionEntries (GUID 16B + i32 version) |
+//! | ... | i32 | LengthInMs |
+//! | ... | u32 | NetworkVersion (must be 19) |
+//! | ... | u32 | Changelist |
+//! | ... | FString | FriendlyName |
+//! | ... | u32 | IsLive (bool as u32) |
+//! | ... | i64 | Timestamp (Windows ticks) |
+//! | ... | u32 | Compressed (bool as u32) |
+//! | ... | u32 | Encrypted (bool as u32) |
+//! | ... | i32+[u8] | EncryptionKey (length-prefixed byte array) |
 
 use vrf_bitio::BitReader;
 
@@ -66,13 +66,13 @@ pub(crate) fn parse_replay_info(data: &[u8]) -> Result<(ReplayInfo, usize), Cont
 
     let mut reader = BitReader::new(data);
 
-    // ─── Magic ────────────────────────────────────────────────────────────
+    // --- Magic ------------------------------------------------------------
     let magic = read_u32(&mut reader, "file magic")?;
     if magic != FILE_MAGIC {
         return Err(ContainerError::FileMagicMismatch { actual: magic });
     }
 
-    // ─── Legacy file version ──────────────────────────────────────────────
+    // --- Legacy file version ----------------------------------------------
     let file_version = read_u32(&mut reader, "file version")?;
     if file_version != EXPECTED_FILE_VERSION {
         return Err(ContainerError::UnsupportedFileVersion {
@@ -80,7 +80,7 @@ pub(crate) fn parse_replay_info(data: &[u8]) -> Result<(ReplayInfo, usize), Cont
         });
     }
 
-    // ─── Custom version container ─────────────────────────────────────────
+    // --- Custom version container -----------------------------------------
     let custom_version_count = read_i32(&mut reader, "custom version count")?;
     if !(0..=MAX_CUSTOM_VERSION_COUNT).contains(&custom_version_count) {
         return Err(ContainerError::CountOverflow {
@@ -118,7 +118,7 @@ pub(crate) fn parse_replay_info(data: &[u8]) -> Result<(ReplayInfo, usize), Cont
         return Err(ContainerError::MissingLocalReplayVersion);
     }
 
-    // ─── Summary ──────────────────────────────────────────────────────────
+    // --- Summary ----------------------------------------------------------
     let length_in_ms = read_i32(&mut reader, "length_in_ms")?;
     let network_version = read_u32(&mut reader, "network version")?;
     let changelist = read_u32(&mut reader, "changelist")?;
@@ -169,7 +169,7 @@ pub(crate) fn parse_replay_info(data: &[u8]) -> Result<(ReplayInfo, usize), Cont
     ))
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 fn read_u32(reader: &mut BitReader<'_>, context: &'static str) -> Result<u32, ContainerError> {
     reader.read_u32().map_err(|_| ContainerError::Truncated {

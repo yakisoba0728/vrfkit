@@ -6,18 +6,18 @@
 //! ~2.4 million movement samples. The predecessor NDJSON pipeline spent **84 %**
 //! of wall time just parsing JSON. Parquet eliminates that: downstream consumers
 //! (Python/pandas, DuckDB, Spark) memory-map the file and decode only the
-//! columns they need, typically 10–50× faster for selective queries.
+//! columns they need, typically 10-50x faster for selective queries.
 //!
 //! # Schema design choices
 //!
-//! ## `fields` table — sparse value columns vs. Union
+//! ## `fields` table -- sparse value columns vs. Union
 //!
 //! Every field record carries at most one typed value (i64, f64, bool, or str).
 //! We represent this as **four nullable columns** rather than an Arrow
 //! DenseUnion because:
 //!
 //! 1. **Compression**: nullable columns where >90 % of values are null compress
-//!    to nearly zero — the validity bitmap itself is run-length–encoded inside
+//!    to nearly zero -- the validity bitmap itself is run-length-encoded inside
 //!    Parquet. A Union column, on the other hand, must store type-id + offset
 //!    arrays that are poorly compressible when the mix is heterogeneous.
 //! 2. **Ecosystem compatibility**: DuckDB, pandas, and PyArrow handle nullable
@@ -31,7 +31,7 @@
 //! `group_path` and `field_name` are dominated by a tiny set of repeated
 //! strings (typically <500 distinct values over millions of rows). Dictionary
 //! encoding stores the distinct values once and references them by index,
-//! shrinking data pages by 50–200×.
+//! shrinking data pages by 50-200x.
 //!
 //! ## Row-group streaming
 //!
@@ -42,10 +42,10 @@
 //!
 //! # Public API
 //!
-//! - [`FieldWriter`] — streams field records to a Parquet file.
-//! - [`MovementWriter`] — streams movement samples to a Parquet file.
-//! - [`FieldRecord`] / [`MovementRecord`] — the input structs.
-//! - [`ExportError`] — all fallible operations funnel through this.
+//! - [`FieldWriter`] -- streams field records to a Parquet file.
+//! - [`MovementWriter`] -- streams movement samples to a Parquet file.
+//! - [`FieldRecord`] / [`MovementRecord`] -- the input structs.
+//! - [`ExportError`] -- all fallible operations funnel through this.
 
 #![forbid(unsafe_code)]
 

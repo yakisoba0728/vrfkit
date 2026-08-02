@@ -1,4 +1,4 @@
-//! Argument parsing — hand-rolled, no external dependencies.
+//! Argument parsing -- hand-rolled, no external dependencies.
 //!
 //! Three subcommands:
 //!   inspect <file>

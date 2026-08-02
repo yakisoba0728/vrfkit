@@ -18,9 +18,9 @@ use crate::schema::movement_schema_ref;
 
 /// Default row group size for movement data.
 ///
-/// Movement rows are smaller (11 × 4 bytes = 44 bytes per row uncompressed),
+/// Movement rows are smaller (11 x 4 bytes = 44 bytes per row uncompressed),
 /// so we can afford a larger row group without excessive memory use. 256 Ki
-/// rows ≈ 11 MB uncompressed per row group — a good chunk size for ZSTD.
+/// rows approximately 11 MB uncompressed per row group -- a good chunk size for ZSTD.
 pub const DEFAULT_MOVEMENT_ROW_GROUP_SIZE: usize = 262_144;
 
 /// A single movement sample ready for export.
@@ -135,7 +135,7 @@ impl<W: Write + Send> MovementWriter<W> {
         self.buffer.len()
     }
 
-    // ── internal ──────────────────────────────────────────────────────────
+    // -- internal ----------------------------------------------------------
 
     fn writer_properties(row_group_size: usize) -> WriterProperties {
         WriterProperties::builder()

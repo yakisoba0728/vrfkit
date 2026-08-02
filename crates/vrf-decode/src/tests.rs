@@ -1,7 +1,7 @@
 //! Tests ported from the C# reference:
 //! - PrimitiveDecodersScalarTests.cs
 //! - PrimitiveDecodersVectorTests.cs
-//! - RepLayoutArrayDecodersTests.cs (structural only — DynamicArray is Raw)
+//! - RepLayoutArrayDecodersTests.cs (structural only -- DynamicArray is Raw)
 
 #[cfg(test)]
 mod scalar {
@@ -165,7 +165,7 @@ mod vector {
     use crate::types::RotatorQuantization;
 
     /// Helper: build a quantized vector bitstream.
-    /// Format: SerializedInt(128) header + 3×componentBitCount signed components.
+    /// Format: SerializedInt(128) header + 3 x componentBitCount signed components.
     fn write_quantized_vector(
         x: f64,
         y: f64,
@@ -174,7 +174,7 @@ mod vector {
         component_bit_count: u32,
     ) -> (Vec<u8>, u32) {
         let mut bits: Vec<bool> = Vec::new();
-        // Header: info = componentBitCount | (1 << 6) — indicates scaled integer
+        // Header: info = componentBitCount | (1 << 6) -- indicates scaled integer
         let info = component_bit_count | (1 << 6);
         write_serialized_int(&mut bits, info, 1 << 7);
         // Components
@@ -406,7 +406,7 @@ mod vector {
         write_signed_bits(&mut bits, xi, 11);
         write_signed_bits(&mut bits, yi, 11);
         write_signed_bits(&mut bits, zi, 11);
-        // Rotation short: pitch=90°(16384), yaw=180°(32768), roll=270°(49152)
+        // Rotation short: pitch=90deg(16384), yaw=180deg(32768), roll=270deg(49152)
         write_compressed_short_rotator_component(&mut bits, 16384);
         write_compressed_short_rotator_component(&mut bits, 32768);
         write_compressed_short_rotator_component(&mut bits, 49152);
@@ -468,7 +468,7 @@ mod vector {
         write_signed_bits(&mut bits, xi, 11);
         write_signed_bits(&mut bits, yi, 11);
         write_signed_bits(&mut bits, zi, 11);
-        // Rotation byte: 64→90°, 128→180°, 192→270°
+        // Rotation byte: 64->90deg, 128->180deg, 192->270deg
         write_compressed_byte_rotator_component(&mut bits, 64);
         write_compressed_byte_rotator_component(&mut bits, 128);
         write_compressed_byte_rotator_component(&mut bits, 192);
@@ -504,7 +504,10 @@ mod vector {
 mod overlay_tests {
     use crate::OVERLAY_TABLE;
     use crate::decode::FieldType;
-    use crate::overlay::{OverlayEntry, OverlayStats, OverlayTable, apply_overlay};
+    use crate::overlay::{
+        OverlayEntry, OverlayHandleEntry, OverlayStats, OverlayTable, apply_overlay,
+        apply_overlay_with_handle,
+    };
 
     #[test]
     fn table_is_sorted() {
@@ -634,6 +637,99 @@ mod overlay_tests {
     }
 
     #[test]
+    fn overlay_falls_back_to_an_explicit_property_handle_when_the_wire_name_differs() {
+        const GROUP: &str =
+            "/Script/ShooterGame.ReplayEffectComponent:ReplayPlayContinuousEffectAtLocation";
+        let entries: &[OverlayEntry] = &[OverlayEntry {
+            group_path: GROUP,
+            field_name: "Location",
+            field_type: FieldType::VectorDouble,
+        }];
+        let handle_entries: &[OverlayHandleEntry] = &[OverlayHandleEntry {
+            group_path: GROUP,
+            handle: 26,
+            field_name: "Location",
+        }];
+        let table = OverlayTable::with_handles(entries, handle_entries);
+        let mut data = Vec::new();
+        data.extend_from_slice(&1.25f64.to_le_bytes());
+        data.extend_from_slice(&(-2.5f64).to_le_bytes());
+        data.extend_from_slice(&3.75f64.to_le_bytes());
+        let mut stats = OverlayStats::default();
+
+        let result =
+            apply_overlay_with_handle(&table, GROUP, Some("248"), 26, Some(&data), 192, &mut stats);
+
+        assert_eq!(
+            result.and_then(|value| value.value_str),
+            Some("(1.25,-2.5,3.75)".to_owned()),
+        );
+        assert_eq!(stats.decoded_ok, 1);
+        assert_eq!(stats.not_in_table, 0);
+    }
+
+    #[test]
+    fn overlay_uses_an_explicit_property_handle_when_the_wire_name_is_missing() {
+        let entries: &[OverlayEntry] = &[OverlayEntry {
+            group_path: "/test",
+            field_name: "Health",
+            field_type: FieldType::Int32,
+        }];
+        let handle_entries: &[OverlayHandleEntry] = &[OverlayHandleEntry {
+            group_path: "/test",
+            handle: 9,
+            field_name: "Health",
+        }];
+        let table = OverlayTable::with_handles(entries, handle_entries);
+        let mut stats = OverlayStats::default();
+        let data = 100i32.to_le_bytes();
+
+        let result =
+            apply_overlay_with_handle(&table, "/test", None, 9, Some(&data), 32, &mut stats);
+
+        assert_eq!(result.and_then(|value| value.value_i64), Some(100));
+        assert_eq!(stats.decoded_ok, 1);
+        assert_eq!(stats.no_field_name, 0);
+        assert_eq!(stats.not_in_table, 0);
+    }
+
+    #[test]
+    fn overlay_keeps_direct_name_lookup_ahead_of_the_handle_fallback() {
+        let entries: &[OverlayEntry] = &[
+            OverlayEntry {
+                group_path: "/test",
+                field_name: "DeclaredName",
+                field_type: FieldType::Int32,
+            },
+            OverlayEntry {
+                group_path: "/test",
+                field_name: "RuntimeName",
+                field_type: FieldType::Bool,
+            },
+        ];
+        let handle_entries: &[OverlayHandleEntry] = &[OverlayHandleEntry {
+            group_path: "/test",
+            handle: 9,
+            field_name: "DeclaredName",
+        }];
+        let table = OverlayTable::with_handles(entries, handle_entries);
+        let mut stats = OverlayStats::default();
+
+        let result = apply_overlay_with_handle(
+            &table,
+            "/test",
+            Some("RuntimeName"),
+            9,
+            Some(&[1]),
+            1,
+            &mut stats,
+        );
+
+        assert_eq!(result.and_then(|value| value.value_bool), Some(true));
+        assert_eq!(stats.decoded_ok, 1);
+    }
+
+    #[test]
     fn lookup_returns_none_for_unknown() {
         let table = OverlayTable::new(&OVERLAY_TABLE);
         let ft = table.lookup("nonexistent", "field");
@@ -680,7 +776,7 @@ mod overlay_tests {
         }];
         let table = OverlayTable::new(entries);
         let mut stats = OverlayStats::default();
-        let data = [0x01u8]; // only 1 bit — FString needs at least 32 bits for length
+        let data = [0x01u8]; // only 1 bit -- FString needs at least 32 bits for length
         let result = apply_overlay(&table, "/test", Some("Broken"), Some(&data), 1, &mut stats);
         // Should return Some but with all values None (decode failure)
         assert!(result.is_some());

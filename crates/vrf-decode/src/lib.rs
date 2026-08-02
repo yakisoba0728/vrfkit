@@ -37,10 +37,10 @@
 //! | FVector(double) | 192 | `value_str` (compact) |
 //! | FVector(float) | 96 | `value_str` (compact) |
 //! | VectorNetQuantize(1/10/100) | variable | `value_str` (compact) |
-//! | VectorNetQuantizeNormal | ~48 (3×16 serialized) | `value_str` (compact) |
-//! | RotationShort | 3×(1+16) max | `value_str` (compact) |
-//! | RotationByte | 3×(1+8) max | `value_str` (compact) |
-//! | Transform | 4×32 + 3×32 + 3×32 = 320 | `value_str` (compact) |
+//! | VectorNetQuantizeNormal | ~48 (3 x 16 serialized) | `value_str` (compact) |
+//! | RotationShort | 3 x (1+16) max | `value_str` (compact) |
+//! | RotationByte | 3 x (1+8) max | `value_str` (compact) |
+//! | Transform | 4 x 32 + 3 x 32 + 3 x 32 = 320 | `value_str` (compact) |
 //! | RepMovement | variable | `value_str` (JSON object, 8 members) |
 //! | RepLayoutDynamicArray | variable | *Raw* (not decoded) |
 
@@ -65,8 +65,8 @@ pub use array::{
 };
 pub use decode::{DecodeError, DecodedValue, FieldType, decode_field};
 pub use overlay::{
-    DecodeErrorKind, OverlayEntry, OverlayErrorReport, OverlayErrorRow, OverlayStats, OverlayTable,
-    apply_overlay,
+    DecodeErrorKind, OverlayEntry, OverlayErrorReport, OverlayErrorRow, OverlayHandleEntry,
+    OverlayStats, OverlayTable, apply_overlay, apply_overlay_with_handle,
 };
-pub use table::OVERLAY_TABLE;
+pub use table::{OVERLAY_HANDLE_TABLE, OVERLAY_TABLE};
 pub use types::{FQuat, FRepMovement, FRotator, FTransform, FVector, RotatorQuantization};

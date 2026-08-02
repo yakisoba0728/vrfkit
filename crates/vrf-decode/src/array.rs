@@ -1,4 +1,4 @@
-//! RepLayout DynamicArray decoder — parses nested struct arrays from raw bits.
+//! RepLayout DynamicArray decoder -- parses nested struct arrays from raw bits.
 //!
 //! # Wire format (confirmed against C# `RepLayoutArrayDecoders.cs`)
 //!
@@ -9,7 +9,7 @@
 //!     encodedIndex = IntPacked       // 0 = terminator
 //!     index = encodedIndex - 1
 //!     if index >= elementCount:
-//!       skip remaining bits → break
+//!       skip remaining bits -> break
 //!     [element payload]:
 //!       if primitive array:
 //!         single-value decode (e.g. ObjectNetGuid per element)
@@ -20,7 +20,7 @@
 //!           payloadBits = IntPacked
 //!           if payloadBits == 0: continue
 //!           field data = payloadBits bits
-//!           → recurse if this field is itself an array
+//!           -> recurse if this field is itself an array
 //! ```
 //!
 //! # Recursion limits
@@ -113,7 +113,7 @@ pub fn decode_struct_array(
     output
 }
 
-/// Schema for array fields: maps handle → sub-array schema (if the field is
+/// Schema for array fields: maps handle -> sub-array schema (if the field is
 /// itself a nested array) or None (leaf/primitive field).
 ///
 /// Built from the C# descriptor knowledge. The handle numbers are from the
@@ -123,7 +123,7 @@ pub struct ArrayFieldSchema {
     /// For each handle in this struct level, whether it's a sub-array.
     /// Key = handle, Value = schema for the sub-array's element struct.
     pub sub_arrays: &'static [(u32, &'static ArrayFieldSchema)],
-    /// Optional handle → field name mapping for human-readable output.
+    /// Optional handle -> field name mapping for human-readable output.
     /// Only leaf fields need names here; sub-array fields get their name from
     /// the path segment they introduce.
     pub field_names: &'static [(u32, &'static str)],
@@ -179,7 +179,7 @@ fn decode_array_level(
 
         let index = encoded_index - 1;
         if index >= element_count {
-            // Index exceeds declared count — skip remaining.
+            // Index exceeds declared count -- skip remaining.
             reader.skip_remaining();
             break;
         }
@@ -247,7 +247,7 @@ fn decode_struct_fields(
 
         if let Some(sub) = sub_schema {
             if depth + 1 >= MAX_RECURSION_DEPTH {
-                // Hit recursion limit — emit raw.
+                // Hit recursion limit -- emit raw.
                 stats.truncations += 1;
                 let byte_count = (payload_bits as usize).div_ceil(8);
                 let mut raw = vec![0u8; byte_count];
@@ -290,7 +290,7 @@ fn decode_struct_fields(
                 path_buf.truncate(path_prefix_len);
             }
         } else {
-            // Leaf field — emit as-is.
+            // Leaf field -- emit as-is.
             let byte_count = (payload_bits as usize).div_ceil(8);
             let mut raw = vec![0u8; byte_count];
             let mut sub_reader = match reader.sub_reader(u64::from(payload_bits)) {
@@ -314,7 +314,7 @@ fn decode_struct_fields(
         }
     }
 
-    // Hit MAX_FIELDS_PER_ELEMENT — truncate.
+    // Hit MAX_FIELDS_PER_ELEMENT -- truncate.
     stats.truncations += 1;
 }
 
@@ -349,13 +349,13 @@ fn resolve_field_label(schema: Option<&ArrayFieldSchema>, handle: u32) -> String
         }
         // Check sub_arrays (use handle-derived name for sub-arrays too).
         if let Some((_, _)) = s.sub_arrays.iter().find(|(h, _)| *h == handle) {
-            // Sub-arrays don't have explicit names in field_names — use handle.
+            // Sub-arrays don't have explicit names in field_names -- use handle.
         }
     }
     format!("_h{handle}")
 }
 
-// ── CombatRoundReports schema ────────────────────────────────────────────────
+// -- CombatRoundReports schema ------------------------------------------------
 //
 // Derived from CombatRoundReports.cs (handles confirmed against the manifest):
 //
@@ -395,7 +395,7 @@ fn resolve_field_label(schema: Option<&ArrayFieldSchema>, handle: u32) -> String
 //       handle 98: ResurrectorPlayerState (ObjectNetGuid)
 //       handle 103: Died (Bool)
 
-/// Regional damage interaction — leaf level (no sub-arrays).
+/// Regional damage interaction -- leaf level (no sub-arrays).
 static REGION_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     sub_arrays: &[],
     field_names: &[
@@ -415,13 +415,13 @@ static REGION_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     ],
 };
 
-/// Dealt interaction regions: handle 44 → Regions sub-array.
+/// Dealt interaction regions: handle 44 -> Regions sub-array.
 static DEALT_INTERACTION_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     sub_arrays: &[(44, &REGION_SCHEMA)],
     field_names: &[(44, "Regions")],
 };
 
-/// Received interaction regions: handle 79 → Regions sub-array.
+/// Received interaction regions: handle 79 -> Regions sub-array.
 static RECEIVED_INTERACTION_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     sub_arrays: &[(79, &REGION_SCHEMA)],
     field_names: &[(79, "Regions")],
@@ -453,7 +453,7 @@ static PARTICIPANT_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     ],
 };
 
-/// Character combat report: handle 10 → Interactions sub-array.
+/// Character combat report: handle 10 -> Interactions sub-array.
 static CHARACTER_REPORT_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     sub_arrays: &[(10, &PARTICIPANT_SCHEMA)],
     field_names: &[
@@ -464,7 +464,7 @@ static CHARACTER_REPORT_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     ],
 };
 
-/// Round-level schema: handle 4 → Reports sub-array.
+/// Round-level schema: handle 4 -> Reports sub-array.
 pub static COMBAT_ROUNDS_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     sub_arrays: &[(4, &CHARACTER_REPORT_SCHEMA)],
     field_names: &[(3, "RoundNumber"), (4, "Reports")],
@@ -557,7 +557,7 @@ mod tests {
         write_int_packed(&mut inner_bits, 1); // inner elementCount
         write_int_packed(&mut inner_bits, 1); // encodedIndex=1
         // Inner field: handle=7, 16 bits
-        write_int_packed(&mut inner_bits, 8); // encodedHandle=8 → handle=7
+        write_int_packed(&mut inner_bits, 8); // encodedHandle=8 -> handle=7
         write_int_packed(&mut inner_bits, 16);
         inner_bits.extend(std::iter::repeat_n(true, 16));
         write_int_packed(&mut inner_bits, 0); // end inner element

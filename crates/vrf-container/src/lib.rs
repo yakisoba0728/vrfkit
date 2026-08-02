@@ -7,21 +7,21 @@
 //! **chunks**. The first chunk must always be a **Header** chunk.
 //!
 //! ```text
-//! ┌──────────────────────────────────────────┐
-//! │ ReplayInfo                               │
-//! │  ├─ FileMagic (0x43F4EFDD)               │
-//! │  ├─ LegacyFileVersion (7)                │
-//! │  ├─ CustomVersionContainer               │
-//! │  └─ Summary (LengthInMs … EncryptionKey) │
-//! ├──────────────────────────────────────────┤
-//! │ Chunk 0 (Header)                         │
-//! │  ├─ ChunkType (u32) + SizeInBytes (i32)  │
-//! │  └─ Header payload                       │
-//! ├──────────────────────────────────────────┤
-//! │ Chunk 1..N (ReplayData/Checkpoint/Event) │
-//! │  ├─ ChunkType (u32) + SizeInBytes (i32)  │
-//! │  └─ Payload (possibly Oodle-compressed)  │
-//! └──────────────────────────────────────────┘
+//! +-------------------------------------------+
+//! | ReplayInfo                                |
+//! |  +- FileMagic (0x43F4EFDD)                |
+//! |  +- LegacyFileVersion (7)                 |
+//! |  +- CustomVersionContainer                |
+//! |  +- Summary (LengthInMs ... EncryptionKey)|
+//! +-------------------------------------------+
+//! | Chunk 0 (Header)                          |
+//! |  +- ChunkType (u32) + SizeInBytes (i32)   |
+//! |  +- Header payload                        |
+//! +-------------------------------------------+
+//! | Chunk 1..N (ReplayData/Checkpoint/Event)  |
+//! |  +- ChunkType (u32) + SizeInBytes (i32)   |
+//! |  +- Payload (possibly Oodle-compressed)   |
+//! +-------------------------------------------+
 //! ```
 //!
 //! # Chunk iteration
@@ -49,83 +49,83 @@ pub use error::ContainerError;
 pub use header::{ReplayHeader, ReplayVersion};
 pub use info::ReplayInfo;
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// --- Constants ----------------------------------------------------------------
 
 /// File-level magic number.
 ///
-/// Source: `ReplayInfoReader.cs` — `private const uint FileMagic = 0x43F4EFDD`.
+/// Source: `ReplayInfoReader.cs` -- `private const uint FileMagic = 0x43F4EFDD`.
 /// Present at byte offset 0 of every `.vrf` file.
 const FILE_MAGIC: u32 = 0x43F4_EFDD;
 
 /// Network-level magic number inside the Header chunk.
 ///
-/// Source: `Constants.cs` — `public const uint NetworkMagic = 0x2CF5A13D`.
+/// Source: `Constants.cs` -- `public const uint NetworkMagic = 0x2CF5A13D`.
 const NETWORK_MAGIC: u32 = 0x2CF5_A13D;
 
 /// Expected legacy file version in the replay info section.
 ///
-/// Source: `LocalFileReplayCustomVersions.cs` — version 7 is the only supported
+/// Source: `LocalFileReplayCustomVersions.cs` -- version 7 is the only supported
 /// value; older versions used a different serialisation layout.
 const EXPECTED_FILE_VERSION: u32 = 7;
 
 /// Expected network version in both the info section and the header chunk.
 ///
-/// Source: `Constants.cs` — `public const uint ExpectedNetworkVersion = 19`.
+/// Source: `Constants.cs` -- `public const uint ExpectedNetworkVersion = 19`.
 const EXPECTED_NETWORK_VERSION: u32 = 19;
 
 /// Expected engine network protocol version inside the Header chunk.
 ///
-/// Source: `Constants.cs` —
+/// Source: `Constants.cs` --
 /// `public const uint ExpectedEngineNetworkProtocolVersion = 32`.
 const EXPECTED_ENGINE_NET_PROTO_VERSION: u32 = 32;
 
 /// Maximum sane custom version count (guard against corrupt length fields).
 ///
-/// Source: `Constants.cs` — `public const int MaxCustomVersionCount = 1024`.
+/// Source: `Constants.cs` -- `public const int MaxCustomVersionCount = 1024`.
 const MAX_CUSTOM_VERSION_COUNT: i32 = 1024;
 
 /// Maximum byte count for a serialised FString (friendly name, branch, etc).
 ///
-/// Source: `Constants.cs` — `public const int MaxFStringSerializedBytes = 1024 * 1024`.
+/// Source: `Constants.cs` -- `public const int MaxFStringSerializedBytes = 1024 * 1024`.
 /// The info's FriendlyName uses a tighter 64 KiB limit (see info module).
 const MAX_FSTRING_BYTES: i64 = 1024 * 1024;
 
 /// Maximum byte count for a serialised encryption key.
 ///
-/// Source: `ReplayInfoReader.cs` — `MaxEncryptionKeySizeBytes = 4096`.
+/// Source: `ReplayInfoReader.cs` -- `MaxEncryptionKeySizeBytes = 4096`.
 const MAX_ENCRYPTION_KEY_BYTES: i32 = 4096;
 
 /// Maximum byte count for the replay info's FriendlyName.
 ///
-/// Source: `ReplayInfoReader.cs` — `MaxFriendlyNameSerializedBytes = 64 * 1024`.
+/// Source: `ReplayInfoReader.cs` -- `MaxFriendlyNameSerializedBytes = 64 * 1024`.
 /// This is tighter than the general FString limit because the friendly name
 /// is user-controlled metadata.
 const MAX_FRIENDLY_NAME_BYTES: i64 = 64 * 1024;
 
 /// Maximum number of level name entries in the header.
 ///
-/// Source: `ReplayHeaderReader.cs` — `MaxLevelNamesAndTimes = 1024`.
+/// Source: `ReplayHeaderReader.cs` -- `MaxLevelNamesAndTimes = 1024`.
 const MAX_LEVEL_NAMES_AND_TIMES: i32 = 1024;
 
 /// Maximum number of game-specific data strings in the header.
 ///
-/// Source: `ReplayHeaderReader.cs` — `MaxGameSpecificDataEntries = 128`.
+/// Source: `ReplayHeaderReader.cs` -- `MaxGameSpecificDataEntries = 128`.
 const MAX_GAME_SPECIFIC_DATA: i32 = 128;
 
 /// Maximum decompressed chunk size (256 MiB). Guards against corrupt size fields
 /// causing unbounded allocation.
 ///
-/// Source: `ReplayDataChunkPayloadReader.cs` — `MaxChunkSize = 1024 * 1024 * 256`.
+/// Source: `ReplayDataChunkPayloadReader.cs` -- `MaxChunkSize = 1024 * 1024 * 256`.
 const MAX_CHUNK_SIZE: i32 = 256 * 1024 * 1024;
 
 /// Each custom version entry is a 16-byte GUID + 4-byte version number = 20 bytes.
 ///
-/// Source: `ReplayHeaderReader.cs` — `CustomVersionEntryByteCount = 20`.
+/// Source: `ReplayHeaderReader.cs` -- `CustomVersionEntryByteCount = 20`.
 const CUSTOM_VERSION_ENTRY_BYTES: u32 = 20;
 
 /// The expected GUID for the `LocalFileReplay` custom version.
 ///
-/// Source: `LocalFileReplayCustomVersions.cs` —
+/// Source: `LocalFileReplayCustomVersions.cs` --
 /// `Guid.Parse("95A4F03E-7E0B-49E4-BA43-D35694FF87D9")`.
 ///
 /// Stored as four little-endian u32 in Unreal's GUID serialisation order.
@@ -133,10 +133,10 @@ const LOCAL_REPLAY_GUID: [u32; 4] = [0x95A4_F03E, 0x7E0B_49E4, 0xBA43_D356, 0x94
 
 /// Expected `LocalFileReplay` custom version number.
 ///
-/// Source: `LocalFileReplayCustomVersions.cs` — `public const int CustomVersions = 7`.
+/// Source: `LocalFileReplayCustomVersions.cs` -- `public const int CustomVersions = 7`.
 const LOCAL_REPLAY_VERSION: i32 = 7;
 
-// ─── Chunk types ──────────────────────────────────────────────────────────────
+// --- Chunk types --------------------------------------------------------------
 
 /// Discriminant for the framing chunks that follow the replay info.
 ///
@@ -144,8 +144,8 @@ const LOCAL_REPLAY_VERSION: i32 = 7;
 ///
 /// | Value | Meaning |
 /// |-------|---------|
-/// | 0 | Header — must be the first chunk |
-/// | 1 | ReplayData — compressed playback packets |
+/// | 0 | Header -- must be the first chunk |
+/// | 1 | ReplayData -- compressed playback packets |
 /// | 2 | Checkpoint |
 /// | 3 | Event |
 /// | 0xFFFFFFFF | Unknown / padding |
@@ -184,7 +184,7 @@ impl ChunkType {
     }
 }
 
-// ─── Raw chunk descriptor ─────────────────────────────────────────────────────
+// --- Raw chunk descriptor -----------------------------------------------------
 
 /// A single chunk's type and byte range, without owning its payload.
 ///
@@ -200,18 +200,18 @@ pub struct RawChunk {
     pub data_offset: usize,
 }
 
-// ─── ReplayData payload descriptor ────────────────────────────────────────────
+// --- ReplayData payload descriptor --------------------------------------------
 
 /// Parsed metadata from a ReplayData chunk's inner framing.
 ///
 /// ```text
-/// ┌────────────────────────────────────────────────┐
-/// │ u32 Time1                                      │
-/// │ u32 Time2                                      │
-/// │ i32 SizeInBytes      (compressed payload size) │
-/// │ i32 MemorySizeInBytes (decompressed size)      │
-/// │ [SizeInBytes] data                             │
-/// └────────────────────────────────────────────────┘
+/// +------------------------------------------------+
+/// | u32 Time1                                      |
+/// | u32 Time2                                      |
+/// | i32 SizeInBytes      (compressed payload size) |
+/// | i32 MemorySizeInBytes (decompressed size)      |
+/// | [SizeInBytes] data                             |
+/// +------------------------------------------------+
 /// ```
 #[derive(Debug, Clone)]
 pub struct ReplayDataMeta {
@@ -221,11 +221,11 @@ pub struct ReplayDataMeta {
     pub time2: u32,
     /// On-disk (compressed) size of the data blob.
     pub size_in_bytes: i32,
-    /// Decompressed size — allocate this many bytes for Oodle output.
+    /// Decompressed size -- allocate this many bytes for Oodle output.
     pub memory_size_in_bytes: i32,
 }
 
-// ─── Chunk iterator ───────────────────────────────────────────────────────────
+// --- Chunk iterator -----------------------------------------------------------
 
 /// Lazy iterator over the chunk stream following the replay info.
 ///
@@ -311,7 +311,7 @@ impl<'a> ChunkIterator<'a> {
     }
 }
 
-// ─── Preamble (info + header) ─────────────────────────────────────────────────
+// --- Preamble (info + header) -------------------------------------------------
 
 /// Result of parsing the preamble: info, header, and an iterator positioned at
 /// the first post-header chunk.
@@ -363,7 +363,7 @@ pub fn parse_preamble(data: &[u8]) -> Result<Preamble, ContainerError> {
     }
 }
 
-// ─── ReplayData decompression ─────────────────────────────────────────────────
+// --- ReplayData decompression -------------------------------------------------
 
 /// Parse the inner framing of a ReplayData chunk payload and return metadata.
 ///
@@ -533,7 +533,7 @@ pub fn decompress_replay_data(
     Ok(output)
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+// --- Tests --------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests;

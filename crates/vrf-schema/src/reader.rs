@@ -13,7 +13,7 @@
 //!   if isExported:
 //!     pathName:    FString (i32 length + UTF-8/UTF-16 bytes)
 //!     numExports:  IntPacked (declared field-slot count)
-//!   isFieldExported: u8 boolean (1 byte, not 1 bit — this is FBinaryArchive)
+//!   isFieldExported: u8 boolean (1 byte, not 1 bit -- this is FBinaryArchive)
 //!   if isFieldExported:
 //!     handle:             IntPacked
 //!     compatibleChecksum: u32 (little-endian, 4 bytes)
@@ -52,7 +52,7 @@ const MAX_NET_GUID_RECURSION: u32 = 16;
 ///
 /// FName on the wire (FBinaryArchive variant):
 ///   isHardcoded: u8 (1 byte boolean)
-///   if hardcoded: nameIndex = IntPacked → returned as decimal string
+///   if hardcoded: nameIndex = IntPacked -> returned as decimal string
 ///   else: name = FString, number = i32 (discarded)
 fn read_fname(reader: &mut BitReader<'_>) -> Result<String> {
     let is_hardcoded = reader.read_u8()? != 0;
@@ -88,7 +88,7 @@ pub fn read_net_field_exports(reader: &mut BitReader<'_>, cache: &mut NetGuidCac
             let group = NetFieldExportGroup::new(path_name, path_name_index, num_fields);
             cache.add_export_group(group);
         } else {
-            // Reference to an existing group by index — it must already be known.
+            // Reference to an existing group by index -- it must already be known.
             if cache.get_group_by_index(path_name_index).is_none() {
                 return Err(SchemaError::UnknownPathIndex {
                     index: path_name_index,
@@ -210,7 +210,7 @@ fn internal_load_object(
 mod tests {
     use super::*;
 
-    // ── Test helpers mirroring the C# test's byte-building functions ──────────
+    // -- Test helpers mirroring the C# test's byte-building functions ----------
 
     /// Encode a u32 as Unreal's IntPacked format (7 payload bits per byte,
     /// continuation in low bit).
@@ -304,7 +304,7 @@ mod tests {
         bytes
     }
 
-    // ── ReadNetFieldExports tests (ported from ExportDataReaderTests.cs) ─────
+    // -- ReadNetFieldExports tests (ported from ExportDataReaderTests.cs) -----
 
     #[test]
     fn registers_exported_group() {
@@ -435,7 +435,7 @@ mod tests {
         assert!(group.get_field(0).is_none());
     }
 
-    // ── ReadExportGuids tests (ported from ExportDataReaderTests.cs) ─────────
+    // -- ReadExportGuids tests (ported from ExportDataReaderTests.cs) ---------
 
     #[test]
     fn export_guid_registers_path() {
@@ -479,7 +479,7 @@ mod tests {
         assert!(matches!(err, SchemaError::TrailingPayloadData { .. }));
     }
 
-    // ── NetGuidCache unit tests (ported from NetGuidCacheTests.cs) ───────────
+    // -- NetGuidCache unit tests (ported from NetGuidCacheTests.cs) -----------
 
     #[test]
     fn cache_stores_group_by_path_and_index() {
@@ -578,7 +578,7 @@ mod tests {
         assert!(cache.get_gameplay_tag_name(99).is_none()); // out of range
     }
 
-    // ── Path alias lookup tests ──────────────────────────────────────────────
+    // -- Path alias lookup tests ----------------------------------------------
 
     #[test]
     fn alias_lookup_via_cache() {
@@ -594,7 +594,7 @@ mod tests {
         );
     }
 
-    // ── Truncated input rejection ────────────────────────────────────────────
+    // -- Truncated input rejection --------------------------------------------
 
     #[test]
     fn truncated_net_field_exports_returns_bitio_error() {
@@ -664,7 +664,7 @@ mod tests {
         assert_eq!(b.get_field(0).unwrap().name, "Delta");
     }
 
-    // ── UniqueLeafMatch suffix extension tests ───────────────────────────────
+    // -- UniqueLeafMatch suffix extension tests -------------------------------
 
     #[test]
     fn unique_leaf_match_exact() {
@@ -674,7 +674,7 @@ mod tests {
             20,
             3,
         ));
-        // Exact leaf match: "AresAttributeSet" → leaf is "AresAttributeSet".
+        // Exact leaf match: "AresAttributeSet" -> leaf is "AresAttributeSet".
         let g = cache.unique_leaf_match("AresAttributeSet").unwrap();
         assert_eq!(g.path, "/Script/ShooterGame.AresAttributeSet");
     }
@@ -732,7 +732,7 @@ mod tests {
     #[test]
     fn unique_leaf_match_ambiguous_returns_none() {
         let mut cache = NetGuidCache::new();
-        // Two groups with the same leaf "TestComponent" → ambiguous.
+        // Two groups with the same leaf "TestComponent" -> ambiguous.
         cache.add_export_group(NetFieldExportGroup::new(
             "/Script/A.TestComponent".into(),
             60,

@@ -1,7 +1,7 @@
 //! Arrow schema definitions for the two export tables.
 //!
 //! Schemas are defined once here so that writer and reader agree. The field
-//! metadata (e.g. `PARQUET:field_id`) is intentionally omitted — Parquet
+//! metadata (e.g. `PARQUET:field_id`) is intentionally omitted -- Parquet
 //! assigns ordinal field IDs automatically, and manual IDs would only matter
 //! if we needed Iceberg-style schema evolution, which we don't.
 
@@ -40,7 +40,7 @@ pub fn fields_schema() -> Schema {
         Field::new("bit_count", DataType::UInt32, false),
         // Raw bit payload; nullable because zero-bit fields carry no data.
         Field::new("raw_bits", DataType::Binary, true),
-        // Sparse typed-value overlay — at most one of these is non-null per row.
+        // Sparse typed-value overlay -- at most one of these is non-null per row.
         Field::new("value_i64", DataType::Int64, true),
         Field::new("value_f64", DataType::Float64, true),
         Field::new("value_bool", DataType::Boolean, true),
@@ -52,7 +52,7 @@ pub fn fields_schema() -> Schema {
 /// structure, no nulls).
 ///
 /// The coordinate system matches Unreal Engine's left-handed Z-up convention.
-/// Positions are in centimetres; yaw/pitch are in degrees (−180..180).
+/// Positions are in centimetres; yaw/pitch are in degrees (-180..180).
 /// Velocity is cm/s as reported by the replication channel.
 pub fn movement_schema() -> Schema {
     Schema::new(vec![

@@ -5,7 +5,7 @@
 //! and contains a sparse vector of [`NetFieldExport`] entries keyed by numeric
 //! handle.
 //!
-//! These are **not** hard-coded — the replay stream declares them at runtime,
+//! These are **not** hard-coded -- the replay stream declares them at runtime,
 //! and handles may shift between game builds.
 
 /// A single replicated-field descriptor within a group.
@@ -77,7 +77,7 @@ impl NetFieldExportGroup {
     ///
     /// Returns `true` if the handle was within range and the write succeeded.
     /// Returns `false` (without panicking) if the handle exceeds the declared
-    /// group length — the C# reference simply logs a warning and skips.
+    /// group length -- the C# reference simply logs a warning and skips.
     pub fn set_field(&mut self, field: NetFieldExport) -> bool {
         let idx = field.handle as usize;
         if idx >= self.fields.len() {

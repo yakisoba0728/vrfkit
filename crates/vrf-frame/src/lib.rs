@@ -1,4 +1,4 @@
-//! DemoFrame iteration: decompressed replay-data chunk → `(time_ms, packet)` sequence.
+//! DemoFrame iteration: decompressed replay-data chunk -> `(time_ms, packet)` sequence.
 //!
 //! # Why a separate crate
 //!
@@ -13,46 +13,46 @@
 //!
 //! Each decompressed ReplayData chunk is a *sequence* of DemoFrames.
 //! A single DemoFrame has this structure (all reads are **byte-aligned**, using
-//! Unreal's `FBinaryArchive` — i.e. `IntPacked` is still the 7-bit-per-byte
+//! Unreal's `FBinaryArchive` -- i.e. `IntPacked` is still the 7-bit-per-byte
 //! encoding, `FString` is i32 length + bytes + null, etc.):
 //!
 //! ```text
-//! ┌──────────────────────────────────────────────────────────────────────────┐
-//! │ currentLevelIndex   : i32                                  (ignored)     │
-//! │ timeSeconds         : f32                                  (frame time)  │
-//! ├──────────────────────────────────────────────────────────────────────────┤
-//! │ ── ExportData ──                                                        │
-//! │   numLayoutCmdExports: IntPacked → ReadNetFieldExports                  │
-//! │   numExportGuids:      IntPacked → ReadExportGuids                      │
-//! ├──────────────────────────────────────────────────────────────────────────┤
-//! │ ── StreamingLevelFixes ──                                               │
-//! │   [if HasStreamingFixes flag]:                                           │
-//! │     numLevels : IntPacked                                               │
-//! │     for each: FString (level name)                                      │
-//! │     externalOffset : u64                                                │
-//! │   [else]:                                                               │
-//! │     numLevels : IntPacked                                               │
-//! │     for each: FString + FString + FTransform (10 floats = 40 bytes)     │
-//! ├──────────────────────────────────────────────────────────────────────────┤
-//! │ ── ExternalData ──                                                      │
-//! │   loop:                                                                 │
-//! │     numBits : IntPacked   (0 → break)                                   │
-//! │     netGuid : IntPacked   (ignored)                                     │
-//! │     skip ceil(numBits/8) bytes                                          │
-//! ├──────────────────────────────────────────────────────────────────────────┤
-//! │ ── GameSpecificFrameData ──                                             │
-//! │   [if GameSpecificFrameData flag]:                                      │
-//! │     skipExternalOffset : u64                                            │
-//! │     skip that many bytes                                                │
-//! ├──────────────────────────────────────────────────────────────────────────┤
-//! │ ── Packet loop ──                                                       │
-//! │   loop:                                                                 │
-//! │     [if HasStreamingFixes]:  seenLevelIndex : IntPacked (ignored)        │
-//! │     packetSize : i32                                                    │
-//! │     [if packetSize == 0 → frame ends]                                   │
-//! │     [if packetSize <  0 → error]                                        │
-//! │     packet data: packetSize bytes → emitted to caller                   │
-//! └──────────────────────────────────────────────────────────────────────────┘
+//! +--------------------------------------------------------------------------+
+//! | currentLevelIndex   : i32                                  (ignored)     |
+//! | timeSeconds         : f32                                  (frame time)  |
+//! +--------------------------------------------------------------------------+
+//! | -- ExportData --                                                         |
+//! |   numLayoutCmdExports: IntPacked -> ReadNetFieldExports                  |
+//! |   numExportGuids:      IntPacked -> ReadExportGuids                      |
+//! +--------------------------------------------------------------------------+
+//! | -- StreamingLevelFixes --                                                |
+//! |   [if HasStreamingFixes flag]:                                           |
+//! |     numLevels : IntPacked                                                |
+//! |     for each: FString (level name)                                       |
+//! |     externalOffset : u64                                                 |
+//! |   [else]:                                                                |
+//! |     numLevels : IntPacked                                                |
+//! |     for each: FString + FString + FTransform (10 floats = 40 bytes)      |
+//! +--------------------------------------------------------------------------+
+//! | -- ExternalData --                                                       |
+//! |   loop:                                                                  |
+//! |     numBits : IntPacked   (0 -> break)                                   |
+//! |     netGuid : IntPacked   (ignored)                                      |
+//! |     skip ceil(numBits/8) bytes                                           |
+//! +--------------------------------------------------------------------------+
+//! | -- GameSpecificFrameData --                                              |
+//! |   [if GameSpecificFrameData flag]:                                       |
+//! |     skipExternalOffset : u64                                             |
+//! |     skip that many bytes                                                 |
+//! +--------------------------------------------------------------------------+
+//! | -- Packet loop --                                                        |
+//! |   loop:                                                                  |
+//! |     [if HasStreamingFixes]:  seenLevelIndex : IntPacked (ignored)        |
+//! |     packetSize : i32                                                     |
+//! |     [if packetSize == 0 -> frame ends]                                   |
+//! |     [if packetSize <  0 -> error]                                        |
+//! |     packet data: packetSize bytes -> emitted to caller                   |
+//! +--------------------------------------------------------------------------+
 //! ```
 //!
 //! # Flag semantics
@@ -87,7 +87,7 @@ pub const FLAG_HAS_STREAMING_FIXES: u32 = 1 << 1;
 pub const FLAG_GAME_SPECIFIC_FRAME_DATA: u32 = 1 << 3;
 
 /// Maximum packet size (bytes). Unreal's `MAX_PACKET_SIZE` = 2 KiB.
-/// Source: `Constants.cs` — `public const int MaxPacketSizeInBits = 16384`.
+/// Source: `Constants.cs` -- `public const int MaxPacketSizeInBits = 16384`.
 const MAX_PACKET_SIZE_BYTES: i32 = 16384 / 8; // 2048
 
 /// Maximum sane FString bytes when skipping level names.
@@ -132,7 +132,7 @@ pub fn iter_demo_frames(
     let mut packet_index: u32 = 0;
 
     while !reader.at_end() {
-        // ── Frame header ──────────────────────────────────────────────────
+        // -- Frame header --------------------------------------------------
         let _current_level_index = reader.read_i32().map_err(FrameError::bit)?;
         let time_seconds = reader.read_f32().map_err(FrameError::bit)?;
         // Mirror the reference exactly (ReplayEventJsonWriter.cs:194):
@@ -156,19 +156,19 @@ pub fn iter_demo_frames(
             0
         };
 
-        // ── ExportData ────────────────────────────────────────────────────
+        // -- ExportData ----------------------------------------------------
         read_export_data(&mut reader, cache)?;
 
-        // ── StreamingLevelFixes ───────────────────────────────────────────
+        // -- StreamingLevelFixes -------------------------------------------
         read_streaming_level_fixes(&mut reader, has_streaming_fixes)?;
 
-        // ── ExternalData ──────────────────────────────────────────────────
+        // -- ExternalData --------------------------------------------------
         read_external_data(&mut reader)?;
 
-        // ── GameSpecificFrameData ─────────────────────────────────────────
+        // -- GameSpecificFrameData -----------------------------------------
         read_game_specific_frame_data(&mut reader, has_game_specific)?;
 
-        // ── Packet loop ───────────────────────────────────────────────────
+        // -- Packet loop ---------------------------------------------------
         loop {
             if has_streaming_fixes {
                 let _seen_level_index = reader.read_int_packed().map_err(FrameError::bit)?;
@@ -217,11 +217,11 @@ pub fn iter_demo_frames(
     Ok(packet_index)
 }
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
+// --- Internal helpers ---------------------------------------------------------
 
 /// ExportData: read net field exports + export GUIDs into the cache.
 ///
-/// Source: `ExportDataReader.Read()` — calls `ReadNetFieldExports()` then
+/// Source: `ExportDataReader.Read()` -- calls `ReadNetFieldExports()` then
 /// `ReadExportGuids()`. Both are byte-aligned (FBinaryArchive) reads.
 fn read_export_data(
     reader: &mut BitReader<'_>,
@@ -252,11 +252,11 @@ fn read_streaming_level_fixes(
     } else {
         // Verbose form: packageName + packageNameToLoad + FTransform per entry.
         // FTransform = rotation(4 doubles) + translation(3 doubles) + scale(3 doubles)
-        // = 10 × f64 = 80 bytes. But Unreal's FTransform in FBinaryArchive is typically
-        // serialized as 3 × FVector (rotation quaternion not stored as doubles in this
-        // context — let me check). Actually looking at the C# code it calls
+        // = 10 x f64 = 80 bytes. But Unreal's FTransform in FBinaryArchive is typically
+        // serialized as 3 x FVector (rotation quaternion not stored as doubles in this
+        // context -- let me check). Actually looking at the C# code it calls
         // `_archive.ReadFTransform()` which in their implementation reads
-        // rotation(4×f32) + translation(3×f32) + scale(3×f32) = 10 × f32 = 40 bytes.
+        // rotation(4 x f32) + translation(3 x f32) + scale(3 x f32) = 10 x f32 = 40 bytes.
         for _ in 0..num_levels {
             let _ = reader
                 .read_fstring(MAX_FSTRING_BYTES)
@@ -264,7 +264,7 @@ fn read_streaming_level_fixes(
             let _ = reader
                 .read_fstring(MAX_FSTRING_BYTES)
                 .map_err(FrameError::bit)?;
-            // FTransform: Rotation(4×f32) + Translation(3×f32) + Scale3D(3×f32) = 40 bytes
+            // FTransform: Rotation(4 x f32) + Translation(3 x f32) + Scale3D(3 x f32) = 40 bytes
             reader.skip_bits(40 * 8).map_err(FrameError::bit)?;
         }
     }

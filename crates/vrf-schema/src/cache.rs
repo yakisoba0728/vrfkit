@@ -2,14 +2,14 @@
 //!
 //! [`NetGuidCache`] is the central authority for:
 //!
-//! - **path → group**: find an export group by its full path string.
-//! - **path_name_index → group**: find an export group by the numeric index the
+//! - **path -> group**: find an export group by its full path string.
+//! - **path_name_index -> group**: find an export group by the numeric index the
 //!   engine assigns once and reuses for the rest of the replay.
-//! - **NetGUID → object path**: map the 32-bit runtime object ID to its
+//! - **NetGUID -> object path**: map the 32-bit runtime object ID to its
 //!   human-readable path (populated from export-GUID bunches).
-//! - **NetGUID → outer NetGUID**: track the containment hierarchy so callers can
+//! - **NetGUID -> outer NetGUID**: track the containment hierarchy so callers can
 //!   walk from a component to its owning actor.
-//! - **GameplayTag index → name**: the `NetworkGameplayTagNodeIndex` group's
+//! - **GameplayTag index -> name**: the `NetworkGameplayTagNodeIndex` group's
 //!   fields double as a tag name table.
 //!
 //! This state accumulates over the entire replay and is never reset.
@@ -85,11 +85,11 @@ pub struct NetGuidEntry<'a> {
 /// All lookups are O(1) via `HashMap`. Field access within a group is O(1) via
 /// direct `Vec` indexing (see [`NetFieldExportGroup::get_field`]).
 pub struct NetGuidCache {
-    /// path (String, ordinal) → group index into `groups`.
+    /// path (String, ordinal) -> group index into `groups`.
     by_path: HashMap<String, usize>,
-    /// path_name_index (u32) → group index into `groups`.
+    /// path_name_index (u32) -> group index into `groups`.
     by_index: HashMap<u32, usize>,
-    /// leaf name → group index. Used by [`Self::unique_leaf_match`] to resolve
+    /// leaf name -> group index. Used by [`Self::unique_leaf_match`] to resolve
     /// bare class names (e.g. `AresAttributeSet`) to their full export group
     /// path (e.g. `/Script/ShooterGame.AresAttributeSet`).
     ///
@@ -100,9 +100,9 @@ pub struct NetGuidCache {
     by_leaf: HashMap<String, usize>,
     /// Central storage for all groups.
     groups: Vec<NetFieldExportGroup>,
-    /// NetGUID value → object path string.
+    /// NetGUID value -> object path string.
     guid_to_path: HashMap<u32, String>,
-    /// NetGUID value → outer NetGUID value (containment hierarchy).
+    /// NetGUID value -> outer NetGUID value (containment hierarchy).
     guid_to_outer: HashMap<u32, NetworkGuid>,
     /// Bumped whenever the set of group paths changes. See
     /// [`Self::schema_generation`].
@@ -211,7 +211,7 @@ impl NetGuidCache {
         self.by_path.get(path).map(|&i| &self.groups[i])
     }
 
-    /// Register a NetGUID → path mapping (from export GUID bunches).
+    /// Register a NetGUID -> path mapping (from export GUID bunches).
     pub fn set_net_guid_path(&mut self, net_guid: u32, path: String, outer: Option<NetworkGuid>) {
         self.guid_to_path.insert(net_guid, path);
         match outer {
@@ -277,10 +277,10 @@ impl NetGuidCache {
     /// group only if exactly one such group exists (ambiguous leaves return None).
     ///
     /// Beyond C#'s exact-match logic, also tries common Unreal suffixes:
-    /// - `name + "Component"` — subobject GUIDs often omit the `Component`
+    /// - `name + "Component"` -- subobject GUIDs often omit the `Component`
     ///   suffix that their export group path includes (e.g. GUID path
-    ///   `EquippableStateMachine` → group `.EquippableStateMachineComponent`).
-    /// - `name + "_C"` — Blueprint-class GUIDs (especially `Comp_*` prefixed)
+    ///   `EquippableStateMachine` -> group `.EquippableStateMachineComponent`).
+    /// - `name + "_C"` -- Blueprint-class GUIDs (especially `Comp_*` prefixed)
     ///   map to groups with a `_C` suffix on the leaf.
     ///
     /// This is the bridge between NetGUID paths (often bare class names) and
@@ -297,7 +297,7 @@ impl NetGuidCache {
                 return self.groups.get(idx);
             }
         }
-        // Try "name + Component" suffix — Unreal's most common subobject naming
+        // Try "name + Component" suffix -- Unreal's most common subobject naming
         // convention stores GUIDs without the suffix but registers export groups
         // with it.
         let mut suffixed = String::with_capacity(bare_name.len() + 9);
@@ -308,7 +308,7 @@ impl NetGuidCache {
                 return self.groups.get(idx);
             }
         }
-        // Try "name + _C" suffix — Blueprint class GUIDs (Comp_* etc.) register
+        // Try "name + _C" suffix -- Blueprint class GUIDs (Comp_* etc.) register
         // their export group with a _C suffix on the leaf.
         suffixed.clear();
         suffixed.push_str(bare_name);
@@ -460,7 +460,7 @@ impl NetGuidCache {
         // Extract the leaf: the part after the last '.' in the path.
         let leaf = match path.rfind('.') {
             Some(dot_pos) => &path[dot_pos + 1..],
-            None => return, // No dot separator → not a qualified path, skip.
+            None => return, // No dot separator -> not a qualified path, skip.
         };
         if leaf.is_empty() {
             return;

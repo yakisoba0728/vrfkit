@@ -1,4 +1,4 @@
-//! `export` subcommand driver — full pipeline from .vrf to Parquet.
+//! `export` subcommand driver -- full pipeline from .vrf to Parquet.
 //!
 //! # Architecture
 //!
@@ -6,7 +6,7 @@
 //! `NetGuidCache` (to receive schema updates), while the `ExportSink` needs a
 //! shared reference to that same cache (to resolve paths and field names).
 //!
-//! Solution: collect packets from one DemoFrame pass (cheap — just byte offsets
+//! Solution: collect packets from one DemoFrame pass (cheap -- just byte offsets
 //! into the decompressed chunk), then process them with the *updated* cache.
 //! This two-phase design means path resolution always sees the latest schema.
 //!
@@ -146,12 +146,12 @@ impl<T: Send + 'static> WriterThread<T> {
 pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     let start = Instant::now();
 
-    // ── Read file ─────────────────────────────────────────────────────────
+    // -- Read file ---------------------------------------------------------
     eprintln!("reading {vrf_path}...");
     let data = fs::read(vrf_path)?;
     let file_size = data.len();
 
-    // ── Parse preamble ────────────────────────────────────────────────────
+    // -- Parse preamble ----------------------------------------------------
     let preamble = parse_preamble(&data)?;
     let branch = &preamble.header.replay_version.branch;
     let flags = preamble.header.flags;
@@ -163,7 +163,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
         preamble.info.length_in_ms
     );
 
-    // ── Setup output ──────────────────────────────────────────────────────
+    // -- Setup output ------------------------------------------------------
     let out_path = Path::new(out_dir);
     fs::create_dir_all(out_path)?;
 
@@ -188,12 +188,12 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
         movement_writer.finish()
     });
 
-    // ── Setup replication reader and schema cache ──────────────────────────
+    // -- Setup replication reader and schema cache --------------------------
     let mut cache = NetGuidCache::new();
     let mut repl_reader = ReplicationReader::new(branch)
         .map_err(|e| CliError::Usage(format!("unsupported branch: {e}")))?;
 
-    // ── Iterate chunks ────────────────────────────────────────────────────
+    // -- Iterate chunks ----------------------------------------------------
     let mut chunk_iter = ChunkIterator::new(&data, preamble.remaining_offset);
     let mut chunks_processed = 0u32;
     let mut total_packets: u32 = 0;
@@ -215,7 +215,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
         let payload = &data[chunk.data_offset..chunk.data_offset + chunk.size_in_bytes as usize];
         let decompressed = decompress_replay_data(payload, compressed, encrypted)?;
 
-        // Phase 1: iterate DemoFrames — populates cache, collects packet locations.
+        // Phase 1: iterate DemoFrames -- populates cache, collects packet locations.
         packet_descs.clear();
         iter_demo_frames(&decompressed, flags, &mut cache, |pkt| {
             // pkt.data is a slice into `decompressed`. Compute its offset.
@@ -272,7 +272,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
         }
     }
 
-    // ── Finish writers ────────────────────────────────────────────────────
+    // -- Finish writers ----------------------------------------------------
     //
     // The two offloaded writers are joined here, before the elapsed time is
     // taken and before any file size is read, so both files are complete and
@@ -281,7 +281,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     movement.finish()?;
     actor_writer.finish()?;
 
-    // ── Write the NetGUID registry ────────────────────────────────────────
+    // -- Write the NetGUID registry ----------------------------------------
     //
     // Written after the replication pass because the cache accumulates over the
     // whole replay: a GUID's outer may be declared in a later chunk than the
@@ -301,7 +301,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     }
     net_guid_writer.finish()?;
 
-    // ── Stats ─────────────────────────────────────────────────────────────
+    // -- Stats -------------------------------------------------------------
     let net_stats = repl_reader.stats();
     let elapsed = start.elapsed();
 
@@ -324,7 +324,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     eprintln!("  NetGUID rows:     {net_guid_rows}");
     eprintln!("  Elapsed:          {:.2?}", elapsed);
 
-    // ── Write manifest ────────────────────────────────────────────────────
+    // -- Write manifest ----------------------------------------------------
     let manifest_path = out_path.join("manifest.json");
     manifest::write_manifest(
         &manifest_path,
@@ -337,7 +337,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
         elapsed,
     )?;
 
-    // ── Report file sizes ─────────────────────────────────────────────────
+    // -- Report file sizes -------------------------------------------------
     let fields_size = fs::metadata(out_path.join("fields.parquet"))
         .map(|m| m.len())
         .unwrap_or(0);
@@ -358,7 +358,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     eprintln!("  net_guids.parquet:{} bytes", net_guids_size);
     eprintln!("  manifest.json:    {}", manifest_path.display());
 
-    // ── Overlay statistics ─────────────────────────────────────────────────
+    // -- Overlay statistics -------------------------------------------------
     //
     // The denominator is every row the overlay was offered, which since RPC
     // parameter expansion means replicated properties *and* RPC parameters. The

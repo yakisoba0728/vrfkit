@@ -53,7 +53,7 @@
 
 use vrf_bitio::BitReader;
 
-// ─── Error type ──────────────────────────────────────────────────────────────
+// --- Error type --------------------------------------------------------------
 
 /// Errors that can occur while decoding a struct-array blob.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -90,13 +90,13 @@ pub enum StructBlobError {
 /// Convenience alias.
 pub type Result<T> = core::result::Result<T, StructBlobError>;
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// --- Constants ---------------------------------------------------------------
 
 const MAX_ARRAY_COUNT: u32 = 128;
 const MAX_FIELDS_PER_ELEMENT: u32 = 8;
 const MAX_FIELD_PAYLOAD_BITS: u32 = 64 * 1024;
 
-// ─── Helper: read array framing ──────────────────────────────────────────────
+// --- Helper: read array framing ----------------------------------------------
 
 /// Read the declared element count from the stream.
 fn read_array_count(reader: &mut BitReader<'_>) -> Result<u32> {
@@ -174,7 +174,7 @@ fn ensure_consumed(reader: &BitReader<'_>) -> Result<()> {
     Ok(())
 }
 
-// ─── RoundResults ────────────────────────────────────────────────────────────
+// --- RoundResults ------------------------------------------------------------
 
 /// The role a team played during the round.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,7 +324,7 @@ pub fn decode_round_results(reader: &mut BitReader<'_>) -> Result<Vec<RoundResul
     Ok(results)
 }
 
-// ─── TeamEconomy ─────────────────────────────────────────────────────────────
+// --- TeamEconomy -------------------------------------------------------------
 
 /// A single team economy update.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -402,7 +402,7 @@ pub fn decode_team_economy(reader: &mut BitReader<'_>) -> Result<Vec<TeamEconomy
     Ok(results)
 }
 
-// ─── RoundInfos ──────────────────────────────────────────────────────────────
+// --- RoundInfos --------------------------------------------------------------
 
 /// A single player round-info entry (per-round economy for one player).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -495,14 +495,14 @@ pub fn decode_round_infos(reader: &mut BitReader<'_>) -> Result<Vec<PlayerRoundI
     Ok(results)
 }
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+// --- Tests -------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use vrf_bitio::BitReader;
 
-    // ── RoundResults tests ───────────────────────────────────────────────────
+    // -- RoundResults tests ---------------------------------------------------
 
     /// Row 0 from replay 02d4d478, t=84942ms.
     /// C# output: [{RoundNumber:0, WinningTeam:"Red", WinningTeamRole:attacker, RoundResult:elimination}]
@@ -556,7 +556,7 @@ mod tests {
         assert!(results.is_empty());
     }
 
-    // ── TeamEconomy tests ────────────────────────────────────────────────────
+    // -- TeamEconomy tests ----------------------------------------------------
 
     /// Row 0 from replay 02d4d478, t=7ms. Initial spawn with ReplicationIds.
     /// C# output: [{Index:0, LV:0, ALV:0, RepId:272}, {Index:1, LV:0, ALV:0, RepId:274}]
@@ -612,7 +612,7 @@ mod tests {
         assert_eq!(results[1].average_loadout_value, Some(2320));
     }
 
-    // ── RoundInfos tests ─────────────────────────────────────────────────────
+    // -- RoundInfos tests -----------------------------------------------------
 
     /// First RoundInfos row from replay 02d4d478, t=91927ms, actor 196.
     /// C# base64: "AgJSQAAAAABUQAAAAABWQAAAAABYQGwHAABaQAAAAAAAAA=="
@@ -663,7 +663,7 @@ mod tests {
         assert_eq!(results[0].end_of_round_loadout_value, Some(600));
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    // -- Helpers --------------------------------------------------------------
 
     fn hex_to_bytes(s: &str) -> Vec<u8> {
         (0..s.len())

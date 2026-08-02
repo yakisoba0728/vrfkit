@@ -26,6 +26,7 @@ Usage:
 """
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 TABLE_RS = Path(__file__).parent.parent / "crates" / "vrf-decode" / "src" / "table.rs"
@@ -129,6 +130,47 @@ def verify(content: str) -> list[str]:
                 f"{field} in *{group_part}*: expected {required}, found {hits}"
             )
     return problems
+
+
+HEADER_COUNTS_RE = re.compile(
+    r"^// Raw/Custom: \d+, Skip: \d+, Typed: \d+\.$", re.MULTILINE
+)
+
+
+def rewrite_header_counts(content: str) -> tuple[str, str]:
+    """Recount the type buckets and rewrite the generated header line.
+
+    extract_descriptors.py writes that line from the descriptors it read, and
+    then this script changes some of those types -- so between the two the
+    header is a statement about a table that no longer exists. It said
+    "Raw/Custom: 164 ... Typed: 864" while the file held 157 and 871: the seven
+    corrections that turn a Raw into a real type.
+
+    Nothing reads the header, which is exactly why it went unnoticed and why it
+    is worth fixing -- a comment on a generated file that quietly disagrees with
+    the file is how a reader learns not to trust the comments.
+
+    Counted from the parsed entries rather than by substring, so a type whose
+    name contains another's (`FieldType::RawPayload` would contain `Raw`)
+    cannot miscount.
+    """
+    buckets = Counter()
+    for _group, _field, ftype in parse_entries(content):
+        if ftype == "FieldType::Raw":
+            buckets["raw"] += 1
+        elif ftype == "FieldType::Skip":
+            buckets["skip"] += 1
+        else:
+            buckets["typed"] += 1
+    line = (f"// Raw/Custom: {buckets['raw']}, Skip: {buckets['skip']}, "
+            f"Typed: {buckets['typed']}.")
+    new_content, n = HEADER_COUNTS_RE.subn(lambda _m: line, content, count=1)
+    if n != 1:
+        raise SystemExit(
+            f"{TABLE_RS}: expected exactly one generated bucket-count header "
+            f"line, found {n}. Regenerate with extract_descriptors.py first."
+        )
+    return new_content, line
 
 
 def main():
@@ -304,6 +346,8 @@ def main():
             break
     content = "    OverlayEntry {".join(blocks)
 
+    content, header_line = rewrite_header_counts(content)
+
     if not check_only:
         TABLE_RS.write_text(content, encoding="utf-8")
 
@@ -320,9 +364,17 @@ def main():
               "THIS script, and only then cargo fmt.", file=sys.stderr)
         return 1
 
+    stale = HEADER_COUNTS_RE.search(TABLE_RS.read_text(encoding="utf-8"))
+    if check_only and stale and stale.group(0) != header_line:
+        print(f"FAILED: the generated header disagrees with the table.\n"
+              f"  file says {stale.group(0)}\n"
+              f"  counted   {header_line}", file=sys.stderr)
+        return 1
+
     verb = "verified" if check_only else "applied"
     print(f"{verb}: {count} replacement(s) made, "
-          f"all {len(EXPECTED)} corrections present in {TABLE_RS}")
+          f"all {len(EXPECTED)} corrections present in {TABLE_RS}; "
+          f"{header_line.lstrip('/ ').rstrip('.')}")
     return 0
 
 

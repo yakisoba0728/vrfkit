@@ -1,8 +1,8 @@
 # vrfkit Project Status
 
 Last updated: 2026-08-02. Includes the replay-coverage audit through 8eb5909,
-the concurrent master audit corrections through 101c33a, and the code audit
-fixes in section 12.
+the concurrent master audit corrections through 101c33a, the code audit fixes
+in section 12, and the Codex needs-work results through 45223c9 in section 14.
 All numbers come from direct tool runs, not estimates.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
@@ -26,14 +26,20 @@ C# reference   : C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser
                  Tree is CLEAN, on branch local/vrfkit-descriptors (f67ea66).
                  The "17 uncommitted entries" warning that stood here until
                  2026-08-02 is obsolete: that work is committed as fe5343a.
-                 `main` MUST STAY AT 2d2e05e. That is the commit the reference
-                 bundles were built from -- they stamp parser_version
-                 1.0.0+2d2e05e8 -- so moving it invalidates every comparison
-                 figure in this document. Do not merge the branch into main,
-                 and do not pull.
+                 `main` MUST STAY AT 2d2e05e. Published bundles stamp
+                 parser_version 1.0.0+2d2e05e8, so moving it invalidates every
+                 comparison figure in this document. The stamp records Git
+                 HEAD, not a clean source tree: section 13-H explains the
+                 descriptor provenance caveat. Treat the published bundles as
+                 the immutable reference. Do not merge the branch into main,
+                 regenerate the bundles, or pull.
                  Changing a descriptor there is allowed ON THE BRANCH, with
                  primary-source proof and the test that pins it (see 13-C).
-                 Regenerating table.rs requires that branch checked out.
+                 This delegate branch's table was generated from that branch.
+                 Current master also depends on local/pawn-descriptors at
+                 d2b76f2 in the separate clean VRP-pawn-descriptors worktree.
+                 During integration, use the feature branch's generator with
+                 that newer C# worktree or 92 master entries disappear.
 valplay        : C:\Users\yakihyuk0728\Documents\GitHub\valplay
                  Never modify. Run its scripts by absolute path only.
 Corpus (.vrf)  : C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf
@@ -61,7 +67,7 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 243 passed, 0 failed across all crates (measured 2026-08-02).
+# Expected: 246 passed, 0 failed across all targets (243 regular + 3 doctests).
 # Sum the per-target lines; the last line is one target, not the total.
 # This figure has been stale THREE times now. Re-measure before quoting it:
 # it said 242 while HEAD had 243, because the count was written before the
@@ -70,6 +76,10 @@ cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
 # Expected: exit 0
+python tools\check_effect_decoder.py --check
+# Expected: OK: 12 live effect decoder cases
+python tools\check_ascii.py --check
+# Expected: OK: 61 tracked Rust file(s), ASCII only
 ```
 
 ### Regression guard (run after any non-trivial change)
@@ -139,8 +149,8 @@ meaningless.
 Get-ChildItem out\nested\*.parquet | Sort-Object Name |
   ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash, $_.Name }
 # 02d4d478, re-measured 2026-08-02 at HEAD:
-#   F9D21B325B8C8F426CE758F000DBF3B5E412ABFE23CBCB862D8BCA522CA82CE5  actors.parquet
-#   66E1BF6B57C712ED89E5B28AD6D770FC2E5A507583C81BAF80E1C684D1C27CDC  fields.parquet
+#   84076CF7CA398C957C3E67148D0622F72E809CB4E2157F66CD4F18B197E65D7B  actors.parquet
+#   43006C26AE546FB30AFFD9A36BA3C19649AE71322AEFB9121589521E69EB6856  fields.parquet
 #   1242BBB15B29BE267BA4B0326BCBC508B5E2AC6C7CD8A1570035C335C04D9363  movement.parquet
 #   501CABC678770431D0FEC9C37C4E21ED06193BB93263313959E87865625BBA0F  net_guids.parquet
 ```
@@ -171,7 +181,7 @@ Verify it yourself:
 python tools\validate_metrics_corpus.py --jobs 3
 # Expected: sections exact on ALL   : 16 / 21
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
-# Expected: OK: 4 replays match the baseline
+# Expected after integrating current master's 3a4b04: OK, 1 stable replay.
 ```
 
 No section is BLOCKED. Most differences reflect data the C# parser drops:
@@ -254,11 +264,12 @@ the constant provenance `note` run unchanged on our data.
 ## 2. Repository State (2026-08-02)
 
 ```
-branch       : master (the only branch; no remote, no worktrees, no stashes)
+verification : codex/needs-work in an isolated worktree; master was not moved
+               or merged by the delegate
 commits      : run `git rev-list --count HEAD`. No number is written here
                on purpose: the two that were had both gone stale, and this
                one would be wrong the moment the line was committed
-tests        : 242 passing, 0 failed
+tests        : 246 passing, 0 failed (243 regular + 3 doctests)
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
 working tree : clean
@@ -273,6 +284,21 @@ ValorantReplayParser : clean, on branch local/vrfkit-descriptors at f67ea66.
 ### Commit list
 
 ```
+45223c9 fix(tools): reject lexical descriptor shadows
+81d4f88 fix(tools): scope descriptor source resolution
+519de0b fix(tools): harden descriptor source parsing
+7e0051f fix: anchor ASCII scan to repository root
+23fb6aa fix(tools): detect empty effect corruption
+4ddac84 docs: record safe category parsing
+b5b74db fix(tools): parse category overrides safely
+7515cfc docs: align the rotating 13.02 path reference
+7e0a8de docs: clarify concurrent integration requirements
+b10467b fix(tools): respect descriptor category overrides
+aef30de docs: record needs-work measurements and baseline
+a0ea2b4 chore: enforce ASCII Rust sources
+b68baaa fix(decode): complete descriptor handle fallback
+e1eb220 fix(decode): preserve explicit descriptor handles
+fb41b96 test(tools): guard live effect decoder
 14a9e93 test(export): prove the offloaded writers cannot fail silently
 2012c51 perf(sink): lend the record buffers to the sink instead of rebuilding them
 f70781a perf(sink, schema): memoise the RPC parameter group lookup
@@ -363,8 +389,9 @@ vrfkit/
   tools/            -- Python generators and verification harnesses
 ```
 
-Total: 242 tests, measured (238 before section 12's three new guards and
-section 13's one). DO NOT trust the per-crate rows above: they were
+Total: 246 tests, measured at 45223c9 (243 regular targets plus 3 doctests).
+The earlier 242 figure omitted one existing test; Task B then added three.
+DO NOT trust the per-crate rows above: they were
 taken excluding doc-tests for some crates and including them for others, so
 they do not sum to the total. Known wrong even before 5-P: vrf-frame is 5 not
 3, vrf-export is 19 not 18 (0 unit + 17 integration + 2 doc). Re-measure per
@@ -424,18 +451,23 @@ movement rows      : 1,839,607
 actors.parquet rows:   3,827  (2028 opens + 1799 closes)
 net_guids.parquet  :  16,167  (14,480 carry an outer GUID)
 decode errors      :       0
-typed (value_*)    :    36.8%  (364,101 decoded)
-                   RE-MEASURED 2026-08-02. This line read "36.0% (356,290
-                   decoded)" and was stale by two commits' worth of work: a
-                   clean export at HEAD before section 13-J printed
-                   Decoded OK 358,184 / Typed 36.2%, and 13-J took it to
-                   364,101 / 36.8%. Print the block, do not quote this line.
+typed (value_*)    : 374,143 rows with any value_* column set
+                     30.162% of all 1,240,444 rows; 37.831% of the
+                     988,979 rows offered to the overlay. The distinct
+                     overlay decoded-ok counter is 363,478; do not conflate
+                     that counter with non-null Parquet rows.
 oracle pass rate   :  98.95%
 ```
 
-13.02 replays (4 local demos, pinned by tools/check_corpus_baseline.py):
+Historical 2026-08-01 snapshot (four then-local 13.02 demos):
   all 4 parse, malformed 0, pass rate 97.959041% - 99.329325%
   blocks 3,117,920  fields 2,279,512  rpcs 1,713,576  skipped 74,573,628
+
+Those four files are no longer the current corpus or a valid live baseline
+source. `Saved\Demos` rotates and now contains 1.vrf/2.vrf/3.vrf; this delegate
+branch's old JSON therefore reports an input-set mismatch. Current master
+commit 3a4b04 supersedes it with one stable copied replay under vrfkit's own
+baseline directory. Preserve that master version during integration.
 
 Earlier measurement of two of them:
 ```
@@ -573,7 +605,8 @@ attribution rather than parsing. The final uncapped corpus measurement is
 97.487010%-99.681958%, with median 99.323286%.
 
 Also corrected: overlay figures (106 groups/929 fields -> 123/1054; the
-table is 1,058 entries as of section 13-C/13-D),
+table was 1,058 entries as of section 13-C/13-D and is now superseded by
+section 14's generated 1,100-name/84-handle result),
 RPC comparison (334,641 -> 342,735 vs C# 230,893), typed coverage.
 
 First-ever measurement of 13.02 replays documented here: two local demos
@@ -1152,7 +1185,7 @@ looking only at the rows that differed.
 Lesson: "the differences are all -N" does not imply "everything is shifted
 by N". Check how many values match before inferring a constant offset.
 
-### 7-C. Unattributed ClassNetCache blocks [NO CURRENT IMPACT, BOUNDED]
+### 7-C. Unattributed ClassNetCache blocks [MEASURED; PRODUCTION DECISION PENDING]
 
 Read the proportion before the raw number, because the raw number misleads.
 "1,972,080,670 bits" and the old "91.7% AbilitiesAndBuffsComponent" figure
@@ -1209,6 +1242,34 @@ oracle, which is the honest part, but its bits are not preserved.
 
 These blocks frame correctly (malformed framing 0); the group resolution
 returns function_count=0 and they are counted as failures.
+
+PRESERVATION COST, measured 2026-08-02 before any production change. A
+temporary instrumented build wrote each unresolved whole-block payload as one
+sentinel row; it never fabricated a per-field split. Each replay used one
+warmup and 10 interleaved OFF/ON pairs with the same instrumented release
+binary. Clean HEAD and instrumented OFF were byte-identical for all four
+Parquet files, and 14,755 sentinel rows were audited in order from the parser
+boundary through Parquet, including exact metadata, bit counts, raw bytes,
+byte lengths, and zero high padding bits.
+
+```text
+replay    rows added   fields.parquet ZSTD bytes added   paired timing result
+08aec1e1          928                            37,136   not measurable
+02d4d478        6,365                           229,274   not measurable
+252168ae        7,462                           245,938   not measurable
+```
+
+The median paired deltas were -6.4944 ms, -0.1204 ms, and +19.3544 ms;
+fixed-seed bootstrap 95% confidence intervals all included zero. Existing
+parser/overlay counters and every non-fields Parquet file were invariant.
+
+This measurement is NOT a production implementation. No source change or
+baseline update from Task C was committed. If preservation is approved later,
+the adapter must explicitly ignore the sentinel row before metrics processing,
+and `skipped_bits` must keep its current meaning of "not parsed". On the
+post-Task-B 02d4d478 export, the expected production-only change is fields
+rows 1,240,444 -> 1,246,809 and bytes 13,255,044 -> 13,484,318. Do not mix
+those forecast values into the current baseline before that decision.
 
 CORRECTED 2026-08-01: the previous breakdown was not derivable from a committed
 tool. MAX_STREAM_FAILURE_RECORDS capped diagnostics at 32 lines, and the quoted
@@ -1282,20 +1343,21 @@ same sections was spawn coordinates: Float32 widened to Python float printed
 
 ### 7-E. 13.02 regression guard [DONE 2026-08-01]
 
-Done in commit 9cb7a24. tools/check_corpus_baseline.py pins per-file and
-total oracle figures in JSON and fails on any difference:
+Historical state at commit 9cb7a24: tools/check_corpus_baseline.py pinned
+per-file and total oracle figures in JSON and failed on any difference:
 
     python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 
-tools/baselines/build_1302.json covers the four local 13.02 demos --
+At that time, tools/baselines/build_1302.json covered four local 13.02 demos --
 blocks 3,117,920, fields 2,279,512, rpcs 1,713,576, malformed 0,
 skipped 74,573,628, pass rate 97.96-99.33%.
 
-Those replays live under %LOCALAPPDATA% and are machine-local, so an absent
-corpus SKIPs with a message rather than failing. A guard that fails on
-someone else's machine gets disabled, and a disabled guard protects nothing.
-The guard was proven to fail: perturbing the baseline produced the expected
-DRIFT lines and exit 1.
+That design is superseded. `Saved\Demos` is a rotating game-owned directory;
+this delegate JSON expects four vanished UUID files and now reports the
+input-set mismatch against 1.vrf/2.vrf/3.vrf. Concurrent master commit 3a4b04
+pins one stable copied replay under `%LOCALAPPDATA%\vrfkit\baseline-corpora`
+instead. The historical guard was proven to fail: perturbing its baseline
+produced the expected DRIFT lines and exit 1.
 
 This work also uncovered a worse problem -- see the malformed-counter note
 in section 4.
@@ -1859,35 +1921,30 @@ ASCII ONLY IN CODE AND COMMENTS
   constraint for the diagnostics path. (Confirmed 2026-08-02: `chcp` on this
   machine reports codepage 949.)
 
-  Enforced strictly on STRING LITERALS. 27 were fixed on 2026-08-02, of
-  which 22 were the whole of oracle.rs `print_diagnostic_event`, framed in
-  box-drawing characters. Under cp949 each of those lines truncates to two
-  spaces -- the failure diagnostic dies exactly when framing has broken and
-  it is the only thing left to read. It survived because it has never fired:
-  there are zero diagnostic events across all 215 corpus replays.
+  Before Task D, a complete inventory found 61 tracked Rust files, with 44
+  files / 510 physical lines / 8,984 non-ASCII Unicode scalars across 28 code
+  points. The inventory scans complete file contents, including comments,
+  doc comments, literals, BOMs, and malformed encoding bytes.
 
-  HOW TO CHECK IT, and why the obvious way is wrong. Do not grep for
-  `println!` and friends, and do not match string literals per line: a
-  multi-line literal hides on its continuation lines from both. That is
-  exactly how cli.rs's USAGE banner survived the first sweep -- an em dash on
-  the line after `const USAGE: &str = "\`, printed on every invocation with
-  no arguments, and it did truncate (`vrfkit ` then nothing). Count every
-  line containing a non-ASCII byte instead, and account for all of them:
+  `python tools/check_ascii.py --check` now anchors itself to the repository
+  root, enumerates tracked `*.rs` files with `git -C <root> ls-files -z`, scans
+  their raw bytes, and rejects every byte above 0x7f. It reports stable repo-
+  relative file/line/column/byte diagnostics and fails loudly if Git
+  enumeration or a read fails. Root and nested-crate invocations both scan all
+  61 files. The post-cleanup inventory is 61 files, 0 affected files, 0
+  affected lines, and 0 non-ASCII bytes.
 
-    511 lines total, of which
-    502 are comment lines,
-      5 are trailing comments on code lines,
-      3 are UTF-8 BOMs at the head of vrf-net's field.rs / lib.rs /
-        pipeline.rs (harmless to rustc, never printed -- but those three
-        files also carry `??` where an em dash used to be, so something has
-        already mangled their encoding once),
-      0 are string literals.
+  This guard was observed failing twice: first on the real 510-line tree, then
+  after planting `o` with an umlaut in a tracked Rust file (1 line / 2 UTF-8
+  bytes, exit 1). The exact original SHA-256 was restored and the default
+  scan returned exit 0. A separate `--self-test` exercises the same scanner.
 
-  NOT enforced on COMMENTS, despite the name. The 502 include box-drawing
-  and em dashes; vrf-frame/src/lib.rs opens with a large ASCII-art
-  wire-layout table. They are not on any output path. If that is meant to be
-  a real rule it needs a committed check -- an unenforced rule that half the
-  codebase violates teaches readers to ignore the rule, not follow it.
+  ASCII `??` corruption is outside the guard's detection domain. Task D used
+  clean historical revisions to restore vrf-net field and vrfkit sink mapping
+  comments. No clean pre-damage revision exists for vrf-net lib/pipeline, so
+  those two were reconstructed from their surviving labels and local execution
+  context. It also removed three BOMs and verified zero remaining literal `??`
+  sites in the four affected files.
 
 NO UNSAFE
   #![forbid(unsafe_code)] everywhere. Oodle decompression is the only
@@ -1950,6 +2007,9 @@ NO UNSAFE
   check_export_baseline.py  -- pins the EXPORT path (counters + Parquet
                                shape) and cross-checks the printed row
                                counts against the files they name
+  check_effect_decoder.py  -- 12-case guard for the live Python shot-effect
+                               decoder, including two C# bundle cases
+  check_ascii.py           -- complete tracked-Rust raw-byte ASCII guard
   find_skips.py             -- finds which replays still have skipped bits
   to_valplay_bundle.py      -- vrfkit Parquet -> valplay bundle adapter
                                ALSO holds the live shot-effect blob decoder.
@@ -1966,21 +2026,15 @@ NO UNSAFE
 
                   TABLE.RS DEPENDS ON A BRANCH THERE, NOT ON origin/main.
                   Generating from origin/main yields 680 overlay entries;
-                  from local main 666; the committed table has 1,150
-                  (1,058 before 13-J added 92 across 20 groups).
-
-                  *** UNMERGED AS OF 2026-08-02. *** table.rs is generated
-                  from `local/pawn-descriptors` (d2b76f2), which branches
-                  from `local/vrfkit-descriptors` (f67ea66) but is NOT
-                  merged into it, because a delegate session was running
-                  against that checkout when 13-J landed. Regenerating from
-                  `local/vrfkit-descriptors` right now silently produces
-                  1,058 entries and drops the 92 that 13-J added.
-                  MERGE `local/pawn-descriptors` INTO
-                  `local/vrfkit-descriptors` AS SOON AS THAT SESSION IS
-                  DONE, then regenerate and confirm the table is unchanged.
-                  (The doc previously cited ced9379 for this branch; that
-                  commit was amended away and is unreachable.)
+                  from local main 666. The committed table is regenerated
+                  from `local/vrfkit-descriptors` at f0dd7e7, which merges
+                  the pawn/projectile descriptors (13-J) into the Gekko
+                  casing fix (13-C). Both delegate branches are merged and
+                  their worktrees removed; regenerating from that branch
+                  reproduces the committed table exactly.
+                  (An earlier note cited ced9379 for the pawn branch; that
+                  commit was amended away and is unreachable. The real
+                  commit was d2b76f2, now merged as f0dd7e7.)
                   The difference is the descriptor work on
                   branch `local/vrfkit-descriptors` (fe5343a, 2026-08-02):
                   weapons, ItemSlot, PurchasedItemComponent,
@@ -2004,7 +2058,8 @@ NO UNSAFE
   Corpus        : valplay\data\raw\vrf  (215 x .vrf, all 13.01)
   C# ref output : valplay\pipeline\exports\02d4d478-...\
                   SLIMMED: 97% of rpc_received removed, several keys stripped
-  Local 13.02   : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf (4 files)
+  Local 13.02   : %LOCALAPPDATA%\VALORANT\Saved\Demos\*.vrf
+                  Game-owned rotating input; currently 3 files, not a baseline.
 
 ---
 
@@ -2081,8 +2136,9 @@ baselines. The dirty C# reference repository and valplay were not modified.
 
 ### 11-A. Non-Bomb mode coverage [INPUT-BLOCKED, UNMEASURED]
 
-Recursive searches of all three scopes below found the same four physical
-replays and no additional `.vrf` files:
+Historical audit snapshot on 2026-08-01: recursive searches of all three
+scopes below found the same four physical replays and no additional `.vrf`
+files:
 
 ```
 %LOCALAPPDATA%\VALORANT\Saved\Demos   4
@@ -2090,8 +2146,8 @@ replays and no additional `.vrf` files:
 %LOCALAPPDATA%\VALORANT               4
 ```
 
-All four are 13.02, inspect/export/validate successfully, have malformed,
-transform, and field-stream failures of zero, and exactly reproduce the pinned
+At that time all four were 13.02, inspect/export/validate succeeded, had malformed,
+transform, and field-stream failures of zero, and exactly reproduced the pinned
 build_1302 totals in section 4. Their runtime schemas and emitted replay events
 contain BombGameState, BombPlayerState, BombDestination, TimedBomb, and spike
 plant/defuse/explosion evidence.
@@ -2102,6 +2158,10 @@ playerLoadouts but no mode, queue, or playlist key, and modes such as Spike Rush
 Swiftplay, or Premier may reuse Bomb assets. The CLI has no independent game-mode
 detector. Therefore the defensible inventory is the task brief's four Bomb-labelled
 inputs and **zero mode-labelled non-Bomb inputs**.
+
+This is retained as dated evidence, not a current inventory. `Saved\Demos`
+has since rotated to 1.vrf/2.vrf/3.vrf, the delegate's four-file JSON no longer
+matches, and master 3a4b04 now guards one stable copied 13.02 replay.
 
 No non-Bomb baseline was created and no claim about non-Bomb parsing is made.
 To close this item, supply at least one replay per desired non-Bomb mode together
@@ -2206,13 +2266,15 @@ Nothing in Rust calls it; the live decoder is a Python port in
 failure contracts (Rust returns `Err` on a malformed blob and discards the
 array; Python breaks and returns a partial list), the consumer reads Parquet
 so wiring it in means a schema change, and the Python path currently matches
-the reference on all 2,647 shots. Not deleted, because `tools/` contains no
-test files at all -- effect.rs's eight pinned hex vectors are the repo's only
-executable specification of that wire format, on either side.
+the reference on all 2,647 shots. Not deleted, because its nine executable
+examples remain a useful independent Rust specification: six non-empty blobs
+and three empty-array cases.
 
-The untested Python decoder is worth a follow-up. It is the live path for
-four metric sections and has zero executable tests; the Rust vectors could be
-ported to give it some.
+`tools/check_effect_decoder.py --check` now exercises the live Python path
+with all nine Rust examples, two cases whose expected values come from the C#
+reference bundle, and one malformed-input case that pins Python's partial-list
+contract. The 12-case guard was observed failing after deliberate byte
+corruption (exit 1) and passing after restoration (exit 0).
 
 CORRECTION 2026-08-02, from a read-only audit. The recommendation holds --
 keep as is, wire nothing in -- but two of the three reasons above are wrong,
@@ -2477,7 +2539,7 @@ distinct classes, not 21.
 
 ### 13-G. Verification run for this session
 
-    cargo test --workspace              242 passed, 0 failed
+    cargo test --workspace              243 passed, 0 failed (corrected later)
     cargo clippy -- -D warnings         clean
     cargo fmt --check                   clean
     validate_corpus.py                  215/215, malformed 0, five totals exact
@@ -2639,3 +2701,267 @@ ShortComponents it exits **1** naming 16 offending replays on a 20-replay slice
 (7,801 errors; 75,286 over the full corpus, 160 of 215 replays affected), and
 exits **0** on the restored build. `Decoded OK` fell by exactly the error count
 in both runs.
+The published bundle stamp needs one more qualification. It records Git HEAD
+`2d2e05e`, but does not prove that the working tree was clean.
+`EffectManagerComponentDescriptors.cs` is absent from clean `2d2e05e` and was
+first committed in fe5343a; that commit records that the descriptor work had
+previously lived uncommitted. Published bundle behavior is consistent with the
+descriptor being present. Therefore a clean checkout of `2d2e05e` alone is not
+a complete reproduction recipe. Keep `main` pinned, but treat the published
+bundle artifact -- not an inferred clean tree -- as the immutable reference.
+
+---
+
+## 14. Codex needs-work results (2026-08-02)
+
+This section records the four delegated items. Work was committed on the
+isolated `codex/needs-work` branch; master, valplay, and the C# source tree were
+not modified or merged by the delegate.
+
+### 14-A. Live effect decoder guard (fb41b96, 23fb6aa)
+
+The brief's count of eight Rust examples was stale: `effect.rs` contains nine.
+The new `tools/check_effect_decoder.py --check` runs those nine through the
+live Python decoder, adds two independently expected C# reference-bundle cases,
+and pins Python's partial-list malformed-input contract. All 12 pass. Review
+found that flipping bit 0 in the three one-byte empty arrays was observationally
+unchanged by that partial-list contract. Commit 23fb6aa flips the second bit
+(mask 0x02) for those empty payloads and pins every named case. All 12 deliberate
+corruptions now produce exit 1; the unmodified set produces exit 0.
+
+### 14-B. Untyped-row investigation and descriptor extraction (e1eb220, b68baaa, b10467b, b5b74db, 519de0b, 81d4f88, 45223c9)
+
+Every count below uses the explicit denominator: 871,595 rows with every
+`value_*` column null, out of 1,240,444 total fields.parquet rows on 02d4d478.
+The requested descriptor-present/descriptor-absent binary was itself too
+coarse; several groups contain a mixture of intentional raw data, movement
+markers, undescribed functions, and a real handle/name mismatch.
+
+```text
+group                         pre no-value   evidence-backed result
+BaseReplayController              333,022   descriptor is extracted; 225,808
+                                            movement markers and 107,214 C#-
+                                            undescribed function rows remain
+LocationalEffectManager           124,744   no C# descriptor
+EffectManager                     110,508   descriptor/extractor work; residue
+                                            is raw, skipped, or undescribed
+ReplayEffect                       23,275   5,294 recovered; 17,981 intentional
+                                            raw/undescribed rows remain
+BombPlayerState                    20,898   20,888 absent from the C# descriptor;
+                                            10 UniqueId rows intentional Raw
+```
+
+ReplayEffect supplied the real fix. Its descriptor binds handles 26/27 to
+Location/Rotation while runtime manifest names are 248/249. The overlay now
+tries direct name, the existing `b`-prefix rule, then an explicit descriptor
+handle alias. Both RPC and RepLayout sinks pass the handle, including when no
+field name exists.
+
+The generator also learned three previously invisible C# declaration shapes:
+11 `AddRaw` wrapper entries, 2 called BombGameState helper entries, and 29
+runtime agent-cache entries. Fresh raw generator output before the 24 pinned
+type corrections is 152 groups / 1,100 name entries: Raw 164, Skip 154, Typed
+782, plus 84 separately sorted explicit-handle aliases. Task B deleted no
+previously generated name key.
+
+Fix round 2 (b10467b) makes an explicit descriptor category override take
+precedence over an inherited Agent category, matching the C# catalog's
+effective `HasFlag(Agent)` filter. This prevents three Ability subclasses on
+current master's pawn-descriptor branch from receiving fabricated runtime
+ClassNetCaches. Unknown categories and unsupported override syntax now fail
+loudly. The f67 input retains the tracked 1,100-entry canonical table.
+
+Fix round 3 (b5b74db) closes the parser boundary exposed by review. A
+same-length C# code view masks comments and literal bodies before class and
+category discovery, including nested interpolated expressions and braces in
+comments. Qualified and `global::` category type/member names are supported;
+real unknown or unsupported overrides still fail loudly. Regression tests pin
+qualified Ability suppression, `Agent | Ability`, `All`, comment/string
+decoys, and class-boundary braces. At b5b74db the complete Python tool suite
+was 13/13. Both live generations retained 29 real Agent caches and excluded
+the same three phantoms.
+
+Fix round 4 (519de0b) closes the fail-silent source-parser boundaries then
+found by whole-branch review. It recognizes delimiter-counted plain and
+interpolated C# raw strings; limits category, Path, and Configure discovery to
+direct class members; bounds block and expression-bodied Configure methods;
+anchors literal handles to AddPropertyHandle or the discovered handle wrapper;
+and requires runtime-cache structural captures to be live code rather than
+comments or strings. Qualified/global identifiers remain supported. Alias and
+escaped-alias category return types are deliberately unsupported but now fail
+loudly with the owning class instead of silently inheriting.
+
+Fix round 5 (81d4f88) binds those structural matches to their actual C# owner.
+Raw-wrapper discovery is live-code-only and follows only the declaring class's
+base chain. Field names are extracted from aligned raw/code statements, so
+comment or string decoys cannot supply a name or type. Runtime caches are
+anchored to a live `ClassNetCacheDescriptor` constructor in the innermost
+owning type; their unique direct-member factory, returned `RpcDescriptor`
+initializer, complete `Name` RHS, and direct owning-class constant must all be
+unambiguous. Local factory shadowing, unsupported RHS expressions, and
+multi/trailing factory lists fail loudly instead of emitting or omitting data.
+Escaped class identifiers and the escaped runtime descriptor type are
+normalized. The first bounded review reported Critical 0 / Important 0 /
+Minor 0; two exact cross-reviews then found five additional lexical-boundary
+cases in the same modified surface.
+
+Fix round 6 (45223c9) pins those five cases. A direct factory-local constant or
+containing-method `Func<RpcDescriptor>` that shadows a class member now fails
+loudly. Runtime factory arrays find their closing bracket in the live aligned
+code view, so `]` inside a comment cannot truncate a multi-factory list. Only a
+direct factory-body return can supply the returned `RpcDescriptor` initializer,
+and duplicate declarations of an actual raw-wrapper owner cannot merge wrapper
+semantics across namespaces. All five fixtures failed before the fix and pass
+after it. The single bounded implementation review reported Critical 0 /
+Important 0 / Minor 0; the two original cross-reviewers then re-ran only their
+exact repros against the committed fix.
+
+This extractor is still a source-subset tool, not a general C# front end. This
+round did not add arbitrary escaped member spellings such as `@Path` or
+`@Configure`, qualified base-name resolution, same-name raw/typed wrapper
+overload resolution, or general ClassNetCache helper/comment/brace grammar.
+None of those shapes occurs in either pinned f67 or d2 descriptor input. If a
+future source tree introduces one, add a fixture and either support it or fail
+loudly before regenerating the table.
+
+The final Python tools suite is 53/53. Fresh raw f67 generation still yields
+1,100 names / 152 groups / Raw 164 / Skip 154 / Typed 782 / 84 aliases / 29
+runtime caches. After all 24 pinned type corrections, the ordered f67 entries
+and aliases are semantically identical to the tracked table. Raw d2 generation
+still yields 1,192 / 172 / 164 / 164 / 864 / 84, retains 29 real caches, and
+omits the three phantom paths. The raw artifact uses a one-struct-per-line,
+pre-correction layout and is not itself the canonical byte format; the tracked
+canonical Git blob remains unchanged at SHA-256
+`1E9BF29DA6B1B1618CEED8637FBB2628DBEC160976B228039B52228BDAA2DE69`.
+
+Fresh 02d4d478 export measurement:
+
+```text
+measure                    before       after       delta
+Parquet rows             1,240,444   1,240,444           0
+all value_* null           871,595     866,301      -5,294
+overlay decoded OK         358,184     363,478      +5,294
+overlay Raw/Skip            71,427      73,351      +1,924
+overlay not in table       525,839     518,621      -7,218
+overlay no field name       33,529      33,529           0
+overlay rows offered       988,979     988,979           0
+fields.parquet bytes    13,187,104  13,255,044     +67,940
+```
+
+The `not_in_table` reduction is exactly 5,294 newly decoded rows plus 1,924
+newly classified deliberate Raw/Skip rows. Structural counters and every
+Parquet row count are unchanged. The byte increase comes from the 5,294 newly
+populated string values. All 2,647 C# Location values matched exactly and all
+2,647 Rotation values matched within 5e-5. The adapter accepts both the legacy
+raw representation and the typed representation with identical geometry.
+
+### 14-C. Whole-block payload preservation measurement
+
+Section 7-C contains the three-replay cost table, timing protocol, exact
+14,755-row round-trip audit, and the production decision gate. No Task C
+production source or baseline change was committed.
+
+### 14-D. Complete Rust ASCII enforcement (a0ea2b4, 7e0051f)
+
+Task D translated every tracked Rust comment/doc/diagram to meaning-preserving
+ASCII and removed the three BOMs. It restored field/sink text from clean
+history and reconstructed lib/pipeline text from surviving context because no
+clean historical revision exists for those two files. Pre-cleanup: 61 tracked
+Rust files, 44 affected files,
+510 affected lines, 8,984 non-ASCII scalars over 28 code points. Post-cleanup:
+61 files, zero violations. `tools/check_ascii.py` scans complete raw file
+contents, not line-local string patterns. Commit 7e0051f anchors enumeration
+and reads to the repository root; root and nested-crate invocations both scan
+61 files. The real dirty tree and a planted tracked violation both failed
+before the restored tree passed.
+
+### 14-E. Explained export baseline drift
+
+Before any baseline update, the final release export was checked against
+`tools/baselines/export_02d4d478.json`. It reported exactly four differences:
+
+```text
+overlay_decoded_ok    358,184 -> 363,478
+overlay_raw_skip       71,427 ->  73,351
+overlay_not_in_table  525,839 -> 518,621
+fields.parquet bytes 13,187,104 -> 13,255,044
+```
+
+These are precisely the Task B reclassification identity and its populated
+values described in 14-B. Task A and Task D do not affect export data; Task C
+was measurement-only and its ON values are excluded. After documenting this
+attribution, the baseline was updated. Its JSON diff contains exactly those
+four values, and an immediate ordinary check passes with all three printed
+counter/Parquet row identities intact. Any additional drift is a failure.
+
+### 14-F. Final verification
+
+Fresh final sweep on the delegate branch after the Task A/B/D commits and the
+documented export-baseline update:
+
+```text
+cargo test --workspace                  243 regular + 3 doctests, 0 failed
+cargo clippy --workspace --all-targets  clean with -D warnings
+cargo fmt --check                       clean
+cargo build --release                   exit 0
+Python tools tests                       53/53
+effect decoder guard                     12/12
+ASCII guard                              61/61 tracked Rust files
+validate_corpus.py (13.01)              215/215; malformed 0
+  totals                                blocks 136,545,822
+                                        fields 98,883,979
+                                        RPCs 75,571,092
+                                        skipped 1,972,080,670
+master check_decode_errors_corpus.py     215/215; unreadable 0; decode errors 0
+check_export_baseline.py                PASS after the explained 4-line update
+check_corpus_baseline.py 12.10/12.11/13.00  PASS
+compare_combat_report.py                ALL INTERESTING SHAPES MATCH
+validate_metrics_corpus.py --jobs 3     16/21 exact on all 11 replays
+```
+
+The same five metric sections remain non-universal: combat, economy_detail,
+weapon_stats, tactical, and kast. That set and the 16/21 count did not move.
+
+The branch's old 13.02 JSON still points at the game-owned Saved/Demos
+directory and expects four UUID-named files. During this run that directory
+contained three newer files named 1.vrf/2.vrf/3.vrf, so the old check correctly
+reported an input-set mismatch; it was not updated. The three available 13.02
+replays independently validate 3/3 with malformed 0. Concurrent master commit
+3a4b04 already corrected this stale guard to one stable copied replay under
+`%LOCALAPPDATA%\vrfkit\baseline-corpora\build_1302`; running the delegate
+binary against that current master baseline passes 1/1 with malformed 0.
+
+While this isolated worktree was active, master advanced independently from
+the merge base 9865c29 to f7bcdb9. The delegate did not merge, rebase, or
+cherry-pick it. A read-only merge audit finds conflicts in PROJECT_STATUS.md,
+table.rs, and export_02d4d478.json. Neither version of the two generated/data
+files should be selected manually.
+
+Current master depends on a separate clean C# worktree at
+`C:\Users\yakihyuk0728\Documents\GitHub\VRP-pawn-descriptors`, branch
+`local/pawn-descriptors@d2b76f2`. It is a descendant of f67ea66 and contributes
+92 name entries across 20 ability groups that do not overlap Task B's 42 new
+name entries. After obtaining merge authority, preserve master's fixed
+build_1302 baseline and decode-error guard. Preserve b10467b, b5b74db,
+519de0b, 81d4f88, and 45223c9: together they apply the nearest explicit
+category override, safely discover qualified overrides outside
+comments/literals/raw strings and nested types, scope wrapper/factory/name
+resolution to live owning declarations, reject ambiguous lexical shadows, and
+prevent three phantom Ability ClassNetCaches. Then run that extractor against
+the d2b76f2 worktree,
+followed by type corrections and rustfmt. A temporary clean generation with
+45223c9 produced exactly 1,192 names / 172 groups / Raw 164 / Skip 164 / Typed
+864 / 84 handle aliases, retained all 29 real runtime Agent caches, and omitted
+the three phantom paths. Regenerate -- never hand-merge -- the tracked table.
+
+Then build a combined release and re-measure the export baseline. Counter
+arithmetic is only a sanity check; Parquet ZSTD bytes, hash, typed-row count,
+and final baseline must not be predicted or added across branches. Re-run the
+215-replay decode-error guard, corpus validation, 02d4 export, all baselines,
+combat comparison, and 11-replay metrics before resolving the documentation
+conflicts with measured combined values.
+
+At final delegate verification, the primary C# repository was clean at
+`local/vrfkit-descriptors@f67ea66`, the separate pawn-descriptor worktree was
+clean at d2b76f2, C# main remained `2d2e05e`, and valplay was clean at
+`main@4578a5a`.

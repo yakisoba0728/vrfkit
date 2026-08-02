@@ -1,6 +1,6 @@
 //! Error types for the `.vrf` container parser.
 //!
-//! Every failure mode is explicitly typed — no panics, no silent zeros. A
+//! Every failure mode is explicitly typed -- no panics, no silent zeros. A
 //! truncated or malformed file produces a descriptive error that names the
 //! field and the byte counts involved.
 
@@ -72,7 +72,7 @@ pub enum ContainerError {
     #[error("invalid memory size: {size} (must be 0..256 MiB)")]
     InvalidMemorySize { size: i32 },
 
-    /// An uncompressed chunk's SizeInBytes ≠ MemorySizeInBytes.
+    /// An uncompressed chunk's SizeInBytes != MemorySizeInBytes.
     #[error("uncompressed size mismatch: SizeInBytes={size}, MemorySizeInBytes={memory_size}")]
     SizeMismatch { size: i32, memory_size: i32 },
 

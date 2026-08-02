@@ -1,9 +1,9 @@
-//! vrfkit — CLI for VALORANT replay (.vrf) inspection, validation, and export.
+//! vrfkit -- CLI for VALORANT replay (.vrf) inspection, validation, and export.
 //!
 //! Subcommands:
-//!   inspect <file.vrf>           — print replay info, header, and chunk summary
-//!   validate <file.vrf>          — run the transform-validation oracle
-//!   export <file.vrf> --out <dir> — emit fields.parquet + movement.parquet + manifest.json
+//!   inspect <file.vrf>           -- print replay info, header, and chunk summary
+//!   validate <file.vrf>          -- run the transform-validation oracle
+//!   export <file.vrf> --out <dir> -- emit fields.parquet + movement.parquet + manifest.json
 
 #![forbid(unsafe_code)]
 

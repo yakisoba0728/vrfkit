@@ -20,12 +20,24 @@ pub struct OverlayEntry {
     pub field_type: FieldType,
 }
 
+/// Maps a C# descriptor's explicit property handle back to its field name.
+///
+/// Keeping the type in [`OverlayEntry`] makes generated type corrections apply
+/// equally to direct-name and handle-fallback lookups.
+#[derive(Debug, Clone, Copy)]
+pub struct OverlayHandleEntry {
+    pub group_path: &'static str,
+    pub handle: u32,
+    pub field_name: &'static str,
+}
+
 /// The overlay table -- a sorted slice of entries.
 ///
 /// Lookup is O(log n) via binary search on the composite key.
 #[derive(Debug, Clone)]
 pub struct OverlayTable {
     entries: &'static [OverlayEntry],
+    handle_entries: &'static [OverlayHandleEntry],
 }
 
 impl OverlayTable {
@@ -36,7 +48,22 @@ impl OverlayTable {
     /// Debug-asserts that the slice is sorted.
     #[must_use]
     pub const fn new(entries: &'static [OverlayEntry]) -> Self {
-        Self { entries }
+        Self {
+            entries,
+            handle_entries: &[],
+        }
+    }
+
+    /// Create a table with explicit-handle fallback metadata.
+    #[must_use]
+    pub const fn with_handles(
+        entries: &'static [OverlayEntry],
+        handle_entries: &'static [OverlayHandleEntry],
+    ) -> Self {
+        Self {
+            entries,
+            handle_entries,
+        }
     }
 
     /// Look up the field type for a `(group_path, field_name)` pair.
@@ -52,6 +79,21 @@ impl OverlayTable {
             })
             .ok()?;
         Some(self.entries[idx].field_type)
+    }
+
+    /// Look up the descriptor field name for an explicit property handle.
+    #[must_use]
+    pub fn lookup_handle(&self, group_path: &str, handle: u32) -> Option<&'static str> {
+        let idx = self
+            .handle_entries
+            .binary_search_by(|entry| {
+                entry
+                    .group_path
+                    .cmp(group_path)
+                    .then_with(|| entry.handle.cmp(&handle))
+            })
+            .ok()?;
+        Some(self.handle_entries[idx].field_name)
     }
 
     /// Number of entries.
@@ -208,14 +250,44 @@ pub fn apply_overlay(
     bit_count: u32,
     stats: &mut OverlayStats,
 ) -> Option<OverlayResult> {
-    let fname = match field_name {
-        Some(n) => n,
-        None => {
-            stats.no_field_name += 1;
-            return None;
-        }
-    };
+    apply_overlay_inner(
+        table, group_path, field_name, None, raw_bits, bit_count, stats,
+    )
+}
 
+/// Apply the overlay with the replay field's handle available as a fallback.
+///
+/// Direct name lookup, including the narrow Unreal `b`-prefix fallback, stays
+/// authoritative. The explicit handle is consulted only when both miss.
+pub fn apply_overlay_with_handle(
+    table: &OverlayTable,
+    group_path: &str,
+    field_name: Option<&str>,
+    handle: u32,
+    raw_bits: Option<&[u8]>,
+    bit_count: u32,
+    stats: &mut OverlayStats,
+) -> Option<OverlayResult> {
+    apply_overlay_inner(
+        table,
+        group_path,
+        field_name,
+        Some(handle),
+        raw_bits,
+        bit_count,
+        stats,
+    )
+}
+
+fn apply_overlay_inner(
+    table: &OverlayTable,
+    group_path: &str,
+    field_name: Option<&str>,
+    handle: Option<u32>,
+    raw_bits: Option<&[u8]>,
+    bit_count: u32,
+    stats: &mut OverlayStats,
+) -> Option<OverlayResult> {
     // Fall back to the `b`-prefixed spelling of the same field.
     //
     // The C# descriptors bind a property to its handle number and carry a name
@@ -231,13 +303,30 @@ pub fn apply_overlay(
     // Unreal boolean prefix. Measured across all 1,054 entries and every
     // undecoded row on 02d4d478, exactly one field resolves this way and it is
     // the correct one.
-    let field_type = match table
-        .lookup(group_path, fname)
-        .or_else(|| table.lookup(group_path, &format!("b{fname}")))
-    {
-        Some(ft) => ft,
+    let resolved = field_name
+        .and_then(|name| {
+            table
+                .lookup(group_path, name)
+                .or_else(|| table.lookup(group_path, &format!("b{name}")))
+                .map(|field_type| (field_type, name))
+        })
+        .or_else(|| {
+            handle
+                .and_then(|value| table.lookup_handle(group_path, value))
+                .and_then(|descriptor_name| {
+                    table
+                        .lookup(group_path, descriptor_name)
+                        .map(|field_type| (field_type, field_name.unwrap_or(descriptor_name)))
+                })
+        });
+    let (field_type, diagnostic_name) = match resolved {
+        Some(resolved) => resolved,
         None => {
-            stats.not_in_table += 1;
+            if field_name.is_none() {
+                stats.no_field_name += 1;
+            } else {
+                stats.not_in_table += 1;
+            }
             return None;
         }
     };
@@ -263,7 +352,7 @@ pub fn apply_overlay(
             stats.decoded_err += 1;
             stats.error_report.record(
                 group_path,
-                fname,
+                diagnostic_name,
                 field_type,
                 bit_count,
                 DecodeErrorKind::ZeroBits,
@@ -323,7 +412,7 @@ pub fn apply_overlay(
             };
             stats
                 .error_report
-                .record(group_path, fname, field_type, bit_count, kind);
+                .record(group_path, diagnostic_name, field_type, bit_count, kind);
             Some(OverlayResult {
                 value_i64: None,
                 value_f64: None,

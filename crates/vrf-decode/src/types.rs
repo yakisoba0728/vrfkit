@@ -9,8 +9,8 @@ use core::fmt;
 /// Rotation quantization modes for [`FRepMovement`].
 ///
 /// Determines how the rotation is serialized in `ReplicatedMovement`:
-/// - `ByteComponents`: 1 flag bit + 8 data bits per axis (compact, ±1.4° precision)
-/// - `ShortComponents`: 1 flag bit + 16 data bits per axis (precise, ±0.005°)
+/// - `ByteComponents`: 1 flag bit + 8 data bits per axis (compact, +/-1.4deg precision)
+/// - `ShortComponents`: 1 flag bit + 16 data bits per axis (precise, +/-0.005deg)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RotatorQuantization {
     ByteComponents,
@@ -24,10 +24,10 @@ pub enum RotatorQuantization {
 ///
 /// | Variant | Bits |
 /// |---------|------|
-/// | Float (3×f32) | 96 |
-/// | Double (3×f64) | 192 |
-/// | NetQuantize (packed header + N-bit signed × 3) | variable |
-/// | NetQuantizeNormal (3 × SerializedInt(65536)) | ~48 |
+/// | Float (3 x f32) | 96 |
+/// | Double (3 x f64) | 192 |
+/// | NetQuantize (packed header + N-bit signed x 3) | variable |
+/// | NetQuantizeNormal (3 x SerializedInt(65536)) | ~48 |
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FVector {
     pub x: f64,
@@ -47,8 +47,8 @@ impl fmt::Display for FVector {
 ///
 /// | Variant | Bits per axis |
 /// |---------|---------------|
-/// | Short | 1 flag + 16 | → `value * 360/65536` |
-/// | Byte | 1 flag + 8 | → `value * 360/256` |
+/// | Short | 1 flag + 16 | -> `value * 360/65536` |
+/// | Byte | 1 flag + 8 | -> `value * 360/256` |
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FRotator {
     pub pitch: f32,
@@ -62,11 +62,11 @@ impl fmt::Display for FRotator {
     }
 }
 
-/// Quaternion rotation (4 × f32).
+/// Quaternion rotation (4 x f32).
 ///
 /// # Wire layout
 ///
-/// 128 bits = 4 × IEEE-754 single.
+/// 128 bits = 4 x IEEE-754 single.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FQuat {
     pub x: f32,
