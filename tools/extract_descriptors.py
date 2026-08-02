@@ -19,6 +19,13 @@ Additionally handles:
   - Internal sealed class parameter descriptors defined alongside their parent
     ClassNetCache descriptor.
 
+Each descriptor's `ExportGroupKind` decides whether its declared properties can
+be wire field names at all. A FastArray descriptor describes an array element
+struct, not a net field export group, so it contributes nothing; an AttributeSet
+replicates only the generic FGameplayAttributeData pair, so its per-attribute
+properties contribute nothing. Every other kind emits unchanged. See
+EXPORT_GROUP_KIND_POLICY -- an unclassified kind is a hard failure.
+
 Fields using custom IFieldDecoder implementations or RawPayload are classified
 as Raw. Fields using .Ignore() are classified as Skip.
 
@@ -95,6 +102,57 @@ MULTI_CLASS_RE = re.compile(
     re.DOTALL,
 )
 
+# What each ExportGroupKind means for THIS table, which answers exactly one
+# question: can this descriptor's property names ever be wire field names?
+#
+# `Kind` is pure metadata inside the C#. `DescriptorCatalogIndex` and
+# `ExportBindingRegistry` expose it, and the only readers are the JSON writers
+# and the export statistics -- no decode path branches on it. That is what
+# makes it trustworthy here: it is the author's declaration of what the
+# descriptor describes, and it cannot have been bent to make decoding work.
+#
+#   "emit"          the group's net field export names these properties.
+#   "drop"          the descriptor is not a net field export group at all, so
+#                   none of its properties can ever be an overlay key.
+#   "attribute_set" only the generic pair below is replicated; the
+#                   per-attribute properties are C# labels, not wire names.
+#
+# Unknown MUST stay "emit". It is not a fallback for "we did not look" -- it is
+# the C# default from the protected parameterless constructor, and four live
+# descriptors with paths never override Kind at all (CoveAbilityDescriptor,
+# DarkCoverAbilityDescriptor, ProjectileSmokeScreenDescriptor,
+# SmokeScreenManagerDescriptor), plus BaseReplayPlayerState which declares it
+# explicitly. Their fields decode today; dropping them loses real values.
+#
+# A Kind that is not a key here is a hard failure, not a default. A new C# enum
+# member has to be classified by someone, not silently swept into "emit".
+EXPORT_GROUP_KIND_POLICY = {
+    "Unknown": "emit",
+    "Actor": "emit",
+    "PlayerController": "emit",
+    "Component": "emit",
+    "AttributeSet": "attribute_set",
+    "FastArray": "drop",
+    "ClassNetCache": "emit",
+}
+
+# The two members of UE's FGameplayAttributeData.
+#
+# An AttributeSet group replicates one attribute subobject per attribute, and
+# every one of them carries this same generic pair. The C# descriptor also
+# declares a property per attribute (Health, MaxHealth, Shield, ...) so a caller
+# can name what it read; those names are never on the wire.
+#
+# Measured across the 11 cross-validated replays: /Script/ShooterGame.
+# AresAttributeSet presents BaseValue (133,284 rows) and CurrentValue (132,808
+# rows), all decoded, and no other field name -- 0 rows for any of the six.
+ATTRIBUTE_SET_WIRE_PROPERTIES = ("BaseValue", "CurrentValue")
+
+# Default when no class in the inheritance chain overrides Kind. The C# base
+# `ExportGroupDescriptor`'s protected parameterless constructor leaves `_kind`
+# at `default(ExportGroupKind)`, and Unknown is ordinal 0.
+DEFAULT_EXPORT_GROUP_KIND = "Unknown"
+
 EXPORT_CATEGORY_NAMES = {
     "None",
     "Movement",
@@ -129,6 +187,22 @@ CATEGORY_EXPRESSION_RE = re.compile(
 )
 CATEGORY_MEMBER_RE = re.compile(
     rf'{EXPORT_CATEGORY_TYPE}\s*\.\s*(\w+)'
+)
+
+EXPORT_GROUP_KIND_TYPE = (
+    r'(?:global\s*::\s*)?'
+    r'(?:[A-Za-z_]\w*\s*\.\s*)*ExportGroupKind'
+)
+# Detect the override first and parse it second, the same way Categories does.
+# A `Kind` override written in a shape this file cannot read must fail loudly:
+# silently reading it as absent would resolve the class to Unknown, and Unknown
+# emits everything -- so the failure would look exactly like success.
+KIND_OVERRIDE_MARKER_RE = re.compile(
+    rf'\boverride\s+(?P<return_type>{CATEGORY_RETURN_TYPE})\s+@?Kind\b'
+)
+KIND_OVERRIDE_RE = re.compile(
+    rf'\boverride\s+{EXPORT_GROUP_KIND_TYPE}\s+@?Kind\s*=>\s*'
+    rf'{EXPORT_GROUP_KIND_TYPE}\s*\.\s*(?P<kind>\w+)\s*;'
 )
 
 # Regex for AddProperty with explicit export name
@@ -904,6 +978,80 @@ def extract_category_override(
     return categories
 
 
+def extract_kind_override(
+    class_name: str, class_body: str
+) -> str | None:
+    """Parse a class's explicit ExportGroupKind, rejecting unsupported forms."""
+    kind_source = direct_member_code_view(class_body)
+    markers = list(KIND_OVERRIDE_MARKER_RE.finditer(kind_source))
+    if not markers:
+        return None
+
+    overrides = list(KIND_OVERRIDE_RE.finditer(kind_source))
+    if (
+        len(markers) != 1
+        or len(overrides) != 1
+        or markers[0].start() != overrides[0].start()
+    ):
+        return_types = ", ".join(
+            sorted({marker.group("return_type").strip() for marker in markers})
+        )
+        raise SystemExit(
+            f"{class_name}: unsupported ExportGroupKind override "
+            f"using return type {return_types!r}; "
+            "expected => ExportGroupKind.<Member>;"
+        )
+
+    kind = overrides[0].group("kind")
+    if kind not in EXPORT_GROUP_KIND_POLICY:
+        raise SystemExit(
+            f"{class_name}: unhandled ExportGroupKind {kind!r}. "
+            "Decide whether this kind's properties can be wire field names and "
+            "add it to EXPORT_GROUP_KIND_POLICY; the generator will not guess."
+        )
+    return kind
+
+
+def fields_for_export_group_kind(
+    class_name: str,
+    path: str,
+    kind: str,
+    fields: list[tuple[str, str, int | None]],
+) -> list[tuple[str, str, int | None]]:
+    """Keep only the declared fields this kind can actually put on the wire."""
+    policy = EXPORT_GROUP_KIND_POLICY.get(kind)
+    if policy is None:
+        raise SystemExit(
+            f"{class_name}: unhandled ExportGroupKind {kind!r}. "
+            "Decide whether this kind's properties can be wire field names and "
+            "add it to EXPORT_GROUP_KIND_POLICY; the generator will not guess."
+        )
+    if policy == "emit":
+        return fields
+    if policy == "drop":
+        return []
+    if policy == "attribute_set":
+        kept = [
+            field
+            for field in fields
+            if field[0] in ATTRIBUTE_SET_WIRE_PROPERTIES
+        ]
+        if not kept:
+            # Emptying the group is never the right answer here. Either the
+            # generic pair got renamed upstream or this descriptor is not the
+            # shape this policy assumes; both need a human, and a silently
+            # empty group would take 266,092 decoded values with it.
+            raise SystemExit(
+                f"{class_name} ({path}): AttributeSet descriptor declares none "
+                f"of {', '.join(ATTRIBUTE_SET_WIRE_PROPERTIES)}. Check whether "
+                "the replicated attribute pair was renamed upstream."
+            )
+        return kept
+    raise SystemExit(
+        f"{class_name}: unknown policy {policy!r} for ExportGroupKind {kind!r}"
+    )
+
+
 def parse_supported_string_expression(
     raw_expression: str, code_expression: str
 ) -> tuple[str, str] | None:
@@ -1034,6 +1182,7 @@ def main(argv: list[str]) -> int:
     class_fields: dict[str, list[tuple[str, str, int | None]]] = {}
     class_bases: dict[str, str] = {}        # class_name -> base_class_name
     class_category_overrides: dict[str, frozenset[str]] = {}
+    class_kind_overrides: dict[str, str] = {}  # class_name -> ExportGroupKind
     # ClassNetCache function names -> Skip entries
     cnc_functions: dict[str, list[str]] = {}  # class_name -> function names
     runtime_cnc_specs: list[tuple[str, str]] = []  # (path suffix, function name)
@@ -1247,6 +1396,10 @@ def main(argv: list[str]) -> int:
             if category_override is not None:
                 class_category_overrides[class_name] = category_override
 
+            kind_override = extract_kind_override(class_name, class_body)
+            if kind_override is not None:
+                class_kind_overrides[class_name] = kind_override
+
             # Extract Path declarations within this class body
             path_match = next(
                 (
@@ -1328,6 +1481,27 @@ def main(argv: list[str]) -> int:
                             class_fields[class_name].append((n, t, h))
                             existing_names.add(n)
 
+    def effective_export_group_kind(cls: str) -> str:
+        """The Kind a descriptor gets, walking up to the nearest override.
+
+        C# `Kind` is `virtual`, so a derived descriptor with no override of its
+        own inherits the nearest base's -- every agent ability descriptor gets
+        Actor from GenericAgentDescriptor this way. A chain that reaches the
+        top with no override at all ends at the base class's own default.
+        """
+        visited: set[str] = set()
+        current = cls
+        while current not in visited:
+            visited.add(current)
+            kind = class_kind_overrides.get(current)
+            if kind is not None:
+                return kind
+            base = class_bases.get(current)
+            if base is None:
+                break
+            current = base
+        return DEFAULT_EXPORT_GROUP_KIND
+
     # Phase 2: resolve inheritance -- propagate fields from base classes
     # For classes with a Path but no fields, inherit from their base.
     # For classes that DO have fields, also merge parent fields (handles the
@@ -1369,6 +1543,12 @@ def main(argv: list[str]) -> int:
     groups_seen: set[str] = set()
 
     # 3a: ExportGroupDescriptor entries (RepLayout + RPC parameter groups)
+    #
+    # Each descriptor's ExportGroupKind decides whether its declared properties
+    # can be wire field names at all; see EXPORT_GROUP_KIND_POLICY. Only this
+    # phase consults it. Phases 3b and 3c are built from ClassNetCacheDescriptor
+    # classes, a separate C# hierarchy with no Kind property, and are untouched.
+    kind_dropped: Counter[str] = Counter()
     for class_name, path in sorted(class_paths.items()):
         fields = get_fields(class_name)
         if not fields:
@@ -1376,6 +1556,15 @@ def main(argv: list[str]) -> int:
         # Skip classes that are CNC descriptors (they go to 3b)
         base = class_bases.get(class_name, "")
         if "ClassNetCacheDescriptor" in base:
+            continue
+        kind = effective_export_group_kind(class_name)
+        kept = fields_for_export_group_kind(class_name, path, kind, fields)
+        if len(kept) != len(fields):
+            kind_dropped[kind] += len(fields) - len(kept)
+        fields = kept
+        if not fields:
+            # The whole group goes: nothing it declares can ever be looked up,
+            # so leaving the path in groups_seen would overstate coverage.
             continue
         groups_seen.add(path)
         for field_name, rust_type, literal_handle in fields:
@@ -1477,6 +1666,10 @@ def main(argv: list[str]) -> int:
     print(f"  Skip (ignored): {skip_count}")
     print(f"  Typed: {len(entries) - raw_count - skip_count}")
     print(f"Handle aliases: {len(handle_entries)}")
+    if kind_dropped:
+        print("Declared properties dropped by ExportGroupKind:")
+        for kind, count in sorted(kind_dropped.items()):
+            print(f"  {kind}: {count}")
     print("Type distribution:")
     for t, c in type_counts.most_common():
         print(f"  {t}: {c}")
