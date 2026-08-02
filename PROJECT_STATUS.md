@@ -3053,21 +3053,43 @@ NOT DONE, deliberately: it needs a C# descriptor change and a `table.rs`
 regeneration, and a delegate session was mid-run against that checkout with a
 pinned export baseline. Do it when that lands.
 
-### 15-C. Bomb_CombatReportComponent [OPEN, unverified]
+### 15-C. Bomb_CombatReportComponent [CLOSED -- not a gap]
 
-Outside the tail by size (11,641 null rows of 21,268, so it sits with the head
-groups) and outside 14-B's five, so nobody has triaged it.
+Flagged as an unverified lead when this triage was written, then checked. It is
+the same verdict as the rest of the tail: upstream absence, and we are ahead of
+the reference rather than behind it.
 
-22 typed table entries for this group are never hit on any of the 11 replays,
-while the null rows are nested array leaves the struct-array decoder produced:
-`Rounds[12].Reports[0].Interactions[0]._hK` and similar. So this group has
-**two** decode paths -- the overlay table and `decode_struct_array` via
-`COMBAT_ROUNDS_SCHEMA` -- and the overlay half appears to be dead while the
-struct half leaves some leaves untyped.
+11,641 of its 21,268 rows carry no decoded value. They are not overlay-table
+misses -- this group is decoded by `decode_struct_array` against
+`COMBAT_ROUNDS_SCHEMA`, and `array.rs:355` labels any handle the schema does not
+name as `_h{handle}`. So every null row is a handle we have no name for.
 
-`compare_combat_report.py` reports ALL INTERESTING SHAPES MATCH, so whatever
-the gap is, it does not move anything that harness reads. Worth one session;
-not this one.
+**The decisive check is whether those are handles the C# reference names and we
+failed to transcribe.** They are not. `CombatRoundReports.cs` dispatches on an
+explicit handle set at each nesting level, and the unnamed handles are exactly
+the complement of it, with **zero overlap at every level**:
+
+    level                   handles we render as _hN        C# reads
+    Rounds[].Reports[]      6,7,8,9,99..102,104..108        5,10,98,103
+    ...Interactions[]       14,15,16,17                     11,12,13,18..26,61,96
+    (one level deeper)      27..35,62..70                   -- (none)
+
+Our schema names every handle the C# names and no more. The reference does not
+read these fields either: the member names in its own `events.ndjson` are the
+28 the dispatch table produces, and `_h`-style entries appear nowhere in it.
+
+Where we differ is that **we keep the bits and the reference does not**: all
+10,671 unnamed leaves carry their `raw_bits`, 303,448 bits in total, so this
+component is reinterpretable from an archived Parquet the day someone maps
+those handles. The reference discards them.
+
+That also explains `compare_combat_report.py` reporting ALL INTERESTING SHAPES
+MATCH without contradiction -- both sides decode the same named set, and the
+comparison covers exactly that set.
+
+The 22 typed overlay entries that go unhit are the second decode path for the
+same group, superseded by the struct-array path. They are dead weight, not a
+defect; see 15-D's unhit-entry sweep.
 
 ### 15-D. What this triage does NOT establish
 
