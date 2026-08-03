@@ -7,10 +7,31 @@ license.workspace = true
 repository.workspace = true
 description = "Columnar (Parquet) output for decoded replay records"
 
+[features]
+# The record structs and ExportError are unconditional; everything that needs
+# arrow or parquet is behind `parquet`. A consumer that only drives the decode
+# pipeline -- `vrfkit validate` does exactly that -- takes --no-default-features
+# and arrow, parquet and zstd leave the dependency graph entirely.
+default = ["fields", "movement", "actors", "net-guids", "events"]
+parquet = ["dep:arrow-array", "dep:arrow-schema", "dep:parquet"]
+fields = ["parquet"]
+movement = ["parquet"]
+actors = ["parquet"]
+net-guids = ["parquet"]
+events = ["parquet"]
+# Snappy is never selected by a writer -- every table compresses with ZSTD --
+# so it is opt-in, for consumers who want the codec available for reading.
+# ZSTD is deliberately NOT a feature: making it optional would let a build
+# produce a file this crate's own schema module cannot describe.
+snappy = ["parquet?/snap"]
+
 [dependencies]
 thiserror = { workspace = true }
 # arrow and parquet release in lockstep; keep the two majors identical or the
 # ArrowWriter types will not line up.
-arrow-array = "59"
-arrow-schema = "59"
-parquet = { version = "59", default-features = false, features = ["arrow", "zstd", "snap"] }
+arrow-array = { version = "59", optional = true }
+arrow-schema = { version = "59", optional = true }
+parquet = { version = "59", default-features = false, features = [
+    "arrow",
+    "zstd",
+], optional = true }

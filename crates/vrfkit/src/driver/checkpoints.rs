@@ -1,0 +1,132 @@
+//! The optional Checkpoint pass.
+//!
+//! A checkpoint is a full-state snapshot: its own guid cache, its own export
+//! map, and one DemoFrame re-opening every actor alive at that instant.
+//! Everything about it is independent of the live stream, so it gets its own
+//! cache, reader, channel state and buffers. Sharing any of the four would let
+//! the snapshot's channel opens and archetype mappings leak into the ReplayData
+//! pass and corrupt it.
+//!
+//! Checkpoint fields go to their own table rather than into `fields.parquet`
+//! with a source column. Two reasons, in order: a column on 1.2M rows to mark
+//! 80k of them is the wrong shape, and `fields.parquet` is read by the valplay
+//! adapter, whose capture predicate keys on a row having no decoded value --
+//! changing that file's population risks the metric parity for no gain. The
+//! file is only created when the flag asks for it, so a default export is
+//! byte-identical to one from before this existed.
+
+use std::io::Write;
+
+use vrf_container::{decompress_checkpoint, parse_checkpoint_chunk};
+use vrf_decode::{OverlayErrorReport, OverlayStats};
+use vrf_export::FieldWriter;
+use vrf_frame::iter_demo_frames;
+use vrf_net::pipeline::ReplicationReader;
+use vrf_schema::{NetGuidCache, read_checkpoint_tables};
+
+use crate::error::CliError;
+use crate::sink::{ChannelState, ExportSink, RecordBuffers};
+
+/// Counters for the optional checkpoint pass. Kept together so the summary
+/// cannot report one and quietly omit another.
+#[derive(Debug, Default)]
+pub(super) struct CheckpointStats {
+    pub chunks: u64,
+    pub guid_entries: u64,
+    pub group_records: u64,
+    pub exported_fields: u64,
+    pub frames: u64,
+    pub packets: u64,
+    pub field_rows: u64,
+    /// Actor opens and movement samples the snapshot produced. They are
+    /// counted and dropped, not written: a checkpoint re-opens a channel for
+    /// every actor alive at that instant, so folding them into
+    /// `actors.parquet` would triple its rows with re-opens that are not
+    /// spawns, and `movement.parquet` is a time series that a snapshot's
+    /// replayed samples would duplicate. Reported so the drop is visible.
+    pub actor_rows_dropped: u64,
+    pub movement_rows_dropped: u64,
+    /// Overlay outcome for checkpoint rows.
+    ///
+    /// Kept separately rather than folded into the main `overlay_stats`, which
+    /// the export baseline pins: mixing them would move a guarded figure by an
+    /// amount that depends on a flag. Kept *at all* because the checkpoint sink
+    /// is a second decode path, and a decode error on it that reached no
+    /// counter would be exactly the silent failure this project keeps finding.
+    pub overlay: OverlayStats,
+    pub effect_blobs: u64,
+}
+
+/// Everything about the replay that the checkpoint pass needs and cannot
+/// rediscover from the chunk alone.
+pub(super) struct ReplayContext<'a> {
+    pub branch: &'a str,
+    pub flags: u32,
+    pub compressed: bool,
+    pub encrypted: bool,
+}
+
+/// Decode one Checkpoint chunk and write its field rows.
+///
+/// `error_report` is the *shared* one: a decode error is a decode error
+/// wherever it happened, and the breakdown the summary prints is the only place
+/// a checkpoint-only failure would ever be seen.
+pub(super) fn process_chunk<W: Write + Send>(
+    payload: &[u8],
+    ctx: &ReplayContext<'_>,
+    writer: &mut FieldWriter<W>,
+    stats: &mut CheckpointStats,
+    error_report: &mut OverlayErrorReport,
+) -> Result<(), CliError> {
+    let cp = parse_checkpoint_chunk(payload)?;
+    let plain = decompress_checkpoint(cp.archive, ctx.compressed, ctx.encrypted)?;
+
+    let mut cache = NetGuidCache::new();
+    let tables = read_checkpoint_tables(&plain, &mut cache)
+        .map_err(|e| CliError::Usage(format!("checkpoint {}: {e}", cp.id)))?;
+
+    let frame = &plain[tables.frame_offset..];
+    let mut packets: Vec<(u32, usize, usize)> = Vec::new();
+    iter_demo_frames(frame, ctx.flags, &mut cache, |pkt| {
+        let base = frame.as_ptr() as usize;
+        packets.push((
+            pkt.time_ms,
+            pkt.data.as_ptr() as usize - base,
+            pkt.data.len(),
+        ));
+    })?;
+
+    let mut reader = ReplicationReader::new(ctx.branch)
+        .map_err(|e| CliError::Usage(format!("unsupported branch: {e}")))?;
+    let mut channels = ChannelState::new();
+    let mut buffers = RecordBuffers::default();
+    for (i, (time_ms, off, len)) in packets.iter().enumerate() {
+        {
+            let mut sink = ExportSink::new(&mut cache, &mut channels, &mut buffers);
+            sink.time_ms = *time_ms;
+            sink.packet_id = i as u32;
+            reader.process_packet(&frame[*off..*off + *len], i as i32, &mut sink);
+            stats.overlay.decoded_ok += sink.stats.overlay.decoded_ok;
+            stats.overlay.decoded_err += sink.stats.overlay.decoded_err;
+            stats.overlay.raw_or_skip += sink.stats.overlay.raw_or_skip;
+            stats.overlay.not_in_table += sink.stats.overlay.not_in_table;
+            stats.overlay.no_field_name += sink.stats.overlay.no_field_name;
+            stats.effect_blobs += sink.stats.effect_blobs_decoded;
+            error_report.merge_from(&sink.stats.overlay.error_report);
+        }
+        stats.field_rows += buffers.fields.len() as u64;
+        writer.push_batch(buffers.fields.drain(..))?;
+        stats.actor_rows_dropped += buffers.actors.len() as u64;
+        stats.movement_rows_dropped += buffers.movement.len() as u64;
+        buffers.actors.clear();
+        buffers.movement.clear();
+    }
+
+    stats.chunks += 1;
+    stats.guid_entries += u64::from(tables.guid_count);
+    stats.group_records += u64::from(tables.group_count);
+    stats.exported_fields += u64::from(tables.exported_fields);
+    stats.frames += 1;
+    stats.packets += packets.len() as u64;
+    Ok(())
+}

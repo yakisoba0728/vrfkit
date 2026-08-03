@@ -11,13 +11,37 @@ description = "CLI for inspecting, validating, and exporting VALORANT replay fil
 name = "vrfkit"
 path = "src/main.rs"
 
+[features]
+# `export` is the only genuinely optional part of this crate. Without it the
+# binary keeps `inspect` and `validate` -- both of which drive the full decode
+# pipeline -- and arrow, parquet and zstd leave the dependency graph entirely.
+#
+# The other eight vrf-* crates are NOT optional and there is no flag for them:
+# `validate` runs the container, frame, transform, net, schema, bitio, decode
+# and movement paths on every packet. A flag that could only ever be on is
+# worse than no flag, because it implies a configuration that does not exist.
+default = ["export"]
+export = [
+    "vrf-export/fields",
+    "vrf-export/movement",
+    "vrf-export/actors",
+    "vrf-export/net-guids",
+    "vrf-export/events",
+]
+
 [dependencies]
 vrf-bitio = { workspace = true }
 vrf-transform = { workspace = true }
 vrf-container = { workspace = true }
 vrf-schema = { workspace = true }
 vrf-net = { workspace = true }
-vrf-export = { workspace = true }
+# Spelled out rather than inherited from the workspace: a member cannot turn a
+# workspace dependency's default features off, and they have to be off here for
+# `--no-default-features` on this crate to really drop arrow and parquet. The
+# `export` feature above turns the writers back on. The record structs are
+# unconditional either way -- the sink produces them whether or not anything
+# writes them.
+vrf-export = { path = "../vrf-export", version = "0.1.0", default-features = false }
 vrf-frame = { workspace = true }
 vrf-movement = { workspace = true }
 vrf-decode = { workspace = true }
