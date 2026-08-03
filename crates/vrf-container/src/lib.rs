@@ -47,11 +47,13 @@
 
 use vrf_bitio::BitReader;
 
+mod checkpoint;
 mod error;
 mod event;
 mod header;
 mod info;
 
+pub use checkpoint::{CheckpointChunk, decompress_checkpoint, parse_checkpoint_chunk};
 pub use error::ContainerError;
 pub use event::{EventChunk, parse_event_chunk};
 pub use header::{ReplayHeader, ReplayVersion};
@@ -476,22 +478,53 @@ pub fn decompress_replay_data(
         return Ok(data_bytes[..size].to_vec());
     }
 
-    // Compressed: Oodle archive header (8 bytes) + compressed payload.
-    if meta.size_in_bytes < 8 {
+    decompress_oodle_archive(
+        data_bytes,
+        meta.size_in_bytes,
+        Some(meta.memory_size_in_bytes),
+        "oodle compressed data",
+    )
+}
+
+/// Decompress one Oodle archive: an 8-byte header followed by the codec stream.
+///
+/// ```text
+/// | i32 decompressed_size |
+/// | i32 compressed_size   |
+/// | [compressed_size] bytes |
+/// ```
+///
+/// Shared by ReplayData and Checkpoint chunks, which frame their archives
+/// identically and differ only in what states the expected output length.
+/// `declared_size` is the archive's declared byte count including the 8-byte
+/// header. `expected_decompressed` is the length an outer field claims -- a
+/// ReplayData chunk has `MemorySizeInBytes` and passes it, a checkpoint has no
+/// such field and passes `None`, which makes the header's own
+/// `decompressed_size` the sole authority.
+///
+/// Every check a ReplayData chunk performed before this was factored out is
+/// still performed here, in the same order, so its error behaviour is
+/// unchanged; the corpus run over 215 files is what pins that.
+fn decompress_oodle_archive(
+    archive: &[u8],
+    declared_size: i32,
+    expected_decompressed: Option<i32>,
+    context: &'static str,
+) -> Result<Vec<u8>, ContainerError> {
+    if declared_size < 8 {
         return Err(ContainerError::OodleHeaderTooSmall {
-            size: meta.size_in_bytes,
+            size: declared_size,
         });
     }
-
-    if data_bytes.len() < 8 {
+    if archive.len() < 8 {
         return Err(ContainerError::Truncated {
             context: "oodle archive header",
             needed: 8,
-            available: data_bytes.len(),
+            available: archive.len(),
         });
     }
 
-    let mut hdr_reader = BitReader::new(&data_bytes[..8]);
+    let mut hdr_reader = BitReader::new(&archive[..8]);
     let decompressed_size = hdr_reader
         .read_i32()
         .map_err(|e| ContainerError::BitIo(e.to_string()))?;
@@ -499,14 +532,22 @@ pub fn decompress_replay_data(
         .read_i32()
         .map_err(|e| ContainerError::BitIo(e.to_string()))?;
 
-    if decompressed_size != meta.memory_size_in_bytes {
-        return Err(ContainerError::OodleDecompressedSizeMismatch {
-            archive_size: decompressed_size,
-            memory_size: meta.memory_size_in_bytes,
+    if let Some(expected) = expected_decompressed {
+        if decompressed_size != expected {
+            return Err(ContainerError::OodleDecompressedSizeMismatch {
+                archive_size: decompressed_size,
+                memory_size: expected,
+            });
+        }
+    } else if !(0..=MAX_CHUNK_SIZE).contains(&decompressed_size) {
+        // Nothing outside the archive bounds this allocation, so the header
+        // has to be range-checked before it is trusted with a `vec![0; n]`.
+        return Err(ContainerError::InvalidMemorySize {
+            size: decompressed_size,
         });
     }
 
-    let expected_compressed_size = meta.size_in_bytes - 8;
+    let expected_compressed_size = declared_size - 8;
     if compressed_size != expected_compressed_size {
         return Err(ContainerError::OodleCompressedSizeMismatch {
             archive_size: compressed_size,
@@ -514,26 +555,26 @@ pub fn decompress_replay_data(
         });
     }
 
-    let compressed_data = &data_bytes[8..];
+    let compressed_data = &archive[8..];
     if compressed_data.len() < compressed_size as usize {
         return Err(ContainerError::Truncated {
-            context: "oodle compressed data",
+            context,
             needed: compressed_size as usize,
             available: compressed_data.len(),
         });
     }
 
     let input = &compressed_data[..compressed_size as usize];
-    let mut output = vec![0u8; meta.memory_size_in_bytes as usize];
+    let mut output = vec![0u8; decompressed_size as usize];
 
     let mut extractor = oozextract::Extractor::new();
     let n = extractor
         .read_from_slice(input, &mut output)
         .map_err(|e| ContainerError::OodleDecompression(format!("{e:?}")))?;
 
-    if n != meta.memory_size_in_bytes as usize {
+    if n != decompressed_size as usize {
         return Err(ContainerError::OodleOutputSizeMismatch {
-            expected: meta.memory_size_in_bytes as usize,
+            expected: decompressed_size as usize,
             actual: n,
         });
     }

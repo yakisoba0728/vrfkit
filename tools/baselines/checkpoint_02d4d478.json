@@ -1,0 +1,61 @@
+{
+ "replay": "C:\\Users\\yakihyuk0728\\Documents\\GitHub\\valplay\\data\\raw\\vrf\\02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf",
+ "counters": {
+  "chunks": 19,
+  "packets": 530401,
+  "export_groups": 475,
+  "content_blocks": 608020,
+  "rep_layout_blocks": 258892,
+  "class_net_cache_blocks": 349119,
+  "fields": 429637,
+  "rpcs": 342735,
+  "actor_opens": 2028,
+  "actor_closes": 1799,
+  "bunches": 530401,
+  "malformed_packets": 0,
+  "skipped_bits": 17506923,
+  "movement_rows": 1839607,
+  "net_guid_rows": 16167,
+  "event_rows": 195,
+  "overlay_decoded_ok": 369743,
+  "overlay_decode_errors": 0,
+  "overlay_raw_skip": 73984,
+  "overlay_not_in_table": 511916,
+  "overlay_no_field_name": 33340,
+  "overlay_rows_offered": 988983,
+  "effect_blobs_decoded": 53908,
+  "cp_chunks": 18,
+  "cp_guid_entries": 74270,
+  "cp_group_records": 8307,
+  "cp_exported_fields": 49314,
+  "cp_frames": 18,
+  "cp_frame_packets": 3691,
+  "cp_field_rows": 78748
+ },
+ "parquet": {
+  "fields": {
+   "rows": 1246812,
+   "bytes": 13742379
+  },
+  "movement": {
+   "rows": 1839607,
+   "bytes": 31835557
+  },
+  "actors": {
+   "rows": 3827,
+   "bytes": 87281
+  },
+  "net_guids": {
+   "rows": 16167,
+   "bytes": 153606
+  },
+  "events": {
+   "rows": 195,
+   "bytes": 10201
+  },
+  "checkpoint_fields": {
+   "rows": 78748,
+   "bytes": 191335
+  }
+ }
+}

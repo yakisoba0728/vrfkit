@@ -38,7 +38,8 @@ use std::thread;
 use std::time::Instant;
 
 use vrf_container::{
-    ChunkIterator, ChunkType, decompress_replay_data, parse_event_chunk, parse_preamble,
+    ChunkIterator, ChunkType, decompress_checkpoint, decompress_replay_data,
+    parse_checkpoint_chunk, parse_event_chunk, parse_preamble,
 };
 use vrf_decode::{OverlayErrorReport, OverlayStats};
 use vrf_export::{
@@ -47,7 +48,7 @@ use vrf_export::{
 };
 use vrf_frame::iter_demo_frames;
 use vrf_net::pipeline::ReplicationReader;
-use vrf_schema::NetGuidCache;
+use vrf_schema::{NetGuidCache, read_checkpoint_tables};
 
 use crate::error::CliError;
 use crate::manifest;
@@ -145,7 +146,37 @@ impl<T: Send + 'static> WriterThread<T> {
     }
 }
 
-pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
+/// Counters for the optional checkpoint pass. Kept together so the summary
+/// cannot report one and quietly omit another.
+#[derive(Debug, Default)]
+struct CheckpointStats {
+    chunks: u64,
+    guid_entries: u64,
+    group_records: u64,
+    exported_fields: u64,
+    frames: u64,
+    packets: u64,
+    field_rows: u64,
+    /// Actor opens and movement samples the snapshot produced. They are
+    /// counted and dropped, not written: a checkpoint re-opens a channel for
+    /// every actor alive at that instant, so folding them into
+    /// `actors.parquet` would triple its rows with re-opens that are not
+    /// spawns, and `movement.parquet` is a time series that a snapshot's
+    /// replayed samples would duplicate. Reported so the drop is visible.
+    actor_rows_dropped: u64,
+    movement_rows_dropped: u64,
+    /// Overlay outcome for checkpoint rows.
+    ///
+    /// Kept separately rather than folded into the main `overlay_stats`, which
+    /// the export baseline pins: mixing them would move a guarded figure by an
+    /// amount that depends on a flag. Kept *at all* because the checkpoint sink
+    /// is a second decode path, and a decode error on it that reached no
+    /// counter would be exactly the silent failure this project keeps finding.
+    overlay: OverlayStats,
+    effect_blobs: u64,
+}
+
+pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), CliError> {
     let start = Instant::now();
 
     // -- Read file ---------------------------------------------------------
@@ -180,6 +211,22 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     // Event chunks are a couple of hundred rows and are written inline for the
     // same reason `actors` is: the encoding cost is far below a thread's worth.
     let mut event_writer = EventWriter::new(events_file)?;
+
+    // Checkpoint fields go to their own table rather than into `fields.parquet`
+    // with a source column. Two reasons, in order: a column on 1.2M rows to
+    // mark 80k of them is the wrong shape, and `fields.parquet` is read by the
+    // valplay adapter, whose capture predicate keys on a row having no decoded
+    // value -- changing that file's population risks the metric parity for no
+    // gain. The file is only created when the flag asks for it, so a default
+    // export is byte-identical to one from before this existed.
+    let mut checkpoint_writer = if with_checkpoints {
+        let f = BufWriter::new(fs::File::create(
+            out_path.join("checkpoint_fields.parquet"),
+        )?);
+        Some(FieldWriter::new(f)?)
+    } else {
+        None
+    };
 
     let mut fields = WriterThread::<FieldRecord>::spawn("fields", move |rx| {
         for batch in rx {
@@ -217,6 +264,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     let mut overlay_stats = OverlayStats::default();
     let mut error_report = OverlayErrorReport::default();
     let mut effect_blobs_decoded: u64 = 0;
+    let mut cp_stats = CheckpointStats::default();
 
     while let Some(chunk) = chunk_iter.next_chunk()? {
         // Event chunks carry the server's own labelled timeline. They are
@@ -237,6 +285,71 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
                 raw_payload: event.payload.to_vec(),
             })?;
             event_rows += 1;
+            continue;
+        }
+        // A checkpoint is a full-state snapshot: its own guid cache, its own
+        // export map, and one DemoFrame re-opening every actor alive at that
+        // instant. Everything about it is independent of the live stream, so
+        // it gets its own cache, reader, channel state and buffers. Sharing
+        // any of the four would let the snapshot's channel opens and archetype
+        // mappings leak into the ReplayData pass and corrupt it.
+        if chunk.chunk_type == ChunkType::Checkpoint {
+            let Some(writer) = checkpoint_writer.as_mut() else {
+                continue;
+            };
+            let payload =
+                &data[chunk.data_offset..chunk.data_offset + chunk.size_in_bytes as usize];
+            let cp = parse_checkpoint_chunk(payload)?;
+            let plain = decompress_checkpoint(cp.archive, compressed, encrypted)?;
+
+            let mut cp_cache = NetGuidCache::new();
+            let tables = read_checkpoint_tables(&plain, &mut cp_cache)
+                .map_err(|e| CliError::Usage(format!("checkpoint {}: {e}", cp.id)))?;
+
+            let mut cp_packets: Vec<(u32, usize, usize)> = Vec::new();
+            iter_demo_frames(&plain[tables.frame_offset..], flags, &mut cp_cache, |pkt| {
+                let base = plain[tables.frame_offset..].as_ptr() as usize;
+                cp_packets.push((
+                    pkt.time_ms,
+                    pkt.data.as_ptr() as usize - base,
+                    pkt.data.len(),
+                ));
+            })?;
+
+            let mut cp_reader = ReplicationReader::new(branch)
+                .map_err(|e| CliError::Usage(format!("unsupported branch: {e}")))?;
+            let mut cp_channels = ChannelState::new();
+            let mut cp_buffers = RecordBuffers::default();
+            let frame = &plain[tables.frame_offset..];
+            for (i, (time_ms, off, len)) in cp_packets.iter().enumerate() {
+                {
+                    let mut sink =
+                        ExportSink::new(&mut cp_cache, &mut cp_channels, &mut cp_buffers);
+                    sink.time_ms = *time_ms;
+                    sink.packet_id = i as u32;
+                    cp_reader.process_packet(&frame[*off..*off + *len], i as i32, &mut sink);
+                    cp_stats.overlay.decoded_ok += sink.stats.overlay.decoded_ok;
+                    cp_stats.overlay.decoded_err += sink.stats.overlay.decoded_err;
+                    cp_stats.overlay.raw_or_skip += sink.stats.overlay.raw_or_skip;
+                    cp_stats.overlay.not_in_table += sink.stats.overlay.not_in_table;
+                    cp_stats.overlay.no_field_name += sink.stats.overlay.no_field_name;
+                    cp_stats.effect_blobs += sink.stats.effect_blobs_decoded;
+                    error_report.merge_from(&sink.stats.overlay.error_report);
+                }
+                cp_stats.field_rows += cp_buffers.fields.len() as u64;
+                writer.push_batch(std::mem::take(&mut cp_buffers.fields))?;
+                cp_stats.actor_rows_dropped += cp_buffers.actors.len() as u64;
+                cp_stats.movement_rows_dropped += cp_buffers.movement.len() as u64;
+                cp_buffers.actors.clear();
+                cp_buffers.movement.clear();
+            }
+
+            cp_stats.chunks += 1;
+            cp_stats.guid_entries += u64::from(tables.guid_count);
+            cp_stats.group_records += u64::from(tables.group_count);
+            cp_stats.exported_fields += u64::from(tables.exported_fields);
+            cp_stats.frames += 1;
+            cp_stats.packets += cp_packets.len() as u64;
             continue;
         }
         if chunk.chunk_type != ChunkType::ReplayData {
@@ -313,6 +426,9 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     movement.finish()?;
     actor_writer.finish()?;
     event_writer.finish()?;
+    if let Some(w) = checkpoint_writer.take() {
+        w.finish()?;
+    }
 
     // -- Write the NetGUID registry ----------------------------------------
     //
@@ -361,6 +477,34 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     }
     eprintln!("  Elapsed:          {:.2?}", elapsed);
 
+    if with_checkpoints {
+        eprintln!();
+        eprintln!("=== Checkpoints ===");
+        eprintln!("  Checkpoints:      {}", cp_stats.chunks);
+        eprintln!("  GUID entries:     {}", cp_stats.guid_entries);
+        eprintln!("  Group records:    {}", cp_stats.group_records);
+        eprintln!("  Exported fields:  {}", cp_stats.exported_fields);
+        eprintln!("  Frames:           {}", cp_stats.frames);
+        eprintln!("  Frame packets:    {}", cp_stats.packets);
+        eprintln!("  Checkpoint rows:  {}", cp_stats.field_rows);
+        // Printed, not silent: a checkpoint re-opens every live actor and
+        // replays its state, so these two would corrupt the tables they would
+        // otherwise land in. See CheckpointStats.
+        eprintln!(
+            "  Dropped:          {} actor / {} movement rows (snapshot re-opens)",
+            cp_stats.actor_rows_dropped, cp_stats.movement_rows_dropped
+        );
+        eprintln!(
+            "  Overlay:          {} decoded / {} errors / {} raw-skip / {} not-in-table / {} unnamed / {} effect blobs",
+            cp_stats.overlay.decoded_ok,
+            cp_stats.overlay.decoded_err,
+            cp_stats.overlay.raw_or_skip,
+            cp_stats.overlay.not_in_table,
+            cp_stats.overlay.no_field_name,
+            cp_stats.effect_blobs
+        );
+    }
+
     // -- Write manifest ----------------------------------------------------
     let manifest_path = out_path.join("manifest.json");
     manifest::write_manifest(
@@ -397,6 +541,12 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     eprintln!("  actors.parquet:   {} bytes", actors_size);
     eprintln!("  net_guids.parquet:{} bytes", net_guids_size);
     eprintln!("  events.parquet:   {} bytes", events_size);
+    if with_checkpoints {
+        let size = fs::metadata(out_path.join("checkpoint_fields.parquet"))
+            .map(|m| m.len())
+            .unwrap_or(0);
+        eprintln!("  checkpoint_fields.parquet: {size} bytes");
+    }
     eprintln!("  manifest.json:    {}", manifest_path.display());
 
     // -- Overlay statistics -------------------------------------------------

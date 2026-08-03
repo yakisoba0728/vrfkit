@@ -40,6 +40,74 @@ pub enum SchemaError {
         /// The configured maximum.
         limit: u32,
     },
+
+    /// A checkpoint guid-cache entry's path discriminator was neither 0 nor 1.
+    ///
+    /// Only those two values occur across 17,186,645 corpus entries. A third
+    /// means the cursor is not where this parser thinks it is.
+    #[error("checkpoint guid entry {entry}: path discriminator is {byte}, expected 0 or 1")]
+    CheckpointBadPathKind {
+        /// Index of the entry being read.
+        entry: u32,
+        /// The rejected byte.
+        byte: u8,
+    },
+
+    /// A checkpoint export-group slot declared a handle other than its own
+    /// index.
+    ///
+    /// `handle == slot` holds for all 11,529,869 exported slots in the corpus.
+    /// A mismatch means the record stream has desynchronised, and continuing
+    /// would attach real names to the wrong handles -- which reads as valid
+    /// data and is the failure this project has been bitten by repeatedly.
+    #[error("checkpoint group '{group}' slot {slot}: declared handle {handle}")]
+    CheckpointHandleNotSlot {
+        /// Path of the group being read.
+        group: String,
+        /// Slot index the handle should have equalled.
+        slot: u32,
+        /// The handle actually read.
+        handle: u32,
+    },
+
+    /// The export-group map did not end where the archive prologue said the
+    /// DemoFrame begins.
+    ///
+    /// `map_end == prologue_offset + 8` holds for all 4,024 corpus
+    /// checkpoints. This is the only end-to-end check on the two table parses:
+    /// a mis-read count lands the cursor somewhere plausible and nothing else
+    /// would notice.
+    #[error("checkpoint tables ended at {map_end}, prologue implies {expected}")]
+    CheckpointFrameOffsetMismatch {
+        /// Where parsing actually finished.
+        map_end: usize,
+        /// Where the prologue said it should.
+        expected: usize,
+    },
+
+    /// One of the checkpoint prologue's reserved words was non-zero.
+    ///
+    /// Words at byte 4, 8 and 12 are zero in all 4,024 corpus checkpoints.
+    /// A non-zero one means this build writes a field the parser does not know
+    /// about, and every offset after it is suspect.
+    #[error("checkpoint prologue word at byte {offset} is {value}, expected 0")]
+    CheckpointReservedWordSet {
+        /// Byte offset of the word.
+        offset: usize,
+        /// The unexpected value.
+        value: u32,
+    },
+
+    /// A checkpoint count field exceeded its sanity bound.
+    #[error("checkpoint {field}: count {count} exceeds maximum {max}")]
+    CheckpointCountOverflow {
+        /// Which count overflowed.
+        field: &'static str,
+        /// The rejected value.
+        count: u32,
+        /// The configured maximum.
+        max: u32,
+    },
 }
 
 /// Result alias for schema operations.

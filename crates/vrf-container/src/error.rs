@@ -76,6 +76,10 @@ pub enum ContainerError {
     #[error("invalid event payload size: {size}")]
     InvalidEventPayloadSize { size: i32 },
 
+    /// A Checkpoint chunk's declared archive size is negative.
+    #[error("invalid checkpoint archive size: {size}")]
+    InvalidCheckpointArchiveSize { size: i32 },
+
     /// An uncompressed chunk's SizeInBytes != MemorySizeInBytes.
     #[error("uncompressed size mismatch: SizeInBytes={size}, MemorySizeInBytes={memory_size}")]
     SizeMismatch { size: i32, memory_size: i32 },

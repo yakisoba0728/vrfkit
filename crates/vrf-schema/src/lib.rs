@@ -34,12 +34,14 @@
 #![forbid(unsafe_code)]
 
 mod cache;
+mod checkpoint;
 mod error;
 mod export;
 mod path;
 mod reader;
 
 pub use cache::{ExportFlags, NetGuidCache, NetGuidEntry, NetworkGuid};
+pub use checkpoint::{CheckpointTables, read_checkpoint_tables};
 pub use error::SchemaError;
 pub use export::{NetFieldExport, NetFieldExportGroup};
 pub use path::{class_net_cache_lookup_keys, replay_path_lookup_keys};

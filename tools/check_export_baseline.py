@@ -98,6 +98,19 @@ COUNTERS = {
 }
 PATTERNS = {k: re.compile(v) for k, v in COUNTERS.items()}
 
+# Only printed under `--checkpoints`, so they live apart from COUNTERS -- a
+# default run must not record them as None and then diff that against a
+# baseline taken with the flag.
+CHECKPOINT_COUNTERS = {
+    "cp_chunks": r"Checkpoints:\s+(\d+)",
+    "cp_guid_entries": r"GUID entries:\s+(\d+)",
+    "cp_group_records": r"Group records:\s+(\d+)",
+    "cp_exported_fields": r"Exported fields:\s+(\d+)",
+    "cp_frames": r"Frames:\s+(\d+)",
+    "cp_frame_packets": r"Frame packets:\s+(\d+)",
+    "cp_field_rows": r"Checkpoint rows:\s+(\d+)",
+}
+
 PARQUET_FILES = ("fields", "movement", "actors", "net_guids", "events")
 
 
@@ -140,20 +153,27 @@ def cross_checks(counters: dict, parquet: dict) -> list[str]:
     return out
 
 
-def measure(exe: Path, replay: Path, out_dir: Path) -> dict:
+def measure(exe: Path, replay: Path, out_dir: Path, checkpoints: bool = False) -> dict:
     """Export one replay and collect the summary counters and Parquet shape.
 
     The output directory is deleted first. Exporting over a previous run would
     leave a file the exporter has stopped writing sitting there with last
     run's contents, and both checks below would then read it and pass -- the
     exact way "a stale file makes a matching hash meaningless" applies here.
+
+    `checkpoints` runs the optional Checkpoint pass and pins its counters and
+    its table too. That path is off by default in the exporter, and an
+    unguarded optional path is the shape of every silent change this script
+    exists to prevent -- so it gets a baseline of its own rather than none.
     """
     shutil.rmtree(out_dir, ignore_errors=True)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    cmd = [str(exe), "export", str(replay), "--out", str(out_dir)]
+    if checkpoints:
+        cmd.append("--checkpoints")
     r = subprocess.run(
-        [str(exe), "export", str(replay), "--out", str(out_dir)],
-        capture_output=True, text=True, encoding="utf-8",
+        cmd, capture_output=True, text=True, encoding="utf-8",
         errors="replace", timeout=1800,
     )
     text = (r.stdout or "") + (r.stderr or "")
@@ -161,13 +181,19 @@ def measure(exe: Path, replay: Path, out_dir: Path) -> dict:
         tail = " | ".join(l for l in text.splitlines()[-5:] if l.strip())
         raise SystemExit(f"export failed (exit {r.returncode}): {tail[:400]}")
 
+    patterns = dict(PATTERNS)
+    files = list(PARQUET_FILES)
+    if checkpoints:
+        patterns.update({k: re.compile(v) for k, v in CHECKPOINT_COUNTERS.items()})
+        files.append("checkpoint_fields")
+
     counters = {}
-    for key, pat in PATTERNS.items():
+    for key, pat in patterns.items():
         match = pat.search(text)
         counters[key] = None if match is None else int(match.group(1))
 
     parquet = {}
-    for name in PARQUET_FILES:
+    for name in files:
         path = out_dir / f"{name}.parquet"
         if not path.exists():
             raise SystemExit(f"export wrote no {name}.parquet in {out_dir}")
@@ -209,6 +235,9 @@ def main() -> int:
                     help="export directory, DELETED first (default: out/export_check)")
     ap.add_argument("--update", action="store_true",
                     help="rewrite the baseline from the current numbers")
+    ap.add_argument("--checkpoints", action="store_true",
+                    help="run the optional Checkpoint pass and pin its counters "
+                         "and checkpoint_fields.parquet too")
     args = ap.parse_args()
 
     if not args.exe.exists():
@@ -224,7 +253,7 @@ def main() -> int:
         return 0
 
     out_dir = args.out or (REPO / "out" / "export_check")
-    current = measure(args.exe, replay, out_dir)
+    current = measure(args.exe, replay, out_dir, checkpoints=args.checkpoints)
 
     # The cross-check runs whether or not a baseline exists, and before the
     # baseline is written: pinning a summary that already contradicts its own
