@@ -13,8 +13,9 @@ use arrow_array::cast::AsArray;
 use arrow_array::types::Int32Type;
 use arrow_array::{
     Array, ArrayAccessor, BinaryArray, Float32Array, Int32Array, Int64Array, RecordBatch,
-    StringArray, UInt32Array,
+    StringArray, UInt8Array, UInt32Array,
 };
+use arrow_schema::DataType;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 
@@ -85,6 +86,11 @@ fn make_movement_record(i: u32) -> MovementRecord {
         vel_x: if i % 3 == 0 { 0.0 } else { i as f32 },
         vel_y: if i % 3 == 1 { 0.0 } else { -(i as f32) },
         vel_z: 0.0,
+        // Vary all three so a round-trip check discriminates a real copy from
+        // a constant fill.
+        timestamp: i * 3,
+        movement_state: (i % 5) as u8,
+        move_type: (i % 2) as u8,
     }
 }
 
@@ -452,6 +458,9 @@ fn movement_f32_precision() {
                 vel_x: f32::MAX,
                 vel_y: f32::MIN,
                 vel_z: 0.0,
+                timestamp: 0,
+                movement_state: 0,
+                move_type: 0,
             })
             .unwrap();
         writer.finish().unwrap();
@@ -487,6 +496,133 @@ fn movement_push_batch() {
     let batches = read_all_batches(&path);
     let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
     assert_eq!(total_rows, 500);
+}
+
+#[test]
+fn movement_state_columns_keep_their_narrow_types() {
+    // The three columns added after vel_z are u32/u8/u8 on the wire. Parquet
+    // has no native 8-bit physical type -- it stores them as INT32 with an
+    // INTEGER(8, false) logical annotation -- so the assertion that matters is
+    // that a reader still hands them back as UInt8, not silently widened.
+    let path = test_dir().join("movement_narrow_types.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = MovementWriter::with_row_group_size(file, 1024).unwrap();
+        for i in 0..64 {
+            writer.push(make_movement_record(i)).unwrap();
+        }
+        writer.finish().unwrap();
+    }
+
+    let batches = read_all_batches(&path);
+    let batch = &batches[0];
+    let schema = batch.schema();
+
+    assert_eq!(
+        schema.field_with_name("timestamp").unwrap().data_type(),
+        &DataType::UInt32
+    );
+    for name in ["movement_state", "move_type"] {
+        let field = schema.field_with_name(name).unwrap();
+        assert_eq!(field.data_type(), &DataType::UInt8, "{name} was widened");
+    }
+    // The movement table is dense by contract; python_interop.py asserts the
+    // same thing over the whole schema.
+    for name in ["timestamp", "movement_state", "move_type"] {
+        assert!(
+            !schema.field_with_name(name).unwrap().is_nullable(),
+            "{name} must not be nullable"
+        );
+    }
+
+    // Appended after vel_z, not interleaved: the existing positional readers
+    // in this file (column(3) = pos_x, column(8) = vel_x) must keep working.
+    let names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+    assert_eq!(
+        names,
+        vec![
+            "time_ms",
+            "packet_id",
+            "character_net_guid",
+            "pos_x",
+            "pos_y",
+            "pos_z",
+            "yaw",
+            "pitch",
+            "vel_x",
+            "vel_y",
+            "vel_z",
+            "timestamp",
+            "movement_state",
+            "move_type",
+        ]
+    );
+
+    // mode_flags is deliberately not a column: vrf_movement assigns it from
+    // the same local as movement_state, so it could only ever duplicate it.
+    assert!(schema.field_with_name("mode_flags").is_err());
+}
+
+#[test]
+fn movement_new_columns_roundtrip_values() {
+    let path = test_dir().join("movement_new_columns_values.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = MovementWriter::with_row_group_size(file, 1024).unwrap();
+        for i in 0..20 {
+            writer.push(make_movement_record(i)).unwrap();
+        }
+        // Boundary row: the widest value each column can hold.
+        let mut extreme = make_movement_record(20);
+        extreme.timestamp = u32::MAX;
+        extreme.movement_state = u8::MAX;
+        extreme.move_type = 1;
+        writer.push(extreme).unwrap();
+        writer.finish().unwrap();
+    }
+
+    let batches = read_all_batches(&path);
+    let batch = &batches[0];
+    assert_eq!(batch.num_rows(), 21);
+
+    let timestamp = batch
+        .column(batch.schema().index_of("timestamp").unwrap())
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .unwrap();
+    let movement_state = batch
+        .column(batch.schema().index_of("movement_state").unwrap())
+        .as_any()
+        .downcast_ref::<UInt8Array>()
+        .unwrap();
+    let move_type = batch
+        .column(batch.schema().index_of("move_type").unwrap())
+        .as_any()
+        .downcast_ref::<UInt8Array>()
+        .unwrap();
+
+    for i in 0..20usize {
+        let expected = make_movement_record(i as u32);
+        assert_eq!(timestamp.value(i), expected.timestamp, "row {i} timestamp");
+        assert_eq!(
+            movement_state.value(i),
+            expected.movement_state,
+            "row {i} movement_state"
+        );
+        assert_eq!(move_type.value(i), expected.move_type, "row {i} move_type");
+    }
+
+    assert_eq!(timestamp.value(20), u32::MAX);
+    assert_eq!(movement_state.value(20), u8::MAX);
+    assert_eq!(move_type.value(20), 1);
+
+    // The helper must actually vary these, or the loop above proves nothing.
+    let distinct_states: std::collections::BTreeSet<u8> =
+        (0..20).map(|i| movement_state.value(i)).collect();
+    assert!(
+        distinct_states.len() > 1,
+        "movement_state did not vary across rows"
+    );
 }
 
 /// Write interop files for the Python verification step (requirement section 6).

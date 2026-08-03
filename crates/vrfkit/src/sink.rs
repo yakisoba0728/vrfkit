@@ -1336,6 +1336,12 @@ impl FieldSink for ExportSink<'_> {
                     vel_x: mv.vel_x as f32,
                     vel_y: mv.vel_y as f32,
                     vel_z: mv.vel_z as f32,
+                    timestamp: mv.timestamp,
+                    movement_state: mv.movement_state,
+                    // mv.mode_flags is intentionally not carried: the decoder
+                    // assigns it from the same local as movement_state, so it
+                    // can never hold a different value.
+                    move_type: mv.move_type,
                 });
             });
             // Don't store raw bits for movement RPCs (saves memory on 2.4M records).

@@ -41,6 +41,10 @@ def verify_fields():
     print(f"\nColumn count: {len(schema)}")
     expected_cols = [
         "time_ms", "packet_id", "channel_index", "actor_net_guid",
+        # Pre-existing omission: object_net_guid has been in fields_schema()
+        # since subobject blocks started carrying it, but this list was never
+        # updated, so the script aborted here before reaching verify_movement().
+        "object_net_guid",
         "group_path", "handle", "field_name", "bit_count",
         "raw_bits", "value_i64", "value_f64", "value_bool", "value_str",
     ]
@@ -100,6 +104,9 @@ def verify_movement():
         "time_ms", "packet_id", "character_net_guid",
         "pos_x", "pos_y", "pos_z", "yaw", "pitch",
         "vel_x", "vel_y", "vel_z",
+        # Appended after vel_z, never interleaved: consumers address movement
+        # columns positionally.
+        "timestamp", "movement_state", "move_type",
     ]
     actual_cols = [f.name for f in schema]
     assert actual_cols == expected_cols, f"Column mismatch:\n  expected: {expected_cols}\n  actual:   {actual_cols}"

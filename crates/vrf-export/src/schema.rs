@@ -58,6 +58,16 @@ pub fn fields_schema() -> Schema {
 /// The coordinate system matches Unreal Engine's left-handed Z-up convention.
 /// Positions are in centimetres; yaw/pitch are in degrees (-180..180).
 /// Velocity is cm/s as reported by the replication channel.
+///
+/// The last three columns are appended rather than interleaved: existing
+/// consumers address movement columns positionally, so inserting `timestamp`
+/// next to `time_ms` (where it reads more naturally) would silently repoint
+/// every downstream `column(3)`/`column(8)` at the wrong data.
+///
+/// `mode_flags` is deliberately absent. The decoder exposes it on
+/// `MovementMove`, but it is assigned from the same local as `movement_state`
+/// at the struct's only construction site, so no code path can make the two
+/// differ -- exporting it would add a byte-identical column over ~1.8 M rows.
 pub fn movement_schema() -> Schema {
     Schema::new(vec![
         Field::new("time_ms", DataType::UInt32, false),
@@ -71,6 +81,17 @@ pub fn movement_schema() -> Schema {
         Field::new("vel_x", DataType::Float32, false),
         Field::new("vel_y", DataType::Float32, false),
         Field::new("vel_z", DataType::Float32, false),
+        // Server-assigned tick from the move header. Distinct from `time_ms`,
+        // which is the replay-relative packet time this crate stamps on.
+        Field::new("timestamp", DataType::UInt32, false),
+        // Posture byte (crouch / walk / run / jump). One wire byte, so UInt8
+        // -- widening would cost 3 bytes per row before compression for no
+        // added range.
+        Field::new("movement_state", DataType::UInt8, false),
+        // 0 = variant0 (no velocity on the wire), 1 = variant1 (velocity
+        // present). Effectively a bool, but kept as the decoder's u8 so the
+        // column stays a faithful copy of the wire value.
+        Field::new("move_type", DataType::UInt8, false),
     ])
 }
 
