@@ -25,8 +25,23 @@ use vrf_export::{
 };
 
 /// Test output directory -- each test writes to a unique file.
+///
+/// Keyed by this crate's own source path, so two checkouts of the repository
+/// cannot write over each other. They previously shared one directory under
+/// the system temp dir, which is not per-checkout: a `cargo test` in a git
+/// worktree and one in the main tree write the same filenames, and whichever
+/// reads second reads the other's Parquet. That surfaced once already, as a
+/// column-count mismatch that looked exactly like a schema bug and was not.
+///
+/// `CARGO_MANIFEST_DIR` is the discriminator because it differs per worktree
+/// and is fixed at compile time, so every test in one binary agrees on it.
 fn test_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join("vrf_export_tests");
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    env!("CARGO_MANIFEST_DIR").hash(&mut hasher);
+    let dir = std::env::temp_dir().join(format!("vrf_export_tests_{:016x}", hasher.finish()));
     fs::create_dir_all(&dir).unwrap();
     dir
 }
