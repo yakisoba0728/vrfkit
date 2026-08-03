@@ -273,10 +273,13 @@ Where the open work is now, after section 23:
     it -- the two disagree (22-I) and nothing adjudicates them. The checkpoint
     guid table and the 46-51 checkpoint-only group paths are read but not
     exported
-  - the 26M untyped bits that are NOT effect blobs and NOT AbilitiesAndBuffs
-    are missing overlay entries, not missing decoders -- MulticastStop-
-    ContinuousEffect's SourceID/EffectID are the worked example in 22-E.
-    This is now the largest addressable gap
+  - the untyped remainder is NOT one number and mostly NOT addressable here.
+    Section 24 measured it: of 27.2M untyped RPC-parameter bits, ~86% have no
+    upstream type information at all (no descriptor, no <TParams>, or no name
+    on the wire), 10.4% is the ReplayPlayContinuousEffectAtLocation exclusion
+    that protects the valplay adapter, and the rest is an arity disagreement
+    between the C# model and the wire. Do not reopen it as a table edit; it
+    needs the game binary or UE headers
   - Event payload words are raw for 5 of 7 groups (22-H). characterDeath is
     solved; characterUltimateUsed's single word is not
   - AbilitiesAndBuffsComponent stays closed. 22-D ruled out the last place its
@@ -4432,3 +4435,135 @@ clean, ASCII 65 files.
   `bNoLoad | bIgnoreWhenMissing`; only its two-value distribution is measured.
 - Uncompressed replays take a trivial passthrough in `decompress_checkpoint`.
   No corpus file exercises it.
+
+---
+
+## 24. The untyped RPC parameters: mostly not ours to fix (2026-08-04)
+
+Section 22's closing note called the untyped remainder "missing overlay
+entries, not missing decoders" and made it the largest addressable gap. That
+framing was too optimistic. Measured at `fccabce`.
+
+### 24-A. First, the split that section 22 stated as one number
+
+"26M untyped bits" was wrong as a single figure. On 02d4d478, excluding the
+movement RPC (decoded into `movement.parquet`, `raw_bits` deliberately absent):
+
+```
+RPC parameters   388,692 rows   27,231,816 bits
+properties etc   189,387 rows   25,870,234 bits
+  of which the AbilitiesAndBuffs preservation row is 17,264,706 -- closed by
+  22-D -- leaving about 8.6M bits of genuine property residue
+```
+
+### 24-B. Classifying the 27.2M RPC-parameter bits against the C# reference
+
+Each untyped `(class, function, parameter)` was matched against the C#
+descriptor set: which `AddFunction(Handle)` sites exist, which carry a
+`<TParams>` type argument, and which parameter names those descriptors declare.
+
+| bits | share | rows | verdict |
+|---|---|---|---|
+| 9,102,609 | 33.4% | 234,284 | the RPC appears in no C# ClassNetCache descriptor |
+| 6,275,002 | 23.0% | 49,959 | the replay declares no name for the handle |
+| 5,323,393 | 19.5% | 74,590 | `AddFunctionHandle` with no `<TParams>` -- no parameter descriptor exists |
+| 3,701,460 | 13.6% | 22,150 | a descriptor exists but the wire name differs |
+| 2,829,352 | 10.4% | 7,709 | declared in C#, absent from the table |
+
+**Only the last row is a gap in our tooling, and it is not a defect.** It is
+exactly `ReplayPlayContinuousEffectAtLocation`'s `FloatValues`, `ObjectValues`
+and `VectorValues` -- 1,151,168 + 877,472 + 800,712 = 2,829,352 bits, to the
+bit. Section 22-D's effect work excluded that RPC on purpose: filling
+`value_str` there flips the valplay adapter's `is_raw` predicate
+(`to_valplay_bundle.py:1096`, tested at 1104-1105 before 1110) and the adapter
+silently stops capturing shot blobs. Typing it means migrating the adapter
+first, not changing the table.
+
+So **roughly 86% of the untyped RPC-parameter bits have no upstream type
+information at all.** No extractor change reaches them.
+
+The 13.6% "name differs" bucket is worth naming because it is not a spelling
+mistake: `MulticastPlayContinuousEffect` declares one `Transform` field, typed
+`RawPayload("FTransform")` in C#, while the replay declares separate
+`Translation` and `Scale3D` handles. The two models disagree on arity, so a
+name-keyed table cannot bridge them and neither can a handle-keyed one without
+deciding which wire handle is which struct member.
+
+### 24-C. What was NOT done, and why
+
+**No types were written from wire inference.** `MulticastStopContinuousEffect
+.SourceID` is 3,922,479 bits over 13,207 rows -- a fixed 297 bits each, which
+"looks like" an FName. It is not typed here. QUICK START permits changing a
+descriptor on the C# branch with primary-source proof; a bit width that fits is
+not proof, and 13-A, 13-E and 13-I are all records of a plausible value being
+worse than none. The same applies to the `.248` / `.249` handles: the replay
+declares no name, and a name-keyed overlay cannot reach an unnamed handle.
+
+Closing this properly needs the game binary or UE headers, not more work on
+what is already here.
+
+### 24-D. What the hunt did find: the generator could not reproduce its own output
+
+`table.rs` is a generated file, and **no checkout on this machine reproduced
+it.** Regenerating from `local/vrfkit-descriptors` gave `Typed 864 -> 857,
+Raw 157 -> 164`: eight entries downgraded.
+
+QUICK START blamed a missing worktree -- "master also depends on
+local/pawn-descriptors at d2b76f2 in the separate clean VRP-pawn-descriptors
+worktree". That branch and that worktree **do not exist**; the reference repo
+has only `local/vrfkit-descriptors` and `main`. The real cause was different
+and is now fixed: the C# reference had moved these fields from direct
+`.FVectorNetQuantize100()` calls onto `.Decode(ValorantPayloadDecoders.X(...))`
+objects, and `extract_descriptors.py` keyed only on method names, so everything
+routed through `.Decode(` collapsed to Raw.
+
+That is precisely the hazard section 8 states -- "a custom C# decoder means the
+type is unknown, not raw ... diff the .Decode() call sites against the Raw
+entries in table.rs before trusting them" -- and it had already fired without
+anyone noticing, because nothing checks that `table.rs` still matches what the
+generator produces.
+
+The eight that would have been lost:
+
+```
+DamageableComponent:MulticastNotifyDamage_Base   DamageOrigin, EquippableUsed
+DamageableComponent:MulticastNotifyDamage_Point  DamageOrigin, DamageDirection,
+                                                 DamageImpactLocation,
+                                                 DamageImpactNormal,
+                                                 DamageImpactBoneRelativeLocation,
+                                                 EquippableUsed
+```
+
+`EquippableUsed` is the field section 7-J is about. `DamageOrigin` and the
+impact vectors feed the damage geometry.
+
+With `PAYLOAD_DECODER_TYPES` in the generator, `extract_descriptors.py` ->
+`apply_type_corrections.py` -> `cargo fmt` reproduces the committed `table.rs`
+exactly. **The file is regenerable again**, and the QUICK START note about a
+missing worktree can be retired.
+
+Only decoders whose name states a type are mapped; `RawPayload` and
+`CapturedPayload` still fall through to Raw. The regression test was seen
+failing before the fix.
+
+### 24-E. A test suite nothing told anyone to run
+
+`tools/tests` holds 57 tests over the generators -- `extract_descriptors`,
+`check_ascii`, `check_effect_decoder`, `to_valplay_bundle`. Cargo does not run
+`.py`, and no documented check invoked them, so they had been passing or
+failing unobserved. `python -m unittest discover -s tools\tests -p "test_*.py"`
+is now in QUICK START. This is the same shape as 22-F's `events.parquet`: not a
+failing guard, an absent one.
+
+### 24-F. Where the residue actually is now
+
+Ranked by what could still move, after 24-B:
+
+- **~8.6M property bits** outside AbilitiesAndBuffs -- `Rounds` (array parent
+  rows, additive by design), `TrackedRewards`, `AbilityCastsThisRound`,
+  `ReplayLastTransformUpdateTimeStamp` (Skip by descriptor), `Ping`
+  (deliberately untyped, section 18). Each needs its own look; none is a
+  single table edit.
+- **2.8M bits** behind the adapter migration (24-B's last row).
+- **23.4M bits** with no upstream type information. Blocked on inputs this
+  repository does not have.
