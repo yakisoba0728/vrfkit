@@ -9,8 +9,31 @@
 //! with full context: packet, bunch, channel, actor, header fields, and the
 //! exact bit position where failure occurred. This is essential for debugging
 //! new game builds where the payload transform may not yet be correct.
+//!
+//! The event log is bounded. On a healthy replay it stays empty -- 02d4d478
+//! records zero events -- but a replay whose transform is wrong can fail one
+//! block per bunch, and at 530 401 bunches an unbounded `Vec` of ~200-byte
+//! events is 100 MB of diagnostics for a run whose whole point is that it
+//! failed. [`MAX_DIAGNOSTIC_EVENTS`] caps the log and
+//! [`NetStats::diagnostics_dropped`] counts what the cap refused, so the loss
+//! is reported rather than silent. The counters above the log are never capped:
+//! `skipped_bits` and the failure counts remain exact totals.
+//!
+//! The whole of this machinery is behind the default-on `diagnostics` feature.
+//! A consumer that only wants framing and counters can switch it off and lose
+//! [`DiagnosticEvent`], [`SkipReason`], the two snapshot types and the two
+//! fields below; nothing else in the crate changes shape.
 
+#[cfg(feature = "diagnostics")]
 use crate::content::ContentBlockHeader;
+
+/// Upper bound on [`NetStats::diagnostics`].
+///
+/// Sized so a full log is a few megabytes rather than a few hundred: an event
+/// is roughly 200 bytes, so this is about 3 MB. Anything past it is counted in
+/// [`NetStats::diagnostics_dropped`], never dropped quietly.
+#[cfg(feature = "diagnostics")]
+pub const MAX_DIAGNOSTIC_EVENTS: usize = 16_384;
 
 /// Cumulative counters for one replay's replication pass.
 #[derive(Debug, Clone, Default)]
@@ -70,15 +93,40 @@ pub struct NetStats {
     pub exported_guids: u64,
     /// Must-be-mapped GUIDs consumed.
     pub must_be_mapped_guids: u64,
-    /// Detailed diagnostic events for every skip/malformed occurrence.
+    /// Detailed diagnostic events for every skip/malformed occurrence, capped
+    /// at [`MAX_DIAGNOSTIC_EVENTS`].
     ///
     /// This is the primary debugging tool when the oracle pass rate is not 100%.
     /// Each event records the full context needed to locate the failure in the
     /// replay stream and compare with the C# reference parser.
+    #[cfg(feature = "diagnostics")]
     pub diagnostics: Vec<DiagnosticEvent>,
+    /// Diagnostic events the cap refused to record.
+    ///
+    /// Non-zero means [`Self::diagnostics`] is a prefix of what happened, not
+    /// the whole of it. The failure *counters* remain complete either way; only
+    /// the per-event context is truncated.
+    #[cfg(feature = "diagnostics")]
+    pub diagnostics_dropped: u64,
+}
+
+impl NetStats {
+    /// Record one diagnostic event, or count it as dropped if the log is full.
+    ///
+    /// The event is built by the closure so that a full log costs a length
+    /// compare rather than the construction of an event nobody will read.
+    #[cfg(feature = "diagnostics")]
+    pub fn record_diagnostic(&mut self, event: impl FnOnce() -> DiagnosticEvent) {
+        if self.diagnostics.len() < MAX_DIAGNOSTIC_EVENTS {
+            self.diagnostics.push(event());
+        } else {
+            self.diagnostics_dropped += 1;
+        }
+    }
 }
 
 /// Why a content block or bunch tail was skipped.
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone)]
 pub enum SkipReason {
     /// `content_bits` (from `ReadIntPacked`) exceeded `bits_remaining` in the
@@ -103,6 +151,7 @@ pub enum SkipReason {
 ///
 /// Every field requested in the diagnostic specification is captured here so
 /// that a single event dump is sufficient to identify the root cause.
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone)]
 pub struct DiagnosticEvent {
     /// Why this event was recorded.
@@ -144,6 +193,7 @@ pub struct DiagnosticEvent {
 }
 
 /// Snapshot of all bunch header flags for diagnostic reporting.
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone)]
 pub struct BunchFlagSnapshot {
     pub b_open: bool,
@@ -158,6 +208,7 @@ pub struct BunchFlagSnapshot {
 }
 
 /// Snapshot of the content block header fields for diagnostic reporting.
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone)]
 pub struct ContentBlockHeaderSnapshot {
     pub has_rep_layout: bool,
@@ -170,6 +221,7 @@ pub struct ContentBlockHeaderSnapshot {
     pub delete_flags: u8,
 }
 
+#[cfg(feature = "diagnostics")]
 impl From<&ContentBlockHeader> for ContentBlockHeaderSnapshot {
     fn from(h: &ContentBlockHeader) -> Self {
         Self {
@@ -182,5 +234,74 @@ impl From<&ContentBlockHeader> for ContentBlockHeaderSnapshot {
             outer_net_guid: h.outer_net_guid.0,
             delete_flags: h.delete_flags,
         }
+    }
+}
+
+#[cfg(all(test, feature = "diagnostics"))]
+mod tests {
+    use super::*;
+
+    fn dummy_event(block_index: u32) -> DiagnosticEvent {
+        DiagnosticEvent {
+            reason: SkipReason::HeaderReadError,
+            packet_id: 0,
+            bunch_index_in_packet: 0,
+            global_bunch_index: 0,
+            channel_bunch_index: 0,
+            channel_index: 0,
+            actor_net_guid: 0,
+            actor_path: None,
+            archetype_net_guid: 0,
+            class_path: None,
+            bunch_flags: BunchFlagSnapshot {
+                b_open: false,
+                b_close: false,
+                b_reliable: false,
+                b_partial: false,
+                b_partial_initial: false,
+                b_partial_final: false,
+                b_has_package_map_exports: false,
+                b_has_must_be_mapped_guids: false,
+                b_dormant: false,
+            },
+            payload_bit_count: 0,
+            consumed_bits: 0,
+            remaining_bits: 0,
+            content_block_header: None,
+            content_bits: None,
+            block_index_in_bunch: block_index,
+            bits_skipped: 0,
+        }
+    }
+
+    /// Past the cap the log stops growing and the overflow is counted, not
+    /// dropped quietly. A replay whose transform is wrong fails roughly one
+    /// block per bunch, and 530 401 unbounded events is ~100 MB of context for
+    /// a run whose counters already say it failed.
+    #[test]
+    fn diagnostics_are_capped_and_the_overflow_is_counted() {
+        let mut stats = NetStats::default();
+        for i in 0..(MAX_DIAGNOSTIC_EVENTS as u32 + 5) {
+            stats.record_diagnostic(|| dummy_event(i));
+        }
+        assert_eq!(stats.diagnostics.len(), MAX_DIAGNOSTIC_EVENTS);
+        assert_eq!(stats.diagnostics_dropped, 5);
+        assert_eq!(
+            stats.diagnostics[0].block_index_in_bunch, 0,
+            "the log keeps the earliest events, which are the ones that explain the rest"
+        );
+        assert_eq!(
+            stats.diagnostics[MAX_DIAGNOSTIC_EVENTS - 1].block_index_in_bunch,
+            MAX_DIAGNOSTIC_EVENTS as u32 - 1
+        );
+    }
+
+    /// A healthy pass records nothing and drops nothing. The reference replay
+    /// is this case: zero events across 608 020 content blocks.
+    #[test]
+    fn a_clean_pass_records_no_diagnostics() {
+        let stats = NetStats::default();
+        assert!(stats.diagnostics.is_empty());
+        assert_eq!(stats.diagnostics_dropped, 0);
     }
 }

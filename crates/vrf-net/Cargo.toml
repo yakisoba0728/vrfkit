@@ -11,3 +11,23 @@ description = "Unreal Engine replication: packets, bunches, and content-block fr
 vrf-bitio = { workspace = true }
 vrf-transform = { workspace = true }
 thiserror = { workspace = true }
+
+# Only one part of this crate is genuinely optional.
+#
+# `diagnostics` carries the per-failure event log: `DiagnosticEvent`,
+# `SkipReason`, the two snapshot types, and the two `NetStats` fields behind
+# them. Only `validate --diagnostics` reads it; a consumer that just wants
+# framing plus counters can switch it off and stop paying for the event
+# construction and the `Vec` that holds it. It is on by default because
+# `vrfkit`'s oracle uses it.
+#
+# Nothing else here is separable, and inventing flags for it would be
+# dishonest: packets, bunches, content blocks and fields are one state machine
+# -- a bunch cannot be framed without the packet reader that produced it, and a
+# field stream cannot be walked without the content block that declared its
+# length. The counters in `NetStats` are not optional either: this crate's
+# error policy is that every discard is counted, so a build that skipped the
+# counting would be a build that loses data silently.
+[features]
+default = ["diagnostics"]
+diagnostics = []
