@@ -259,9 +259,40 @@ REP_LAYOUT_DYN_ARRAY_RE = re.compile(
     r'\.RepLayoutDynamicArray<\w+>\(\s*\)'
 )
 
-# Decode(...) -- custom decoder, classified as Raw
+# Decode(...) -- custom decoder, classified as Raw unless the decoder it names
+# is one of PAYLOAD_DECODER_TYPES below.
 DECODE_RE = re.compile(
     r'\.Decode\('
+)
+
+# `.Decode(ValorantPayloadDecoders.X(...))` sites whose decoder NAMES its wire
+# type, so reading it is not inference.
+#
+# Why this exists: the C# reference moved these fields from a direct
+# `.FVectorNetQuantize100()` call to a decoder object, and this extractor keyed
+# only on the method name. Everything routed through `.Decode(` therefore
+# collapsed to Raw. That is exactly the hazard PROJECT_STATUS section 8 names
+# under "A CUSTOM C# DECODER MEANS THE TYPE IS UNKNOWN, NOT RAW" -- and it had
+# already fired: the committed table.rs carries these eight entries typed, and
+# regenerating without this map silently downgrades all eight.
+#
+# Only decoders whose name states a type belong here. `RawPayload` and
+# `CapturedPayload` are genuinely opaque and must keep falling through to Raw:
+# a decoder we cannot name a type for is unknown, not raw, and pretending
+# otherwise is the failure this comment is about.
+PAYLOAD_DECODER_TYPES = {
+    "VectorNetQuantize": "FieldType::VectorNetQuantize { scale: 1 }",
+    "VectorNetQuantize10": "FieldType::VectorNetQuantize { scale: 10 }",
+    "VectorNetQuantize100": "FieldType::VectorNetQuantize { scale: 100 }",
+    "VectorNetQuantizeNormal": "FieldType::VectorNetQuantizeNormal",
+    # An equippable arrives as the object's net GUID; the decoder resolves it to
+    # a weapon afterwards. Section 7-J is the record of getting this one wrong.
+    "Equippable": "FieldType::ObjectNetGuid",
+}
+
+PAYLOAD_DECODER_RE = re.compile(
+    r'\.Decode\(\s*(?:global\s*::\s*)?(?:[A-Za-z_]\w*\s*\.\s*)*'
+    r'ValorantPayloadDecoders\s*\.\s*(?P<decoder>\w+)'
 )
 
 # ClassNetCache AddFunction patterns
@@ -446,13 +477,20 @@ def extract_fields_from_block(
                 ))
             continue
 
-        # Check for Decode(...) -- custom/raw
+        # Check for Decode(...) -- a named payload decoder carries its type,
+        # anything else is custom and therefore unknown, which we record as Raw.
         if DECODE_RE.search(code_line):
+            decoder = PAYLOAD_DECODER_RE.search(code_line)
+            field_type = "FieldType::Raw"
+            if decoder:
+                field_type = PAYLOAD_DECODER_TYPES.get(
+                    decoder.group("decoder"), "FieldType::Raw"
+                )
             name = _extract_field_name(raw_line, code_line)
             if name:
                 fields.append((
                     name,
-                    "FieldType::Raw",
+                    field_type,
                     _extract_literal_handle(code_line),
                 ))
             continue

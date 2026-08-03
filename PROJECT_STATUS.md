@@ -95,6 +95,11 @@ python tools\check_effect_decoder.py --check
 # Expected: OK: 12 live effect decoder cases
 python tools\check_ascii.py --check
 # Expected: OK: 65 tracked Rust file(s), ASCII only
+python -m unittest discover -s tools\tests -p "test_*.py"
+# Expected: Ran 57 tests, OK. These guard the GENERATORS -- extract_descriptors,
+# check_ascii, check_effect_decoder, to_valplay_bundle. They are not run by
+# cargo (Cargo does not run .py) and were in no documented check until
+# 2026-08-04, which is how the .Decode() blindness in section 24 survived.
 ```
 
 ### Regression guard (run after any non-trivial change)

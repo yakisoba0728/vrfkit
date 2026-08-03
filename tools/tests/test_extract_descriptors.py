@@ -79,6 +79,54 @@ class ExtractDescriptorsTests(unittest.TestCase):
             if group.endswith("_ClassNetCache")
         }
 
+    def test_named_payload_decoders_carry_their_type_through_decode(self):
+        """`.Decode(ValorantPayloadDecoders.X(...))` must not collapse to Raw
+        when X names a wire type.
+
+        The C# reference moved these fields off direct `.FVectorNetQuantize100()`
+        calls onto decoder objects. The generator keyed only on the method name,
+        so every one of them became Raw -- and the committed table.rs carries
+        them typed, meaning a regeneration would have silently downgraded eight
+        entries. That is the hazard PROJECT_STATUS section 8 describes.
+
+        RawPayload stays Raw in the same descriptor, because a decoder whose
+        name does not state a type is unknown, not raw.
+        """
+        output = self.run_generator(
+            {
+                "Damage.cs": """
+public sealed class DamageParameters : ExportGroupDescriptor<DamageParameters>
+{
+    public override string Path => "/Script/ShooterGame.Damageable:MulticastNotifyDamage";
+    protected override void Configure()
+    {
+        AddProperty(x => x.Origin)
+            .Decode(ValorantPayloadDecoders.VectorNetQuantize100("Origin"));
+        AddProperty(x => x.Direction).Decode(ValorantPayloadDecoders.VectorNetQuantizeNormal("Direction"));
+        AddProperty(x => x.Impact).Decode(ValorantPayloadDecoders.VectorNetQuantize("Impact"));
+        AddProperty(x => x.EquippableUsed).Decode(ValorantPayloadDecoders.Equippable);
+        AddProperty(x => x.Blob).Decode(ValorantPayloadDecoders.RawPayload("TArray<FThing>"));
+    }
+}
+""",
+            }
+        )
+        got = {
+            (field, field_type.strip())
+            for group, field, field_type in ENTRY_RE.findall(output)
+            if group.endswith(":MulticastNotifyDamage")
+        }
+        self.assertEqual(
+            got,
+            {
+                ("Origin", "FieldType::VectorNetQuantize { scale: 100 }"),
+                ("Direction", "FieldType::VectorNetQuantizeNormal"),
+                ("Impact", "FieldType::VectorNetQuantize { scale: 1 }"),
+                ("EquippableUsed", "FieldType::ObjectNetGuid"),
+                ("Blob", "FieldType::Raw"),
+            },
+        )
+
     def test_add_raw_wrapper_calls_emit_all_eleven_raw_fields(self):
         output = self.run_generator(
             {
