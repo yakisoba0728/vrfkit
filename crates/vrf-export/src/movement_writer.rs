@@ -8,7 +8,7 @@
 use std::io::Write;
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, Float32Array, RecordBatch, UInt32Array};
+use arrow_array::{ArrayRef, Float32Array, RecordBatch, UInt8Array, UInt32Array};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
@@ -18,15 +18,24 @@ use crate::schema::movement_schema_ref;
 
 /// Default row group size for movement data.
 ///
-/// Movement rows are smaller (11 x 4 bytes = 44 bytes per row uncompressed),
-/// so we can afford a larger row group without excessive memory use. 256 Ki
-/// rows approximately 11 MB uncompressed per row group -- a good chunk size for ZSTD.
+/// Movement rows are smaller (11 x 4 bytes + 1 x 4 + 2 x 1 = 50 bytes per row
+/// uncompressed), so we can afford a larger row group without excessive memory
+/// use. 256 Ki rows approximately 13 MB uncompressed per row group -- a good
+/// chunk size for ZSTD.
 pub const DEFAULT_MOVEMENT_ROW_GROUP_SIZE: usize = 262_144;
 
 /// A single movement sample ready for export.
 ///
 /// All fields are non-optional (the replication channel always provides the
 /// full state vector; partial updates are merged upstream before reaching us).
+///
+/// Field order mirrors `movement_schema()` exactly, including the three
+/// trailing columns that were appended rather than interleaved.
+///
+/// `vrf_movement::MovementMove` also carries a `mode_flags` byte, which is not
+/// mirrored here: its only construction site assigns it from the same local as
+/// `movement_state`, so the two can never disagree and a `mode_flags` column
+/// would be a byte-identical copy of `movement_state`.
 #[derive(Debug, Clone, Copy)]
 pub struct MovementRecord {
     pub time_ms: u32,
@@ -40,6 +49,12 @@ pub struct MovementRecord {
     pub vel_x: f32,
     pub vel_y: f32,
     pub vel_z: f32,
+    /// Server-assigned tick decoded from the move header.
+    pub timestamp: u32,
+    /// Posture byte (crouch / walk / run / jump).
+    pub movement_state: u8,
+    /// 0 = variant0 (velocity absent on the wire), 1 = variant1.
+    pub move_type: u8,
 }
 
 /// Streaming Parquet writer for movement records.
@@ -56,6 +71,7 @@ pub struct MovementRecord {
 ///     pos_x: 1000.0, pos_y: 2000.0, pos_z: 300.0,
 ///     yaw: 45.0, pitch: -10.0,
 ///     vel_x: 100.0, vel_y: 0.0, vel_z: 0.0,
+///     timestamp: 31_337, movement_state: 2, move_type: 1,
 /// })?;
 /// writer.finish()?;
 /// # Ok(())
@@ -177,7 +193,19 @@ impl<W: Write + Send> MovementWriter<W> {
             Arc::new(Float32Array::from_iter_values(rows.iter().map(|r| r.vel_y)));
         let vel_z: ArrayRef =
             Arc::new(Float32Array::from_iter_values(rows.iter().map(|r| r.vel_z)));
+        let timestamp: ArrayRef = Arc::new(UInt32Array::from_iter_values(
+            rows.iter().map(|r| r.timestamp),
+        ));
+        let movement_state: ArrayRef = Arc::new(UInt8Array::from_iter_values(
+            rows.iter().map(|r| r.movement_state),
+        ));
+        let move_type: ArrayRef = Arc::new(UInt8Array::from_iter_values(
+            rows.iter().map(|r| r.move_type),
+        ));
 
+        // Order must match movement_schema() exactly -- RecordBatch::try_new
+        // only checks types, so a swap between two same-typed columns (e.g.
+        // movement_state and move_type) would pass and corrupt the export.
         let batch = RecordBatch::try_new(
             movement_schema_ref(),
             vec![
@@ -192,6 +220,9 @@ impl<W: Write + Send> MovementWriter<W> {
                 vel_x,
                 vel_y,
                 vel_z,
+                timestamp,
+                movement_state,
+                move_type,
             ],
         )
         .map_err(|e| ExportError::Parquet(e.into()))?;
