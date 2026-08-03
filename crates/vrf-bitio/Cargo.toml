@@ -7,6 +7,17 @@ license.workspace = true
 repository.workspace = true
 description = "LSB-first bit reader and Unreal Engine wire-format primitives for .vrf replays"
 
+[features]
+default = ["alloc"]
+
+# `read_fstring` is the only entry point in the crate that allocates; every
+# other read yields a scalar, fills a caller-owned buffer, or borrows. Turning
+# this off therefore drops the whole dependency on an allocator and leaves a
+# `no_std` bit reader, which is the only reduction here worth a flag -- nothing
+# else in the crate is optional in any meaningful sense. `BitError` stays
+# unconditional so the error type does not change shape with the feature.
+alloc = []
+
 [dependencies]
 
 [dev-dependencies]
