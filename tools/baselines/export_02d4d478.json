@@ -16,21 +16,23 @@
   "skipped_bits": 17506923,
   "movement_rows": 1839607,
   "net_guid_rows": 16167,
+  "event_rows": 195,
   "overlay_decoded_ok": 369743,
   "overlay_decode_errors": 0,
   "overlay_raw_skip": 73984,
   "overlay_not_in_table": 511916,
   "overlay_no_field_name": 33340,
-  "overlay_rows_offered": 988983
+  "overlay_rows_offered": 988983,
+  "effect_blobs_decoded": 53908
  },
  "parquet": {
   "fields": {
    "rows": 1246812,
-   "bytes": 13586343
+   "bytes": 13742379
   },
   "movement": {
    "rows": 1839607,
-   "bytes": 30695141
+   "bytes": 31835557
   },
   "actors": {
    "rows": 3827,
@@ -39,6 +41,10 @@
   "net_guids": {
    "rows": 16167,
    "bytes": 153606
+  },
+  "events": {
+   "rows": 195,
+   "bytes": 10201
   }
  }
 }

@@ -15,11 +15,13 @@ machine-checks is not guarded, however often it appears in a document.
 
 Two independent checks run here, and they fail on different things:
 
-  1. CROSS-CHECK.   Three of the printed counters are identities against the
-     Parquet files: `NetGUID rows` is net_guids.parquet's row count,
-     `Movement rows` is movement.parquet's, and `Actor opens + Actor closes`
-     is actors.parquet's. If the summary and the file disagree, the summary
-     is lying, and this fails with no baseline needed.
+  1. CROSS-CHECK.   Some printed counters are identities against the Parquet
+     files: `NetGUID rows` is net_guids.parquet's row count, `Movement rows`
+     is movement.parquet's, `Event rows` is events.parquet's, and
+     `Actor opens + Actor closes` is actors.parquet's. If the summary and the
+     file disagree, the summary is lying, and this fails with no baseline
+     needed. The set lives in `cross_check_identities`; do not restate its
+     size here, where it cannot be checked.
      (fields.parquet has no such identity: it also carries RPC parameters and
      flattened dynamic-array leaves, so its row count is pinned, not derived.)
 
@@ -99,14 +101,16 @@ PATTERNS = {k: re.compile(v) for k, v in COUNTERS.items()}
 PARQUET_FILES = ("fields", "movement", "actors", "net_guids", "events")
 
 
-def cross_checks(counters: dict, parquet: dict) -> list[str]:
-    """The printed counters that ARE Parquet row counts. Disagreement = a lie.
+def cross_check_identities(counters: dict, parquet: dict) -> list:
+    """The printed counters that ARE Parquet row counts.
 
-    Each entry is (label, printed value, actual rows). A counter the summary
-    did not print is itself a failure: the identity cannot be checked, which
-    is exactly the state that let the malformed counter read as a vacuous 0.
+    Each entry is (label, printed value, actual rows). Split out from
+    `cross_checks` so the pass message can count them instead of stating a
+    literal: the message said "3" for as long as there were three, and adding
+    the fourth made it report a number it had not checked -- the same class of
+    claim this whole script exists to catch.
     """
-    identities = [
+    return [
         ("NetGUID rows", counters.get("net_guid_rows"), parquet["net_guids"]["rows"]),
         ("Movement rows", counters.get("movement_rows"), parquet["movement"]["rows"]),
         ("Event rows", counters.get("event_rows"), parquet["events"]["rows"]),
@@ -118,8 +122,17 @@ def cross_checks(counters: dict, parquet: dict) -> list[str]:
             parquet["actors"]["rows"],
         ),
     ]
+
+
+def cross_checks(counters: dict, parquet: dict) -> list[str]:
+    """Disagreement between a printed counter and its Parquet file = a lie.
+
+    A counter the summary did not print is itself a failure: the identity
+    cannot be checked, which is exactly the state that let the malformed
+    counter read as a vacuous 0.
+    """
     out = []
-    for label, printed, actual in identities:
+    for label, printed, actual in cross_check_identities(counters, parquet):
         if printed is None:
             out.append(f"{label}: the export summary did not print it")
         elif printed != actual:
@@ -246,12 +259,14 @@ def main() -> int:
         return 1
 
     c = current["counters"]
+    n_identities = len(cross_check_identities(c, current["parquet"]))
     print(f"OK: {replay.name} matches the baseline "
           f"(NetGUID rows {c['net_guid_rows']}, "
           f"blocks {c['content_blocks']}, fields {c['fields']}, "
           f"rpcs {c['rpcs']}, movement {c['movement_rows']}, "
+          f"events {c['event_rows']}, "
           f"decode errors {c['overlay_decode_errors']}); "
-          f"3 printed counters cross-check against their Parquet files")
+          f"{n_identities} printed counters cross-check against their Parquet files")
     return 0
 
 
