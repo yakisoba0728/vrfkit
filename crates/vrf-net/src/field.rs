@@ -69,15 +69,10 @@ pub fn parse_rep_layout(reader: &mut BitReader<'_>, sink: &mut dyn FieldSink) ->
         }
 
         let handle = encoded_handle - 1;
+        // A zero-bit payload is valid (an empty field) and is emitted like any
+        // other: `sub_reader(0)` yields an empty window and the overrun test
+        // below is trivially false for it, so it needs no special case.
         let payload_bits = reader.read_int_packed()?;
-
-        if payload_bits == 0 {
-            // Zero-bit payload is valid (empty field), still emit.
-            let sub = reader.sub_reader(0)?;
-            sink.on_field(handle, 0, sub);
-            field_count += 1;
-            continue;
-        }
 
         if payload_bits as u64 > reader.bits_remaining() {
             // Malformed: declared more bits than available.

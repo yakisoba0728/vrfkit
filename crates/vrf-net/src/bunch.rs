@@ -4,7 +4,8 @@ use crate::types::ChannelCloseReason;
 
 /// Parsed bunch header -- all fields that describe one bunch within a packet.
 ///
-/// See [`crate::packet::RawPacketReader::parse_bunch_header`] for bit layout.
+/// See `RawPacketReader::parse_bunch_header` in [`crate::packet`] for the bit
+/// layout that produces these fields.
 #[derive(Debug, Clone, Default)]
 pub struct RawBunchHeader {
     /// Packet this bunch belongs to.

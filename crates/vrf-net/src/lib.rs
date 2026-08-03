@@ -33,6 +33,36 @@
 //!
 //! A malformed bunch is discarded and counted; it does not abort the replay.
 //! Silent skipping is forbidden: every discard increments a stat counter.
+//!
+//! # Module layout
+//!
+//! One module per layer above, plus the pieces they share:
+//!
+//! | module | layer |
+//! |---|---|
+//! | [`packet`] | sentinel sizing, bunch headers, partial-sequence tracking |
+//! | [`bunch`] | bunch header struct, partial reassembly |
+//! | [`pipeline`] | the reader that drives all of it, and the sink trait |
+//! | [`content`] | content block headers |
+//! | [`field`] | field and RPC streams |
+//! | [`net_guid`] | `InternalLoadObject` |
+//! | [`stats`] | counters and the diagnostic event log |
+//! | [`types`], [`error`] | shared wire types and the error enum |
+//!
+//! [`pipeline`] is itself split -- channel lifecycle, spawn data and the
+//! per-block framing loop are separate private submodules -- because those
+//! three run at rates three orders of magnitude apart and are read against
+//! different parts of the wire format. Its public surface is unchanged by that
+//! split.
+//!
+//! # Features
+//!
+//! - `diagnostics` (default): the per-failure event log in [`stats`]. Turning
+//!   it off removes [`stats::DiagnosticEvent`] and the machinery that builds
+//!   one; the counters that say *how much* was discarded stay in every build,
+//!   because losing them would mean losing data silently. Nothing else in this
+//!   crate is optional: packets, bunches, content blocks and fields are one
+//!   state machine and cannot be taken apart.
 
 #![forbid(unsafe_code)]
 

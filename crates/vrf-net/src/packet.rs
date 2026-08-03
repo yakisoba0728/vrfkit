@@ -312,13 +312,27 @@ impl Default for RawPacketReader {
 ///
 /// The sentinel is the highest `1` bit in the last byte; all bits above it
 /// (toward MSB) are padding. The sentinel itself is not data.
-fn compute_bit_size(packet: &[u8], mut last_byte: u8) -> i32 {
-    let mut bit_size = (packet.len() as i32) * 8 - 1;
-    while (last_byte & 0x80) == 0 {
-        last_byte <<= 1;
-        bit_size -= 1;
-    }
-    bit_size
+///
+/// The reference walk is a shift loop:
+///
+/// ```text
+/// bitSize = len*8 - 1
+/// while (lastByte & 0x80) == 0: lastByte <<= 1; bitSize -= 1
+/// ```
+///
+/// which runs once per packet and iterates once per padding bit. It counts
+/// exactly the leading zeros of the last byte, so `leading_zeros` gives the
+/// same answer without the loop. `last_byte` is non-zero here -- the caller
+/// rejects a zero last byte as a packet with no sentinel -- so the count is at
+/// most 7 and the result never underflows.
+///
+/// # Panics
+///
+/// Panics in debug builds if `last_byte` is zero, which would mean the caller
+/// skipped the malformed-packet check.
+fn compute_bit_size(packet: &[u8], last_byte: u8) -> i32 {
+    debug_assert!(last_byte != 0, "caller must reject a zero last byte");
+    (packet.len() as i32) * 8 - 1 - last_byte.leading_zeros() as i32
 }
 
 #[cfg(test)]
