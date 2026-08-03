@@ -16,7 +16,8 @@ checkpoints in the corpus, not argued.
 Section 22-I then measured the other question about them and got the opposite
 of the expected answer: checkpoints are NOT redundant with ReplayData. 6-11% of
 their property values disagree with the incremental stream at the same
-timestamp. The parser is now recommended, and CHECKPOINT_SPEC.md specifies it.
+timestamp. Section 23 built the parser on the strength of that, behind
+`--checkpoints`. **Every chunk type in a `.vrf` is now read.**
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
 measurement, then implemented and verified at 100%. See
@@ -80,11 +81,11 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 287 passed, 0 failed across all targets (284 regular + 3 doctests).
+# Expected: 298 passed, 0 failed across all targets (295 regular + 3 doctests).
 # Sum the per-target lines; the last line is one target, not the total.
-# Per crate at 5c46851: bitio 22, transform 22, container 41, frame 6,
-# schema 47, net 32, decode 75, movement 5, export 25, vrfkit 12.
-# This figure has been stale FIVE times now -- it read 252 while HEAD had 257,
+# Per crate at b21eedf: bitio 22, transform 22, container 47, frame 6,
+# schema 52, net 32, decode 75, movement 5, export 25, vrfkit 12.
+# This figure has been stale SIX times now -- it read 252 while HEAD had 257,
 # then 257 while four agents had taken it to 287. Re-measure before quoting.
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
@@ -93,7 +94,7 @@ cargo fmt --check
 python tools\check_effect_decoder.py --check
 # Expected: OK: 12 live effect decoder cases
 python tools\check_ascii.py --check
-# Expected: OK: 63 tracked Rust file(s), ASCII only
+# Expected: OK: 65 tracked Rust file(s), ASCII only
 ```
 
 ### Regression guard (run after any non-trivial change)
@@ -155,6 +156,13 @@ python tools\check_export_baseline.py --baseline tools\baselines\export_02d4d478
 # point is that a silent change is impossible, not that the numbers are sacred.
 # It grew a fifth file at section 22: PARQUET_FILES drives the whole script, so
 # events.parquet was invisible -- not failing, unguarded -- until it was added.
+python tools\check_export_baseline.py --baseline tools\baselines\checkpoint_02d4d478.json `
+       --checkpoints --out out\cp_check
+# Expected: OK. Guards the OPTIONAL --checkpoints path, which the default
+# baseline above cannot see at all: that run does not pass the flag, so the
+# checkpoint counters are never printed and checkpoint_fields.parquet is never
+# written. Pins 7 checkpoint counters plus that file's rows and bytes.
+# An off-by-default path with no baseline is an unguarded path -- section 23.
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1210.json
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1211.json
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1300.json
@@ -252,23 +260,22 @@ done, or closed with a measurement showing it cannot or should not be done.
        unexamined region left in the file. The ceiling stands until a game
        build declares the group
 
-Where the open work is now, after section 22:
+Where the open work is now, after section 23:
 
-  - IMPLEMENT THE CHECKPOINT PARSER. 22-I measured the question 22-D left
-    open and the answer went the other way: 6-11% of a checkpoint's RepLayout
-    values disagree with what ReplayData carried at the same timestamp, the
-    median differing key was last written ~77 s earlier, and 0.5-2% are keys
-    ReplayData never sent at all. Checkpoints are not redundant. The format is
-    fully specified in CHECKPOINT_SPEC.md and sized at 4 files + 1 new
-    (~150 lines); reuse decompress_replay_data, iter_demo_frames, NetGuidCache
-    and ReplicationReader unchanged. Seed a SEPARATE cache and reader per
-    checkpoint -- do not feed checkpoint exports into the live ReplayData
-    cache, and do not replay its channel opens through the live reader
-  - Event payload words are raw for 5 of 7 groups (22-H). characterDeath is
-    solved; characterUltimateUsed's single word is not
+  - The checkpoint parser is DONE (section 23). Every chunk type in the file is
+    read; there is no unexamined region left. What is still open about it:
+    checkpoint content is exported alongside ReplayData's, not reconciled with
+    it -- the two disagree (22-I) and nothing adjudicates them. The checkpoint
+    guid table and the 46-51 checkpoint-only group paths are read but not
+    exported
   - the 26M untyped bits that are NOT effect blobs and NOT AbilitiesAndBuffs
     are missing overlay entries, not missing decoders -- MulticastStop-
-    ContinuousEffect's SourceID/EffectID are the worked example in 22-E
+    ContinuousEffect's SourceID/EffectID are the worked example in 22-E.
+    This is now the largest addressable gap
+  - Event payload words are raw for 5 of 7 groups (22-H). characterDeath is
+    solved; characterUltimateUsed's single word is not
+  - AbilitiesAndBuffsComponent stays closed. 22-D ruled out the last place its
+    ClassNetCache declaration could have been hiding
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -320,18 +327,17 @@ the constant provenance `note` run unchanged on our data.
 ## 2. Repository State (2026-08-04)
 
 ```
-measured at  : master, 2026-08-04, after the five-agent session (section 22)
-               was integrated and its worktrees removed
+measured at  : b21eedf, 2026-08-04, after the checkpoint parser (section 23)
 branches     : master only. No worktrees, no stashes, no remote
 commits      : run `git rev-list --count HEAD`. No number is written here
                on purpose: the two that were had both gone stale, and this
                one would be wrong the moment the line was committed
-tests        : 287 passing, 0 failed (284 regular + 3 doctests: vrf_export 2,
-               vrf_transform 1). This line has been stale FIVE times -- 238,
-               246, 249, 252, 257. Re-measure with `cargo test --workspace`
+tests        : 298 passing, 0 failed (295 regular + 3 doctests: vrf_export 2,
+               vrf_transform 1). This line has been stale SIX times -- 238,
+               246, 249, 252, 257, 287. Re-measure with `cargo test --workspace`
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
-ascii        : 63 tracked Rust files, clean; --self-test passes
+ascii        : 65 tracked Rust files, clean; --self-test passes
 working tree : clean
 corpus       : 215/215, malformed 0, decode errors 0 across all 215
 overlay      : 369,743 decoded / 73,984 raw-skip / 511,916 not-in-table /
@@ -4311,3 +4317,113 @@ Method: `valdiff` in the session probe. ReplayData is walked packet by packet in
 time order maintaining `(actor, object, handle) -> (bit_count, raw_bits,
 last_write_ms)`; each checkpoint is compared against that state the moment the
 packet clock passes its `Time1`. Comparison is bit-exact on `raw_bits`.
+
+---
+
+## 23. The checkpoint parser, built (2026-08-04)
+
+Measured at `b21eedf`. 22-I established the reason; this is the implementation.
+**Every chunk type in a `.vrf` is now read. There is no unexamined region left
+in the file.**
+
+### 23-A. Shape
+
+| Crate | Added |
+|---|---|
+| `vrf-container` | `checkpoint.rs`: the six-field header (identical framing to an Event chunk) and `decompress_checkpoint`. The Oodle body is now one shared `decompress_oodle_archive` instead of a copy |
+| `vrf-schema` | `checkpoint.rs`: `read_checkpoint_tables`, the guid cache and export-group map, returning where the DemoFrame begins |
+| `vrfkit` | a `ChunkType::Checkpoint` arm and the `--checkpoints` flag |
+
+Reused unchanged, exactly as CHECKPOINT_SPEC.md predicted: `ChunkIterator`,
+`iter_demo_frames`, `NetGuidCache`, `ReplicationReader`, `ExportSink`,
+`FieldWriter`. The only genuinely new code is the two table readers.
+
+### 23-B. Four checks that make a desync loud
+
+A checkpoint archive has no checksum and no length-delimited records, so a
+mis-read count does not fail -- it lands the cursor somewhere plausible and
+produces well-formed nonsense. `NumNetFieldExports` is `IntPacked` while the
+group count directly above it is a `u32`; reading the former as a `u32` doubles
+it, which is what defeated the first parse attempt during the investigation.
+
+So the parser asserts, and each assertion errors rather than counts:
+
+| Check | Corpus evidence |
+|---|---|
+| path discriminator is 0 or 1 | 17,186,645 entries, no third value |
+| an exported slot's handle equals its own index | 11,529,869 slots, 0 violations |
+| the three reserved prologue words are zero | 4,024 checkpoints |
+| the parse ends exactly at `prologue + 8` | 4,024 checkpoints |
+
+The last is the only end-to-end one and the only thing that would catch the
+`IntPacked` trap. A test plants a one-byte offset shift and confirms it fires.
+
+### 23-C. Decisions, and why
+
+**A separate table.** Checkpoint rows go to `checkpoint_fields.parquet`, not
+into `fields.parquet` behind a source column. A column on 1.2M rows to mark 79k
+of them is the wrong shape, and `fields.parquet` is read by the valplay
+adapter, whose capture predicate keys on a row having no decoded value --
+moving that file's population risks metric parity for no gain.
+
+**Its own cache, reader, channel state and buffers, per checkpoint.** A
+snapshot frame re-opens a channel for every actor alive at that instant, ~160
+of them. Sharing any of the four would replay those opens through the live
+stream's channel table.
+
+**Actor and movement rows are dropped, and the count is printed.** 2,721 actor
+rows on 02d4d478. They are snapshot re-opens, not spawns; folding them into
+`actors.parquet` would inflate a lifecycle table with events that did not
+happen. Printed rather than discarded silently.
+
+**Hardcoded guid paths register their decimal index.** 24.3% of guid entries
+carry a name-table index instead of a string, and the table is not in the
+replay. Rendering the index matches what `read_fname` already does for
+hardcoded field names; dropping the entry would lose the outer-GUID chain for a
+quarter of the table.
+
+**Off by default.** The default export is byte-identical to one from before
+this existed -- confirmed by the pinned baseline, which is also what pins that
+the Oodle refactor changed nothing on the ReplayData path.
+
+### 23-D. Verification
+
+Cross-checked against the independent investigation probe over all 215 files.
+Every figure matches exactly:
+
+```
+checkpoints      4,024        guid entries    17,186,645
+group records    1,955,988    exported slots  11,529,869
+frames           4,024        frame packets      904,891
+plaintext        2,967,025,362 bytes
+errors 0    check violations 0
+```
+
+On 02d4d478: 18 checkpoints, 78,748 rows into `checkpoint_fields.parquet`
+(191,335 bytes), overlay 23,458 decoded / **0 errors** / 1,883 raw-skip /
+28,844 not-in-table / 23,807 unnamed. Zero decode errors on two further
+replays as well.
+
+Guards: `tools/baselines/checkpoint_02d4d478.json` pins all seven checkpoint
+counters plus `checkpoint_fields.parquet`'s rows and bytes, reached via
+`check_export_baseline.py --checkpoints`. Seen failing on a planted counter
+before being trusted. The default baseline is unmoved.
+
+Workspace: 298 tests (container 41 -> 47, schema 47 -> 52), clippy 0, fmt
+clean, ASCII 65 files.
+
+### 23-E. What this did not do
+
+- **Checkpoint content is not merged with ReplayData.** The two disagree (22-I)
+  and nothing here adjudicates them; both are exported and the consumer decides.
+- **The 0-10 ClassNetCache blocks per checkpoint frame are walked by the real
+  sink now**, unlike in 22-I's probe -- but no separate claim is made about
+  them, and 22-I's scope statement still stands for that measurement.
+- The checkpoint guid table is registered into the per-checkpoint cache and
+  used for name resolution, but is **not exported**. `net_guids.parquet` still
+  comes from the ReplayData pass alone. The 46-51 checkpoint-only group paths
+  are likewise not surfaced anywhere.
+- `Flags` on a guid entry is consumed and ignored. Inferred to be
+  `bNoLoad | bIgnoreWhenMissing`; only its two-value distribution is measured.
+- Uncompressed replays take a trivial passthrough in `decompress_checkpoint`.
+  No corpus file exercises it.

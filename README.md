@@ -7,22 +7,24 @@ VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
 
 ## 상태
 
-작업 중. 현재 검증된 범위 (`cargo test --workspace` 287 통과, `clippy -D warnings` 0, `fmt` 0):
+작업 중. 현재 검증된 범위 (`cargo test --workspace` 298 통과, `clippy -D warnings` 0, `fmt` 0):
 
-크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표는 `5c46851` 시점 실측이고, 이 숫자들은 지금까지 여러 번 낡은 채로 방치됐습니다.
+크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표는 `b21eedf` 시점 실측이고, 이 숫자들은 지금까지 여러 번 낡은 채로 방치됐습니다.
 
 | 레이어 | 크레이트 | 상태 |
 |---|---|---|
 | 비트 리더 / UE 와이어 포맷 | `vrf-bitio` | ✅ 22 테스트 |
 | 페이로드 변환 (5개 빌드) | `vrf-transform` | ✅ 22 테스트, 골든 벡터 55/55 바이트 일치 |
-| 컨테이너 (info/header/chunk/event, Oodle) | `vrf-container` | ✅ 41 테스트 + **실전 215/215 파일** |
+| 컨테이너 (info/header/chunk/event/checkpoint, Oodle) | `vrf-container` | ✅ 47 테스트 + **실전 215/215 파일** |
 | DemoFrame 순회 | `vrf-frame` | ✅ 6 테스트 |
-| 리플레이 동적 스키마 + GUID 캐시 | `vrf-schema` | ✅ 47 테스트 |
+| 리플레이 동적 스키마 + GUID 캐시 + 체크포인트 테이블 | `vrf-schema` | ✅ 52 테스트 |
 | 리플리케이션 (packet/bunch/content block/field) | `vrf-net` | ✅ 32 테스트 |
 | 필드 디코더 + 중첩 배열 + 타입 오버레이 + 이펙트 | `vrf-decode` | ✅ 75 테스트 |
 | movement 디코더 | `vrf-movement` | ✅ 5 테스트 |
 | Parquet 내보내기 | `vrf-export` | ✅ 25 테스트, NDJSON 대비 8~25× 작음 |
 | 통합 CLI | `vrfkit` | ✅ 12 테스트, `inspect` / `validate` / `export` |
+
+파일의 모든 청크 종류를 읽습니다 — ReplayData, Event, 그리고 Checkpoint. 미개봉 영역은 없습니다.
 
 ## 기존 파서와의 대조 결과
 
@@ -205,6 +207,17 @@ vrfkit export   <file.vrf> --out <dir>
 이미 나갑니다.
 
 `events.parquet` 는 서버가 직접 기록한 이벤트 타임라인입니다(아래).
+
+`--checkpoints` 를 주면 Checkpoint 청크도 읽어 `checkpoint_fields.parquet` 를
+추가로 씁니다(02d4d478 기준 78,748행 / 191 KB). 기본값이 off인 이유는 파일의
+약 10%를 더 읽는 별도 패스이기 때문이고, **켜든 끄든 나머지 다섯 테이블은 바이트
+단위로 동일합니다.**
+
+Checkpoint는 한 시점의 전체 상태 스냅샷인데, 중복이 아닙니다 — 같은 타임스탬프의
+ReplayData 값과 **6~11%가 불일치**하고 0.5~2%는 ReplayData가 보낸 적 없는 키입니다.
+차이나는 키의 마지막 ReplayData 갱신은 중앙값 77초 전이라 정렬 잔차가 아닙니다.
+자세한 측정은 `PROJECT_STATUS.md` 22-I, 바이트 레벨 포맷은
+[`CHECKPOINT_SPEC.md`](CHECKPOINT_SPEC.md) 를 보세요.
 
 ## 설계
 
