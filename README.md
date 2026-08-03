@@ -7,22 +7,44 @@ VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
 
 ## 상태
 
-작업 중. 현재 검증된 범위 (`cargo test --workspace` 298 통과, `clippy -D warnings` 0, `fmt` 0):
+작업 중. 현재 검증된 범위 (`cargo test --workspace` 325 통과, `clippy -D warnings` 0, `fmt` 0):
 
-크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표는 `b21eedf` 시점 실측이고, 이 숫자들은 지금까지 여러 번 낡은 채로 방치됐습니다.
+크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표에서 개수를 뺐습니다 -- 매번 낡았고, 재는 게 한 줄입니다.
 
-| 레이어 | 크레이트 | 상태 |
+| 레이어 | 크레이트 | 기능 플래그 |
 |---|---|---|
-| 비트 리더 / UE 와이어 포맷 | `vrf-bitio` | ✅ 22 테스트 |
-| 페이로드 변환 (5개 빌드) | `vrf-transform` | ✅ 22 테스트, 골든 벡터 55/55 바이트 일치 |
-| 컨테이너 (info/header/chunk/event/checkpoint, Oodle) | `vrf-container` | ✅ 47 테스트 + **실전 215/215 파일** |
-| DemoFrame 순회 | `vrf-frame` | ✅ 6 테스트 |
-| 리플레이 동적 스키마 + GUID 캐시 + 체크포인트 테이블 | `vrf-schema` | ✅ 52 테스트 |
-| 리플리케이션 (packet/bunch/content block/field) | `vrf-net` | ✅ 32 테스트 |
-| 필드 디코더 + 중첩 배열 + 타입 오버레이 + 이펙트 | `vrf-decode` | ✅ 75 테스트 |
-| movement 디코더 | `vrf-movement` | ✅ 5 테스트 |
-| Parquet 내보내기 | `vrf-export` | ✅ 25 테스트, NDJSON 대비 8~25× 작음 |
-| 통합 CLI | `vrfkit` | ✅ 12 테스트, `inspect` / `validate` / `export` |
+| 비트 리더 / UE 와이어 포맷 | `vrf-bitio` | `no_std`, `alloc` |
+| 페이로드 변환 (5개 빌드) | `vrf-transform` | 없음 (`ALL_VERSIONS` 타입이 개수를 인코딩) |
+| 컨테이너 (info/header/chunk/event/checkpoint, Oodle) | `vrf-container` | `oodle` `event` `checkpoint` |
+| DemoFrame 순회 | `vrf-frame` | 없음 (섹션은 커서 정렬용 바이트 범위) |
+| 리플레이 동적 스키마 + GUID 캐시 + 체크포인트 테이블 | `vrf-schema` | `checkpoint` |
+| 리플리케이션 (packet/bunch/content block/field) | `vrf-net` | `diagnostics` |
+| 필드 디코더 + 중첩 배열 + 타입 오버레이 + 이펙트 | `vrf-decode` | `array` `effect` `overlay` `structs` |
+| movement 디코더 | `vrf-movement` | 없음 (단일 프로토콜) |
+| Parquet 내보내기 | `vrf-export` | `parquet` + 테이블별 |
+| 통합 CLI | `vrfkit` | `export` |
+
+필요한 것만 가져다 쓸 수 있습니다. 확인 방법:
+
+```
+cargo tree -p vrfkit --no-default-features | grep -E "arrow|parquet|zstd"
+# 아무것도 안 나옵니다
+```
+
+ZSTD만 일부러 플래그로 빼지 않았습니다 -- 모든 라이터가 그걸 고르므로, 끄면 이
+크레이트가 설명할 수 없는 파일을 뱉는 빌드가 생깁니다.
+
+## 성능
+
+`02d4d478`(46 MB) 기준:
+
+| | 이전 | 현재 |
+|---|---|---|
+| `export` | 1.64초 / 201 MB | **0.808초 / 109 MB** |
+| `validate` | 1.42초 / 65 MB | **0.685초 / 65 MB** |
+
+출력은 **바이트 단위로 동일**합니다. 자세한 내역과 측정 후 기각한 최적화들은
+`PROJECT_STATUS.md` 25절에 있습니다.
 
 파일의 모든 청크 종류를 읽습니다 — ReplayData, Event, 그리고 Checkpoint. 미개봉 영역은 없습니다.
 
