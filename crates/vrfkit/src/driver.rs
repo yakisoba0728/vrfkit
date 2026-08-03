@@ -22,8 +22,8 @@
 //! unchanged; only the thread they are produced on differs.
 //!
 //! The channels are bounded so a slow writer applies backpressure instead of
-//! growing the in-flight batch queue without limit. `actors` and `net_guids`
-//! stay inline: together they are under 1% of the write cost.
+//! growing the in-flight batch queue without limit. `actors`, `net_guids` and
+//! `events` stay inline: together they are under 1% of the write cost.
 //!
 //! No error is dropped on this path. A writer that fails returns its error and
 //! drops its receiver, which turns the next `send` into an error the packet loop
@@ -37,11 +37,13 @@ use std::sync::mpsc::{SyncSender, sync_channel};
 use std::thread;
 use std::time::Instant;
 
-use vrf_container::{ChunkIterator, ChunkType, decompress_replay_data, parse_preamble};
+use vrf_container::{
+    ChunkIterator, ChunkType, decompress_replay_data, parse_event_chunk, parse_preamble,
+};
 use vrf_decode::{OverlayErrorReport, OverlayStats};
 use vrf_export::{
-    ActorWriter, ExportError, FieldRecord, FieldWriter, MovementRecord, MovementWriter,
-    NetGuidRecord, NetGuidWriter,
+    ActorWriter, EventRecord, EventWriter, ExportError, FieldRecord, FieldWriter, MovementRecord,
+    MovementWriter, NetGuidRecord, NetGuidWriter,
 };
 use vrf_frame::iter_demo_frames;
 use vrf_net::pipeline::ReplicationReader;
@@ -170,10 +172,14 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     let fields_file = BufWriter::new(fs::File::create(out_path.join("fields.parquet"))?);
     let movement_file = BufWriter::new(fs::File::create(out_path.join("movement.parquet"))?);
     let actors_file = BufWriter::new(fs::File::create(out_path.join("actors.parquet"))?);
+    let events_file = BufWriter::new(fs::File::create(out_path.join("events.parquet"))?);
 
     let mut field_writer = FieldWriter::new(fields_file)?;
     let mut movement_writer = MovementWriter::new(movement_file)?;
     let mut actor_writer = ActorWriter::new(actors_file)?;
+    // Event chunks are a couple of hundred rows and are written inline for the
+    // same reason `actors` is: the encoding cost is far below a thread's worth.
+    let mut event_writer = EventWriter::new(events_file)?;
 
     let mut fields = WriterThread::<FieldRecord>::spawn("fields", move |rx| {
         for batch in rx {
@@ -204,10 +210,34 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     // Reusable per-packet record buffers; see `RecordBuffers`.
     let mut buffers = RecordBuffers::default();
     let mut movement_rows: u64 = 0;
+    let mut event_rows: u64 = 0;
+    // Payload bytes an Event chunk declared that its own header layout does not
+    // reach. Zero across the corpus; counted rather than dropped in silence.
+    let mut event_trailing_bytes: u64 = 0;
     let mut overlay_stats = OverlayStats::default();
     let mut error_report = OverlayErrorReport::default();
 
     while let Some(chunk) = chunk_iter.next_chunk()? {
+        // Event chunks carry the server's own labelled timeline. They are
+        // uncompressed and independent of the replication pass, so they are
+        // read here and written straight out.
+        if chunk.chunk_type == ChunkType::Event {
+            let payload =
+                &data[chunk.data_offset..chunk.data_offset + chunk.size_in_bytes as usize];
+            let event = parse_event_chunk(payload)?;
+            event_trailing_bytes += event.trailing_bytes as u64;
+            event_writer.push(EventRecord {
+                id: event.id,
+                group: event.group,
+                metadata: event.metadata,
+                time1: event.time1,
+                time2: event.time2,
+                payload_size: event.size_in_bytes,
+                raw_payload: event.payload.to_vec(),
+            })?;
+            event_rows += 1;
+            continue;
+        }
         if chunk.chunk_type != ChunkType::ReplayData {
             continue;
         }
@@ -280,6 +310,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     fields.finish()?;
     movement.finish()?;
     actor_writer.finish()?;
+    event_writer.finish()?;
 
     // -- Write the NetGUID registry ----------------------------------------
     //
@@ -322,6 +353,10 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     eprintln!("  Skipped bits:     {}", net_stats.skipped_bits);
     eprintln!("  Movement rows:    {movement_rows}");
     eprintln!("  NetGUID rows:     {net_guid_rows}");
+    eprintln!("  Event rows:       {event_rows}");
+    if event_trailing_bytes > 0 {
+        eprintln!("  Event unread:     {event_trailing_bytes} payload bytes");
+    }
     eprintln!("  Elapsed:          {:.2?}", elapsed);
 
     // -- Write manifest ----------------------------------------------------
@@ -350,12 +385,16 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     let net_guids_size = fs::metadata(out_path.join("net_guids.parquet"))
         .map(|m| m.len())
         .unwrap_or(0);
+    let events_size = fs::metadata(out_path.join("events.parquet"))
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     eprintln!();
     eprintln!("  fields.parquet:   {} bytes", fields_size);
     eprintln!("  movement.parquet: {} bytes", movement_size);
     eprintln!("  actors.parquet:   {} bytes", actors_size);
     eprintln!("  net_guids.parquet:{} bytes", net_guids_size);
+    eprintln!("  events.parquet:   {} bytes", events_size);
     eprintln!("  manifest.json:    {}", manifest_path.display());
 
     // -- Overlay statistics -------------------------------------------------

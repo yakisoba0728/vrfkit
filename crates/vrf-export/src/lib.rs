@@ -53,6 +53,7 @@
 
 mod actor_writer;
 mod error;
+mod event_writer;
 mod field_writer;
 mod movement_writer;
 mod net_guid_writer;
@@ -60,6 +61,7 @@ mod schema;
 
 pub use actor_writer::{ActorRecord, ActorWriter};
 pub use error::ExportError;
+pub use event_writer::{EventRecord, EventWriter};
 pub use field_writer::{FieldRecord, FieldWriter, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME};
 pub use movement_writer::{MovementRecord, MovementWriter};
 pub use net_guid_writer::{NetGuidRecord, NetGuidWriter};

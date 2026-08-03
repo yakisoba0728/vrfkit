@@ -12,8 +12,8 @@ use std::path::PathBuf;
 use arrow_array::cast::AsArray;
 use arrow_array::types::Int32Type;
 use arrow_array::{
-    Array, ArrayAccessor, BinaryArray, Float32Array, Int64Array, RecordBatch, StringArray,
-    UInt32Array,
+    Array, ArrayAccessor, BinaryArray, Float32Array, Int32Array, Int64Array, RecordBatch,
+    StringArray, UInt32Array,
 };
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::file::reader::{FileReader, SerializedFileReader};
@@ -793,6 +793,166 @@ fn net_guid_push_finish_empty() {
     {
         let file = fs::File::create(&path).unwrap();
         let writer = NetGuidWriter::new(file).unwrap();
+        writer.finish().unwrap();
+    }
+    let batches = read_all_batches(&path);
+    let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+    assert_eq!(total_rows, 0);
+}
+
+// ---------------------------------------------------------------------------
+// events table
+// ---------------------------------------------------------------------------
+
+use vrf_export::{EventRecord, EventWriter};
+
+/// The first `roundStarted` payload from the reference replay, byte for byte.
+/// It carries an embedded 0x00 and a tail that is not valid text, which is the
+/// point: this column has to survive bytes that are not a string.
+const REFERENCE_EVENT_PAYLOAD: [u8; 46] = [
+    0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00, b'E', b'R', b'e', b'p',
+    b'l', b'a', b'y', b'E', b'v', b'e', b'n', b't', b'G', b'r', b'o', b'u', b'p', b':', b':', b'R',
+    b'o', b'u', b'n', b'd', b'S', b't', b'a', b'r', b't', 0x00, 0x22, 0xC0, 0x7F, 0x3D,
+];
+
+#[test]
+fn event_roundtrip_preserves_payload_bytes_exactly() {
+    let path = test_dir().join("event_roundtrip.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = EventWriter::with_row_group_size(file, 1024).unwrap();
+        writer
+            .push(EventRecord {
+                id: "02d4d478_DC4D6C49E0C640FD814D88134F0A8642".into(),
+                group: "roundStarted".into(),
+                metadata: "0".into(),
+                time1: 62,
+                time2: 62,
+                payload_size: REFERENCE_EVENT_PAYLOAD.len() as i32,
+                raw_payload: REFERENCE_EVENT_PAYLOAD.to_vec(),
+            })
+            .unwrap();
+        // A second group, so the dictionary column carries more than one value.
+        writer
+            .push(EventRecord {
+                id: "02d4d478_0B756A9C4B10407DB9D3A4093C057D43".into(),
+                group: "characterDeath".into(),
+                metadata: String::new(),
+                time1: 50402,
+                time2: 50402,
+                payload_size: 3,
+                raw_payload: vec![0x00, 0xFF, 0x80],
+            })
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    let batches = read_all_batches(&path);
+    let batch = &batches[0];
+    assert_eq!(batch.num_rows(), 2);
+
+    let id = batch
+        .column(batch.schema().index_of("id").unwrap())
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    assert_eq!(id.value(0), "02d4d478_DC4D6C49E0C640FD814D88134F0A8642");
+
+    let group = batch
+        .column(batch.schema().index_of("group").unwrap())
+        .as_dictionary::<Int32Type>();
+    let group_values = group.downcast_dict::<StringArray>().unwrap();
+    assert_eq!(group_values.value(0), "roundStarted");
+    assert_eq!(group_values.value(1), "characterDeath");
+
+    // An event with no metadata carries an empty string, not a null.
+    let metadata = batch
+        .column(batch.schema().index_of("metadata").unwrap())
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    assert!(!metadata.is_null(1));
+    assert_eq!(metadata.value(0), "0");
+    assert_eq!(metadata.value(1), "");
+
+    let time1 = batch
+        .column(batch.schema().index_of("time1").unwrap())
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .unwrap();
+    let time2 = batch
+        .column(batch.schema().index_of("time2").unwrap())
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .unwrap();
+    assert_eq!(time1.value(1), 50402);
+    assert_eq!(time2.value(1), 50402);
+
+    let payload_size = batch
+        .column(batch.schema().index_of("payload_size").unwrap())
+        .as_any()
+        .downcast_ref::<Int32Array>()
+        .unwrap();
+    assert_eq!(payload_size.value(0), 46);
+    assert_eq!(payload_size.value(1), 3);
+
+    // The undecoded payload is the whole point of the table: every byte, in
+    // order, including the embedded 0x00 and the bytes that are not text.
+    let raw = batch
+        .column(batch.schema().index_of("raw_payload").unwrap())
+        .as_any()
+        .downcast_ref::<BinaryArray>()
+        .unwrap();
+    assert_eq!(raw.value(0), REFERENCE_EVENT_PAYLOAD);
+    assert_eq!(raw.value(1), [0x00, 0xFF, 0x80]);
+    // The declared size and the stored blob must agree row for row.
+    for i in 0..batch.num_rows() {
+        assert_eq!(payload_size.value(i) as usize, raw.value(i).len());
+    }
+}
+
+#[test]
+fn event_multiple_row_groups() {
+    let path = test_dir().join("event_multi_row_group.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = EventWriter::with_row_group_size(file, 64).unwrap();
+        for i in 0..200u32 {
+            let group = if i % 2 == 0 {
+                "characterDeath"
+            } else {
+                "spikePlanted"
+            };
+            writer
+                .push(EventRecord {
+                    id: format!("id_{i}"),
+                    group: group.into(),
+                    metadata: String::new(),
+                    time1: i * 1000,
+                    time2: i * 1000,
+                    payload_size: 4,
+                    raw_payload: i.to_le_bytes().to_vec(),
+                })
+                .unwrap();
+        }
+        writer.finish().unwrap();
+    }
+
+    let file = fs::File::open(&path).unwrap();
+    let reader = SerializedFileReader::new(file).unwrap();
+    assert!(reader.metadata().num_row_groups() > 1);
+
+    let batches = read_all_batches(&path);
+    let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+    assert_eq!(total_rows, 200);
+}
+
+#[test]
+fn event_push_finish_empty() {
+    let path = test_dir().join("event_empty.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let writer = EventWriter::new(file).unwrap();
         writer.finish().unwrap();
     }
     let batches = read_all_batches(&path);

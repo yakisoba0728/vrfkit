@@ -36,16 +36,24 @@
 //! ReplayData chunk payloads are compressed with Oodle (Kraken/Mermaid/Selkie).
 //! Use [`decompress_replay_data`] to decode a raw chunk payload into plaintext
 //! bytes suitable for packet framing.
+//!
+//! # Event chunks
+//!
+//! Event chunk payloads are uncompressed and carry the server's own labelled
+//! game timeline. Use [`parse_event_chunk`] to read one into an [`EventChunk`];
+//! its inner payload is handed back raw, for the reason documented there.
 
 #![forbid(unsafe_code)]
 
 use vrf_bitio::BitReader;
 
 mod error;
+mod event;
 mod header;
 mod info;
 
 pub use error::ContainerError;
+pub use event::{EventChunk, parse_event_chunk};
 pub use header::{ReplayHeader, ReplayVersion};
 pub use info::ReplayInfo;
 

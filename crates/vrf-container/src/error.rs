@@ -72,6 +72,10 @@ pub enum ContainerError {
     #[error("invalid memory size: {size} (must be 0..256 MiB)")]
     InvalidMemorySize { size: i32 },
 
+    /// An Event chunk's declared payload size is negative.
+    #[error("invalid event payload size: {size}")]
+    InvalidEventPayloadSize { size: i32 },
+
     /// An uncompressed chunk's SizeInBytes != MemorySizeInBytes.
     #[error("uncompressed size mismatch: SizeInBytes={size}, MemorySizeInBytes={memory_size}")]
     SizeMismatch { size: i32, memory_size: i32 },

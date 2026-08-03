@@ -157,3 +157,43 @@ pub fn net_guids_schema() -> Schema {
 pub fn net_guids_schema_ref() -> Arc<Schema> {
     Arc::new(net_guids_schema())
 }
+
+/// Schema for the `events` table (one row per Event chunk).
+///
+/// Event chunks are the server's own labelled timeline -- the ground truth the
+/// rest of the pipeline only reconstructs indirectly from RPCs. The six header
+/// fields are decoded; the inner payload is not.
+///
+/// `raw_payload` is the whole payload verbatim. Its structure is observable but
+/// not self-describing (see `vrf_container::EventChunk`), so decoding it into
+/// named columns would mean inventing names for words whose meaning is not
+/// established. A blob the caller can inspect is worth more than a column of
+/// plausible-looking guesses.
+///
+/// No column is nullable. Every field is present in every chunk: an empty
+/// `metadata` is an empty string on the wire, and a zero-length payload is an
+/// empty blob -- neither is a missing value.
+pub fn events_schema() -> Schema {
+    Schema::new(vec![
+        Field::new("id", DataType::Utf8, false),
+        // ~7 distinct groups over the whole file; dictionary is nearly free.
+        Field::new(
+            "group",
+            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+            false,
+        ),
+        Field::new("metadata", DataType::Utf8, false),
+        Field::new("time1", DataType::UInt32, false),
+        Field::new("time2", DataType::UInt32, false),
+        // The declared SizeInBytes, kept as the wire's i32. Redundant with
+        // `raw_payload`'s length by construction, but readable from row-group
+        // statistics without touching the binary column.
+        Field::new("payload_size", DataType::Int32, false),
+        Field::new("raw_payload", DataType::Binary, false),
+    ])
+}
+
+/// Convenience: wrap events schema in an Arc.
+pub fn events_schema_ref() -> Arc<Schema> {
+    Arc::new(events_schema())
+}
