@@ -1,0 +1,131 @@
+//! Counters and the per-field breakdown an overlay pass accumulates.
+//!
+//! These are the export summary's only view of what the overlay did, and the
+//! error report is what tells an operator *which* field to look at rather than
+//! just how many failed. The reference replay currently records zero decode
+//! errors, so everything here except the plain counters is a cold path; it is
+//! written for clarity, not for speed.
+
+use std::collections::HashMap;
+
+use crate::decode::FieldType;
+
+/// Categorisation of a decode failure -- distinguishes root cause so the
+/// operator knows whether to fix the overlay type, the bit-count expectation,
+/// or something structural.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DecodeErrorKind {
+    /// BitReader reached EOF before the decoder finished consuming.
+    Eof,
+    /// Decoder finished but bits remained unconsumed.
+    Residual,
+    /// Zero-bit payload with a non-zero-expecting type.
+    ZeroBits,
+}
+
+impl std::fmt::Display for DecodeErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Eof => f.write_str("EOF"),
+            Self::Residual => f.write_str("Residual"),
+            Self::ZeroBits => f.write_str("ZeroBits"),
+        }
+    }
+}
+
+/// Accumulates per-(group, field, type, bit_count, error_kind) counts so the
+/// operator can identify the dominant decode-error sources after an export run.
+///
+/// Designed for long-lived use: call [`Self::record`] on every failure, then
+/// [`Self::top_n`] to get the sorted report.
+#[derive(Debug, Clone, Default)]
+pub struct OverlayErrorReport {
+    /// Key: (group_path, field_name, field_type_tag, bit_count, error_kind).
+    /// Value: occurrence count.
+    counts: HashMap<(String, String, String, u32, DecodeErrorKind), u64>,
+}
+
+/// One row from the error report, sorted by descending count.
+#[derive(Debug, Clone)]
+pub struct OverlayErrorRow {
+    pub count: u64,
+    pub group_path: String,
+    pub field_name: String,
+    pub declared_type: String,
+    pub bit_count: u32,
+    pub error_kind: DecodeErrorKind,
+}
+
+impl OverlayErrorReport {
+    /// Record a decode failure.
+    pub fn record(
+        &mut self,
+        group_path: &str,
+        field_name: &str,
+        field_type: FieldType,
+        bit_count: u32,
+        kind: DecodeErrorKind,
+    ) {
+        let key = (
+            group_path.to_owned(),
+            field_name.to_owned(),
+            format!("{field_type:?}"),
+            bit_count,
+            kind,
+        );
+        *self.counts.entry(key).or_insert(0) += 1;
+    }
+
+    /// Merge another report into this one (additive counts).
+    pub fn merge_from(&mut self, other: &Self) {
+        for (key, &count) in &other.counts {
+            *self.counts.entry(key.clone()).or_insert(0) += count;
+        }
+    }
+
+    /// Return the top `n` error sources sorted by descending count.
+    pub fn top_n(&self, n: usize) -> Vec<OverlayErrorRow> {
+        let mut rows: Vec<OverlayErrorRow> = self
+            .counts
+            .iter()
+            .map(|((gp, fn_, dt, bc, ek), &cnt)| OverlayErrorRow {
+                count: cnt,
+                group_path: gp.clone(),
+                field_name: fn_.clone(),
+                declared_type: dt.clone(),
+                bit_count: *bc,
+                error_kind: *ek,
+            })
+            .collect();
+        rows.sort_by_key(|r| std::cmp::Reverse(r.count));
+        rows.truncate(n);
+        rows
+    }
+
+    /// Total number of distinct error buckets.
+    pub fn bucket_count(&self) -> usize {
+        self.counts.len()
+    }
+
+    /// Total errors across all buckets.
+    pub fn total_errors(&self) -> u64 {
+        self.counts.values().sum()
+    }
+}
+
+/// Statistics from an overlay pass.
+#[derive(Debug, Clone, Default)]
+pub struct OverlayStats {
+    /// Fields where the type was known and decoding succeeded.
+    pub decoded_ok: u64,
+    /// Fields where the type was known but decoding failed.
+    pub decoded_err: u64,
+    /// Fields where the type is Raw/Skip (intentionally not decoded).
+    pub raw_or_skip: u64,
+    /// Fields where (group_path, field_name) had no entry in the table.
+    pub not_in_table: u64,
+    /// Fields where field_name was None (unmapped handle).
+    pub no_field_name: u64,
+    /// Detailed per-field error breakdown (populated only when reporting is on).
+    pub error_report: OverlayErrorReport,
+}

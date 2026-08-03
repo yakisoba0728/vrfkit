@@ -51,8 +51,22 @@
 //! 1. DuckDB/pandas can filter with `LIKE 'Rounds[%].Reports[%].DamageDealt'`
 //! 2. Parquet dictionary encoding collapses repeated path prefixes efficiently
 //! 3. The upstream Python pipeline (compute_metrics.py) can parse it trivially
+//!
+//! # Allocation
+//!
+//! One `String` and one `Vec<u8>` per emitted leaf are unavoidable --
+//! [`FlattenedField`] owns both. Everything else is written into a single
+//! reused path buffer: labels in particular are appended in place rather than
+//! resolved into a temporary `String` that is copied and dropped, which was one
+//! extra allocation per leaf for nothing.
+
+mod schema;
+
+use std::fmt::Write as _;
 
 use vrf_bitio::BitReader;
+
+pub use schema::{ArrayFieldSchema, COMBAT_ROUNDS_SCHEMA};
 
 /// Maximum number of elements per array level.
 pub const MAX_ELEMENTS: u32 = 4096;
@@ -60,6 +74,11 @@ pub const MAX_ELEMENTS: u32 = 4096;
 pub const MAX_FIELDS_PER_ELEMENT: u32 = 128;
 /// Maximum recursion depth for nested arrays.
 pub const MAX_RECURSION_DEPTH: u32 = 12;
+
+/// Starting capacity for the emitted-field vector. The reference replay's
+/// CombatReport rounds run to a few hundred leaves per blob; this skips the
+/// first handful of doublings without over-reserving for a small array.
+const INITIAL_FIELD_CAPACITY: usize = 32;
 
 /// A single flattened field emitted from array decoding.
 #[derive(Debug, Clone)]
@@ -87,26 +106,31 @@ pub struct ArrayDecodeStats {
     pub truncations: u64,
 }
 
+/// Everything one walk carries down through the recursion.
+///
+/// `declared` and `output`/`stats` are the same for every level; bundling them
+/// keeps the recursive calls to three arguments instead of seven.
+struct Walk<'a, 'd> {
+    /// Names the REPLAY declares for this group's handles, indexed by handle.
+    declared: &'a [Option<&'d str>],
+    /// Path under construction, reused across every leaf.
+    path: String,
+    output: Vec<FlattenedField>,
+}
+
 /// Decode a DynamicArray (struct elements) from raw bits and emit flattened fields.
 ///
-/// `element_fields` is an optional lookup that maps `(depth, handle)` to a
-/// sub-array indicator. For now we recurse on ALL fields that contain nested
-/// handle/payloadBits framing (detected heuristically by checking if the
-/// payload starts with a valid IntPacked sequence that looks like handles).
-///
-/// However, for correctness we use the **known schema**: the `ArrayFieldSchema`
-/// tells us which handles at each depth are themselves arrays (so we recurse)
-/// vs primitives (so we emit as-is).
-///
-/// If `schema` is None, we treat all elements as opaque structs and emit each
-/// field without attempting to recurse into sub-arrays.
+/// `schema` tells us which handles at each depth are themselves arrays (so we
+/// recurse) vs primitives (so we emit as-is). If `schema` is None, we treat all
+/// elements as opaque structs and emit each field without attempting to recurse
+/// into sub-arrays.
 ///
 /// `declared` carries the names the REPLAY itself declares for this group's
 /// handles, indexed by handle: slot `h` holds the declared name for handle `h`,
 /// or `None` where the replay declares nothing there. Pass `&[]` when no
 /// declaration is available; the schema's own names are then the only source.
 /// A LEAF label is resolved declaration -> schema -> `_h{handle}`; container
-/// segments come from the schema alone. See `resolve_leaf_label`.
+/// segments come from the schema alone. See [`push_leaf_label`].
 pub fn decode_struct_array(
     data: &[u8],
     bit_count: u32,
@@ -114,45 +138,22 @@ pub fn decode_struct_array(
     declared: &[Option<&str>],
     stats: &mut ArrayDecodeStats,
 ) -> Vec<FlattenedField> {
-    let mut output = Vec::new();
     let mut reader = BitReader::with_bit_len(data, u64::from(bit_count));
-    let mut path_buf = String::with_capacity(64);
-    decode_array_level(
-        &mut reader,
-        schema,
+    let mut walk = Walk {
         declared,
-        0,
-        &mut path_buf,
-        &mut output,
-        stats,
-    );
-    output
-}
-
-/// Schema for array fields: maps handle -> sub-array schema (if the field is
-/// itself a nested array) or None (leaf/primitive field).
-///
-/// Built from the C# descriptor knowledge. The handle numbers are from the
-/// `CombatRoundReportsDecoder` and related descriptors.
-#[derive(Debug, Clone)]
-pub struct ArrayFieldSchema {
-    /// For each handle in this struct level, whether it's a sub-array.
-    /// Key = handle, Value = schema for the sub-array's element struct.
-    pub sub_arrays: &'static [(u32, &'static ArrayFieldSchema)],
-    /// Optional handle -> field name mapping for human-readable output.
-    /// Only leaf fields need names here; sub-array fields get their name from
-    /// the path segment they introduce.
-    pub field_names: &'static [(u32, &'static str)],
+        path: String::with_capacity(64),
+        output: Vec::with_capacity(INITIAL_FIELD_CAPACITY),
+    };
+    decode_array_level(&mut reader, &mut walk, schema, 0, stats);
+    walk.output
 }
 
 /// Recursively decode one array level.
 fn decode_array_level(
     reader: &mut BitReader<'_>,
+    walk: &mut Walk<'_, '_>,
     schema: Option<&ArrayFieldSchema>,
-    declared: &[Option<&str>],
     depth: u32,
-    path_buf: &mut String,
-    output: &mut Vec<FlattenedField>,
     stats: &mut ArrayDecodeStats,
 ) {
     if reader.at_end() {
@@ -160,27 +161,21 @@ fn decode_array_level(
     }
 
     // Read element count.
-    let element_count = match reader.read_int_packed() {
-        Ok(c) => c,
-        Err(_) => return,
+    let Ok(element_count) = reader.read_int_packed() else {
+        return;
     };
 
     if element_count > MAX_ELEMENTS {
         stats.truncations += 1;
         // Emit remaining as a single raw field at this level.
-        emit_remaining_raw(reader, path_buf, output);
+        emit_remaining_raw(reader, walk);
         return;
     }
 
     // Read elements.
-    loop {
-        if reader.at_end() {
+    while !reader.at_end() {
+        let Ok(encoded_index) = reader.read_int_packed() else {
             break;
-        }
-
-        let encoded_index = match reader.read_int_packed() {
-            Ok(v) => v,
-            Err(_) => break,
         };
 
         if encoded_index == 0 {
@@ -202,27 +197,19 @@ fn decode_array_level(
         }
 
         stats.elements_decoded += 1;
-        let path_prefix_len = path_buf.len();
-        // Append "[index]" to path.
-        use std::fmt::Write;
-        let _ = write!(path_buf, "[{index}]");
-
-        // Decode struct fields within this element.
-        decode_struct_fields(reader, schema, declared, depth, path_buf, output, stats);
-
-        // Restore path buffer.
-        path_buf.truncate(path_prefix_len);
+        let prefix_len = walk.path.len();
+        let _ = write!(walk.path, "[{index}]");
+        decode_struct_fields(reader, walk, schema, depth, stats);
+        walk.path.truncate(prefix_len);
     }
 }
 
 /// Decode the struct fields of one array element (handle/payloadBits loop).
 fn decode_struct_fields(
     reader: &mut BitReader<'_>,
+    walk: &mut Walk<'_, '_>,
     schema: Option<&ArrayFieldSchema>,
-    declared: &[Option<&str>],
     depth: u32,
-    path_buf: &mut String,
-    output: &mut Vec<FlattenedField>,
     stats: &mut ArrayDecodeStats,
 ) {
     for _field_idx in 0..MAX_FIELDS_PER_ELEMENT {
@@ -230,106 +217,60 @@ fn decode_struct_fields(
             return;
         }
 
-        let encoded_handle = match reader.read_int_packed() {
-            Ok(v) => v,
-            Err(_) => return,
+        let Ok(encoded_handle) = reader.read_int_packed() else {
+            return;
         };
-
         if encoded_handle == 0 {
             return;
         }
-
         let handle = encoded_handle - 1;
-        let payload_bits = match reader.read_int_packed() {
-            Ok(v) => v,
-            Err(_) => return,
-        };
 
+        let Ok(payload_bits) = reader.read_int_packed() else {
+            return;
+        };
         if payload_bits == 0 {
             continue;
         }
-
-        if (payload_bits as u64) > reader.bits_remaining() {
+        if u64::from(payload_bits) > reader.bits_remaining() {
             // Malformed: skip remaining.
             reader.skip_remaining();
             return;
         }
 
-        // Check if this handle is a sub-array.
-        let sub_schema = schema.and_then(|s| {
-            s.sub_arrays
-                .iter()
-                .find(|(h, _)| *h == handle)
-                .map(|(_, sub)| *sub)
-        });
-
-        if let Some(sub) = sub_schema {
-            if depth + 1 >= MAX_RECURSION_DEPTH {
-                // Hit recursion limit -- emit raw.
-                stats.truncations += 1;
-                let byte_count = (payload_bits as usize).div_ceil(8);
-                let mut raw = vec![0u8; byte_count];
-                let mut sub_reader = match reader.sub_reader(u64::from(payload_bits)) {
-                    Ok(r) => r,
-                    Err(_) => return,
+        match schema.and_then(|s| s.sub_array(handle)) {
+            // A nested array we are still allowed to descend into.
+            Some(sub) if depth + 1 < MAX_RECURSION_DEPTH => {
+                let Ok(mut sub_reader) = reader.sub_reader(u64::from(payload_bits)) else {
+                    return;
                 };
-                let _ = sub_reader.copy_bits_to(&mut raw, u64::from(payload_bits));
-                let path_prefix_len = path_buf.len();
-                use std::fmt::Write;
-                let field_label = resolve_field_label(schema, handle);
-                let _ = write!(path_buf, ".{field_label}");
-                output.push(FlattenedField {
-                    path: path_buf.clone(),
-                    handle,
-                    bit_count: payload_bits,
-                    raw_bits: raw,
-                });
-                stats.fields_emitted += 1;
-                path_buf.truncate(path_prefix_len);
-            } else {
-                // Recurse into sub-array.
-                let mut sub_reader = match reader.sub_reader(u64::from(payload_bits)) {
-                    Ok(r) => r,
-                    Err(_) => return,
-                };
-                let path_prefix_len = path_buf.len();
-                use std::fmt::Write;
-                let field_label = resolve_field_label(schema, handle);
-                let _ = write!(path_buf, ".{field_label}");
-                decode_array_level(
-                    &mut sub_reader,
-                    Some(sub),
-                    declared,
-                    depth + 1,
-                    path_buf,
-                    output,
-                    stats,
-                );
-                // If sub_reader has remaining bits, skip them (tolerance).
-                path_buf.truncate(path_prefix_len);
+                let prefix_len = walk.path.len();
+                walk.path.push('.');
+                push_field_label(&mut walk.path, schema, handle);
+                decode_array_level(&mut sub_reader, walk, Some(sub), depth + 1, stats);
+                // Any bits the sub-reader left are dropped on purpose: the
+                // parent's window already accounted for them.
+                walk.path.truncate(prefix_len);
             }
-        } else {
+            // Same, but the nesting limit stops us -- keep the bits instead.
+            Some(_) => {
+                stats.truncations += 1;
+                let Some(raw) = copy_payload(reader, payload_bits) else {
+                    return;
+                };
+                emit(walk, stats, handle, payload_bits, raw, |path| {
+                    push_field_label(path, schema, handle);
+                });
+            }
             // Leaf field -- emit as-is.
-            let byte_count = (payload_bits as usize).div_ceil(8);
-            let mut raw = vec![0u8; byte_count];
-            let mut sub_reader = match reader.sub_reader(u64::from(payload_bits)) {
-                Ok(r) => r,
-                Err(_) => return,
-            };
-            let _ = sub_reader.copy_bits_to(&mut raw, u64::from(payload_bits));
-
-            let path_prefix_len = path_buf.len();
-            use std::fmt::Write;
-            let field_label = resolve_leaf_label(declared, schema, handle);
-            let _ = write!(path_buf, ".{field_label}");
-            output.push(FlattenedField {
-                path: path_buf.clone(),
-                handle,
-                bit_count: payload_bits,
-                raw_bits: raw,
-            });
-            stats.fields_emitted += 1;
-            path_buf.truncate(path_prefix_len);
+            None => {
+                let Some(raw) = copy_payload(reader, payload_bits) else {
+                    return;
+                };
+                let declared = walk.declared;
+                emit(walk, stats, handle, payload_bits, raw, |path| {
+                    push_leaf_label(path, declared, schema, handle);
+                });
+            }
         }
     }
 
@@ -337,28 +278,58 @@ fn decode_struct_fields(
     stats.truncations += 1;
 }
 
-/// Emit all remaining bits as a single raw field.
-fn emit_remaining_raw(
-    reader: &mut BitReader<'_>,
-    path_buf: &str,
-    output: &mut Vec<FlattenedField>,
+/// Take `payload_bits` bits out of `reader` as owned bytes.
+///
+/// Returns `None` when the window cannot be opened, which is the caller's
+/// signal to stop this element rather than emit a partial record.
+fn copy_payload(reader: &mut BitReader<'_>, payload_bits: u32) -> Option<Vec<u8>> {
+    let mut raw = vec![0u8; (payload_bits as usize).div_ceil(8)];
+    let mut sub_reader = reader.sub_reader(u64::from(payload_bits)).ok()?;
+    let _ = sub_reader.copy_bits_to(&mut raw, u64::from(payload_bits));
+    Some(raw)
+}
+
+/// Append `.<label>` to the walk's path, push one record, and restore the path.
+fn emit(
+    walk: &mut Walk<'_, '_>,
+    stats: &mut ArrayDecodeStats,
+    handle: u32,
+    bit_count: u32,
+    raw_bits: Vec<u8>,
+    label: impl FnOnce(&mut String),
 ) {
+    let prefix_len = walk.path.len();
+    walk.path.push('.');
+    label(&mut walk.path);
+    walk.output.push(FlattenedField {
+        path: walk.path.clone(),
+        handle,
+        bit_count,
+        raw_bits,
+    });
+    stats.fields_emitted += 1;
+    walk.path.truncate(prefix_len);
+}
+
+/// Emit all remaining bits as a single raw field.
+fn emit_remaining_raw(reader: &mut BitReader<'_>, walk: &mut Walk<'_, '_>) {
     let remaining = reader.bits_remaining();
     if remaining == 0 {
         return;
     }
-    let byte_count = (remaining as usize).div_ceil(8);
-    let mut raw = vec![0u8; byte_count];
+    let mut raw = vec![0u8; (remaining as usize).div_ceil(8)];
     let _ = reader.copy_bits_to(&mut raw, remaining);
-    output.push(FlattenedField {
-        path: format!("{path_buf}._raw"),
+    let mut path = walk.path.clone();
+    path.push_str("._raw");
+    walk.output.push(FlattenedField {
+        path,
         handle: u32::MAX,
         bit_count: remaining as u32,
         raw_bits: raw,
     });
 }
 
-/// Resolve a LEAF handle's label, preferring the name the replay declares.
+/// Append a LEAF handle's label, preferring the name the replay declares.
 ///
 /// Order: the replay's own net field export, then the hardcoded schema, then
 /// `_h{handle}`.
@@ -371,151 +342,33 @@ fn emit_remaining_raw(
 /// replay does not declare.
 ///
 /// Only LEAF labels use this. Container segments -- the path components a
-/// sub-array introduces -- keep [`resolve_field_label`], because the schema is
+/// sub-array introduces -- keep [`push_field_label`], because the schema is
 /// what decides the nesting in the first place and the declaration adds nothing
 /// there: handles 44 and 79 both declare `RegionalDamageInteractions`, so the
 /// wire cannot tell the two apart where the schema can.
-fn resolve_leaf_label(
+fn push_leaf_label(
+    path: &mut String,
     declared: &[Option<&str>],
     schema: Option<&ArrayFieldSchema>,
     handle: u32,
-) -> String {
+) {
     if let Some(name) = declared.get(handle as usize).copied().flatten() {
-        return name.to_owned();
+        path.push_str(name);
+        return;
     }
-    resolve_field_label(schema, handle)
+    push_field_label(path, schema, handle);
 }
 
-/// Resolve a handle to a human-readable field label using the schema's name map.
-/// Falls back to `_h{handle}` if no name is known.
-fn resolve_field_label(schema: Option<&ArrayFieldSchema>, handle: u32) -> String {
-    if let Some(s) = schema {
-        // Check field_names first.
-        if let Some((_, name)) = s.field_names.iter().find(|(h, _)| *h == handle) {
-            return (*name).to_owned();
-        }
-        // Check sub_arrays (use handle-derived name for sub-arrays too).
-        if let Some((_, _)) = s.sub_arrays.iter().find(|(h, _)| *h == handle) {
-            // Sub-arrays don't have explicit names in field_names -- use handle.
+/// Append a handle's label from the schema's name map, falling back to
+/// `_h{handle}` when the schema cannot name it.
+fn push_field_label(path: &mut String, schema: Option<&ArrayFieldSchema>, handle: u32) {
+    match schema.and_then(|s| s.field_name(handle)) {
+        Some(name) => path.push_str(name),
+        None => {
+            let _ = write!(path, "_h{handle}");
         }
     }
-    format!("_h{handle}")
 }
-
-// -- CombatRoundReports schema ------------------------------------------------
-//
-// Derived from CombatRoundReports.cs (handles confirmed against the manifest):
-//
-// Rounds[] (top array)
-//   handle 3: RoundNumber (Int32)
-//   handle 4: Reports[] (sub-array)
-//     handle 5: RoundNumber (Int32)
-//     handle 10: Interactions[] (sub-array)
-//       handle 11: Subject (FString)
-//       handle 12: Team (FName)
-//       handle 13: CharacterIcon (ObjectNetGuid)
-//       handle 18: DamageDealt (Float)
-//       handle 19: HitsDealt (Int32)
-//       handle 20: DamageReceived (Float)
-//       handle 21: HitsReceived (Int32)
-//       handle 22: DidKill (Bool)
-//       handle 23: AssistType (EnumByte)
-//       handle 24: KillerPlayerState (ObjectNetGuid)
-//       handle 25: WasKiller (Bool)
-//       handle 26: DealtInteractions[] (sub-array)
-//         handle 44: Regions[] (sub-array)
-//           handle 45: Region (EnumByte)
-//           handle 46: Hits (Int32)
-//           handle 47: Damage (Float)
-//           handle 48: IsWallPen (Bool)
-//           handle 49: IsKill (Bool)
-//           handle 50: DestroyedArmor (ObjectNetGuid)
-//       handle 61: ReceivedInteractions[] (sub-array)
-//         handle 79: Regions[] (sub-array)
-//           handle 80: Region (EnumByte)
-//           handle 81: Hits (Int32)
-//           handle 82: Damage (Float)
-//           handle 83: IsWallPen (Bool)
-//           handle 84: IsKill (Bool)
-//           handle 85: DestroyedArmor (ObjectNetGuid)
-//       handle 96: CombatReportIndex (Int32)
-//       handle 98: ResurrectorPlayerState (ObjectNetGuid)
-//       handle 103: Died (Bool)
-
-/// Regional damage interaction -- leaf level (no sub-arrays).
-static REGION_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
-    sub_arrays: &[],
-    field_names: &[
-        (45, "Region"),
-        (46, "Hits"),
-        (47, "Damage"),
-        (48, "IsWallPen"),
-        (49, "IsKill"),
-        (50, "DestroyedArmor"),
-        // ReceivedInteractions uses different handles for the same fields:
-        (80, "Region"),
-        (81, "Hits"),
-        (82, "Damage"),
-        (83, "IsWallPen"),
-        (84, "IsKill"),
-        (85, "DestroyedArmor"),
-    ],
-};
-
-/// Dealt interaction regions: handle 44 -> Regions sub-array.
-static DEALT_INTERACTION_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
-    sub_arrays: &[(44, &REGION_SCHEMA)],
-    field_names: &[(44, "Regions")],
-};
-
-/// Received interaction regions: handle 79 -> Regions sub-array.
-static RECEIVED_INTERACTION_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
-    sub_arrays: &[(79, &REGION_SCHEMA)],
-    field_names: &[(79, "Regions")],
-};
-
-/// Participant interaction: handles 26, 61 are sub-arrays.
-static PARTICIPANT_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
-    sub_arrays: &[
-        (26, &DEALT_INTERACTION_SCHEMA),
-        (61, &RECEIVED_INTERACTION_SCHEMA),
-    ],
-    field_names: &[
-        (11, "Subject"),
-        (12, "Team"),
-        (13, "CharacterIcon"),
-        (18, "DamageDealt"),
-        (19, "HitsDealt"),
-        (20, "DamageReceived"),
-        (21, "HitsReceived"),
-        (22, "DidKill"),
-        (23, "AssistType"),
-        (24, "KillerPlayerState"),
-        (25, "WasKiller"),
-        (26, "DealtInteractions"),
-        (61, "ReceivedInteractions"),
-        (96, "CombatReportIndex"),
-        (98, "ResurrectorPlayerState"),
-        (103, "Died"),
-    ],
-};
-
-/// Character combat report: handle 10 -> Interactions sub-array.
-static CHARACTER_REPORT_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
-    sub_arrays: &[(10, &PARTICIPANT_SCHEMA)],
-    field_names: &[
-        (5, "RoundNumber"),
-        (10, "Interactions"),
-        (98, "ResurrectorPlayerState"),
-        (103, "Died"),
-    ],
-};
-
-/// Round-level schema: handle 4 -> Reports sub-array.
-pub static COMBAT_ROUNDS_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
-    sub_arrays: &[(4, &CHARACTER_REPORT_SCHEMA)],
-    field_names: &[(3, "RoundNumber"), (4, "Reports")],
-};
 
 #[cfg(test)]
 mod tests {
