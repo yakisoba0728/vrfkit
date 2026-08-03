@@ -30,19 +30,49 @@
 //! and `"Rotation"` in another, and the assignment can differ between game
 //! builds. The parser must never assume a fixed handle->name mapping; it always
 //! reads the schema the replay provides.
+//!
+//! # Module map
+//!
+//! | Module | Responsibility |
+//! |--------|----------------|
+//! | `guid` | [`NetworkGuid`], [`ExportFlags`], [`NetGuidEntry`] -- wire vocabulary |
+//! | `export` | [`NetFieldExport`], [`NetFieldExportGroup`] -- one group's fields |
+//! | `cache` | [`NetGuidCache`] storage and the direct lookups |
+//! | `resolve` | Bare-name resolution over the leaf index |
+//! | `path` | Alias generation (`Default__`, `/_Core/`, `_ClassNetCache`) |
+//! | `hash` | The hasher the cache's maps use, and why it is not the default |
+//! | `reader` | The ReplayData wire format for exports and export GUIDs |
+//! | `checkpoint` | The two tables a Checkpoint archive carries |
+//!
+//! # Cargo features
+//!
+//! | Feature | Default | Effect |
+//! |---------|---------|--------|
+//! | `checkpoint` | on | [`read_checkpoint_tables`] and [`CheckpointTables`]. A consumer reading only the ReplayData stream never calls them |
+//!
+//! The cache, the export types and the ReplayData readers are not gated: they
+//! are the crate's reason for existing, and every consumer needs all three.
 
 #![forbid(unsafe_code)]
 
 mod cache;
-mod checkpoint;
 mod error;
 mod export;
+mod guid;
+mod hash;
 mod path;
 mod reader;
+mod resolve;
 
-pub use cache::{ExportFlags, NetGuidCache, NetGuidEntry, NetworkGuid};
-pub use checkpoint::{CheckpointTables, read_checkpoint_tables};
+#[cfg(feature = "checkpoint")]
+mod checkpoint;
+
+pub use cache::NetGuidCache;
 pub use error::SchemaError;
 pub use export::{NetFieldExport, NetFieldExportGroup};
+pub use guid::{ExportFlags, NetGuidEntry, NetworkGuid};
 pub use path::{class_net_cache_lookup_keys, replay_path_lookup_keys};
 pub use reader::{read_export_guids, read_net_field_exports};
+
+#[cfg(feature = "checkpoint")]
+pub use checkpoint::{CheckpointTables, read_checkpoint_tables};

@@ -104,6 +104,18 @@ pub enum ContainerError {
     #[error("Oodle decompression error: {0}")]
     OodleDecompression(String),
 
+    /// A compressed archive was met in a build with the `oodle` feature off.
+    ///
+    /// Only exists in that configuration, so a default build's match arms are
+    /// unaffected. Reported rather than returning an empty buffer: a zero-length
+    /// "success" is indistinguishable downstream from a genuinely empty chunk.
+    #[cfg(not(feature = "oodle"))]
+    #[error(
+        "compressed chunk needs {needed} bytes of Oodle output, but this build \
+         has the `oodle` feature disabled"
+    )]
+    OodleUnsupported { needed: usize },
+
     /// A count field exceeds its allowed maximum.
     #[error("{field}: count {count} exceeds maximum {max}")]
     CountOverflow {

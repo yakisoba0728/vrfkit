@@ -35,6 +35,10 @@ mod helpers {
 
     /// Serialise an FString in its UTF-16 form: a negative length counting
     /// code units (terminator included), then little-endian UTF-16.
+    ///
+    /// Only the Event chunk tests need this form, so it is unused when the
+    /// `event` feature is off rather than genuinely dead.
+    #[cfg_attr(not(feature = "event"), allow(dead_code))]
     pub fn add_fstring_utf16(buf: &mut Vec<u8>, s: &str) {
         let units: Vec<u16> = s.encode_utf16().chain(std::iter::once(0u16)).collect();
         add_i32(buf, -(units.len() as i32));
@@ -706,194 +710,201 @@ fn decompress_encrypted_rejected() {
 // Event chunk parsing tests
 // ===============================================================================
 
-/// The inner payload of the first `roundStarted` event in the reference replay
-/// `02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf`, copied byte for byte.
-///
-/// Using real bytes rather than a synthetic blob keeps the test honest about
-/// what the parser must survive: a 46-byte payload the parser deliberately does
-/// not interpret, whose length must still be respected exactly.
-const REFERENCE_ROUND_START_PAYLOAD: [u8; 46] = [
-    0x02, 0x00, 0x00, 0x00, // group tag (RoundStart)
-    0x00, 0x00, 0x00, 0x00, // one group-dependent word
-    0x1E, 0x00, 0x00, 0x00, // FString length: 30
-    b'E', b'R', b'e', b'p', b'l', b'a', b'y', b'E', b'v', b'e', b'n', b't', b'G', b'r', b'o', b'u',
-    b'p', b':', b':', b'R', b'o', b'u', b'n', b'd', b'S', b't', b'a', b'r', b't', 0x00, 0x22, 0xC0,
-    0x7F, 0x3D, // f32 seconds
-];
+// Gated with the parser they exercise, so `--no-default-features` still
+// compiles this file rather than dropping the whole suite.
+#[cfg(feature = "event")]
+mod event_chunks {
+    use super::*;
 
-/// Build an Event chunk payload from its six header fields.
-fn build_event_chunk(
-    id: &str,
-    group: &str,
-    metadata: &str,
-    time1: u32,
-    time2: u32,
-    body: &[u8],
-) -> Vec<u8> {
-    let mut buf = Vec::new();
-    helpers::add_fstring(&mut buf, id);
-    helpers::add_fstring(&mut buf, group);
-    helpers::add_fstring(&mut buf, metadata);
-    helpers::add_u32(&mut buf, time1);
-    helpers::add_u32(&mut buf, time2);
-    helpers::add_i32(&mut buf, body.len() as i32);
-    buf.extend_from_slice(body);
-    buf
-}
+    /// The inner payload of the first `roundStarted` event in the reference replay
+    /// `02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf`, copied byte for byte.
+    ///
+    /// Using real bytes rather than a synthetic blob keeps the test honest about
+    /// what the parser must survive: a 46-byte payload the parser deliberately does
+    /// not interpret, whose length must still be respected exactly.
+    const REFERENCE_ROUND_START_PAYLOAD: [u8; 46] = [
+        0x02, 0x00, 0x00, 0x00, // group tag (RoundStart)
+        0x00, 0x00, 0x00, 0x00, // one group-dependent word
+        0x1E, 0x00, 0x00, 0x00, // FString length: 30
+        b'E', b'R', b'e', b'p', b'l', b'a', b'y', b'E', b'v', b'e', b'n', b't', b'G', b'r', b'o',
+        b'u', b'p', b':', b':', b'R', b'o', b'u', b'n', b'd', b'S', b't', b'a', b'r', b't', 0x00,
+        0x22, 0xC0, 0x7F, 0x3D, // f32 seconds
+    ];
 
-#[test]
-fn event_chunk_reference_round_start() {
-    let payload = build_event_chunk(
-        "02d4d478-1dfb-4412-9a77-29ca29105a9d_DC4D6C49E0C640FD814D88134F0A8642",
-        "roundStarted",
-        "0",
-        62,
-        62,
-        &REFERENCE_ROUND_START_PAYLOAD,
-    );
-
-    let event = parse_event_chunk(&payload).unwrap();
-    assert_eq!(
-        event.id,
-        "02d4d478-1dfb-4412-9a77-29ca29105a9d_DC4D6C49E0C640FD814D88134F0A8642"
-    );
-    assert_eq!(event.group, "roundStarted");
-    assert_eq!(event.metadata, "0");
-    assert_eq!(event.time1, 62);
-    assert_eq!(event.time2, 62);
-    assert_eq!(event.size_in_bytes, 46);
-    // The payload is handed back untouched -- not reinterpreted, not truncated.
-    assert_eq!(event.payload, &REFERENCE_ROUND_START_PAYLOAD);
-    assert_eq!(event.trailing_bytes, 0);
-}
-
-#[test]
-fn event_chunk_empty_metadata_is_empty_not_missing() {
-    // `characterDeath` carries no metadata. An empty FString is a real value;
-    // the parser must not turn it into anything else.
-    let payload = build_event_chunk("id", "characterDeath", "", 50402, 50402, &[0xAA, 0xBB]);
-    let event = parse_event_chunk(&payload).unwrap();
-    assert_eq!(event.metadata, "");
-    assert_eq!(event.payload, &[0xAA, 0xBB]);
-}
-
-#[test]
-fn event_chunk_zero_length_payload_accepted() {
-    let payload = build_event_chunk("id", "group", "meta", 1, 2, &[]);
-    let event = parse_event_chunk(&payload).unwrap();
-    assert_eq!(event.size_in_bytes, 0);
-    assert!(event.payload.is_empty());
-    assert_eq!(event.trailing_bytes, 0);
-}
-
-#[test]
-fn event_chunk_utf16_strings_decoded() {
-    // FString allows a UTF-16 encoding via a negative length. No corpus file
-    // uses it for these fields, but the format permits it and a parser that
-    // silently mis-read one would produce a wrong group name, not an error.
-    let mut payload = Vec::new();
-    helpers::add_fstring_utf16(&mut payload, "utf16id");
-    helpers::add_fstring_utf16(&mut payload, "roundStarted");
-    helpers::add_fstring(&mut payload, "7");
-    helpers::add_u32(&mut payload, 11);
-    helpers::add_u32(&mut payload, 11);
-    helpers::add_i32(&mut payload, 1);
-    payload.push(0x5A);
-
-    let event = parse_event_chunk(&payload).unwrap();
-    assert_eq!(event.id, "utf16id");
-    assert_eq!(event.group, "roundStarted");
-    assert_eq!(event.metadata, "7");
-    assert_eq!(event.payload, &[0x5A]);
-}
-
-#[test]
-fn event_chunk_negative_payload_size_rejected() {
-    let mut payload = Vec::new();
-    helpers::add_fstring(&mut payload, "id");
-    helpers::add_fstring(&mut payload, "group");
-    helpers::add_fstring(&mut payload, "");
-    helpers::add_u32(&mut payload, 1);
-    helpers::add_u32(&mut payload, 1);
-    helpers::add_i32(&mut payload, -1);
-
-    assert!(matches!(
-        parse_event_chunk(&payload).unwrap_err(),
-        ContainerError::InvalidEventPayloadSize { size: -1 }
-    ));
-}
-
-#[test]
-fn event_chunk_payload_shorter_than_declared_rejected() {
-    // Declares 64 bytes, supplies 4. Reading the short slice as if it were the
-    // whole payload is the silent-truncation failure this must not do.
-    let mut payload = build_event_chunk("id", "group", "", 1, 1, &[0u8; 64]);
-    payload.truncate(payload.len() - 60);
-
-    let err = parse_event_chunk(&payload).unwrap_err();
-    assert!(
-        matches!(
-            err,
-            ContainerError::Truncated {
-                context: "event payload",
-                needed: 64,
-                available: 4
-            }
-        ),
-        "expected a truncated-payload error, got: {err}"
-    );
-}
-
-#[test]
-fn event_chunk_truncated_header_rejected() {
-    // The header itself runs off the end: an id, then nothing.
-    let mut payload = Vec::new();
-    helpers::add_fstring(&mut payload, "id");
-    assert!(matches!(
-        parse_event_chunk(&payload).unwrap_err(),
-        ContainerError::Truncated { .. }
-    ));
-}
-
-#[test]
-fn event_chunk_trailing_bytes_are_counted_not_dropped() {
-    // Bytes past the declared payload are what a format change would look like.
-    // They must be reported, not quietly ignored.
-    let mut payload = build_event_chunk("id", "group", "", 1, 1, &[0x01, 0x02]);
-    payload.extend_from_slice(&[0xFF; 3]);
-
-    let event = parse_event_chunk(&payload).unwrap();
-    assert_eq!(event.payload, &[0x01, 0x02]);
-    assert_eq!(event.trailing_bytes, 3);
-}
-
-#[test]
-fn event_chunk_found_by_the_chunk_iterator() {
-    // End to end through the iterator: an Event chunk sitting between two
-    // others must be located by type and its payload sliced correctly.
-    let body = [0xDE, 0xAD, 0xBE, 0xEF];
-    let event_payload = build_event_chunk("id", "spikePlanted", "", 69118, 69118, &body);
-
-    let mut data = Vec::new();
-    helpers::add_u32(&mut data, ChunkType::Checkpoint.to_raw());
-    helpers::add_i32(&mut data, 2);
-    data.extend_from_slice(&[0u8; 2]);
-    helpers::add_u32(&mut data, ChunkType::Event.to_raw());
-    helpers::add_i32(&mut data, event_payload.len() as i32);
-    data.extend_from_slice(&event_payload);
-
-    let mut iter = ChunkIterator::new(&data, 0);
-    let mut found = 0;
-    while let Some(chunk) = iter.next_chunk().unwrap() {
-        if chunk.chunk_type != ChunkType::Event {
-            continue;
-        }
-        let slice = &data[chunk.data_offset..chunk.data_offset + chunk.size_in_bytes as usize];
-        let event = parse_event_chunk(slice).unwrap();
-        assert_eq!(event.group, "spikePlanted");
-        assert_eq!(event.time1, 69118);
-        assert_eq!(event.payload, &body);
-        found += 1;
+    /// Build an Event chunk payload from its six header fields.
+    fn build_event_chunk(
+        id: &str,
+        group: &str,
+        metadata: &str,
+        time1: u32,
+        time2: u32,
+        body: &[u8],
+    ) -> Vec<u8> {
+        let mut buf = Vec::new();
+        helpers::add_fstring(&mut buf, id);
+        helpers::add_fstring(&mut buf, group);
+        helpers::add_fstring(&mut buf, metadata);
+        helpers::add_u32(&mut buf, time1);
+        helpers::add_u32(&mut buf, time2);
+        helpers::add_i32(&mut buf, body.len() as i32);
+        buf.extend_from_slice(body);
+        buf
     }
-    assert_eq!(found, 1);
-}
+
+    #[test]
+    fn event_chunk_reference_round_start() {
+        let payload = build_event_chunk(
+            "02d4d478-1dfb-4412-9a77-29ca29105a9d_DC4D6C49E0C640FD814D88134F0A8642",
+            "roundStarted",
+            "0",
+            62,
+            62,
+            &REFERENCE_ROUND_START_PAYLOAD,
+        );
+
+        let event = parse_event_chunk(&payload).unwrap();
+        assert_eq!(
+            event.id,
+            "02d4d478-1dfb-4412-9a77-29ca29105a9d_DC4D6C49E0C640FD814D88134F0A8642"
+        );
+        assert_eq!(event.group, "roundStarted");
+        assert_eq!(event.metadata, "0");
+        assert_eq!(event.time1, 62);
+        assert_eq!(event.time2, 62);
+        assert_eq!(event.size_in_bytes, 46);
+        // The payload is handed back untouched -- not reinterpreted, not truncated.
+        assert_eq!(event.payload, &REFERENCE_ROUND_START_PAYLOAD);
+        assert_eq!(event.trailing_bytes, 0);
+    }
+
+    #[test]
+    fn event_chunk_empty_metadata_is_empty_not_missing() {
+        // `characterDeath` carries no metadata. An empty FString is a real value;
+        // the parser must not turn it into anything else.
+        let payload = build_event_chunk("id", "characterDeath", "", 50402, 50402, &[0xAA, 0xBB]);
+        let event = parse_event_chunk(&payload).unwrap();
+        assert_eq!(event.metadata, "");
+        assert_eq!(event.payload, &[0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn event_chunk_zero_length_payload_accepted() {
+        let payload = build_event_chunk("id", "group", "meta", 1, 2, &[]);
+        let event = parse_event_chunk(&payload).unwrap();
+        assert_eq!(event.size_in_bytes, 0);
+        assert!(event.payload.is_empty());
+        assert_eq!(event.trailing_bytes, 0);
+    }
+
+    #[test]
+    fn event_chunk_utf16_strings_decoded() {
+        // FString allows a UTF-16 encoding via a negative length. No corpus file
+        // uses it for these fields, but the format permits it and a parser that
+        // silently mis-read one would produce a wrong group name, not an error.
+        let mut payload = Vec::new();
+        helpers::add_fstring_utf16(&mut payload, "utf16id");
+        helpers::add_fstring_utf16(&mut payload, "roundStarted");
+        helpers::add_fstring(&mut payload, "7");
+        helpers::add_u32(&mut payload, 11);
+        helpers::add_u32(&mut payload, 11);
+        helpers::add_i32(&mut payload, 1);
+        payload.push(0x5A);
+
+        let event = parse_event_chunk(&payload).unwrap();
+        assert_eq!(event.id, "utf16id");
+        assert_eq!(event.group, "roundStarted");
+        assert_eq!(event.metadata, "7");
+        assert_eq!(event.payload, &[0x5A]);
+    }
+
+    #[test]
+    fn event_chunk_negative_payload_size_rejected() {
+        let mut payload = Vec::new();
+        helpers::add_fstring(&mut payload, "id");
+        helpers::add_fstring(&mut payload, "group");
+        helpers::add_fstring(&mut payload, "");
+        helpers::add_u32(&mut payload, 1);
+        helpers::add_u32(&mut payload, 1);
+        helpers::add_i32(&mut payload, -1);
+
+        assert!(matches!(
+            parse_event_chunk(&payload).unwrap_err(),
+            ContainerError::InvalidEventPayloadSize { size: -1 }
+        ));
+    }
+
+    #[test]
+    fn event_chunk_payload_shorter_than_declared_rejected() {
+        // Declares 64 bytes, supplies 4. Reading the short slice as if it were the
+        // whole payload is the silent-truncation failure this must not do.
+        let mut payload = build_event_chunk("id", "group", "", 1, 1, &[0u8; 64]);
+        payload.truncate(payload.len() - 60);
+
+        let err = parse_event_chunk(&payload).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ContainerError::Truncated {
+                    context: "event payload",
+                    needed: 64,
+                    available: 4
+                }
+            ),
+            "expected a truncated-payload error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn event_chunk_truncated_header_rejected() {
+        // The header itself runs off the end: an id, then nothing.
+        let mut payload = Vec::new();
+        helpers::add_fstring(&mut payload, "id");
+        assert!(matches!(
+            parse_event_chunk(&payload).unwrap_err(),
+            ContainerError::Truncated { .. }
+        ));
+    }
+
+    #[test]
+    fn event_chunk_trailing_bytes_are_counted_not_dropped() {
+        // Bytes past the declared payload are what a format change would look like.
+        // They must be reported, not quietly ignored.
+        let mut payload = build_event_chunk("id", "group", "", 1, 1, &[0x01, 0x02]);
+        payload.extend_from_slice(&[0xFF; 3]);
+
+        let event = parse_event_chunk(&payload).unwrap();
+        assert_eq!(event.payload, &[0x01, 0x02]);
+        assert_eq!(event.trailing_bytes, 3);
+    }
+
+    #[test]
+    fn event_chunk_found_by_the_chunk_iterator() {
+        // End to end through the iterator: an Event chunk sitting between two
+        // others must be located by type and its payload sliced correctly.
+        let body = [0xDE, 0xAD, 0xBE, 0xEF];
+        let event_payload = build_event_chunk("id", "spikePlanted", "", 69118, 69118, &body);
+
+        let mut data = Vec::new();
+        helpers::add_u32(&mut data, ChunkType::Checkpoint.to_raw());
+        helpers::add_i32(&mut data, 2);
+        data.extend_from_slice(&[0u8; 2]);
+        helpers::add_u32(&mut data, ChunkType::Event.to_raw());
+        helpers::add_i32(&mut data, event_payload.len() as i32);
+        data.extend_from_slice(&event_payload);
+
+        let mut iter = ChunkIterator::new(&data, 0);
+        let mut found = 0;
+        while let Some(chunk) = iter.next_chunk().unwrap() {
+            if chunk.chunk_type != ChunkType::Event {
+                continue;
+            }
+            let slice = &data[chunk.data_offset..chunk.data_offset + chunk.size_in_bytes as usize];
+            let event = parse_event_chunk(slice).unwrap();
+            assert_eq!(event.group, "spikePlanted");
+            assert_eq!(event.time1, 69118);
+            assert_eq!(event.payload, &body);
+            found += 1;
+        }
+        assert_eq!(found, 1);
+    }
+} // mod event_chunks

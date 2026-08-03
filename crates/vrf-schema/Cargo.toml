@@ -7,6 +7,14 @@ license.workspace = true
 repository.workspace = true
 description = "The replay's own dynamic schema: net field export groups and the GUID cache"
 
+[features]
+default = ["checkpoint"]
+
+# Checkpoint archive tables. The ReplayData stream carries its own schema
+# incrementally, so a consumer that never opens a Checkpoint chunk does not need
+# this reader; it is a separate wire format with its own error variants.
+checkpoint = []
+
 [dependencies]
 vrf-bitio = { workspace = true }
 thiserror = { workspace = true }

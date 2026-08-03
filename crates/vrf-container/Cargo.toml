@@ -7,6 +7,26 @@ license.workspace = true
 repository.workspace = true
 description = "The .vrf container: replay info, header, chunk stream and Oodle decompression"
 
+[features]
+# Everything on by default: the workspace's own consumers need all of it, and
+# a feature that changed the default build would change what `cargo test` covers.
+default = ["oodle", "event", "checkpoint"]
+
+# The Oodle decoder. Off, the crate still parses info, headers, the chunk
+# stream and plaintext ReplayData; only compressed archives are refused. This is
+# the flag that actually removes a dependency rather than just some code.
+oodle = ["dep:oozextract"]
+
+# Event chunks: the server's own labelled timeline. A consumer reconstructing
+# state purely from replicated properties never reads one.
+event = []
+
+# Checkpoint chunks: full-state snapshots. Off by default in the CLI already
+# (`--checkpoints`), so a consumer that never asks for them can drop the code
+# as well. Independent of `oodle`: with `oodle` off a checkpoint still parses,
+# its archive just cannot be inflated.
+checkpoint = []
+
 [dependencies]
 vrf-bitio = { workspace = true }
 thiserror = { workspace = true }
@@ -14,4 +34,4 @@ thiserror = { workspace = true }
 #
 # Deliberately NOT `oozle`, which implements the same algorithms but is
 # GPL-3.0-or-later: linking it would force this crate's licence to change.
-oozextract = "0.5.4"
+oozextract = { version = "0.5.4", optional = true }

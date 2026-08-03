@@ -128,10 +128,42 @@
 //! +-------------------------------------------------------------------------+
 //! ```
 
+//! # Module map
+//!
+//! The nesting above is mirrored by the module layout, outermost first:
+//!
+//! | Module | Layer |
+//! |--------|-------|
+//! | `rpc` | Batch, updates array, one update, the component data stream |
+//! | `moves` | The movement section and one move record |
+//! | `primitives` | FixedVector, QuantizedVector, sign extension, VLQ |
+//! | `types` | [`MovementMove`], [`MovementUpdate`], [`RpcDecodeResult`] |
+//! | `error` | [`MovementError`] |
+//!
+//! # Accuracy
+//!
+//! The decoder is validated against the C# reference to **zero** error on yaw,
+//! pitch and velocity, and a maximum of 0.0005 on position. The 25-bit move
+//! header, the VLQ timestamp and every scale constant are wire format, not
+//! style: an equivalent-looking rewrite of the arithmetic changes the numbers.
+//!
+//! # Cargo features
+//!
+//! None. This crate decodes exactly one RPC, and every layer above is required
+//! to locate the bits of the layer below -- there is no sub-part of it a
+//! consumer could decline and still get a move out.
+
 #![forbid(unsafe_code)]
 
-mod decoder;
 mod error;
+mod moves;
+mod primitives;
+mod rpc;
+mod types;
 
-pub use decoder::{MovementMove, MovementUpdate, RpcDecodeResult, decode_movement_rpc};
 pub use error::MovementError;
+pub use rpc::decode_movement_rpc;
+pub use types::{MovementMove, MovementUpdate, RpcDecodeResult};
+
+#[cfg(test)]
+mod tests;
