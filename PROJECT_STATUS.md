@@ -13,6 +13,11 @@ Section 22-D retires a hope this document carried since 7-H: checkpoint chunks
 are NOT the key to the unattributed-bits ceiling. Measured over all 4,024
 checkpoints in the corpus, not argued.
 
+Section 22-I then measured the other question about them and got the opposite
+of the expected answer: checkpoints are NOT redundant with ReplayData. 6-11% of
+their property values disagree with the incremental stream at the same
+timestamp. The parser is now recommended, and CHECKPOINT_SPEC.md specifies it.
+
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
 measurement, then implemented and verified at 100%. See
 NEXT_STEPS_FINDINGS.md for the evidence trail.
@@ -249,10 +254,16 @@ done, or closed with a measurement showing it cannot or should not be done.
 
 Where the open work is now, after section 22:
 
-  - answer 22-D's one unmeasured question before spending four files on a
-    checkpoint parser: does any property value in a checkpoint differ from
-    what ReplayData carried at the same timestamp? If not, checkpoints are
-    pure redundancy and the chunk type can be closed
+  - IMPLEMENT THE CHECKPOINT PARSER. 22-I measured the question 22-D left
+    open and the answer went the other way: 6-11% of a checkpoint's RepLayout
+    values disagree with what ReplayData carried at the same timestamp, the
+    median differing key was last written ~77 s earlier, and 0.5-2% are keys
+    ReplayData never sent at all. Checkpoints are not redundant. The format is
+    fully specified in CHECKPOINT_SPEC.md and sized at 4 files + 1 new
+    (~150 lines); reuse decompress_replay_data, iter_demo_frames, NetGuidCache
+    and ReplicationReader unchanged. Seed a SEPARATE cache and reader per
+    checkpoint -- do not feed checkpoint exports into the live ReplayData
+    cache, and do not replay its channel opens through the live reader
   - Event payload words are raw for 5 of 7 groups (22-H). characterDeath is
     solved; characterUltimateUsed's single word is not
   - the 26M untyped bits that are NOT effect blobs and NOT AbilitiesAndBuffs
@@ -4151,12 +4162,10 @@ the frame starts at `w0 + 8` not `w0 + 7`, the cache does NOT need pre-seeding
 from ReplayData (checkpoint frames contain zero net-field-export records), and
 there is no variant encoding (stock `iter_demo_frames` parses all 4,024).
 
-Value if implemented: low but not zero. Checkpoint schemas contribute 15 new
-named handles out of 3,226; the frames are full-state snapshots whose actor set
-is a subset of ReplayData's on both spot checks. UNMEASURED, and the "redundant"
-reading depends on it: whether any individual property value in a checkpoint
-differs from what ReplayData carried at the same timestamp. Answer that before
-spending the four files.
+Checkpoint schemas contribute only 15 new named handles out of 3,226, and the
+frames are full-state snapshots whose actor set is a subset of ReplayData's on
+both spot checks. That made "redundant" the expectation. **It is wrong -- see
+22-I, which measured it.**
 
 ### 22-E. Three things the agents got right by pushing back
 
@@ -4231,3 +4240,74 @@ nothing ran it, because Cargo does not run `.py` files.
   unidentified.
 - `movement_state` and `move_type` are exported but their meaning on builds
   other than 13.01 is untested -- both are constant on the whole 13.01 corpus.
+
+### 22-I. Checkpoints are NOT redundant: 6-11% of their values differ (2026-08-04)
+
+22-D left one question open, and it was the one that decided whether a
+checkpoint parser is worth four files: does any property value in a checkpoint
+differ from what ReplayData carried at the same timestamp? Measured, on three
+replays. **It does, and not marginally.**
+
+The decision rule was written down before the run: differences whose last
+ReplayData write is within a packet-time or two are alignment residue and mean
+nothing; differences on keys ReplayData last wrote long before are the
+checkpoint carrying state the incremental stream did not re-send.
+
+| | 02d4d478 | 03c60af4 | 03f82073 |
+|---|---|---|---|
+| checkpoints | 18 | 5 | 21 |
+| checkpoint RepLayout fields | 77,812 | 17,036 | 74,882 |
+| MATCH | 92.376% | 93.901% | 89.075% |
+| VALUE_DIFFER (same width) | 2,140 | 248 | 3,604 |
+| WIDTH_DIFFER | 2,393 | 412 | 3,792 |
+| NEW (key ReplayData never sent) | 1,399 | 379 | 785 |
+| median staleness of a differing key | 78,776 ms | 75,649 ms | 77,622 ms |
+| differing keys within 1 s of the checkpoint | 4.7% | 5.8% | 3.5% |
+| group-key guard violations | 0 | 0 | 0 |
+
+The median differing key was last written by ReplayData **~76-79 seconds**
+before the checkpoint, and only 3.5-5.8% are within a second. By the stated
+rule this is not alignment residue. NEW is nonzero and stable on all three.
+**Implementation is justified.**
+
+Alignment: the comparison is made at the checkpoint's `Time1`, not at its
+position in the chunk stream. Those differ enormously -- checkpoint0 declares
+t=47 ms but sits after a ReplayData chunk spanning ~90 s, so a file-order
+comparison would have scored ~90 s of legitimate updates as differences and
+produced a confident wrong answer.
+
+Key choice was guarded, not assumed. The key is
+`(actor_net_guid, object_net_guid, handle)`; the class GUID (or archetype, for
+actor blocks) was recorded alongside and cross-checked. **Zero mismatches over
+all three replays**, so the key identifies the same group in both streams and
+the counts mean what they say.
+
+Three outcomes, not two, because this repository already has precedent for one
+value arriving at different widths (byte properties inside arrays write only
+significant bits). `WIDTH_DIFFER` is broken out so an encoding artifact cannot
+be reported as a correction. Both buckets are real differences; only their
+cause may differ.
+
+The differences are **spread, not concentrated**: 5,932 observations over 2,666
+distinct keys on 02d4d478, and the largest single actor class is 5.1%
+(`BombPlayerState_C`), followed by `Ability_Melee_Base_C`, `Equippable_Unarmed_C`,
+`WindowShieldA1`, `RespawningWallPlate_2`, `BombGameState_C` at 4-5% each. This
+is systemic, which is what a full-state snapshot versus a relevance-filtered
+incremental stream should look like.
+
+**What this does NOT establish.** That the checkpoint is *more correct* than our
+reconstruction. The measurement shows the two disagree; it does not adjudicate
+them. The natural reading is that ReplayData is relevance-filtered while the
+checkpoint is the server's full snapshot, but no test here distinguishes that
+from the reverse. Both readings make checkpoints non-redundant, which is the
+only claim this section makes.
+
+**Scope.** RepLayout property fields only. The probe sink returns
+`function_count = 0`, so the 0-10 ClassNetCache blocks per checkpoint frame are
+not walked and nothing may be claimed about them. Three replays, all
+`release-13.01`.
+
+Method: `valdiff` in the session probe. ReplayData is walked packet by packet in
+time order maintaining `(actor, object, handle) -> (bit_count, raw_bits,
+last_write_ms)`; each checkpoint is compared against that state the moment the
+packet clock passes its `Time1`. Comparison is bit-exact on `raw_bits`.
