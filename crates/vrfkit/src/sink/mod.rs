@@ -1,0 +1,332 @@
+//! Sink implementation connecting `vrf-net` events to `vrf-export` records.
+//!
+//! # Design: no skipping
+//!
+//! Every field/RPC is emitted, even if we cannot resolve the group path or field
+//! name. In that case we emit `group_path = "<unknown:{guid}>"` and
+//! `field_name = None`. When an unresolved ClassNetCache function table makes
+//! the block unsplittable, its whole payload is emitted as one explicitly
+//! marked preservation row instead of fabricated fields. This keeps the
+//! Parquet output a **lossless** representation of the stream.
+//!
+//! # Layout
+//!
+//! - [`intern`] -- the `Arc<str>` pool behind the two name columns.
+//! - [`paths`] -- content-block group-path resolution and its memo.
+//! - [`rpc`] -- the ClassNetCache RPC parameter walker.
+//! - [`blobs`] -- the struct-blob and flattened-array decoders.
+//! - [`stream`] -- the `vrf-net` trait impls that drive all of the above.
+//!
+//! This module holds what those five share: the sink, the per-packet record
+//! buffers, and the state that must outlive a packet.
+//!
+//! # What the sink costs
+//!
+//! `vrfkit validate` runs this whole path and writes no file, so it measures
+//! the sink alone. Five interleaved runs against the pre-rewrite binary on
+//! 02d4d478 (46 MB, 530,401 packets, 608,020 content blocks): median 1.395 s
+//! -> 1.062 s. That 333 ms is the group-path memo in [`paths`] plus the name
+//! pool in [`intern`]; nothing else in the decode path changed.
+//!
+//! Peak working set for `validate` moved 64.5 MB -> 65.0 MB. The memo and the
+//! pool are the only new state and together they are under a megabyte -- see
+//! the measured entry counts in those two modules.
+
+mod blobs;
+mod intern;
+mod paths;
+mod rpc;
+mod stream;
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use vrf_decode::{
+    ArrayDecodeStats, OVERLAY_HANDLE_TABLE, OVERLAY_TABLE, OverlayStats, OverlayTable,
+};
+use vrf_export::{ActorRecord, FieldRecord, MovementRecord};
+use vrf_net::net_guid::GuidPathSink;
+use vrf_net::types::NetworkGuid;
+use vrf_schema::NetGuidCache;
+
+use intern::NameInterner;
+use paths::BlockPathMemo;
+use rpc::RpcParamGroupMemo;
+
+/// Static overlay table built from C# descriptors.
+static TABLE: OverlayTable = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
+
+/// How many stream-failure lines to retain. See [`ChannelState::stream_failures`].
+const MAX_STREAM_FAILURE_RECORDS: usize = 32;
+
+/// Persistent per-channel state that must survive across packets and chunks.
+///
+/// The replay pipeline creates a fresh `ExportSink` for every packet (to
+/// satisfy borrow-checker constraints around `NetGuidCache` mutability). This
+/// struct holds the state that *must* persist across those boundaries -- the
+/// archetype GUID assigned when a channel is opened, which is needed later to
+/// resolve ClassNetCache export groups when content blocks arrive, plus the two
+/// memos and the name pool, none of which would ever warm up if they were
+/// rebuilt half a million times.
+#[derive(Debug, Clone, Default)]
+pub struct ChannelState {
+    /// channel_index -> archetype NetworkGuid.
+    archetypes: HashMap<u32, NetworkGuid>,
+    /// See [`RpcParamGroupMemo`].
+    rpc_param_groups: RpcParamGroupMemo,
+    /// See [`BlockPathMemo`].
+    block_paths: BlockPathMemo,
+    /// See [`NameInterner`].
+    names: NameInterner,
+    /// Bumped whenever an input to group-path resolution that
+    /// `NetGuidCache::schema_generation` does NOT cover changes: the cache's
+    /// GUID -> path and GUID -> outer maps, and this struct's archetype map.
+    /// [`BlockPathMemo`] stamps itself with this and the schema generation
+    /// together; between them they cover every input the resolution reads.
+    resolution_generation: u64,
+    /// One line per content block that framed and decoded but whose inner stream
+    /// could not be walked.
+    ///
+    /// Lives here rather than on the sink because the sink is rebuilt for every
+    /// packet, so anything recorded on it is lost immediately. Capped: a build
+    /// whose transform is wrong would fail on essentially every block, and the
+    /// first few dozen say everything the later million would.
+    stream_failures: Vec<String>,
+}
+
+impl ChannelState {
+    /// Create an empty channel state.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record one stream failure, up to the cap.
+    pub fn push_stream_failure(&mut self, line: String) {
+        if self.stream_failures.len() < MAX_STREAM_FAILURE_RECORDS {
+            self.stream_failures.push(line);
+        }
+    }
+
+    /// Retained stream-failure lines.
+    #[must_use]
+    pub fn stream_failures(&self) -> &[String] {
+        &self.stream_failures
+    }
+
+    /// Declare that something group-path resolution reads has changed.
+    ///
+    /// Call sites are deliberately few -- the GUID registration in
+    /// [`GuidPathSink::register_path`] and the archetype assignment in
+    /// `on_actor_open` -- because every one of them is a place the memo could
+    /// go stale. Adding a resolution input without a call here is silent byte
+    /// movement, not a test failure.
+    fn note_resolution_input_changed(&mut self) {
+        self.resolution_generation = self.resolution_generation.wrapping_add(1);
+    }
+}
+
+/// Counters the driver aggregates across packets.
+#[derive(Debug, Clone, Default)]
+pub struct ExportStats {
+    pub fields_emitted: u64,
+    pub rpcs_emitted: u64,
+    pub actor_opens: u64,
+    pub actor_closes: u64,
+    pub content_blocks: u64,
+    pub overlay: OverlayStats,
+    pub array: ArrayDecodeStats,
+    /// EffectContainer blobs turned into a `value_str` JSON array.
+    ///
+    /// Counted because nothing else moves when this decoder works. The overlay
+    /// buckets are filled before the additive pass runs, so a successful effect
+    /// decode leaves `decoded_ok`, `not_in_table` and the rest exactly where
+    /// they were, and the only trace is a larger `fields.parquet`. A silent
+    /// improvement is the same failure as a silent loss: the next session
+    /// diffs two summaries, sees every counter identical, and concludes
+    /// nothing changed. Failures already land in `overlay.decoded_err`.
+    pub effect_blobs_decoded: u64,
+}
+
+/// The record buffers a sink fills for one packet.
+///
+/// These live outside the sink and are lent to it. The sink is rebuilt for each
+/// of a replay's ~530 k packets, so a `Vec` allocated in its constructor is
+/// allocated (and freed) half a million times; that construct-and-drop cost
+/// measured at ~290 ms of a 1.79 s export, larger than the whole movement
+/// decoder. The buffers are empty at the end of every packet, so keeping their
+/// capacity across packets costs one allocation for the entire run.
+///
+/// [`ExportSink::new`] clears them, so a sink always starts empty no matter what
+/// the previous holder did. That is what stops a caller which never drains them
+/// -- the validation oracle is one -- from accumulating every record in the
+/// replay.
+#[derive(Debug, Default)]
+pub struct RecordBuffers {
+    /// Field records to be drained by the driver.
+    pub fields: Vec<FieldRecord>,
+    /// Movement records to be drained by the driver.
+    pub movement: Vec<MovementRecord>,
+    /// Actor lifecycle records to be drained by the driver.
+    pub actors: Vec<ActorRecord>,
+}
+
+/// The export sink. Receives decoded events from `vrf-net` and produces records
+/// for the Parquet writers.
+///
+/// The sink borrows the `NetGuidCache` mutably because `vrf-net` calls
+/// `GuidPathSink::register_path` during packet processing (for package-map
+/// export bunches that declare new GUID->path mappings inline).
+pub struct ExportSink<'a> {
+    /// Schema cache -- mutable because in-packet path registrations need it.
+    pub cache: &'a mut NetGuidCache,
+    /// Persistent per-channel state (archetype mappings survive across packets).
+    channel_state: &'a mut ChannelState,
+    /// Current frame time in milliseconds.
+    pub time_ms: u32,
+    /// Current packet index.
+    pub packet_id: u32,
+    /// Output buffers for this packet. See [`RecordBuffers`].
+    records: &'a mut RecordBuffers,
+    /// Stats.
+    pub stats: ExportStats,
+
+    // -- per-content-block context (set by on_content_block) ----------------
+    current_channel: u32,
+    current_actor_guid: u32,
+    /// Subobject GUID of the block being walked; `None` for actor blocks.
+    current_object_guid: Option<u32>,
+    /// Interned, so a block's rows share one allocation instead of each
+    /// carrying its own copy of the path. See [`intern`].
+    current_group_path: Arc<str>,
+}
+
+impl<'a> ExportSink<'a> {
+    /// Build a sink for one packet over caller-owned record buffers.
+    ///
+    /// The buffers are cleared here rather than trusted to arrive empty: that is
+    /// what makes it safe to lend the same buffers to every packet regardless of
+    /// whether the caller drains them.
+    pub fn new(
+        cache: &'a mut NetGuidCache,
+        channel_state: &'a mut ChannelState,
+        records: &'a mut RecordBuffers,
+    ) -> Self {
+        records.fields.clear();
+        records.movement.clear();
+        records.actors.clear();
+        Self {
+            cache,
+            channel_state,
+            time_ms: 0,
+            packet_id: 0,
+            records,
+            stats: ExportStats::default(),
+            current_channel: 0,
+            current_actor_guid: 0,
+            current_object_guid: None,
+            current_group_path: empty_group_path(),
+        }
+    }
+
+    /// Push one field row, stamped with the current block context.
+    ///
+    /// Every `FieldRecord` this crate produces is built here. Nine of the
+    /// fourteen columns are block context that no call site should be able to
+    /// get wrong, and before this they were spelled out at seven of them.
+    fn push_field(&mut self, row: FieldValues) {
+        self.records.fields.push(FieldRecord {
+            time_ms: self.time_ms,
+            packet_id: self.packet_id,
+            channel_index: self.current_channel,
+            actor_net_guid: self.current_actor_guid,
+            object_net_guid: self.current_object_guid,
+            // A refcount bump, not a copy: this is the 1.25-million-row column
+            // the interning exists for.
+            group_path: Arc::clone(&self.current_group_path),
+            handle: row.handle,
+            field_name: row.field_name,
+            bit_count: row.bit_count,
+            raw_bits: row.raw_bits,
+            value_i64: row.value_i64,
+            value_f64: row.value_f64,
+            value_bool: row.value_bool,
+            value_str: row.value_str,
+        });
+    }
+}
+
+/// The part of a field row that is not block context. See
+/// [`ExportSink::push_field`].
+#[derive(Debug, Default)]
+struct FieldValues {
+    handle: u32,
+    field_name: Option<Arc<str>>,
+    bit_count: u32,
+    raw_bits: Option<Vec<u8>>,
+    value_i64: Option<i64>,
+    value_f64: Option<f64>,
+    value_bool: Option<bool>,
+    value_str: Option<String>,
+}
+
+/// The group path a sink starts with, before any content block has been seen.
+///
+/// A fresh `Arc` per sink would be 530,401 allocations of an empty string over a
+/// replay, so this hands out clones of one process-wide value. It is only ever
+/// observable if a field arrives before its content block, which the framer
+/// does not do.
+fn empty_group_path() -> Arc<str> {
+    use std::sync::OnceLock;
+    static EMPTY: OnceLock<Arc<str>> = OnceLock::new();
+    Arc::clone(EMPTY.get_or_init(|| Arc::from("")))
+}
+
+impl GuidPathSink for ExportSink<'_> {
+    /// Record a GUID -> path mapping the wire declared inline.
+    ///
+    /// The write is skipped when it would change nothing. That is not only an
+    /// allocation saving: [`BlockPathMemo`] keys on a generation counter that
+    /// must move whenever a resolution input moves, and the cache's GUID -> path
+    /// and GUID -> outer maps are two of those inputs. Deciding "did this
+    /// change" here is what lets the memo stay exactly equivalent to
+    /// recomputing, instead of being invalidated by every re-declaration of a
+    /// mapping the cache already held.
+    ///
+    /// Both halves of the state are compared, not just the path. A repeat call
+    /// carrying the same path but an invalid outer *removes* the outer in
+    /// `set_net_guid_path`; skipping that on a path match alone would preserve a
+    /// stale outer, which changes resolved group paths and the `outer_net_guid`
+    /// column of `net_guids.parquet`.
+    fn register_path(&mut self, guid: u32, path: &str, outer_guid: NetworkGuid) {
+        let outer = if outer_guid.0 != 0 {
+            Some(vrf_schema::NetworkGuid(outer_guid.0))
+        } else {
+            None
+        };
+        if self.cache.get_path_by_guid(guid) == Some(path)
+            && self.cache.get_outer_guid(guid) == outer
+        {
+            return;
+        }
+        self.cache.set_net_guid_path(guid, path.to_string(), outer);
+        self.channel_state.note_resolution_input_changed();
+    }
+
+    fn path_for_guid(&self, guid: u32) -> Option<&str> {
+        self.cache.get_path_by_guid(guid)
+    }
+}
+
+/// The field-name prefix used for RPC parameters.
+///
+/// RPC parameters are emitted as `FunctionName.ParamName` (dot-separated).
+/// This mirrors the existing `Rounds[0].Reports[1].X` convention for nested
+/// TArray elements, giving downstream consumers a reliable prefix to split on
+/// when distinguishing RPC parameters from ordinary replicated properties.
+///
+/// Why dot and not colon: colons appear in the *group path* (e.g.
+/// `/Script/ShooterGame.ShooterCharacter:MulticastNotifyKilledEnemy`), so using
+/// a dot in the field name avoids ambiguity with the path namespace. Downstream
+/// can split on the first `.` in field_name to recover function vs parameter.
+const _RPC_PARAM_NAMING_DOC: () = ();

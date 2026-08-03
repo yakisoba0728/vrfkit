@@ -1,9 +1,16 @@
-//! Arrow schema definitions for the two export tables.
+//! Arrow schema definitions for the five export tables.
 //!
-//! Schemas are defined once here so that writer and reader agree. The field
-//! metadata (e.g. `PARQUET:field_id`) is intentionally omitted -- Parquet
-//! assigns ordinal field IDs automatically, and manual IDs would only matter
-//! if we needed Iceberg-style schema evolution, which we don't.
+//! Schemas are defined once here so that writer and reader agree; the module is
+//! public so a consumer can validate a file it did not write against the same
+//! definition. The field metadata (e.g. `PARQUET:field_id`) is intentionally
+//! omitted -- Parquet assigns ordinal field IDs automatically, and manual IDs
+//! would only matter if we needed Iceberg-style schema evolution, which we
+//! don't.
+//!
+//! Every schema is compiled in whenever the `parquet` feature is on, including
+//! for tables whose writer feature is off: a schema is a few `Field`s and no
+//! code, and a caller reading `fields.parquet` should not have to enable the
+//! writer to get its column types.
 
 use arrow_schema::{DataType, Field, Schema};
 use std::sync::Arc;

@@ -5,6 +5,19 @@
 //! - Large writes (>1 row group) produce multiple row groups.
 //! - Binary column data is preserved exactly.
 //! - Dictionary-encoded columns round-trip correctly.
+//!
+//! Every test here exercises a writer, so the file is empty unless all five
+//! table features are on. That is the default; the gate exists so that
+//! `--no-default-features` builds this target instead of failing to resolve
+//! writers the build deliberately left out.
+
+#![cfg(all(
+    feature = "fields",
+    feature = "movement",
+    feature = "actors",
+    feature = "net-guids",
+    feature = "events"
+))]
 
 use std::fs;
 use std::path::PathBuf;
@@ -55,12 +68,12 @@ fn make_field_record(i: u32) -> FieldRecord {
         actor_net_guid: 1000 + (i % 20),
         // Every third record models a subobject block.
         object_net_guid: if i % 3 == 0 { None } else { Some(9000 + i) },
-        group_path: format!("Group_{}", i % 5),
+        group_path: format!("Group_{}", i % 5).into(),
         handle: i % 64,
         field_name: if i % 3 == 0 {
             None
         } else {
-            Some(format!("Field_{}", i % 10))
+            Some(format!("Field_{}", i % 10).into())
         },
         bit_count: (i % 128) + 1,
         raw_bits: if i % 4 == 0 {
