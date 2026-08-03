@@ -126,6 +126,16 @@ pub struct ExportStats {
     pub content_blocks: u64,
     pub overlay: OverlayStats,
     pub array: ArrayDecodeStats,
+    /// EffectContainer blobs turned into a `value_str` JSON array.
+    ///
+    /// Counted because nothing else moves when this decoder works. The overlay
+    /// buckets are filled before the additive pass runs, so a successful effect
+    /// decode leaves `decoded_ok`, `not_in_table` and the rest exactly where
+    /// they were, and the only trace is a larger `fields.parquet`. A silent
+    /// improvement is the same failure as a silent loss: the next session
+    /// diffs two summaries, sees every counter identical, and concludes
+    /// nothing changed. Failures already land in `overlay.decoded_err`.
+    pub effect_blobs_decoded: u64,
 }
 
 /// The record buffers a sink fills for one packet.
@@ -1068,7 +1078,10 @@ impl<'a> ExportSink<'a> {
                     // the latent bug PROJECT_STATUS.md 12-D pins on the Python
                     // side of this same format.
                     match decode_effect_blob_json(kind, raw, payload_bits) {
-                        Ok(json) => value_str = Some(json),
+                        Ok(json) => {
+                            value_str = Some(json);
+                            self.stats.effect_blobs_decoded += 1;
+                        }
                         Err(err) => {
                             // Loud, not silent: `value_str` stays null, the bits
                             // stay, and the row lands in the export summary's

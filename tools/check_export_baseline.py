@@ -80,16 +80,23 @@ COUNTERS = {
     "skipped_bits": r"Skipped bits:\s+(\d+)",
     "movement_rows": r"Movement rows:\s+(\d+)",
     "net_guid_rows": r"NetGUID rows:\s+(\d+)",
+    "event_rows": r"Event rows:\s+(\d+)",
     "overlay_decoded_ok": r"Decoded OK:\s+(\d+)",
     "overlay_decode_errors": r"Decode errors:\s+(\d+)",
     "overlay_raw_skip": r"Raw/Skip:\s+(\d+)",
     "overlay_not_in_table": r"Not in table:\s+(\d+)",
     "overlay_no_field_name": r"No field name:\s+(\d+)",
     "overlay_rows_offered": r"Rows offered:\s+(\d+)",
+    # Not part of the overlay ratio: the overlay buckets are decided before the
+    # effect pass runs, so a successful effect decode moves none of the five
+    # counters above. Without this line the only evidence that the decoder ran
+    # is fields.parquet's byte count, and a byte count cannot say whether the
+    # decoder produced values or merely different padding.
+    "effect_blobs_decoded": r"Effect blobs:\s+(\d+)",
 }
 PATTERNS = {k: re.compile(v) for k, v in COUNTERS.items()}
 
-PARQUET_FILES = ("fields", "movement", "actors", "net_guids")
+PARQUET_FILES = ("fields", "movement", "actors", "net_guids", "events")
 
 
 def cross_checks(counters: dict, parquet: dict) -> list[str]:
@@ -102,6 +109,7 @@ def cross_checks(counters: dict, parquet: dict) -> list[str]:
     identities = [
         ("NetGUID rows", counters.get("net_guid_rows"), parquet["net_guids"]["rows"]),
         ("Movement rows", counters.get("movement_rows"), parquet["movement"]["rows"]),
+        ("Event rows", counters.get("event_rows"), parquet["events"]["rows"]),
         (
             "Actor opens + Actor closes",
             None

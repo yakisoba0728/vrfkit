@@ -216,6 +216,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     let mut event_trailing_bytes: u64 = 0;
     let mut overlay_stats = OverlayStats::default();
     let mut error_report = OverlayErrorReport::default();
+    let mut effect_blobs_decoded: u64 = 0;
 
     while let Some(chunk) = chunk_iter.next_chunk()? {
         // Event chunks carry the server's own labelled timeline. They are
@@ -278,6 +279,7 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
                 overlay_stats.raw_or_skip += sink.stats.overlay.raw_or_skip;
                 overlay_stats.not_in_table += sink.stats.overlay.not_in_table;
                 overlay_stats.no_field_name += sink.stats.overlay.no_field_name;
+                effect_blobs_decoded += sink.stats.effect_blobs_decoded;
                 error_report.merge_from(&sink.stats.overlay.error_report);
             }
 
@@ -424,6 +426,14 @@ pub fn run(vrf_path: &str, out_dir: &str) -> Result<(), CliError> {
     eprintln!("  No field name:    {}", overlay_stats.no_field_name);
     eprintln!("  Rows offered:     {total_overlay}");
     eprintln!("  Typed:            {pct:.1}% (properties + RPC parameters)");
+    // Reported separately because it is NOT part of the ratio above. The
+    // overlay buckets are decided before the effect pass runs, so these rows
+    // are already counted as `Not in table` and stay there; adding them to
+    // `Decoded OK` would double-count them and move a figure the baseline
+    // pins for a different reason. The two numbers answer different questions:
+    // how much the static table covers, and how much this decoder recovered
+    // from what the table does not.
+    eprintln!("  Effect blobs:     {effect_blobs_decoded}");
 
     // Print top-15 decode error breakdown (always -- this is a permanent
     // diagnostic for schema-drift detection across game builds).
