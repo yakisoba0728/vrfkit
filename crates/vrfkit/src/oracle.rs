@@ -82,10 +82,30 @@
 //! possible, and the first dynamic actor a VALORANT replay opens is always the
 //! replay controller. See `read_dynamic_spawn_data`.
 //!
-//! Corpus-wide result after the fix (`tools/validate_corpus.py`, 215 replays):
-//! pass rate **100.000000%** at min, median and max; malformed blocks 215 -> 0;
-//! skipped bits 153,096 -> 3,671; and 2,150 previously-lost content blocks (ten
-//! per replay) now decode.
+//! Immediate result of the fix: malformed blocks 215 -> 0, and 2,150
+//! previously-lost content blocks (ten per replay) now decode.
+//!
+//! This paragraph used to end "pass rate 100.000000% at min, median and max;
+//! skipped bits 153,096 -> 3,671", and those figures were retracted long
+//! before this comment was. They were not a better measurement -- they were
+//! taken while the parser silently dropped every content block whose
+//! `_ClassNetCache` group it could not resolve, without touching a counter,
+//! so the oracle scored itself on data it had thrown away. Exposing that path
+//! is what moved the numbers, not a regression.
+//!
+//! Current, `tools/validate_corpus.py` over the same 215 replays:
+//!
+//! ```text
+//! blocks 136,545,822   fields 98,884,839   rpcs 75,571,092
+//! malformed 0          skipped 1,972,018,965
+//! pass rate: min 97.487378%   median 99.323434%   max 99.682485%
+//! ```
+//!
+//! `malformed 0` is the claim this oracle makes: container, bunch and content
+//! block framing do not go wrong anywhere in the corpus. The remainder is
+//! attribution, not framing -- blocks cut correctly whose group cannot be
+//! determined, so the handle width is unknown. Re-measure before quoting;
+//! these went stale here for a whole session.
 //!
 //! # How the reference parser compares
 //!

@@ -34,15 +34,33 @@ use crate::{
 pub struct ReplayInfo {
     /// Match duration in milliseconds.
     pub length_in_ms: i32,
-    /// Network version (always 19 for supported replays).
+    /// Network version as the info section declares it.
+    ///
+    /// NOT the 19 that [`crate::EXPECTED_NETWORK_VERSION`] pins, and nothing
+    /// here validates it: `02d4d478` carries 480767974. The 19 is checked in
+    /// the *header* chunk, which is a different field in a different section.
+    /// This doc comment used to say "always 19 for supported replays", which
+    /// was never true of any replay in the corpus.
     pub network_version: u32,
-    /// Build changelist number.
+    /// Build changelist number, as the info section declares it.
+    ///
+    /// A replay carries two: this one and `ReplayHeader::replay_version
+    /// .changelist`, and they disagree -- 5090349 here against 2152573997 in
+    /// the header on `02d4d478`. Downstream (`manifest.json`, and the valplay
+    /// adapter through it) reports the header's.
     pub changelist: u32,
     /// Human-readable name (trailing whitespace trimmed).
     pub friendly_name: String,
     /// Whether the replay was recorded as a live session.
     pub is_live: bool,
-    /// Timestamp (Windows FILETIME ticks).
+    /// Timestamp in Unreal `FDateTime` ticks: 100 ns units since 0001-01-01.
+    ///
+    /// NOT a Windows FILETIME, which this said until 2026-08-04. The two
+    /// differ by the 1601-year epoch offset, so reading `02d4d478`'s
+    /// 639205853799940000 as FILETIME dates the match to 3626 instead of
+    /// 2026-07-25. No timezone is on the wire, so a calendar rendering would
+    /// be asserting UTC-vs-local that one replay cannot settle; the ticks are
+    /// exported raw as `timestamp_ticks`.
     pub timestamp: i64,
     /// Whether chunk payloads are Oodle-compressed.
     pub compressed: bool,
