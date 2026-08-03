@@ -1,29 +1,41 @@
 //! Decoder for the Valorant shot-effect RepLayoutDynamicArray blobs.
 //!
-//! # THIS IS NOT THE LIVE DECODE PATH
+//! # Where this runs
 //!
-//! Nothing in the Rust pipeline calls `decode_effect_floats`,
-//! `decode_effect_objects` or `decode_effect_vectors`. Their only callers are
-//! this module's own tests. The decoder that actually produces shot data is a
-//! Python port in `tools/to_valplay_bundle.py`
-//! (`_decode_effect_elements` and friends), which reads the raw bits back out
-//! of `fields.parquet` after export.
+//! [`decode_effect_blob_json`] is wired into the export path: `sink.rs`'s RPC
+//! parameter loop calls it for every RPC parameter named `FloatValues`,
+//! `ObjectValues` or `VectorValues`, and puts the JSON it returns into
+//! `value_str` **in addition to** `raw_bits`, never instead of it. The decode
+//! is additive, exactly like the type overlay: a failure leaves `value_str`
+//! null, keeps the bits, and increments a counter.
 //!
-//! **The two are not interchangeable, and this one must not be swapped in
-//! without measuring.** They agree on well-formed input but their failure
-//! contracts are opposites: on a malformed blob this module returns `Err` and
-//! discards the whole array, while the Python port breaks out of its loop and
-//! returns the elements it had already decoded. The Python path currently
-//! matches the C# reference on all 2,647 shots in `02d4d478`, so a swap would
-//! have to prove no blob in the corpus takes the divergent branch -- and the
-//! consumer reads Parquet, so wiring this in also means new columns and a
-//! schema change. That is a feature, not a cleanup.
+//! ## One RPC is deliberately excluded, and it is not excluded here
 //!
-//! It is kept rather than deleted because its tests are the repo's only
-//! executable specification of this wire format: eight pinned hex vectors
-//! lifted from real packets, with values checked against the C# reference.
-//! `tools/` contains no test files, so deleting this would leave the format
-//! specified by prose alone.
+//! `ReplayPlayContinuousEffectAtLocation` -- the shot RPC -- is skipped by the
+//! caller. The reason is a property of the downstream Python consumer, not of
+//! this wire format, so the exclusion lives at the call site in `sink.rs`
+//! rather than in this module. See the comment on
+//! `effect_array_kind_for_param` there.
+//!
+//! That RPC's blobs are still decoded, by the Python port in
+//! `tools/to_valplay_bundle.py` (`_decode_effect_blob` and friends), which
+//! reads the raw bits back out of `fields.parquet` after export.
+//!
+//! ## How this module's contract differs from the Python port
+//!
+//! The two agree on every well-formed blob but their failure contracts differ:
+//! on a malformed blob this module returns `Err` and discards the whole array,
+//! while the Python port breaks out of its loop and returns the elements it had
+//! already decoded. A direct differential over 100,997 real blobs from 11
+//! replays, comparing floats as IEEE-754 bit patterns, found 0 disagreements,
+//! and a corpus census over 2,045,428 blobs found no input that reaches a
+//! branch where they could differ. The two therefore coexist without a
+//! reconciliation: they are never asked about the same rows.
+//!
+//! This module's own tests are the repo's only executable specification of this
+//! wire format: eight pinned hex vectors lifted from real packets, with values
+//! checked against the C# reference. `tools/` contains no test files, so
+//! deleting this would leave the format specified by prose alone.
 //!
 //! # Purpose
 //!
@@ -115,6 +127,64 @@ pub enum EffectBlobError {
     /// Too many fields in a single element (guard against infinite loops).
     #[error("too many fields in element ({context})")]
     TooManyFields { context: &'static str },
+
+    /// The declared bit length is longer than the buffer that carries it.
+    #[error("declared {bits} bits but buffer holds {available}")]
+    BitLengthExceedsBuffer { bits: u32, available: u64 },
+
+    /// The array terminated with more than byte padding left over.
+    ///
+    /// A blob in this format consumes its window exactly: all 61,617 blobs on
+    /// `02d4d478` finish with 0 bits remaining. A payload that is *not* this
+    /// format usually still parses into something plausible and then leaves a
+    /// large tail, so this is the guard that separates "decoded" from "decoded
+    /// into a plausible-looking structure". Sub-byte padding is tolerated
+    /// because it cannot carry an element.
+    #[error("{remaining} bits left after terminator")]
+    ResidualBits { remaining: u64 },
+
+    /// A float element decoded to NaN or an infinity.
+    ///
+    /// JSON has no literal for either, and this repo has been burned three
+    /// times by values that looked right, so the blob is rejected rather than
+    /// coerced to `null` or `0`. Zero occurrences across the 24,000 float
+    /// blobs on `02d4d478`; the guard exists so that the first one is loud.
+    #[error("element {index} is a non-finite float")]
+    NonFiniteFloat { index: usize },
+
+    /// A value field declared a width its type cannot occupy.
+    ///
+    /// The decoders do not sub-window per field: they read the type, then skip
+    /// whatever the declared width had left over. A field declaring *fewer*
+    /// bits than its type needs would therefore read past its own payload and
+    /// into the next field. Checking the width first turns that silent
+    /// corruption into a rejected blob.
+    #[error("{context}: expected a {expected}-bit payload, found {found}")]
+    UnexpectedPayloadWidth {
+        context: &'static str,
+        expected: u32,
+        found: u32,
+    },
+
+    /// An element carried a number of fields other than two.
+    ///
+    /// Every one of the 128,000 elements on `02d4d478` carries exactly two: a
+    /// gameplay tag and a value. Two is what makes the handle pair derivable,
+    /// so anything else is rejected rather than guessed at.
+    #[error("element has {found} field(s), expected 2")]
+    ElementFieldCount { found: u32 },
+
+    /// An element's two field handles were not adjacent.
+    #[error("field handles {first} and {second} are not adjacent")]
+    NonAdjacentHandles { first: u32, second: u32 },
+
+    /// Two elements of one array disagreed about the handle base.
+    #[error("handle base {found} contradicts {expected} seen earlier")]
+    InconsistentHandleBase { expected: u32, found: u32 },
+
+    /// A field's type consumed more bits than the field declared.
+    #[error("field declared {declared} bits but its type read {consumed}")]
+    PayloadOverread { declared: u32, consumed: u64 },
 }
 
 /// Convenience alias.
@@ -133,6 +203,80 @@ const MAX_FIELDS_PER_ELEMENT: u32 = 8;
 
 /// Maximum bits in a single field payload. Prevents runaway on corrupt data.
 const MAX_FIELD_PAYLOAD_BITS: u32 = 64 * 1024;
+
+// ---- Element field handles ----
+
+/// The pair of RepLayout field handles an `FEffectData*` element uses: one for
+/// the gameplay tag, one for the value.
+///
+/// # Why this is not a constant
+///
+/// It reads like a property of the struct -- `FEffectDataFloat` has two members
+/// and they should have two fixed handles -- but it is a property of the
+/// *containing function*. Unreal numbers a dynamic array's element handles from
+/// the array's own handle in the parent layout, and each RPC declares these
+/// arrays at a different position, so the same struct arrives under a different
+/// pair in every function. Measured on `02d4d478` -- ten functions, and this
+/// table is a measurement, not an enumeration: nothing stops another build
+/// declaring an eleventh at a base none of these use, which is the reason the
+/// pair is derived rather than tabulated.
+///
+/// | Function | FloatValues | ObjectValues | VectorValues |
+/// |----------|-------------|--------------|--------------|
+/// | `ReplayPlayContinuousEffectAtLocation` | 7/8 | 15/16 | 11/12 |
+/// | `ClientPlayOneShotEffectAtLocation` | 3/4 | 11/12 | -- |
+/// | `MulticastPlayContinuousEffect` | 3/4 | 11/12 | 7/8 |
+/// | `MulticastPlayContinuousEffectFromClient` | 4/5 | 12/13 | -- |
+/// | `MulticastPlayOneShotEffect` | 3/4 | 11/12 | -- |
+/// | `MulticastPlayOneShotEffectFromClient` | 4/5 | 12/13 | -- |
+/// | `MulticastUpdateContinuousEffect` | 6/7 | -- | -- |
+/// | `ReplayPlayOneShotEffectAtLocation` | 3/4 | 11/12 | 7/8 |
+/// | `ReplayRecordOneShotEffect` | -- | 11/12 | -- |
+/// | `ReplayRecordContinuousEffect` | 3/4 | 11/12 | -- |
+///
+/// Treating the first row's numbers as universal is not a harmless
+/// approximation. It makes every other function's elements decode to
+/// all-`None` -- and worse, `MulticastUpdateContinuousEffect`'s float value
+/// sits at handle 7, the slot the first row calls the tag, so 298 elements
+/// decoded a 32-bit float payload as a tag index and produced confident,
+/// wrong numbers. [`scan_element_handles`] derives the pair from the blob
+/// instead of assuming it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectHandles {
+    /// Handle of the `FGameplayTag` member. Always the lower of the two.
+    pub tag: u32,
+    /// Handle of the value member. Always `tag + 1`.
+    pub value: u32,
+}
+
+impl EffectHandles {
+    /// The pair whose tag member is at `base`.
+    ///
+    /// Saturates rather than overflowing. `scan_element_handles` rejects a
+    /// non-adjacent pair before it gets here so `u32::MAX` should be
+    /// unreachable, but the export path is not a place to leave a debug-build
+    /// panic on unreachable-in-principle input.
+    #[must_use]
+    pub const fn from_base(base: u32) -> Self {
+        Self {
+            tag: base,
+            value: base.saturating_add(1),
+        }
+    }
+}
+
+/// `FEffectDataFloat` handles in `ReplayPlayContinuousEffectAtLocation`.
+///
+/// These are the numbers the C# reference descriptors state and the numbers
+/// this module's pinned vectors were captured under. They are the default only
+/// because that is the function those vectors come from.
+const FLOAT_HANDLES: EffectHandles = EffectHandles::from_base(7);
+
+/// `FEffectDataObject` handles in `ReplayPlayContinuousEffectAtLocation`.
+const OBJECT_HANDLES: EffectHandles = EffectHandles::from_base(15);
+
+/// `FEffectDataVector` handles in `ReplayPlayContinuousEffectAtLocation`.
+const VECTOR_HANDLES: EffectHandles = EffectHandles::from_base(11);
 
 // ---- Output types ----
 
@@ -197,6 +341,38 @@ fn read_element_index(reader: &mut BitReader<'_>, declared_count: u32) -> Result
     Ok(Some(index))
 }
 
+/// Reject a value field whose declared width its type cannot occupy.
+fn expect_width(context: &'static str, expected: u32, found: u32) -> Result<()> {
+    if found == expected {
+        Ok(())
+    } else {
+        Err(EffectBlobError::UnexpectedPayloadWidth {
+            context,
+            expected,
+            found,
+        })
+    }
+}
+
+/// Advance the reader to the end of a field whose header declared
+/// `payload_bits`, having already read `reader.position() - start_pos` of them.
+///
+/// Reading *past* the declared width is the interesting case: it means the
+/// field's type is wider than the field, so the decode has already consumed
+/// part of the next field and every value after it is suspect.
+fn settle_field(reader: &mut BitReader<'_>, start_pos: u64, payload_bits: u32) -> Result<()> {
+    let consumed = reader.position() - start_pos;
+    let declared = u64::from(payload_bits);
+    if consumed > declared {
+        return Err(EffectBlobError::PayloadOverread {
+            declared: payload_bits,
+            consumed,
+        });
+    }
+    reader.skip_bits(declared - consumed)?;
+    Ok(())
+}
+
 /// Read the next field handle + payload bit count. Returns `None` on terminator.
 fn read_field_header(reader: &mut BitReader<'_>) -> Result<Option<(u32, u32)>> {
     let encoded_handle = reader.read_int_packed()?;
@@ -241,6 +417,16 @@ fn read_field_header(reader: &mut BitReader<'_>) -> Result<Option<(u32, u32)>> {
 ///     handle 8: [IntPacked: bits] [f32: value]
 /// ```
 pub fn decode_effect_floats(reader: &mut BitReader<'_>) -> Result<Vec<EffectDataFloat>> {
+    decode_effect_floats_at(reader, FLOAT_HANDLES)
+}
+
+/// [`decode_effect_floats`] with the element's handle pair supplied.
+///
+/// See [`EffectHandles`] for why the pair is not a constant.
+pub fn decode_effect_floats_at(
+    reader: &mut BitReader<'_>,
+    handles: EffectHandles,
+) -> Result<Vec<EffectDataFloat>> {
     let count = read_array_count(reader)?;
     let mut elements = vec![
         EffectDataFloat {
@@ -275,26 +461,20 @@ pub fn decode_effect_floats(reader: &mut BitReader<'_>) -> Result<Vec<EffectData
             }
 
             let start_pos = reader.position();
-            match handle {
-                7 => {
-                    // FGameplayTag: IntPacked tag index
-                    elem.tag_index = Some(reader.read_int_packed()?);
-                }
-                8 => {
-                    // Float32
-                    elem.value = Some(reader.read_f32()?);
-                }
-                _ => {
-                    // Unknown handle: skip the payload
-                    reader.skip_bits(u64::from(payload_bits))?;
-                }
+            if handle == handles.tag {
+                // FGameplayTag: IntPacked tag index
+                elem.tag_index = Some(reader.read_int_packed()?);
+            } else if handle == handles.value {
+                // Float32
+                expect_width("EffectDataFloat value", 32, payload_bits)?;
+                elem.value = Some(reader.read_f32()?);
+            } else {
+                // Unknown handle: skip the payload
+                reader.skip_bits(u64::from(payload_bits))?;
             }
 
             // Ensure we consumed exactly payload_bits
-            let consumed = reader.position() - start_pos;
-            if consumed < u64::from(payload_bits) {
-                reader.skip_bits(u64::from(payload_bits) - consumed)?;
-            }
+            settle_field(reader, start_pos, payload_bits)?;
         }
     }
 
@@ -319,6 +499,16 @@ pub fn decode_effect_floats(reader: &mut BitReader<'_>) -> Result<Vec<EffectData
 ///     handle 16: [IntPacked: bits] [IntPacked: net_guid]
 /// ```
 pub fn decode_effect_objects(reader: &mut BitReader<'_>) -> Result<Vec<EffectDataObject>> {
+    decode_effect_objects_at(reader, OBJECT_HANDLES)
+}
+
+/// [`decode_effect_objects`] with the element's handle pair supplied.
+///
+/// See [`EffectHandles`] for why the pair is not a constant.
+pub fn decode_effect_objects_at(
+    reader: &mut BitReader<'_>,
+    handles: EffectHandles,
+) -> Result<Vec<EffectDataObject>> {
     let count = read_array_count(reader)?;
     let mut elements = vec![
         EffectDataObject {
@@ -351,24 +541,23 @@ pub fn decode_effect_objects(reader: &mut BitReader<'_>) -> Result<Vec<EffectDat
             }
 
             let start_pos = reader.position();
-            match handle {
-                15 => {
-                    // FGameplayTag: IntPacked tag index
-                    elem.tag_index = Some(reader.read_int_packed()?);
-                }
-                16 => {
-                    // ObjectNetGuid: IntPacked
-                    elem.value = Some(reader.read_int_packed()?);
-                }
-                _ => {
-                    reader.skip_bits(u64::from(payload_bits))?;
-                }
+            if handle == handles.tag {
+                // FGameplayTag: IntPacked tag index
+                elem.tag_index = Some(reader.read_int_packed()?);
+            } else if handle == handles.value {
+                // ObjectNetGuid: IntPacked. Both members of this element type
+                // are IntPacked, so width cannot tell them apart -- the tag is
+                // identified by being the lower handle. Verified per function
+                // on `02d4d478`: the lower handle takes 1 to 5 distinct values
+                // drawn from the gameplay-tag space (282, 283, 298, 306,
+                // 65535), the upper takes 209 to 580 distinct values spanning
+                // the dynamic net-GUID range.
+                elem.value = Some(reader.read_int_packed()?);
+            } else {
+                reader.skip_bits(u64::from(payload_bits))?;
             }
 
-            let consumed = reader.position() - start_pos;
-            if consumed < u64::from(payload_bits) {
-                reader.skip_bits(u64::from(payload_bits) - consumed)?;
-            }
+            settle_field(reader, start_pos, payload_bits)?;
         }
     }
 
@@ -394,6 +583,16 @@ pub fn decode_effect_objects(reader: &mut BitReader<'_>) -> Result<Vec<EffectDat
 ///     handle 12: [IntPacked: bits] [f64: x] [f64: y] [f64: z]
 /// ```
 pub fn decode_effect_vectors(reader: &mut BitReader<'_>) -> Result<Vec<EffectDataVector>> {
+    decode_effect_vectors_at(reader, VECTOR_HANDLES)
+}
+
+/// [`decode_effect_vectors`] with the element's handle pair supplied.
+///
+/// See [`EffectHandles`] for why the pair is not a constant.
+pub fn decode_effect_vectors_at(
+    reader: &mut BitReader<'_>,
+    handles: EffectHandles,
+) -> Result<Vec<EffectDataVector>> {
     let count = read_array_count(reader)?;
     let mut elements = vec![
         EffectDataVector {
@@ -426,31 +625,280 @@ pub fn decode_effect_vectors(reader: &mut BitReader<'_>) -> Result<Vec<EffectDat
             }
 
             let start_pos = reader.position();
-            match handle {
-                11 => {
-                    // FGameplayTag: IntPacked tag index
-                    elem.tag_index = Some(reader.read_int_packed()?);
-                }
-                12 => {
-                    // FVector(double): 3 x f64
-                    let x = reader.read_f64()?;
-                    let y = reader.read_f64()?;
-                    let z = reader.read_f64()?;
-                    elem.value = Some(FVector { x, y, z });
-                }
-                _ => {
-                    reader.skip_bits(u64::from(payload_bits))?;
-                }
+            if handle == handles.tag {
+                // FGameplayTag: IntPacked tag index
+                elem.tag_index = Some(reader.read_int_packed()?);
+            } else if handle == handles.value {
+                // FVector(double): 3 x f64
+                expect_width("EffectDataVector value", 192, payload_bits)?;
+                let x = reader.read_f64()?;
+                let y = reader.read_f64()?;
+                let z = reader.read_f64()?;
+                elem.value = Some(FVector { x, y, z });
+            } else {
+                reader.skip_bits(u64::from(payload_bits))?;
             }
 
-            let consumed = reader.position() - start_pos;
-            if consumed < u64::from(payload_bits) {
-                reader.skip_bits(u64::from(payload_bits) - consumed)?;
-            }
+            settle_field(reader, start_pos, payload_bits)?;
         }
     }
 
     Ok(elements)
+}
+
+// ---- Export wiring: blob -> JSON ----
+
+/// Which `FEffectData*` element type a blob carries.
+///
+/// The three arrays share one framing and differ only in their field handles
+/// and value decode, so the export path selects between them by the RPC
+/// parameter's declared name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectArrayKind {
+    /// `TArray<FEffectDataFloat>`, declared as `FloatValues`.
+    Float,
+    /// `TArray<FEffectDataObject>`, declared as `ObjectValues`.
+    Object,
+    /// `TArray<FEffectDataVector>`, declared as `VectorValues`.
+    Vector,
+}
+
+impl EffectArrayKind {
+    /// Map an RPC parameter's declared name to its element type.
+    ///
+    /// Name-driven rather than handle-driven: the handle is the parameter's
+    /// index within its own function, so it differs between the eleven
+    /// functions that carry these arrays, while the name is stable across all
+    /// of them. Returns `None` for every other parameter name.
+    #[must_use]
+    pub fn from_param_name(name: &str) -> Option<Self> {
+        match name {
+            "FloatValues" => Some(Self::Float),
+            "ObjectValues" => Some(Self::Object),
+            "VectorValues" => Some(Self::Vector),
+            _ => None,
+        }
+    }
+}
+
+/// Append a JSON number for a finite `f64`.
+///
+/// Rust's `Display` for floats is the shortest representation that round-trips,
+/// which is always a valid JSON number for a finite value. `1.0` renders as
+/// `1`; that is a JSON number too, so no consumer sees a type it cannot read.
+fn push_json_f64(out: &mut String, v: f64) {
+    use core::fmt::Write as _;
+    // Writing into a String is infallible; the Result exists only to satisfy
+    // the `fmt::Write` signature.
+    let _ = write!(out, "{v}");
+}
+
+/// Derive an array's element handle pair by walking its framing.
+///
+/// Reads structure only -- every field payload is skipped, no handle is
+/// interpreted -- so the result does not depend on knowing which function the
+/// blob came from. Returns `None` when the array populates no element, which
+/// leaves nothing to derive the pair from and nothing for it to decode.
+///
+/// The derivation is structural on purpose, so that it assumes nothing about
+/// how Unreal numbers handles. That independence is what makes the following
+/// a real check rather than a tautology: Unreal is documented to number a
+/// dynamic array's element handles from the array's own handle plus one, and
+/// on `02d4d478` the derived base equals the RPC parameter's own handle plus
+/// one for all 53,908 blobs, with no exception. Two unrelated routes to the
+/// same number.
+///
+/// # Errors
+/// Rejects any array whose elements do not each carry exactly two fields at
+/// adjacent handles, all elements agreeing on the lower one. That is the shape
+/// of all 128,000 elements on `02d4d478`, and it is what makes the pair
+/// derivable at all; a blob outside it is reported rather than guessed at.
+pub fn scan_element_handles(raw: &[u8], bit_count: u32) -> Result<Option<EffectHandles>> {
+    let mut reader = new_blob_reader(raw, bit_count)?;
+    let count = read_array_count(&mut reader)?;
+    let mut base: Option<u32> = None;
+
+    while !reader.at_end() {
+        let Some(_index) = read_element_index(&mut reader, count)? else {
+            if reader.bits_remaining() == 8 {
+                let _ = reader.read_int_packed();
+            }
+            break;
+        };
+
+        let mut seen = [0u32; 2];
+        for slot in &mut seen {
+            let Some((handle, payload_bits)) = read_field_header(&mut reader)? else {
+                return Err(EffectBlobError::ElementFieldCount { found: 0 });
+            };
+            reader.skip_bits(u64::from(payload_bits))?;
+            *slot = handle;
+        }
+        if let Some((_, payload_bits)) = read_field_header(&mut reader)? {
+            // Consume it so the error message's position is not misleading if
+            // a caller ever reports one; the blob is rejected either way.
+            let _ = reader.skip_bits(u64::from(payload_bits));
+            return Err(EffectBlobError::ElementFieldCount { found: 3 });
+        }
+
+        // Order within the element is not assumed; the tag is the lower handle.
+        let (lo, hi) = (seen[0].min(seen[1]), seen[0].max(seen[1]));
+        if hi != lo + 1 {
+            return Err(EffectBlobError::NonAdjacentHandles {
+                first: seen[0],
+                second: seen[1],
+            });
+        }
+        match base {
+            None => base = Some(lo),
+            Some(known) if known != lo => {
+                return Err(EffectBlobError::InconsistentHandleBase {
+                    expected: known,
+                    found: lo,
+                });
+            }
+            Some(_) => {}
+        }
+    }
+
+    Ok(base.map(EffectHandles::from_base))
+}
+
+/// Build a reader over an exact bit window, without the panic.
+fn new_blob_reader(raw: &[u8], bit_count: u32) -> Result<BitReader<'_>> {
+    let available = (raw.len() as u64) * 8;
+    if u64::from(bit_count) > available {
+        // `BitReader::with_bit_len` asserts on this, and a panic in the export
+        // path would take the whole run down over one malformed row.
+        return Err(EffectBlobError::BitLengthExceedsBuffer {
+            bits: bit_count,
+            available,
+        });
+    }
+    Ok(BitReader::with_bit_len(raw, u64::from(bit_count)))
+}
+
+/// Decode one effect-array blob and render it as a JSON array.
+///
+/// Each element becomes `{"tag":<u32|null>,"value":<value|null>}`, where the
+/// value is a number for [`EffectArrayKind::Float`] and
+/// [`EffectArrayKind::Object`] and `{"x":..,"y":..,"z":..}` for
+/// [`EffectArrayKind::Vector`]. A sparse array's unpopulated slots keep their
+/// position and render both members as `null`, so an element's index in the
+/// JSON is its index on the wire.
+///
+/// # Arguments
+/// - `raw`: the parameter payload, as `fields.parquet` stores it.
+/// - `bit_count`: the payload's exact bit length. This is the RPC parameter's
+///   declared `payload_bits`, **not** `raw.len() * 8` -- the last byte is
+///   padded, and feeding the padding in as data is a latent bug the audit in
+///   `PROJECT_STATUS.md` 12-D calls out on the Python side.
+///
+/// # Errors
+/// Returns [`EffectBlobError`] if the payload is not a well-formed array of
+/// this kind, does not consume its window, or contains a float that JSON
+/// cannot represent. The caller keeps the raw bits and counts the failure; it
+/// must not substitute a partial or plausible-looking structure.
+pub fn decode_effect_blob_json(
+    kind: EffectArrayKind,
+    raw: &[u8],
+    bit_count: u32,
+) -> Result<String> {
+    // First pass: which handles does *this* function put the element's members
+    // under. `None` means no element carries a field, so the pair is both
+    // underivable and unused -- any pair decodes such a blob identically.
+    let handles = scan_element_handles(raw, bit_count)?.unwrap_or(EffectHandles::from_base(0));
+    let mut reader = new_blob_reader(raw, bit_count)?;
+
+    let mut out = String::new();
+    out.push('[');
+    match kind {
+        EffectArrayKind::Float => {
+            for (index, elem) in decode_effect_floats_at(&mut reader, handles)?
+                .iter()
+                .enumerate()
+            {
+                if index > 0 {
+                    out.push(',');
+                }
+                push_tag(&mut out, elem.tag_index);
+                match elem.value {
+                    Some(v) if v.is_finite() => push_json_f64(&mut out, f64::from(v)),
+                    Some(_) => return Err(EffectBlobError::NonFiniteFloat { index }),
+                    None => out.push_str("null"),
+                }
+                out.push('}');
+            }
+        }
+        EffectArrayKind::Object => {
+            for (index, elem) in decode_effect_objects_at(&mut reader, handles)?
+                .iter()
+                .enumerate()
+            {
+                if index > 0 {
+                    out.push(',');
+                }
+                push_tag(&mut out, elem.tag_index);
+                match elem.value {
+                    Some(v) => {
+                        use core::fmt::Write as _;
+                        let _ = write!(out, "{v}");
+                    }
+                    None => out.push_str("null"),
+                }
+                out.push('}');
+            }
+        }
+        EffectArrayKind::Vector => {
+            for (index, elem) in decode_effect_vectors_at(&mut reader, handles)?
+                .iter()
+                .enumerate()
+            {
+                if index > 0 {
+                    out.push(',');
+                }
+                push_tag(&mut out, elem.tag_index);
+                match elem.value {
+                    Some(v) => {
+                        if !(v.x.is_finite() && v.y.is_finite() && v.z.is_finite()) {
+                            return Err(EffectBlobError::NonFiniteFloat { index });
+                        }
+                        out.push_str("{\"x\":");
+                        push_json_f64(&mut out, v.x);
+                        out.push_str(",\"y\":");
+                        push_json_f64(&mut out, v.y);
+                        out.push_str(",\"z\":");
+                        push_json_f64(&mut out, v.z);
+                        out.push('}');
+                    }
+                    None => out.push_str("null"),
+                }
+                out.push('}');
+            }
+        }
+    }
+    out.push(']');
+
+    // Checked after the decode, not during: the decoders stop at the array
+    // terminator by design, so "did it consume the window" is only answerable
+    // once they have returned.
+    let remaining = reader.bits_remaining();
+    if remaining >= 8 {
+        return Err(EffectBlobError::ResidualBits { remaining });
+    }
+
+    Ok(out)
+}
+
+/// Open one element object and write its `tag` member.
+fn push_tag(out: &mut String, tag_index: Option<u32>) {
+    use core::fmt::Write as _;
+    match tag_index {
+        Some(t) => {
+            let _ = write!(out, "{{\"tag\":{t},\"value\":");
+        }
+        None => out.push_str("{\"tag\":null,\"value\":"),
+    }
 }
 
 // ---- Tests ----
@@ -654,5 +1102,231 @@ mod tests {
         let mut reader = BitReader::with_bit_len(&data, 8);
         let result = decode_effect_vectors(&mut reader).unwrap();
         assert!(result.is_empty());
+    }
+
+    // ---- JSON wiring tests ----
+
+    #[test]
+    fn param_names_select_the_element_type() {
+        assert_eq!(
+            EffectArrayKind::from_param_name("FloatValues"),
+            Some(EffectArrayKind::Float)
+        );
+        assert_eq!(
+            EffectArrayKind::from_param_name("ObjectValues"),
+            Some(EffectArrayKind::Object)
+        );
+        assert_eq!(
+            EffectArrayKind::from_param_name("VectorValues"),
+            Some(EffectArrayKind::Vector)
+        );
+        // Every other RPC parameter, including ones from the same functions.
+        assert_eq!(EffectArrayKind::from_param_name("EffectID"), None);
+        assert_eq!(EffectArrayKind::from_param_name("SourceID"), None);
+        assert_eq!(EffectArrayKind::from_param_name("Translation"), None);
+        assert_eq!(EffectArrayKind::from_param_name("248"), None);
+        assert_eq!(EffectArrayKind::from_param_name("floatvalues"), None);
+    }
+
+    /// The whole string is asserted, not a substring: a member carrying no
+    /// data is exactly where a serialization bug hides (see 13-B).
+    #[test]
+    fn float_blob_renders_as_json() {
+        let hex = "08021020390412400000803f000410200f0412400000a040\
+                   000610203d0412400000803f000810203b04124015f9b3ce0000";
+        let raw = decode_hex(hex);
+        let json = decode_effect_blob_json(EffectArrayKind::Float, &raw, 400).unwrap();
+        assert_eq!(
+            json,
+            "[{\"tag\":284,\"value\":1},\
+              {\"tag\":263,\"value\":5},\
+              {\"tag\":286,\"value\":1},\
+              {\"tag\":285,\"value\":-1509722752}]"
+        );
+    }
+
+    #[test]
+    fn object_blob_renders_as_json() {
+        let hex = "08022020370422201d300004202035042220190400\
+                   062030ffff062220572a000820206504222075160000";
+        let raw = decode_hex(hex);
+        let json = decode_effect_blob_json(EffectArrayKind::Object, &raw, 344).unwrap();
+        assert_eq!(
+            json,
+            "[{\"tag\":283,\"value\":3086},\
+              {\"tag\":282,\"value\":268},\
+              {\"tag\":65535,\"value\":2731},\
+              {\"tag\":306,\"value\":1466}]"
+        );
+    }
+
+    #[test]
+    fn vector_blob_renders_as_json() {
+        let hex = "0202182013041a81026b7b179c16f0e8bf11e6b45fc0eee33f\
+                   9417c1fc5684b1bf0000";
+        let raw = decode_hex(hex);
+        let json = decode_effect_blob_json(EffectArrayKind::Vector, &raw, 280).unwrap();
+        assert_eq!(
+            json,
+            "[{\"tag\":265,\"value\":{\"x\":-0.7793076561609785,\
+              \"y\":0.6228944653768754,\"z\":-0.06842559500463913}}]"
+        );
+    }
+
+    #[test]
+    fn an_empty_blob_renders_as_an_empty_array() {
+        let json = decode_effect_blob_json(EffectArrayKind::Float, &[0u8], 8).unwrap();
+        assert_eq!(json, "[]");
+    }
+
+    /// A payload that is not this format usually parses into something and
+    /// leaves a tail. That tail is the only thing separating a decode from a
+    /// plausible-looking fabrication, so it must be an error, not a warning.
+    #[test]
+    fn a_tail_after_the_terminator_is_an_error() {
+        // A well-formed 1-element float array followed by 6 spare bytes.
+        let hex = "0202102039041240000080 3f0000 00000000000000";
+        let raw = decode_hex(&hex.replace(' ', ""));
+        let bits = (raw.len() as u32) * 8;
+        let err = decode_effect_blob_json(EffectArrayKind::Float, &raw, bits).unwrap_err();
+        assert!(
+            matches!(err, EffectBlobError::ResidualBits { .. }),
+            "expected ResidualBits, got {err:?}"
+        );
+    }
+
+    /// `BitReader::with_bit_len` asserts rather than returning an error, and a
+    /// panic in the export path would take the whole run down over one row.
+    #[test]
+    fn a_bit_length_past_the_buffer_is_an_error_not_a_panic() {
+        let err = decode_effect_blob_json(EffectArrayKind::Float, &[0u8], 4096).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                EffectBlobError::BitLengthExceedsBuffer {
+                    bits: 4096,
+                    available: 8
+                }
+            ),
+            "expected BitLengthExceedsBuffer, got {err:?}"
+        );
+    }
+
+    /// JSON has no literal for NaN or an infinity. Rendering one bare would
+    /// produce a document no strict reader accepts; coercing it to `null` or
+    /// `0` would fabricate. The blob is rejected so the caller counts it.
+    #[test]
+    fn a_non_finite_float_is_rejected_rather_than_rendered() {
+        // Element 0, tag 284, value = f32::NAN (0x7fc00000).
+        let hex = "020210203904124000 00c07f 0000";
+        let raw = decode_hex(&hex.replace(' ', ""));
+        let err = decode_effect_blob_json(EffectArrayKind::Float, &raw, 112).unwrap_err();
+        assert!(
+            matches!(err, EffectBlobError::NonFiniteFloat { index: 0 }),
+            "expected NonFiniteFloat, got {err:?}"
+        );
+    }
+
+    // ---- Handle derivation ----
+
+    /// The pinned vectors come from `ReplayPlayContinuousEffectAtLocation`, so
+    /// the scan must recover exactly the constants the fixed-handle decoders
+    /// use -- derivation and declaration agreeing on the one function where
+    /// both are known.
+    #[test]
+    fn scanning_recovers_the_declared_handles() {
+        let floats = decode_hex(
+            "08021020390412400000803f000410200f0412400000a040\
+             000610203d0412400000803f000810203b04124015f9b3ce0000",
+        );
+        assert_eq!(
+            scan_element_handles(&floats, 400).unwrap(),
+            Some(FLOAT_HANDLES)
+        );
+
+        let objects = decode_hex(
+            "08022020370422201d300004202035042220190400\
+             062030ffff062220572a000820206504222075160000",
+        );
+        assert_eq!(
+            scan_element_handles(&objects, 344).unwrap(),
+            Some(OBJECT_HANDLES)
+        );
+
+        let vectors = decode_hex(
+            "0202182013041a81026b7b179c16f0e8bf11e6b45fc0eee33f\
+             9417c1fc5684b1bf0000",
+        );
+        assert_eq!(
+            scan_element_handles(&vectors, 280).unwrap(),
+            Some(VECTOR_HANDLES)
+        );
+    }
+
+    /// An array that populates no element has no pair to derive.
+    #[test]
+    fn an_empty_array_has_no_handles_to_derive() {
+        assert_eq!(scan_element_handles(&[0u8], 8).unwrap(), None);
+    }
+
+    /// The whole point of the scan: the same struct under a different function
+    /// arrives at a different handle pair, and the fixed constants would read
+    /// it as all-null (or worse -- see `EffectHandles`). This is the pinned
+    /// Sheriff FloatValues blob with its handles rewritten from 7/8 to 3/4,
+    /// which is where `ClientPlayOneShotEffectAtLocation` puts them.
+    #[test]
+    fn a_rebased_blob_decodes_through_derivation_and_not_through_the_constants() {
+        // Handle bytes are IntPacked(handle + 1): 0x10 -> 7 and 0x12 -> 8
+        // become 0x08 -> 3 and 0x0a -> 4.
+        let hex = "0802082039040a400000803f000408200f040a400000a040\
+                   000608203d040a400000803f000808203b040a4015f9b3ce0000";
+        let raw = decode_hex(hex);
+        assert_eq!(
+            scan_element_handles(&raw, 400).unwrap(),
+            Some(EffectHandles::from_base(3))
+        );
+
+        // Through the constants: every field is an unknown handle, so the
+        // elements come back empty. This is what shipped before derivation.
+        let mut reader = BitReader::with_bit_len(&raw, 400);
+        let blind = decode_effect_floats(&mut reader).unwrap();
+        assert_eq!(blind.len(), 4);
+        assert!(
+            blind
+                .iter()
+                .all(|e| e.tag_index.is_none() && e.value.is_none())
+        );
+
+        // Through derivation: the same values as the 7/8 original.
+        let json = decode_effect_blob_json(EffectArrayKind::Float, &raw, 400).unwrap();
+        assert_eq!(
+            json,
+            "[{\"tag\":284,\"value\":1},\
+              {\"tag\":263,\"value\":5},\
+              {\"tag\":286,\"value\":1},\
+              {\"tag\":285,\"value\":-1509722752}]"
+        );
+    }
+
+    /// A float value field must declare 32 bits. Without the check the decoder
+    /// reads 32 bits regardless and runs off the end of its own field.
+    #[test]
+    fn a_value_field_of_the_wrong_width_is_rejected() {
+        // Element 0: tag at handle 3 (16 bits), value at handle 4 declaring
+        // 16 bits where a float needs 32.
+        let hex = "0202082039040a2000000000";
+        let raw = decode_hex(hex);
+        let err = decode_effect_blob_json(EffectArrayKind::Float, &raw, 96).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                EffectBlobError::UnexpectedPayloadWidth {
+                    expected: 32,
+                    found: 16,
+                    ..
+                }
+            ),
+            "expected UnexpectedPayloadWidth, got {err:?}"
+        );
     }
 }
