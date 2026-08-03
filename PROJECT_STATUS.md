@@ -337,7 +337,11 @@ the constant provenance `note` run unchanged on our data.
 ## 2. Repository State (2026-08-04)
 
 ```
-measured at  : b21eedf, 2026-08-04, after the checkpoint parser (section 23)
+measured at  : 2026-08-04, after sections 22-24. No commit hash on purpose:
+               every hash written in this document has gone stale, including
+               twice in the session that added these lines -- the doc is
+               committed after the thing it describes, so the hash it names is
+               always the parent. Re-measure; do not date-match
 branches     : master only. No worktrees, no stashes, no remote
 commits      : run `git rev-list --count HEAD`. No number is written here
                on purpose: the two that were had both gone stale, and this
