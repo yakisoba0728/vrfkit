@@ -65,9 +65,10 @@
 
 use vrf_bitio::BitReader;
 
-use crate::cache::{NetGuidCache, NetworkGuid};
+use crate::cache::NetGuidCache;
 use crate::error::{Result, SchemaError};
 use crate::export::{NetFieldExport, NetFieldExportGroup};
+use crate::guid::NetworkGuid;
 
 /// Maximum string size for a checkpoint path or name.
 const MAX_FSTRING_BYTES: i64 = 1024 * 1024;

@@ -39,6 +39,34 @@
 //! let mut out = vec![0u8; TransformVersion::output_byte_count(bit_count)];
 //! version.decode_from(&mut reader, bit_count, seed_for(bit_count, 2), &mut out).unwrap();
 //! ```
+//!
+//! # Module map
+//!
+//! | Module | Responsibility |
+//! |--------|----------------|
+//! | `lib` | [`seed_for`], [`TransformVersion`] dispatch, the staging driver |
+//! | [`helpers`] | PRNG and bit primitives shared by every build |
+//! | [`versions`] | One file per build, plus the [`versions::SeededTransform`] trait |
+//! | [`sbox`] | Generated substitution tables (`tools/extract_sboxes.py`) |
+//!
+//! # Cargo features
+//!
+//! **None, deliberately.** Gating individual builds is the obvious candidate --
+//! a consumer that only ever sees release-13.01 replays links four transforms
+//! it cannot use -- but it cannot be done without changing this crate's public
+//! API, which is frozen:
+//!
+//! - [`ALL_VERSIONS`] is `[TransformVersion; 5]`. Its *type* encodes the build
+//!   count, so dropping one build changes the type.
+//! - [`TransformVersion`]'s variants are public. Gating one removes a name that
+//!   callers match on.
+//!
+//! Making this work needs `ALL_VERSIONS` to become `&'static [TransformVersion]`
+//! and callers to stop matching variants exhaustively. That is a reasonable
+//! change and it is recommended, but it is an API change rather than a feature
+//! flag, so it is not made here. The cost of not gating is small in any case:
+//! the five `impl`s are branch-free arithmetic, and the only sizeable data is
+//! the three S-box tables (used by release-13.00 and release-13.02 alone).
 
 #![forbid(unsafe_code)]
 

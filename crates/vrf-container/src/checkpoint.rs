@@ -45,8 +45,8 @@
 
 use vrf_bitio::BitReader;
 
-use crate::MAX_FSTRING_BYTES;
 use crate::error::ContainerError;
+use crate::limits::MAX_FSTRING_BYTES;
 
 /// A parsed Checkpoint chunk header plus its still-compressed archive.
 #[derive(Debug, Clone)]
@@ -149,7 +149,12 @@ pub fn decompress_checkpoint(
         // guess at a framing nothing can be checked against.
         return Ok(archive.to_vec());
     }
-    crate::decompress_oodle_archive(archive, archive.len() as i32, None, "checkpoint archive")
+    crate::oodle::decompress_oodle_archive(
+        archive,
+        archive.len() as i32,
+        None,
+        "checkpoint archive",
+    )
 }
 
 // --- Helpers ------------------------------------------------------------------

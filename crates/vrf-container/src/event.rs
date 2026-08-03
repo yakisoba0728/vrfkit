@@ -42,8 +42,8 @@
 
 use vrf_bitio::BitReader;
 
-use crate::MAX_FSTRING_BYTES;
 use crate::error::ContainerError;
+use crate::limits::MAX_FSTRING_BYTES;
 
 /// A parsed Event chunk: the six header fields plus its raw payload.
 ///

@@ -65,16 +65,38 @@
 //! | 1 (0x02) | `HasStreamingFixes` | Enables the streaming-level-fixes path and per-packet `seenLevelIndex` |
 //! | 3 (0x08) | `GameSpecificFrameData` | Enables the game-specific skip section |
 //!
-//! All VALORANT replays observed to date set **both** flags.
+//! The reference replay sets only `HasStreamingFixes` (header flags `0x0002`),
+//! so its game-specific section is absent on every one of its 226,190 frames.
+//!
+//! # Module map
+//!
+//! | Module | Responsibility |
+//! |--------|----------------|
+//! | `lib` | [`iter_demo_frames`], the frame header and the packet loop |
+//! | `sections` | The four fixed sections that precede the packet loop |
+//! | `error` | [`FrameError`] |
+//!
+//! # Cargo features
+//!
+//! None. Every part of this crate is on the single path from a decompressed
+//! chunk to a packet: the four sections are not optional stages a consumer may
+//! decline, they are byte ranges that must be consumed in order for the frame
+//! cursor to stay aligned. A flag over any of them would only produce a build
+//! that mis-parses.
 
 #![forbid(unsafe_code)]
 
 mod error;
+mod sections;
 
 pub use error::FrameError;
 
 use vrf_bitio::BitReader;
 use vrf_schema::NetGuidCache;
+
+use sections::{
+    read_export_data, read_external_data, read_game_specific_frame_data, read_streaming_level_fixes,
+};
 
 /// Replay header flags that control DemoFrame parsing.
 ///
@@ -89,9 +111,6 @@ pub const FLAG_GAME_SPECIFIC_FRAME_DATA: u32 = 1 << 3;
 /// Maximum packet size (bytes). Unreal's `MAX_PACKET_SIZE` = 2 KiB.
 /// Source: `Constants.cs` -- `public const int MaxPacketSizeInBits = 16384`.
 const MAX_PACKET_SIZE_BYTES: i32 = 16384 / 8; // 2048
-
-/// Maximum sane FString bytes when skipping level names.
-const MAX_FSTRING_BYTES: i64 = 1024 * 1024;
 
 /// A single packet extracted from the DemoFrame stream.
 ///
@@ -215,94 +234,6 @@ pub fn iter_demo_frames(
     }
 
     Ok(packet_index)
-}
-
-// --- Internal helpers ---------------------------------------------------------
-
-/// ExportData: read net field exports + export GUIDs into the cache.
-///
-/// Source: `ExportDataReader.Read()` -- calls `ReadNetFieldExports()` then
-/// `ReadExportGuids()`. Both are byte-aligned (FBinaryArchive) reads.
-fn read_export_data(
-    reader: &mut BitReader<'_>,
-    cache: &mut NetGuidCache,
-) -> Result<(), FrameError> {
-    vrf_schema::read_net_field_exports(reader, cache).map_err(FrameError::schema)?;
-    vrf_schema::read_export_guids(reader, cache).map_err(FrameError::schema)?;
-    Ok(())
-}
-
-/// StreamingLevelFixes: skip level names (either compact or verbose form).
-///
-/// Source: `StreamingLevelFixesReader.cs`
-fn read_streaming_level_fixes(
-    reader: &mut BitReader<'_>,
-    has_streaming_fixes: bool,
-) -> Result<(), FrameError> {
-    let num_levels = reader.read_int_packed().map_err(FrameError::bit)?;
-
-    if has_streaming_fixes {
-        // Compact form: just FString names + a u64 externalOffset.
-        for _ in 0..num_levels {
-            let _ = reader
-                .read_fstring(MAX_FSTRING_BYTES)
-                .map_err(FrameError::bit)?;
-        }
-        let _ = reader.read_u64().map_err(FrameError::bit)?;
-    } else {
-        // Verbose form: packageName + packageNameToLoad + FTransform per entry.
-        // FTransform = rotation(4 doubles) + translation(3 doubles) + scale(3 doubles)
-        // = 10 x f64 = 80 bytes. But Unreal's FTransform in FBinaryArchive is typically
-        // serialized as 3 x FVector (rotation quaternion not stored as doubles in this
-        // context -- let me check). Actually looking at the C# code it calls
-        // `_archive.ReadFTransform()` which in their implementation reads
-        // rotation(4 x f32) + translation(3 x f32) + scale(3 x f32) = 10 x f32 = 40 bytes.
-        for _ in 0..num_levels {
-            let _ = reader
-                .read_fstring(MAX_FSTRING_BYTES)
-                .map_err(FrameError::bit)?;
-            let _ = reader
-                .read_fstring(MAX_FSTRING_BYTES)
-                .map_err(FrameError::bit)?;
-            // FTransform: Rotation(4 x f32) + Translation(3 x f32) + Scale3D(3 x f32) = 40 bytes
-            reader.skip_bits(40 * 8).map_err(FrameError::bit)?;
-        }
-    }
-
-    Ok(())
-}
-
-/// ExternalData: loop reading numBits + netGuid + skip, until numBits == 0.
-///
-/// Source: `PlaybackPacketReader.ReadExternalData()`
-fn read_external_data(reader: &mut BitReader<'_>) -> Result<(), FrameError> {
-    loop {
-        let num_bits = reader.read_int_packed().map_err(FrameError::bit)?;
-        if num_bits == 0 {
-            return Ok(());
-        }
-        let _net_guid = reader.read_int_packed().map_err(FrameError::bit)?;
-        let byte_count = num_bits.div_ceil(8) as u64;
-        reader.skip_bits(byte_count * 8).map_err(FrameError::bit)?;
-    }
-}
-
-/// GameSpecificFrameData: optionally read a u64 skip-offset and skip that many bytes.
-///
-/// Source: `GameSpecificFrameDataReader.Read()`
-fn read_game_specific_frame_data(
-    reader: &mut BitReader<'_>,
-    has_game_specific: bool,
-) -> Result<(), FrameError> {
-    if !has_game_specific {
-        return Ok(());
-    }
-    let skip_offset = reader.read_u64().map_err(FrameError::bit)?;
-    if skip_offset == 0 {
-        return Ok(());
-    }
-    reader.skip_bits(skip_offset * 8).map_err(FrameError::bit)?;
-    Ok(())
 }
 
 #[cfg(test)]

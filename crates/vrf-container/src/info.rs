@@ -21,7 +21,7 @@
 use vrf_bitio::BitReader;
 
 use crate::error::ContainerError;
-use crate::{
+use crate::limits::{
     EXPECTED_FILE_VERSION, FILE_MAGIC, LOCAL_REPLAY_GUID, LOCAL_REPLAY_VERSION,
     MAX_CUSTOM_VERSION_COUNT, MAX_ENCRYPTION_KEY_BYTES, MAX_FRIENDLY_NAME_BYTES,
 };
