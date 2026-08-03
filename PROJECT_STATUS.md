@@ -309,10 +309,9 @@ the constant provenance `note` run unchanged on our data.
 ## 2. Repository State (2026-08-04)
 
 ```
-measured at  : 5c46851, 2026-08-04, after the five-agent session (section 22)
-branches     : master, plus integrate-2026-08-04 and four agent worktree
-               branches. No stashes, no remote. The agent worktrees under
-               .claude/worktrees/ can be removed once merged
+measured at  : master, 2026-08-04, after the five-agent session (section 22)
+               was integrated and its worktrees removed
+branches     : master only. No worktrees, no stashes, no remote
 commits      : run `git rev-list --count HEAD`. No number is written here
                on purpose: the two that were had both gone stale, and this
                one would be wrong the moment the line was committed
