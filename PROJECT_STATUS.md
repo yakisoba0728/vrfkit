@@ -81,12 +81,11 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 298 passed, 0 failed across all targets (295 regular + 3 doctests).
-# Sum the per-target lines; the last line is one target, not the total.
-# Per crate at b21eedf: bitio 22, transform 22, container 47, frame 6,
-# schema 52, net 32, decode 75, movement 5, export 25, vrfkit 12.
-# This figure has been stale SIX times now -- it read 252 while HEAD had 257,
-# then 257 while four agents had taken it to 287. Re-measure before quoting.
+# Expected: 325 passed, 0 failed across all targets. Sum the per-target lines;
+# the last line is one target, not the total. No per-crate breakdown is written
+# here any more: it went stale every time, and `cargo test -p <crate>` is one
+# command. This total has been stale SIX times -- 238, 246, 249, 252, 257, 287.
+# Re-measure before quoting it.
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
@@ -94,7 +93,7 @@ cargo fmt --check
 python tools\check_effect_decoder.py --check
 # Expected: OK: 12 live effect decoder cases
 python tools\check_ascii.py --check
-# Expected: OK: 65 tracked Rust file(s), ASCII only
+# Expected: OK: 113 tracked Rust file(s), ASCII only
 python -m unittest discover -s tools\tests -p "test_*.py"
 # Expected: Ran 73 tests, OK. These guard the GENERATORS -- extract_descriptors,
 # check_ascii, check_effect_decoder, to_valplay_bundle. They are not run by
@@ -337,7 +336,7 @@ the constant provenance `note` run unchanged on our data.
 ## 2. Repository State (2026-08-04)
 
 ```
-measured at  : 2026-08-04, after sections 22-24. No commit hash on purpose:
+measured at  : 2026-08-04, after sections 22-25. No commit hash on purpose:
                every hash written in this document has gone stale, including
                twice in the session that added these lines -- the doc is
                committed after the thing it describes, so the hash it names is
@@ -346,13 +345,14 @@ branches     : master only. No worktrees, no stashes, no remote
 commits      : run `git rev-list --count HEAD`. No number is written here
                on purpose: the two that were had both gone stale, and this
                one would be wrong the moment the line was committed
-tests        : 298 passing, 0 failed (295 regular + 3 doctests: vrf_export 2,
-               vrf_transform 1). This line has been stale SIX times -- 238,
-               246, 249, 252, 257, 287. Re-measure with `cargo test --workspace`
+tests        : 325 passing, 0 failed. Stale SIX times -- 238, 246, 249, 252,
+               257, 287. Re-measure with `cargo test --workspace`
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
-ascii        : 65 tracked Rust files, clean; --self-test passes
+ascii        : 113 tracked Rust files, clean; --self-test passes
 working tree : clean
+perf         : export 0.808 s / 109 MB peak; validate 0.685 s / 65 MB
+               (was 1.64 s / 201 MB and 1.42 s / 65 MB before section 25)
 corpus       : 215/215, malformed 0, decode errors 0 across all 215
 overlay      : 369,743 decoded / 73,984 raw-skip / 511,916 not-in-table /
                33,340 no-field-name; typed 37.4%; table 1,185 entries.
@@ -4583,3 +4583,199 @@ Ranked by what could still move, after 24-B:
 - **2.8M bits** behind the adapter migration (24-B's last row).
 - **23.4M bits** with no upstream type information. Blocked on inputs this
   repository does not have.
+
+---
+
+## 25. Twice as fast, half the memory, same bytes (2026-08-04)
+
+Five agents rewrote the implementation crate by crate, in parallel, with the
+public APIs frozen so they could not break each other's builds. The pre-rewrite
+output was frozen first and used as the specification.
+
+```
+export    1.64 s / 201 MB  ->  0.808 s / 109 MB     2.03x, memory -46%
+validate  1.42 s /  65 MB  ->  0.685 s /  65 MB     2.07x
+```
+
+All 11 Parquet files (5 tables, plus checkpoint_fields, over both flag
+settings) are **byte-identical**. Tests 298 -> 325. Rust sources 65 -> 113
+files.
+
+### 25-A. Method: the old output is the specification
+
+Before anything was rewritten, a release build exported the reference replay
+with and without `--checkpoints` and every Parquet file was SHA-256'd. A script
+in the session scratchpad re-runs that and diffs. Every agent had it as an
+acceptance gate with one instruction attached: **if bytes move, stop and find
+out why -- do not re-freeze the oracle.**
+
+This matters more than it sounds. A wrong overlay type moves none of the
+summary counters -- the row still emits, the block still walks, every count is
+unchanged. The hashes are the only thing that would catch it.
+
+Merging five branches produced **zero conflicts**, because crate ownership was
+disjoint by construction. That was the whole reason for the API freeze.
+
+### 25-B. What each agent found
+
+| Crate | The finding | Alone |
+|---|---|---|
+| `vrf-bitio` | `load_u64` compiled to a real `callq memcpy` **on every bit read** -- confirmed in emitted assembly; `read_int_packed` contained five | export -9.8% |
+| `vrf-decode` | Overlay lookup binary-searched 1,185 entries ~1.25M times, and the `b`-prefix fallback built `format!("b{name}")` 511,916 times | export -9.6% |
+| `vrf-net` | Every bunch was staged through its own `Vec<u8>` to satisfy the borrow checker: ~1.06M allocate/free pairs per replay | export -6.8% |
+| `vrf-schema` et al | Three of the cache's five maps are `u32`-keyed, where SipHash's keying and finalisation cost more than the probe (2.99M + 1.96M lookups) | export -3.4% |
+| `vrf-export`, `vrfkit` | Three heap allocations per row on 1.25M rows, and a writer holding a whole 131,072-row group | export 1.34x, RSS -47% |
+
+They compound because each hit a different bottleneck.
+
+Structural changes worth naming:
+
+- **`pipeline.rs` split by RATE, not topic.** `mod.rs` runs 530,401 times per
+  replay, `channel.rs` 2,028, `framing.rs` 608,020. The file you are in now
+  tells you what a line costs.
+- **Interning.** `group_path` and `field_name` are `Arc<str>` from a pool;
+  composed names -- RPC parameters, array leaves, blob members, the majority of
+  rows -- are built straight into the interner's scratch and cost no allocation
+  at all. 1,449,542 intern calls resolve to 4,557 distinct names.
+- **The 12% slice 5-P named and left** is memoised at 80.6% hit rate over
+  608,011 probes, holding 64 entries. It needed its own generation counter:
+  `schema_generation` explicitly does not cover `guid_to_path`,
+  `guid_to_outer` or the archetype map, which resolution reads.
+- **Overlay index.** Three open-addressed hash tables (~38 KB) built once in a
+  `OnceLock`. Answer-identical by construction -- the hash only selects
+  candidates and every one is confirmed by full string equality on both key
+  halves. Entries named `bX` are indexed under `X` as well, so one hash serves
+  both probes and the `format!` disappears.
+
+### 25-C. The measurement corrected the brief, twice
+
+**The memory brief was off by ~80x.** The `vrf-schema` agent was told
+`NetGuidCache` was the heaviest thing it owned. It measured instead: 16,167
+guid entries, 418 KB of path text, 3,963 unique paths, 475 groups -- about
+**2.5 MB against a 203 MB peak**, 1.2%. It declined to ship interning that
+would reclaim 0.7% at real complexity cost, and located the actual memory: 46
+MB of validate's 64.5 MB peak is the caller's `fs::read` buffer, and the export
+delta is Parquet buffering. That is what the `vrf-export` agent then cut.
+
+**An agent disproved its own written claim.** "Batch size does not affect the
+bytes" was recorded as fact, then tested -- and at 3,000 rows **the bytes
+moved**. The constraint is alignment to parquet's `write_batch_size` of 1,024,
+the granularity at which the page-full check runs; a batch ending mid-mini-batch
+adds a differently-placed check point. `PARQUET_WRITE_BATCH_SIZE` is now pinned
+explicitly rather than inherited from a library default, with
+`const _: () = assert!(MAX_BUFFERED_ROWS % PARQUET_WRITE_BATCH_SIZE == 0)` and
+the four-row measurement table in the doc comment.
+
+### 25-D. Optimizations measured and rejected
+
+Recorded because each closes a line of inquiry:
+
+- **Reusing `oozextract::Extractor` via thread-local: +2.3% export**, the
+  largest single win that agent found. Rejected. `Extractor` carries
+  `bitknit_state` across calls and clears it only when a block header sets
+  `restart_decoder`, so a reused one decodes a non-restarting stream against
+  the previous archive's state. Narrowed to "no archive that decodes correctly
+  today would change" -- the divergence is confined to inputs that currently
+  error -- and rejected anyway, because turning a loud failure into a silent
+  decode is not what this codebase does. Reinstate if `oozextract` gains
+  `reset()`.
+- **A `#[cold]` out-of-line EOF constructor was 2% SLOWER.** Taking `&self`
+  makes the reader address-taken, forcing it out of registers into memory.
+- **ryu-style float printing**: renders large magnitudes as `1E20` where Rust
+  writes the digits, and the oracle pins those bytes.
+- **Byte-aligned `copy_from_slice` fast path**: exactly neutral. Payloads sit
+  behind variable-bit headers, so alignment is the exception, not the rule.
+- **Removing the last `memcpy`** in `copy_bits_to`: the call does disappear in
+  asm, but the time does not move. Also learned: a plain `zip` does not work at
+  all -- LLVM's loop-idiom pass turns it straight back into `memcpy`.
+- **Halving per-bunch hash lookups**: no effect, and that is the useful result.
+  Hashing is not on the critical path, so no custom hasher was written. One
+  measurement closed a whole class of attempt.
+- **A `raw_bits` arena**: not attempted. Bounding the writer buffer cut live
+  payload vectors from ~390,000 to ~90,000 first, and `validate` at 65 MB
+  brackets the remaining writer path at ~40 MB -- the largest API change in the
+  set for the smallest remaining win.
+
+### 25-E. Two bounds added, both loud
+
+`stats.diagnostics` was unbounded and reaches ~100 MB on a replay whose
+transform is wrong. Capped at 16,384 with a `diagnostics_dropped` counter --
+and `oracle.rs`'s header now prints total, shown and dropped, because a capped
+list behind a `len()` is section 5-A's bug moved into the display layer.
+
+The name interner is capped at 65,536 entries: `"{fn}._h{handle}"` takes the
+handle from the wire and is unbounded on a corrupt payload. Past the cap
+`intern` still returns correct text, just unshared.
+
+### 25-F. Feature flags, verified not decorative
+
+```
+cargo tree -p vrfkit --no-default-features | grep -E "arrow|parquet|zstd|snap"
+  -> nothing
+cargo tree -p vrfkit
+  -> parquet v59.1.0 -> zstd -> zstd-safe -> zstd-sys
+```
+
+`vrf-bitio` is now `no_std` with an `alloc` feature (only `read_fstring`
+allocates). `vrf-container` gates `oodle` / `event` / `checkpoint`;
+`vrf-schema` gates `checkpoint`; `vrf-decode` gates `array` / `effect` /
+`overlay` / `structs`; `vrf-export` gates each table plus `parquet` itself;
+`vrfkit` gates `export`.
+
+Three crates got **no** flags, and the reasons are findings:
+- `vrf-frame`'s sections are not optional stages, they are byte ranges the
+  cursor must consume to stay aligned.
+- `vrf-movement` is one protocol.
+- `vrf-transform` cannot gate per-build without an API change: `ALL_VERSIONS`
+  is `[TransformVersion; 5]`, whose *type* encodes the count.
+
+ZSTD is deliberately not optional. Every writer selects it, so gating it would
+permit a build that emits a file this crate cannot describe.
+
+### 25-G. What the freeze now blocks
+
+The API freeze made five-way parallelism possible and is now the ceiling.
+Three agents independently reached the same conclusion:
+
+- `BitError` is 32 bytes, so `Result<u64, BitError>` returns through memory
+  rather than registers. Only `requested` is unrecoverable from the reader; an
+  8-byte error makes the `Result` 16.
+- `replay_path_lookup_keys` returns `Vec<String>`, allocating 1-4 times per
+  call inside the per-block loop -- the reason `get_group_by_path` is probed
+  ~3.0M times per export. A callback or iterator form removes essentially all
+  of it.
+- `FlattenedField` forces a `String` + `Vec<u8>` per array leaf; a visitor form
+  handing out `&str` / `&[u8]` removes both.
+
+Also noted: `sink.rs` types array leaves with a bare `TABLE.lookup(group, n)`,
+so those leaves get neither the `b`-prefix nor the handle fallback that
+ordinary fields get. A public `resolve(group, name, handle)` would fix that
+without duplicating the resolution order.
+
+A second pass on these must be **sequential**. Changing APIs concurrently is
+exactly what the freeze prevented.
+
+### 25-H. A caveat about single-crate benchmarks here
+
+The `vrf-decode` agent reported that `validate` got 12.5% faster from its
+change even though `oracle.rs` links no path through that crate. `lto = "fat"`
+with `codegen-units = 1` puts the whole workspace in one optimization unit, so
+a single-crate A/B on this project carries a several-percent whole-program
+component. Its least-confounded evidence was same-binary marginal cost: running
+the old binary search twice cost +196 ms, hashing twice in the new build +33 ms.
+
+Treat per-crate percentages in 25-B as attributions, not as addends. The
+integrated 2.03x is the measured end-to-end figure.
+
+### 25-I. What this did not do
+
+- No wire-format logic was rewritten. The nine-bit framing fix, the
+  minimum-of-two handle clamp, the unconditional spawn velocity and the
+  movement arithmetic are all format, not style, and each took days to find.
+- No threading was added to the decode. 7-F measured that slice at 3.4% and
+  closed it; nothing here reopens it.
+- `table.rs`, `sbox.rs` and `golden_vectors.rs` are generated and were not
+  touched.
+- Peak memory is now dominated by the caller's whole-file `fs::read` (46 MB of
+  the 65 MB `validate` peak). Streaming the file would be the next memory win
+  and is a `vrfkit` change, not a crate one.
