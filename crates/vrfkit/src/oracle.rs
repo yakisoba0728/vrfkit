@@ -263,10 +263,25 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
     // Diagnostic summary -- always shown when events exist
     if !stats.diagnostics.is_empty() {
         println!();
-        println!(
-            "=== Diagnostic Events ({} total) ===",
-            stats.diagnostics.len()
-        );
+        // The retained list is capped (an unbounded one reaches ~100 MB on a
+        // replay whose transform is wrong), so its length is not the event
+        // count once the cap is hit. Printing only `len()` would turn an
+        // honest counter into a screen that quietly under-reports -- the exact
+        // shape of the oracle bug section 5-A was about, in the display layer
+        // instead of the parser.
+        if stats.diagnostics_dropped == 0 {
+            println!(
+                "=== Diagnostic Events ({} total) ===",
+                stats.diagnostics.len()
+            );
+        } else {
+            println!(
+                "=== Diagnostic Events ({} total, {} shown, {} dropped at the cap) ===",
+                stats.diagnostics.len() + stats.diagnostics_dropped as usize,
+                stats.diagnostics.len(),
+                stats.diagnostics_dropped
+            );
+        }
 
         // Aggregate skipped bits by source
         print_skip_breakdown(&stats.diagnostics);
