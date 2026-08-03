@@ -22,10 +22,28 @@ class CheckAsciiTests(unittest.TestCase):
         )
 
     def test_default_check_uses_full_repository_from_nested_directory(self):
+        """Run from a nested crate, the checker must still scan the whole repo.
+
+        The count is derived from `git ls-files`, not written here. It used to
+        be the literal 61, which meant the test failed the moment a Rust file
+        was added -- and it did, silently, for the four files two sessions
+        added, because nothing ran this suite until it was put in QUICK START.
+        A test that has to be edited whenever the codebase grows is a test that
+        will be edited without being read.
+        """
+        tracked = subprocess.run(
+            ["git", "-C", str(REPOSITORY_ROOT), "ls-files", "*.rs"],
+            capture_output=True, text=True, check=True,
+        ).stdout.split()
+        self.assertGreater(len(tracked), 0, "no tracked Rust files found")
+
         result = self.run_checker("--check")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "OK: 61 tracked Rust file(s), ASCII only\n")
+        self.assertEqual(
+            result.stdout,
+            f"OK: {len(tracked)} tracked Rust file(s), ASCII only\n",
+        )
         self.assertEqual(result.stderr, "")
 
     def test_explicit_temporary_fixture_is_detected_from_nested_directory(self):

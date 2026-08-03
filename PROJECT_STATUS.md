@@ -96,10 +96,12 @@ python tools\check_effect_decoder.py --check
 python tools\check_ascii.py --check
 # Expected: OK: 65 tracked Rust file(s), ASCII only
 python -m unittest discover -s tools\tests -p "test_*.py"
-# Expected: Ran 57 tests, OK. These guard the GENERATORS -- extract_descriptors,
+# Expected: Ran 73 tests, OK. These guard the GENERATORS -- extract_descriptors,
 # check_ascii, check_effect_decoder, to_valplay_bundle. They are not run by
 # cargo (Cargo does not run .py) and were in no documented check until
-# 2026-08-04, which is how the .Decode() blindness in section 24 survived.
+# 2026-08-04, which is how the .Decode() blindness in section 24 survived --
+# and how test_check_ascii sat FAILING on a hardcoded file count from the
+# moment section 22 added two Rust files. It derives the count now.
 ```
 
 ### Regression guard (run after any non-trivial change)
@@ -4548,12 +4550,22 @@ failing before the fix.
 
 ### 24-E. A test suite nothing told anyone to run
 
-`tools/tests` holds 57 tests over the generators -- `extract_descriptors`,
+`tools/tests` holds 73 tests over the generators -- `extract_descriptors`,
 `check_ascii`, `check_effect_decoder`, `to_valplay_bundle`. Cargo does not run
 `.py`, and no documented check invoked them, so they had been passing or
 failing unobserved. `python -m unittest discover -s tools\tests -p "test_*.py"`
-is now in QUICK START. This is the same shape as 22-F's `events.parquet`: not a
-failing guard, an absent one.
+is now in QUICK START.
+
+Running the whole suite for the first time found one of them **already
+failing**: `test_check_ascii` asserted the literal string "OK: 61 tracked Rust
+file(s)", so it broke the moment section 22 added `event.rs` and
+`event_writer.rs`, and again when section 23 added two more. Nobody saw it,
+because nobody ran it. It derives the count from `git ls-files` now -- a test
+that must be edited whenever the codebase grows is a test that gets edited
+without being read.
+
+This is the same shape as 22-F's `events.parquet`: not a failing guard, an
+absent one -- except here the guard existed and was failing into the void.
 
 ### 24-F. Where the residue actually is now
 
