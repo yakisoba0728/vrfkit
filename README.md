@@ -7,22 +7,22 @@ VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
 
 ## 상태
 
-작업 중. 현재 검증된 범위 (`cargo test --workspace` 257 통과, `clippy -D warnings` 0, `fmt` 0):
+작업 중. 현재 검증된 범위 (`cargo test --workspace` 287 통과, `clippy -D warnings` 0, `fmt` 0):
 
-크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표는 `5e39fd4` 병합 시점이고, 이 숫자들은 지금까지 여러 번 낡은 채로 방치됐습니다.
+크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표는 `5c46851` 시점 실측이고, 이 숫자들은 지금까지 여러 번 낡은 채로 방치됐습니다.
 
 | 레이어 | 크레이트 | 상태 |
 |---|---|---|
 | 비트 리더 / UE 와이어 포맷 | `vrf-bitio` | ✅ 22 테스트 |
 | 페이로드 변환 (5개 빌드) | `vrf-transform` | ✅ 22 테스트, 골든 벡터 55/55 바이트 일치 |
-| 컨테이너 (info/header/chunk, Oodle) | `vrf-container` | ✅ 32 테스트 + **실전 215/215 파일** |
+| 컨테이너 (info/header/chunk/event, Oodle) | `vrf-container` | ✅ 41 테스트 + **실전 215/215 파일** |
 | DemoFrame 순회 | `vrf-frame` | ✅ 6 테스트 |
 | 리플레이 동적 스키마 + GUID 캐시 | `vrf-schema` | ✅ 47 테스트 |
 | 리플리케이션 (packet/bunch/content block/field) | `vrf-net` | ✅ 32 테스트 |
-| 필드 디코더 + 중첩 배열 + 타입 오버레이 | `vrf-decode` | ✅ 63 테스트 |
+| 필드 디코더 + 중첩 배열 + 타입 오버레이 + 이펙트 | `vrf-decode` | ✅ 75 테스트 |
 | movement 디코더 | `vrf-movement` | ✅ 5 테스트 |
-| Parquet 내보내기 | `vrf-export` | ✅ 20 테스트, NDJSON 대비 8~25× 작음 |
-| 통합 CLI | `vrfkit` | ✅ 8 테스트, `inspect` / `validate` / `export` |
+| Parquet 내보내기 | `vrf-export` | ✅ 25 테스트, NDJSON 대비 8~25× 작음 |
+| 통합 CLI | `vrfkit` | ✅ 12 테스트, `inspect` / `validate` / `export` |
 
 ## 기존 파서와의 대조 결과
 
@@ -70,6 +70,32 @@ MulticastNotifyKilledEnemy.KillerCharacter       119  132  우리가 +13
 
 `MulticastNotifyKilledEnemy`는 킬러의 캐릭터 액터에 호스팅되는데, 이 리플레이에서 한 플레이어의 캐릭터가 그 RPC를 전혀 복제하지 않습니다. 기존 파이프라인은 이 13킬이 타임라인에서 사라지는 걸 CombatReport 크레딧으로 되메우는 우회로 처리했습니다. 우리 파서에서는 타임라인 자체가 완전합니다.
 
+## Event 청크 — 서버가 쓴 타임라인
+
+위 주장은 오랫동안 **우리 파서 자신이 유일한 증인**이었습니다. 이제 아닙니다.
+
+`.vrf`의 Event 청크는 서버가 직접 라벨링해 기록한 이벤트 목록이고, 파일의 다른 영역에
+다른 인코딩으로 들어 있으며, **기존 C# 파서는 이 청크를 열지조차 않습니다**
+(`ReplayChunkDispatcher.cs:152` — `"Skipping event chunk"`). 우리는 이제 읽습니다.
+
+```
+characterDeath 132 | characterUltimateUsed 34 | roundStarted 18
+spikePlanted 9 | spikeDefused 1 | switchTeams 1          (02d4d478, 195건)
+```
+
+`characterDeath` 132건은 우리가 RPC에서 뽑은 `MulticastNotifyKilledEnemy` 132건과
+정확히 같고, C#의 119건 + 캐릭터 576의 13킬입니다. 페이로드의 두 워드가 killer/killed
+NetGUID인데 **132/132가 순서까지 일치**했습니다(역순 매칭 0/132). 즉 "우리가 맞고 C#이
+놓쳤다"는 이제 우리 주장이 아니라 서버 기록과의 대조 결과입니다.
+
+범위를 명확히: killer/killed 짝 대조는 **리플레이 1개** 기준이고, 청크 프레이밍은
+**215개 파일 43,397청크 전수**가 잔여 바이트 0으로 소비됩니다.
+
+페이로드는 `[u32 그룹 태그][N x u32 워드][FString "EReplayEventGroup::<Name>"][f32 초]`
+구조인데, `N`이 그룹마다 다르고 와이어에 개수가 없으며 7개 그룹 중 2개만 의미가
+증명됐습니다. 그래서 워드를 타입 컬럼이 아니라 `raw_payload`로 내보냅니다 — 아는 것보다
+많이 주장하지 않기 위해서입니다.
+
 ## 전 코퍼스 견고성 검증
 
 `.vrf` 215개 전수를 오라클에 통과시켰습니다 (`tools/validate_corpus.py`).
@@ -114,13 +140,23 @@ totals   : 136,545,822 content blocks / 98,884,839 fields / 75,571,092 RPCs
 
 오버레이 테이블은 C# 디스크립터에서 기계적으로 추출합니다(`tools/extract_descriptors.py`) — 171개 그룹 1,185개 항목. 손으로 옮기지 않는 이유는 S-box·골든 벡터와 같습니다.
 
-`02d4d478` 기준 (`5e39fd4` 병합 시점에서 측정):
+`02d4d478` 기준 (`5c46851` 시점 실측):
 
 ```
 Decoded OK:   369,743      Decode errors:      0
 Raw/Skip:      73,984      Not in table: 511,916
 No field name: 33,340      Typed:          37.4%
+Effect blobs:  53,908
 ```
+
+**위 여섯 줄은 이펙트 디코더가 붙은 뒤에도 하나도 움직이지 않았습니다.** 오버레이
+버킷은 이펙트 패스보다 먼저 확정되므로, 이펙트로 값을 얻은 행은 여전히
+`Not in table` 에 계상돼 있습니다. `Decoded OK` 에 합치면 이중 계산이 되고 베이스라인이
+다른 이유로 핀한 숫자가 움직입니다. 그래서 `Effect blobs` 를 따로 보고합니다 — 이게
+없으면 53,908행이 값을 얻어도 요약이 완전히 동일하게 출력됩니다.
+
+실제 커버리지는 전체 1,246,812행 중 `value_*` 가 채워진 비율로 보세요. 이펙트 연결 전
+68.8% 가 미타입이었고 지금은 **64.5%** 입니다.
 
 **이 숫자는 자주 바뀝니다. 인용하기 전에 직접 재세요** — 여섯 개 중 네 개가 낡은 채로 방치된 적이 있습니다:
 
@@ -151,7 +187,24 @@ vrfkit validate <file.vrf> [--diagnostics]
 vrfkit export   <file.vrf> --out <dir>
 ```
 
-`02d4d478`(48MB) 기준 export 1.8초, `fields.parquet` 13.6MB / 1,246,812행, `movement.parquet` 30.7MB / 1,839,607행.
+`02d4d478`(48MB) 기준 export 1.9초. 출력 5종:
+
+| 파일 | 행 | 바이트 |
+|---|---|---|
+| `fields.parquet` | 1,246,812 | 13,742,379 |
+| `movement.parquet` | 1,839,607 | 31,835,557 |
+| `actors.parquet` | 3,827 | 87,281 |
+| `net_guids.parquet` | 16,167 | 153,606 |
+| `events.parquet` | 195 | 10,201 |
+
+`movement.parquet` 는 14개 컬럼입니다. 위치·회전·속도 외에 `timestamp` 가 실립니다 —
+**128.0 Hz 전역 서버 틱**이고 라운드 경계마다 리셋되므로, 라운드 내 정렬에는 쓰되 전역
+시간축으로는 쓰지 마세요(그건 `time_ms`). `movement_state` 와 `move_type` 은 13.01
+코퍼스에서 상수(0, 1)이지만, 한 빌드에서 상수인 것과 일반적으로 상수인 것은 다르므로
+와이어 그대로 내보냅니다. 자세 정보가 필요하면 `bCrouchHeld` 를 쓰세요 — 별개 필드로
+이미 나갑니다.
+
+`events.parquet` 는 서버가 직접 기록한 이벤트 타임라인입니다(아래).
 
 ## 설계
 

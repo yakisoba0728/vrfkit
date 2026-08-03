@@ -1,10 +1,17 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-02. Includes the replay-coverage audit through 8eb5909,
+Last updated: 2026-08-04. Includes the replay-coverage audit through 8eb5909,
 the concurrent master audit corrections through 101c33a, the code audit fixes
-in section 12, the Codex needs-work results through 45223c9 in section 14, and
-production whole-block ClassNetCache payload preservation in section 7-C. All
-numbers come from direct tool runs, not estimates.
+in section 12, the Codex needs-work results through 45223c9 in section 14,
+production whole-block ClassNetCache payload preservation in section 7-C, and
+the five-agent session in section 22 -- Event chunks, movement timestamps,
+manifest metadata, the effect decoder, and the checkpoint investigation that
+closed the AbilitiesAndBuffs door for good. All numbers come from direct tool
+runs, not estimates.
+
+Section 22-D retires a hope this document carried since 7-H: checkpoint chunks
+are NOT the key to the unattributed-bits ceiling. Measured over all 4,024
+checkpoints in the corpus, not argued.
 
 Section 7-A was corrected on 2026-08-01 after its premise was disproved by
 measurement, then implemented and verified at 100%. See
@@ -68,11 +75,12 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 252 passed, 0 failed across all targets (249 regular + 3 doctests).
+# Expected: 287 passed, 0 failed across all targets (284 regular + 3 doctests).
 # Sum the per-target lines; the last line is one target, not the total.
-# This figure has been stale THREE times now. Re-measure before quoting it:
-# it said 242 while HEAD had 243, because the count was written before the
-# commits that follow 14a9e93 landed.
+# Per crate at 5c46851: bitio 22, transform 22, container 41, frame 6,
+# schema 47, net 32, decode 75, movement 5, export 25, vrfkit 12.
+# This figure has been stale FIVE times now -- it read 252 while HEAD had 257,
+# then 257 while four agents had taken it to 287. Re-measure before quoting.
 cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
@@ -80,7 +88,7 @@ cargo fmt --check
 python tools\check_effect_decoder.py --check
 # Expected: OK: 12 live effect decoder cases
 python tools\check_ascii.py --check
-# Expected: OK: 61 tracked Rust file(s), ASCII only
+# Expected: OK: 63 tracked Rust file(s), ASCII only
 ```
 
 ### Regression guard (run after any non-trivial change)
@@ -90,7 +98,11 @@ cargo build --release -p vrfkit
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf\02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf" `
   --out out\nested
 # Must NOT change: content blocks 608020, fields 429637, RPCs 342735,
-#                  movement 1839607, NetGUID rows 16167, decode errors 0
+#                  movement 1839607, NetGUID rows 16167, decode errors 0,
+#                  Event rows 195, Effect blobs 53908
+# The last two are new at section 22. Effect blobs is the ONLY counter that
+# moves when the effect decoder changes -- the overlay buckets are decided
+# before that pass runs, so Decoded OK and Not in table stay put either way.
 python tools\compare_combat_report.py
 # Must print: ALL INTERESTING SHAPES MATCH
 python tools\validate_corpus.py .\target\release\vrfkit.exe `
@@ -126,13 +138,18 @@ python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # demo under baseline-corpora, like the other three builds. Do not point it
 # back at Saved\Demos.
 python tools\check_export_baseline.py --baseline tools\baselines\export_02d4d478.json
-# Expected: OK ... 3 printed counters cross-check against their Parquet files.
-# Production fields baseline: 1,246,809 rows, 13,564,140 bytes. The additional
-# 6,365 rows preserve unresolved whole blocks; all other counters/files stay put.
-# The strongest single guard: it pins all 21 export counters plus every Parquet
+# Expected: OK ... 4 printed counters cross-check against their Parquet files.
+# Production fields baseline: 1,246,812 rows, 13,742,379 bytes. 6,364 of those
+# rows preserve unresolved whole blocks. This line read 1,246,809 / 13,564,140
+# for a whole session while the pinned JSON said 1,246,812 / 13,586,343 -- the
+# FILE was right and the comment was not, which is the direction that matters
+# least but is still how a session ends up hunting a phantom regression.
+# The strongest single guard: it pins all 23 export counters plus every Parquet
 # file's rows AND bytes, and caught every counter move this session before
 # anything else did. On DRIFT, explain each line before passing --update. The
 # point is that a silent change is impossible, not that the numbers are sacred.
+# It grew a fifth file at section 22: PARQUET_FILES drives the whole script, so
+# events.parquet was invisible -- not failing, unguarded -- until it was added.
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1210.json
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1211.json
 python tools\check_corpus_baseline.py --baseline tools\baselines\build_1300.json
@@ -224,7 +241,23 @@ done, or closed with a measurement showing it cannot or should not be done.
        and came back negative, and so did every other structural route: the
        class of a stably-named subobject is never on the wire. Five
        measurements in 7-H. Do not reopen without new input data --
-       checkpoint chunks are the only unexamined region.
+       checkpoint chunks were the only unexamined region, and section 22-D
+       examined them: 4,024 checkpoints across all 215 files, 1,955,988
+       export-group records, ZERO mentioning AbilitiesAndBuffs. There is no
+       unexamined region left in the file. The ceiling stands until a game
+       build declares the group
+
+Where the open work is now, after section 22:
+
+  - answer 22-D's one unmeasured question before spending four files on a
+    checkpoint parser: does any property value in a checkpoint differ from
+    what ReplayData carried at the same timestamp? If not, checkpoints are
+    pure redundancy and the chunk type can be closed
+  - Event payload words are raw for 5 of 7 groups (22-H). characterDeath is
+    solved; characterUltimateUsed's single word is not
+  - the 26M untyped bits that are NOT effect blobs and NOT AbilitiesAndBuffs
+    are missing overlay entries, not missing decoders -- MulticastStop-
+    ContinuousEffect's SourceID/EffectID are the worked example in 22-E
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -273,24 +306,29 @@ the constant provenance `note` run unchanged on our data.
 
 ---
 
-## 2. Repository State (2026-08-02)
+## 2. Repository State (2026-08-04)
 
 ```
-measured at  : 8be0b8d, 2026-08-02, after every delegate branch was merged
-branches     : master only. No worktrees, no stashes, no remote
+measured at  : 5c46851, 2026-08-04, after the five-agent session (section 22)
+branches     : master, plus integrate-2026-08-04 and four agent worktree
+               branches. No stashes, no remote. The agent worktrees under
+               .claude/worktrees/ can be removed once merged
 commits      : run `git rev-list --count HEAD`. No number is written here
                on purpose: the two that were had both gone stale, and this
                one would be wrong the moment the line was committed
-tests        : 257 passing, 0 failed (254 regular + 3 doctests: vrf_export 2,
-               vrf_transform 1). This line has been stale FOUR times -- 238,
-               246, 249, 252. Re-measure with `cargo test --workspace`
+tests        : 287 passing, 0 failed (284 regular + 3 doctests: vrf_export 2,
+               vrf_transform 1). This line has been stale FIVE times -- 238,
+               246, 249, 252, 257. Re-measure with `cargo test --workspace`
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
-ascii        : 61 tracked Rust files, clean; --self-test passes
+ascii        : 63 tracked Rust files, clean; --self-test passes
 working tree : clean
 corpus       : 215/215, malformed 0, decode errors 0 across all 215
 overlay      : 369,743 decoded / 73,984 raw-skip / 511,916 not-in-table /
-               33,340 no-field-name; typed 37.4%; table 1,185 entries
+               33,340 no-field-name; typed 37.4%; table 1,185 entries.
+               UNCHANGED by the effect decoder, by construction -- see 22-F.
+               Real coverage: 1,246,812 rows, 64.5% still untyped (was 68.8%)
+effect blobs : 53,908 decoded, 0 failures on 02d4d478; 0 failures corpus-wide
 guards       : export baseline OK; build_1210/1211/1300/1302 OK;
                compare_combat_report ALL INTERESTING SHAPES MATCH;
                validate_metrics_corpus 16/21 with all 231 cells stable
@@ -4017,3 +4055,180 @@ unchanged.
   have become `_h4`). Both are unreachable -- a sweep of all 11 after-exports
   finds zero `_raw` rows -- so this closed an edge rather than fixing a defect,
   and the byte-identical bundles were already evidence neither fired.
+
+---
+
+## 22. Five parallel agents: three new tables of data, one closed door (2026-08-04)
+
+Measured at `5c46851`. Five agents ran concurrently in isolated worktrees --
+four implementing, one investigating. None was allowed to touch
+`tools/baselines/`, this file, or `README.md`: five `--update` runs against five
+different trees would have destroyed the one guard that catches counter moves.
+Baselines were re-measured once, here, after integration.
+
+### 22-A. What landed
+
+| Agent | Change | Result on `02d4d478` |
+|---|---|---|
+| A | Event chunks -> `events.parquet` | 195 rows / 10,201 B |
+| B | movement `timestamp` / `movement_state` / `move_type` | 11 -> 14 columns, rows unchanged |
+| C | manifest metadata incl. the 219 KB loadout blob | 10 -> 32 keys |
+| D | effect containers for 9 RPC families | 53,908 rows gained `value_str` |
+| E | checkpoint format investigation (read-only) | spec, no code |
+
+Integration order A -> C -> B -> D. One conflict, an import line in
+`roundtrip.rs` (A added `Int32Array`, B added `UInt8Array`); `sink.rs` merged
+clean because B and D were confined to disjoint regions by their briefs.
+
+### 22-B. Every pre-existing counter held
+
+This is the load-bearing verification, not the feature list. After all four
+merges the export baseline drifted in exactly six places, all of them new
+surface:
+
+```
+effect_blobs_decoded   None -> 53,908
+event_rows             None -> 195
+events.parquet         new: 195 rows / 10,201 B
+fields.parquet bytes   13,586,343 -> 13,742,379   (+156,036, +1.15%)
+movement.parquet bytes 30,695,141 -> 31,835,557
+```
+
+Unmoved: content blocks 608,020, fields 429,637, RPCs 342,735, movement rows
+1,839,607, NetGUID rows 16,167, skipped bits 17,506,923, all five overlay
+counters, and both `actors.parquet` and `net_guids.parquet` byte-for-byte.
+
+Corpus-wide, also unmoved: blocks 136,545,822, fields 98,884,839, rpcs
+75,571,092, malformed 0, skipped 1,972,018,965. Decode errors 0 across all 215
+replays -- which now also covers the effect decoder, since its failures route
+through `overlay.decoded_err`. `validate_metrics_corpus` held at 16/21 with all
+four shot-dependent sections still exact.
+
+### 22-C. The Event chunk corroborates the 13-kill claim from outside the parser
+
+The README's headline -- 13 kills the C# parser drops -- rested on our own RPC
+extraction. It now has an independent witness in the same file.
+
+```
+Event chunk characterDeath                          132
+MulticastNotifyKilledEnemy.KillerCharacter          132 over 10 characters
+  character 576                                      13
+C# reference                                        119 over  9 characters
+                                                    132 - 119 = 13
+```
+
+The payload's two words are the killer and killed NetGUIDs: 132/132 matched in
+that order, 0/132 reversed, with the RPC landing 8-9 ms after the event. The C#
+parser never opens these chunks (`ReplayChunkDispatcher.cs:152`, "Skipping event
+chunk"), so this is not a comparison of two readings of the same bytes.
+
+Scope: the killer/killed pairing is ONE replay. The chunk framing is all 215
+files, 43,397 chunks, consumed with zero bytes left over.
+
+### 22-D. Checkpoints do NOT unlock AbilitiesAndBuffsComponent
+
+Section 7-H named checkpoint chunks as the only unexamined region, and this
+session went in expecting them to be the key to the 97.3% unattributed-bits
+ceiling. THEY ARE NOT.
+
+```
+checkpoints scanned         4,024  (all 215 files)
+export-group records        1,955,988
+paths containing AbilitiesAndBuffs      0
+paths containing Buff                   0
+_ClassNetCache groups, 02d4d478   ReplayData 147 / checkpoint 147 / cp-only 0
+```
+
+`AbilitiesAndBuffsComponent` does occur in checkpoints -- as a NetGUID object
+path, which is a different namespace from `NetFieldExportGroup` and one vrfkit
+already has. The server never sends that class's ClassNetCache layout anywhere
+in the file. Do not reopen this via checkpoints.
+
+The format itself is fully decoded (zero unexplained bytes, zero violations
+over 4,024 samples); the spec is in the session scratchpad, and the
+implementation is sized at 4 files changed + 1 new (~150 lines), ~24 s to parse
+the corpus. Three of this session's own hypotheses were refuted in the process:
+the frame starts at `w0 + 8` not `w0 + 7`, the cache does NOT need pre-seeding
+from ReplayData (checkpoint frames contain zero net-field-export records), and
+there is no variant encoding (stock `iter_demo_frames` parses all 4,024).
+
+Value if implemented: low but not zero. Checkpoint schemas contribute 15 new
+named handles out of 3,226; the frames are full-state snapshots whose actor set
+is a subset of ReplayData's on both spot checks. UNMEASURED, and the "redundant"
+reading depends on it: whether any individual property value in a checkpoint
+differs from what ReplayData carried at the same timestamp. Answer that before
+spending the four files.
+
+### 22-E. Three things the agents got right by pushing back
+
+- `mode_flags` is not a fourth column. It is assigned from `movement_state` at
+  the single `MovementMove` construction site, so it would have been a
+  byte-identical copy over 1.84M rows. Three columns shipped, not four.
+- `movement_state` is not the posture byte, on this build. Constant 0 across all
+  1,839,607 rows, and `move_type` constant 1. Posture already ships as
+  `bCrouchHeld` (2,480 rows, 1,241 true / 1,239 false). The brief asserted
+  otherwise and was wrong. Not a decoder bug: a shifted header would have broken
+  position and yaw, which match C# to zero error.
+- `MulticastStopContinuousEffect` carries no EffectContainer. It was named as a
+  target on the strength of its untyped bit count; its parameters are scalars
+  (`SourceID`, `EffectID`, `StopMovementTime`) that need overlay entries, not a
+  blob decoder. A missing-descriptor problem wearing a blob-shaped hat.
+
+D also caught its own near-miss before reporting: pinned handle constants
+produced 53,908 structurally valid, fully-consuming, residual-zero arrays of
+null tag/value pairs, and read one function's float payload as a tag index.
+Nothing caught it -- not the residual check, not the tests, not clippy. What
+caught it was measuring the fraction of elements with a non-null tag and value:
+0%. The pair is now derived per blob.
+
+### 22-F. Silent-change holes closed during integration
+
+Two of them, both found by comparing what moved against what should have:
+
+- The effect pass moved no counter. It runs after the overlay buckets are
+  decided, so 53,908 newly valued rows left `Decoded OK`, `Not in table` and the
+  rest exactly where they were. The only trace was a larger `fields.parquet`,
+  and a byte count cannot distinguish values from padding. `Effect blobs:` is
+  now reported separately -- not folded into `Decoded OK`, which would
+  double-count rows already sitting in `Not in table`.
+- `check_export_baseline.py` could not see a fifth Parquet file. It drives
+  itself off `PARQUET_FILES`, so `events.parquet` was not measured, not diffed,
+  and not asserted against: adding it left the file unguarded rather than
+  failing. `events` added, `Event rows` cross-checks against its own row count,
+  and the pass message now counts the identity list instead of stating "3" --
+  it had already gone stale at four.
+
+Also: `test_dir()` in `roundtrip.rs` put every checkout's fixtures in one
+directory under the system temp dir, so two trees running `cargo test` at once
+overwrite each other. It surfaced during this session as a column-count
+mismatch that reads exactly like a schema bug. Now keyed by
+`CARGO_MANIFEST_DIR`. `python_interop.py` was separately already broken at HEAD
+-- its expected column list had gone stale against `fields_schema()` -- and
+nothing ran it, because Cargo does not run `.py` files.
+
+### 22-G. Stale comments corrected, and one latent bug recorded
+
+- `vrf-container/src/info.rs`: the timestamp is Unreal `FDateTime` ticks
+  (100 ns since 0001-01-01), not the Windows FILETIME the doc claimed. As
+  FILETIME, `02d4d478` dates to 3626 instead of 2026-07-25.
+- `vrfkit/src/oracle.rs`: the module doc still reported corpus pass rate
+  100.000000% and 3,671 skipped bits. Those were retracted when the silent-drop
+  path was exposed in 5-A/5-C; the comment kept presenting them as current for
+  a whole session.
+- LATENT, recorded not fixed: `ReplayInfo::network_version` is documented
+  "always 19 for supported replays" and nothing validates it. `02d4d478` carries
+  480767974. Separately, the info section's changelist (5090349) disagrees with
+  the header's (2152573997); `manifest.json` reports the header's.
+
+### 22-H. What this did not do
+
+- No checkpoint implementation. 22-D explains why, and names the one measurement
+  that would change the answer.
+- The 46-51 checkpoint-only export-group paths and the checkpoint NetGUID tables
+  (17.2M entries corpus-wide) are not exported. E flagged the emission decision
+  as a product call and deliberately did not make it.
+- Event payload words are raw for 5 of 7 groups. `roundStarted` and
+  `switchTeams` mirror `metadata`; `characterUltimateUsed`'s single word is
+  unidentified.
+- `movement_state` and `move_type` are exported but their meaning on builds
+  other than 13.01 is untested -- both are constant on the whole 13.01 corpus.
