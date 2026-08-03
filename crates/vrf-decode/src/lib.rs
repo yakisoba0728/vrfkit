@@ -43,14 +43,20 @@
 //! | Transform | 4 x 32 + 3 x 32 + 3 x 32 = 320 | `value_str` (compact) |
 //! | RepMovement | variable | `value_str` (JSON object, 8 members) |
 //! | RepLayoutDynamicArray | variable | *Raw* (not decoded) |
+//!
+//! Two decoders sit outside that table because they key off the field's name
+//! rather than a declared type: [`structs`] for the named struct blobs, and
+//! [`effect`] for the `EffectContainer` arrays, which fill `value_str` with a
+//! JSON array. Both are additive in the same sense -- raw bits survive.
 
 #![forbid(unsafe_code)]
 
 mod array;
 mod decode;
-/// Shot-effect blob decoder. **Not wired into the pipeline** -- the live
-/// decoder is a Python port in `tools/to_valplay_bundle.py` with a different
-/// failure contract. See the module docs before calling any of it.
+/// Effect-blob decoder for the `EffectContainer` arrays that RPCs carry as
+/// `FloatValues` / `ObjectValues` / `VectorValues`. Wired into the export path
+/// through [`effect::decode_effect_blob_json`]; one RPC is deliberately left to
+/// the Python port in `tools/to_valplay_bundle.py`. See the module docs.
 pub mod effect;
 mod overlay;
 pub mod structs;
@@ -64,6 +70,7 @@ pub use array::{
     MAX_FIELDS_PER_ELEMENT, MAX_RECURSION_DEPTH, decode_struct_array,
 };
 pub use decode::{DecodeError, DecodedValue, FieldType, decode_field};
+pub use effect::{EffectArrayKind, EffectBlobError, decode_effect_blob_json};
 pub use overlay::{
     DecodeErrorKind, OverlayEntry, OverlayErrorReport, OverlayErrorRow, OverlayHandleEntry,
     OverlayStats, OverlayTable, apply_overlay, apply_overlay_with_handle,
