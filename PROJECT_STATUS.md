@@ -300,13 +300,14 @@ Where the open work is now, after section 23:
     solved; characterUltimateUsed's single word is not
   - AbilitiesAndBuffsComponent stays closed. 22-D ruled out the last place its
     ClassNetCache declaration could have been hiding
-  - `TeamStates` / `BaseTeamState` is OPEN and is new (section 26). Build 13.02
-    deleted `TeamEconomy` and `TeamComponents` from `BombGameState` and moved
-    team economy into a separately replicated
-    `/Script/ShooterGame.BaseTeamState` actor that no decoder reads. Team-level
-    `economy_detail` is degraded on 13.02. This needs a NEW decoder, not a
-    constant bump -- do not confuse it with the RoundResults handle shift that
-    26 fixed
+  - `TeamStates` / `BaseTeamState` is OPEN and is new (section 26-H). Build
+    13.02 moved team economy out of `BombGameState.TeamEconomy` into a
+    separately replicated `/Script/ShooterGame.BaseTeamState` actor. vrfkit
+    ALREADY READS AND EXPORTS IT -- 150 rows, `LoadoutValue` and
+    `AverageLoadoutValue` 44 each -- but every one is untyped, because the
+    generated overlay table has no entry for that group. The values are
+    recoverable from `raw_bits` today. This is a descriptor/table question, NOT
+    a new decoder; see 26-H before touching it
   - THE CORPUS IS 215 FILES OF ONE BUILD (13.01). Every guard in this project
     runs on it, so a 13.02-only break is invisible to all of them by
     construction -- which is exactly how section 26's bug survived. The four
@@ -5008,11 +5009,8 @@ f1110ea5   objective.round_count  0  -> 22
 
 ### 26-G. What this did NOT fix, and what it says about the corpus
 
-- **`TeamStates` / `BaseTeamState` is open.** 13.02 moved team economy into a
-  separate replicated actor that no decoder here reads. `economy_detail`'s
-  team-level figures stay degraded on 13.02. This is a new decoder against a
-  group nobody has looked at yet, not a constant to bump -- do not confuse it
-  with the `RoundResults` fix.
+- **`TeamStates` / `BaseTeamState` is open.** See 26-H, which corrects what
+  this bullet said when it was written.
 - **The corpus is 215 files of ONE build.** Every guard in this project runs on
   13.01, so a 13.02-only break was invisible to all of them by construction.
   The four `build_*.json` baselines each pin one replay and check totals, not
@@ -5029,3 +5027,69 @@ f1110ea5   objective.round_count  0  -> 22
   22-D already documented. Its export groups were re-checked: 0 of 531 contain
   the substring. Still closed.
 
+### 26-H. Sweeping 13.02 for anything else, and correcting 26-G
+
+"Is that everything?" deserved a measurement rather than an opinion, so both
+metrics trees were compared section by section. A leaf-level diff was useless
+-- two different matches have different actor ids, agents and guns, so 361
+"missing" leaves were almost all noise. The question that separates a build
+regression from match variation is whether a SECTION carries data at all:
+
+```
+31 section probes, 13.01 reference vs f1110ea5 (13.02)
+30 populated on both      1 empty on 13.02:  economy.per_round  18 -> 0
+```
+
+Everything else survives 13.02 intact: rounds, score, plants/defuses, all ten
+players, combat totals, KAST, tactical, ultimates, weapons, weapon_stats,
+shot rays, ability usage and resolution rate, posture, spray control,
+movement, side winrate, and `economy_detail` (22 rounds, 10 players, 21
+purchase totals) -- which is the RICHER economy section and comes from
+`OwnerExclusivePlayerInfo` / `PurchasedItemComponent`, untouched by the move.
+
+The other two hardcoded-handle sites were checked too, since they are the same
+class of risk:
+
+```
+vrf-movement rpc.rs   SHOOTER_CHARACTER / COMPONENT_DATA_STREAM handles,
+                      with `_ => skip` -- a shift there yields SILENCE
+                      13.01 1038.1 movement rows/sec   13.02 1048.5   OK
+blobs.rs decode_array_leaf   Rounds[] leaf handle -> type fallback
+                      13.01 89.8% typed, 28 leaf names, only HUDConfig untyped
+                      13.02 89.8% typed, 28 leaf names, only HUDConfig untyped
+```
+
+Identical on both builds. Neither is broken; both remain structurally exposed,
+and the movement one is the worse of the two because its `_ => skip` arm makes
+a shift silent in the same way `RoundResults` was.
+
+**Correcting 26-G.** That section said `BaseTeamState` "no decoder reads" and
+"needs a NEW decoder". Both are wrong, and the correction matters because it
+changes what the fix is:
+
+```
+/Script/ShooterGame.BaseTeamState   12 declared exports, 150 exported rows
+   LoadoutValue           44 rows    32 bits    value_i64 = NULL
+   AverageLoadoutValue    44 rows    32 bits    value_i64 = NULL
+   Wins / Points          22 each    32 bits    value_i64 = NULL
+```
+
+vrfkit reads the group, names the fields from the replay's own declaration,
+and writes every row. What is missing is a TYPE: the generated overlay table
+has no entry for that group path, so all 150 rows land untyped with their raw
+bits preserved. Reading those bits as little-endian i32 by hand gives
+LoadoutValue 4300 / 4150 at round 1, rising to 34300, and
+`AverageLoadoutValue` that is EXACTLY `LoadoutValue / 5` on every single row --
+a five-player team. The data is intact and self-consistent; only the label
+saying "this is an Int32" is absent.
+
+That makes it a descriptor question, and descriptor questions have a procedure
+here (13-C): the entry belongs in the C# descriptors on the delegate branch
+with primary-source proof and a test that pins it, after which `table.rs`
+regenerates. It is NOT a hand edit -- `table.rs` is generated and the standing
+rule forbids editing it directly -- and the C# reference predates 13.02, so it
+has no `BaseTeamState` descriptor to copy. The arithmetic above is strong wire
+evidence and it is still evidence from values, which is the kind of reasoning
+"never fabricate a decoded value" exists to restrain. Left open deliberately,
+with the measurement recorded so the next session starts from data rather than
+from 26-G's wrong sentence.
