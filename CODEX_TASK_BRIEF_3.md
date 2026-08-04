@@ -1,4 +1,10 @@
-# Codex task brief #3 — preserve the bits of blocks we cannot read
+# Codex task brief #3 -- preserve the bits of blocks we cannot read [COMPLETED -- HISTORICAL]
+
+**Do not action this.** Whole-block payload preservation shipped; see
+PROJECT_STATUS.md section 7-C. The design constraints it argues for -- one row
+per block, never a fabricated per-field split, an explicit marker no ordinary
+row can match -- are still the live contract, so read it for those rather than
+as a task.
 
 ## Who you are in this
 

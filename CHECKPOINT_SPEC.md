@@ -1,9 +1,20 @@
-# `.vrf` Checkpoint chunk — format specification
+# `.vrf` Checkpoint chunk -- format specification
 
-Investigation date: 2026-08-04. Read-only investigation; **nothing in `vrfkit` or `valplay`
-was modified.** All probe code lives in
-`C:\Users\YAKIHY~1\AppData\Local\Temp\claude\C--Users-yakihyuk0728-Documents-GitHub-vrfkit\5b2d6e37-5013-4a3f-8f83-d2b7fad42ecb\scratchpad\cp2\`
-(standalone cargo project, `[workspace]` isolated, depends on the vrfkit crates by absolute path).
+**STATUS: IMPLEMENTED.** This began as a read-only investigation and is now the
+reference for shipped code. The parser lives in `vrf-container`'s `checkpoint`
+module (chunk header, decompression) and `vrf-schema`'s (the two tables), and
+runs behind `vrfkit export --checkpoints`. See PROJECT_STATUS.md section 23 for
+what was built and 22-I for the measurement that justified building it.
+
+Two things in here are worth reading even now that the code exists: section 9
+records the hypotheses that were ruled out, and section 10 records what is still
+unknown. Neither is in the code.
+
+Investigation date: 2026-08-04. The probe referenced below was a standalone
+cargo project in a session scratchpad and is gone; the production parser
+reproduces every figure in this document -- 4,024 checkpoints, 17,186,645 guid
+entries, 1,955,988 group records, 11,529,869 exported slots, 2,967,025,362 bytes
+of plaintext, zero errors -- which is how the two were cross-checked.
 
 ---
 

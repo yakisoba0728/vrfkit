@@ -1,4 +1,8 @@
-# Codex task brief #2 — the four open "needs work" items
+# Codex task brief #2 -- the four open "needs work" items [COMPLETED -- HISTORICAL]
+
+**Do not action this.** All four items are done; results are in PROJECT_STATUS.md
+section 14. Kept for the same reason as brief #1: it is the scope the work was
+judged against.
 
 ## Who you are in this
 

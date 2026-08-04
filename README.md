@@ -7,7 +7,7 @@ VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
 
 ## 상태
 
-작업 중. 현재 검증된 범위 (`cargo test --workspace` 325 통과, `clippy -D warnings` 0, `fmt` 0):
+작업 중. 현재 검증된 범위 (`cargo test --workspace` 328 통과, `clippy -D warnings` 0, `fmt` 0):
 
 크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표에서 개수를 뺐습니다 -- 매번 낡았고, 재는 게 한 줄입니다.
 
@@ -36,7 +36,7 @@ ZSTD만 일부러 플래그로 빼지 않았습니다 -- 모든 라이터가 그
 
 ## 성능
 
-`02d4d478`(46 MB) 기준:
+`02d4d478`(48,215,213바이트) 기준:
 
 | | 이전 | 현재 |
 |---|---|---|
@@ -211,7 +211,7 @@ vrfkit validate <file.vrf> [--diagnostics]
 vrfkit export   <file.vrf> --out <dir>
 ```
 
-`02d4d478`(48MB) 기준 export 1.9초. 출력 5종:
+`02d4d478`(48,215,213바이트) 기준 export 0.81초. 출력 5종:
 
 | 파일 | 행 | 바이트 |
 |---|---|---|

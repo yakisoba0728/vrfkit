@@ -1,4 +1,9 @@
-# Task brief for Codex
+# Task brief for Codex [COMPLETED -- HISTORICAL]
+
+**Do not action this.** The work it commissions is done and the results are in
+PROJECT_STATUS.md section 11 (the replay-coverage audit) and NEXT_STEPS_FINDINGS.md.
+Kept because it records what was asked for and how it was scoped, which is the
+context section 11's conclusions were reached in.
 
 You are working **as a delegate** on the vrfkit VALORANT replay parser. A
 main session owns this repository, set the direction, and will review and
