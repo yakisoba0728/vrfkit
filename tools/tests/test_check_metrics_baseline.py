@@ -99,12 +99,19 @@ class InvariantTests(unittest.TestCase):
         bad = guard.invariants(dict(HEALTHY, players=0))
         self.assertTrue(any("R4" in b for b in bad), bad)
 
-    def test_a_zero_kill_fixture_is_not_a_violation(self):
-        """The three small fixtures have 1 player and no kills.
+    def test_kills_need_not_equal_deaths(self):
+        """Resurrection breaks that equality on CORRECT data (section 34).
 
-        `kills == deaths` is pinned, NOT asserted, precisely so a partial
-        replay does not fail for a reason that is not a parser defect.
+        A resurrected player who dies again in the same round gets two `bDied`
+        reports, so deaths counts both, while kills counts DidKill per
+        (round, subject) and collapses them. Measured: gap 0 on the three
+        Swiftplay replays with no resurrections, exactly 1 on each of the two
+        that had one.
         """
+        self.assertEqual(guard.invariants(dict(HEALTHY, kills=150, deaths=151)), [])
+
+    def test_a_zero_kill_fixture_is_not_a_violation(self):
+        """The three small fixtures have 1 player and no kills."""
         v = dict(HEALTHY, kills=0, deaths=0, damage_dealt=0.0, players=1,
                  combat_players=1, rounds_rpc=7, rounds_objective=7,
                  team_score={"Blue": 6, "Red": 1}, economy_rounds=7)

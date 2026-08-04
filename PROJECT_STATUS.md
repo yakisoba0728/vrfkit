@@ -6091,3 +6091,87 @@ Reported rather than summarised as success:
 
 The claim is "Swiftplay produces metrics", and it does. It is not "Swiftplay is
 at parity with Bomb", which the defuse line above already disproves.
+
+## 34. All five Swiftplay replays, and why kills != deaths (2026-08-05)
+
+```
+replay      MB     blocks   malformed  decode err  struct blobs  rounds  score
+162ce859  18.5    254,776       0          0          87 / 0        8    R 5-3 B
+6af3d6a3  21.1    259,043       0          0          87 / 0        8    R 5-3 B
+895b088f  15.9    207,162       0          0          63 / 0        6    B 5-1 R
+c62a48fc  21.5    276,728       0          0          87 / 0        8    R 5-3 B
+fc9d2b74  17.6    217,133       0          0          75 / 0        7    B 5-2 R
+```
+
+All five: 10 players, score sums to the round count, build 13.01. Maps Duality,
+Port, Foxtrot x2, Bonsai. 9.5-12.9 minutes -- Swiftplay's short form, and the
+round counts (6-8) match it.
+
+Stock `compute_metrics.py` returns `rounds 0, players 0` for every one of them;
+the patched copy returns the table above. That is the same five-line difference
+33-D describes, now shown per replay rather than asserted once.
+
+Export is 0.31-0.40 s. The bundle step is 13.6-18.5 s, so it remains ~45x the
+parse, as measured on the Bomb demos.
+
+### 34-A. Two replays have one more death than kill
+
+```
+162ce859  kills 65 == deaths 65
+6af3d6a3  kills 63 == deaths 63
+895b088f  kills 45 == deaths 45
+c62a48fc  kills 63 != deaths 64
+fc9d2b74  kills 58 != deaths 59
+```
+
+Not a parser gap. The kill TIMELINE is internally consistent in both --
+`MulticastNotifyKilledEnemy` fires 64 and 59 times, with a mapped killer and a
+mapped victim every time, matching the death totals. It is the COMBAT REPORT
+that credits one kill fewer.
+
+**Resurrection, seen from the inside.** 31-B measured it making our deaths
+exceed Riot's; this is the same mechanism producing an internal disagreement:
+
+```
+deaths  counts bDied per REPORT, and a resurrect round has TWO reports
+kills   counts DidKill per (round, subject) INTERACTION, and killing the same
+        subject twice in one round collapses into one
+```
+
+The correlation is exact:
+
+```
+replay     resurrect RPCs   Reports[1] shapes   kills-vs-deaths gap
+162ce859         0                  0                    0
+6af3d6a3         0                  0                    0
+895b088f         0                  0                    0
+c62a48fc         2                 43                    1
+fc9d2b74         1                 73                    1
+```
+
+c62a48fc has TWO resurrections and a gap of ONE, which is the useful detail:
+the gap counts resurrections where the player then died AGAIN in the same
+round, not resurrections. Its two events are
+`270 resurrects 350` and `270 resurrects 344` -- a Sage raising teammates, not
+a Clove self-revive -- and only 344 has a second `bDied` in that round.
+fc9d2b74's single event is `62 resurrects 62`, a self-revive, and 62 does have
+the double.
+
+So both resurrect mechanics appear in the corpus, and both leave the same
+signature: `Rounds[N].Reports[1]` existing.
+
+### 34-B. The guard's stated reason was wrong and is corrected
+
+`check_metrics_baseline.py` deliberately pins `kills`/`deaths` rather than
+asserting equality, and section 28-B justified that with "a partial replay can
+capture a kill whose victim's combat report never replicates". That was a guess
+and it was not the reason.
+
+The reason is the above: **an equality assertion would fail on correct data
+every time an agent resurrects.** The decision was right, the stated cause was
+not, and the docstring and the test now say the measured one.
+
+That is the third time this session a "reasonable-sounding" justification
+turned out to be the wrong mechanism for a right call (26-G, 29-B, this). The
+pattern is the same each time -- a plausible cause accepted without measuring
+because the conclusion it supported was already correct.

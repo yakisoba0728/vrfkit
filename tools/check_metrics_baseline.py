@@ -34,9 +34,14 @@ disappearing from the set is itself a failure. Per-file baselines cannot see
 that -- which is exactly how `check_corpus_baseline.py` was silently guarding
 nothing when the game rotated four pinned replays out of `Saved\\Demos`.
 
-`kills == deaths` is deliberately NOT an invariant. It happens to hold on all
-five fixtures, but a partial replay can capture a kill whose victim's combat
-report never replicates, and that is not a parser defect. It is pinned instead.
+`kills == deaths` is deliberately NOT an invariant, and section 34 measured the
+real reason. RESURRECTION breaks it structurally: a resurrected player who dies
+again in the same round gets two `bDied` reports, so `deaths` counts both,
+while `kills` counts DidKill per (round, subject) interaction, which collapses
+them into one. Across five Swiftplay replays the gap was 0 where there were no
+resurrections and exactly 1 in each of the two that had one -- so an equality
+assertion would fail on correct data every time an agent resurrects. It is
+pinned instead.
 
 Cost
 ----
