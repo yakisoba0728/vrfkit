@@ -120,11 +120,33 @@ EXPECTED += [
 #: entry was removed when `GROUP_ALIASES` landed in `vrf-decode/src/overlay.rs`
 #: -- Swiftplay's game state now falls back to the Bomb class for every field,
 #: so a second entry would state the same fact twice and drift from it.
+#:
+#: `MoneyManagementComponent.{Money,StartOfRoundMoney,TotalMoneyGranted}` are
+#: the live per-player credits, replicated under this group on BOTH 13.01 and
+#: 13.02 (verified on 02d4d478 and 13.02 Demos files). No descriptor declares
+#: the group: `Money`/`TotalMoneyGranted` appear under no group in the C#
+#: reference, and `StartOfRoundMoney` is declared only under
+#: `OwnerExclusivePlayerInfo` (OwnerExclusivePlayerInfoDescriptor.cs:93), a
+#: separate end-of-round snapshot path. So the extractor emits nothing and the
+#: fields ship untyped.
+#:
+#: All three are 32-bit on every row. Read as little-endian i32 they are
+#: unambiguous credits: `Money` is 800 across all ten actors at pistol-round
+#: start (t=8ms) and runs 0..9000 in multiples of 50; `StartOfRoundMoney` is
+#: 800 for active players and 0 otherwise; `TotalMoneyGranted` is cumulative,
+#: 800..34200. `StartOfRoundMoney`'s type is descriptor-sourced (Int32), the
+#: same strength as the BaseTeamState pair above; `Money` and
+#: `TotalMoneyGranted` rest on wire evidence alone, like ChosenCeremonyForRound.
+#: No other MoneyManagementComponent field exists on the wire, so this does not
+#: widen by eye -- the DELIBERATELY NOT ADDED line above stays intact.
 ADDITIONS = [
     ("/Game/GameModes/Bomb/BombGameState.BombGameState_C",
      "ChosenCeremonyForRound", "FieldType::ObjectNetGuid"),
     ("/Script/ShooterGame.BaseTeamState", "AverageLoadoutValue", "FieldType::Int32"),
     ("/Script/ShooterGame.BaseTeamState", "LoadoutValue", "FieldType::Int32"),
+    ("/Script/ShooterGame.MoneyManagementComponent", "Money", "FieldType::Int32"),
+    ("/Script/ShooterGame.MoneyManagementComponent", "StartOfRoundMoney", "FieldType::Int32"),
+    ("/Script/ShooterGame.MoneyManagementComponent", "TotalMoneyGranted", "FieldType::Int32"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 

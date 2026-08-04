@@ -279,7 +279,7 @@ python tools/check_docs.py --fast    # 개수 대조 생략
 
 | 스크립트 | 생성물 |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (오버레이 테이블 1,188 + 핸들 84) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (오버레이 테이블 1,191 + 핸들 84) |
 | `apply_type_corrections.py` | 위 파일에 검증된 정정/추가를 적용하고, 생성 헤더 두 줄을 재계산 |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
 | `extract_golden.py` | `crates/vrf-transform/tests/data/golden_vectors.rs` |

@@ -105,6 +105,30 @@ fn lookup_finds_known_field() {
     assert_eq!(ft, Some(FieldType::Int32));
 }
 
+/// Live per-player economy is replicated under `MoneyManagementComponent` on
+/// BOTH 13.01 and 13.02, but no C# descriptor declares the group, so without
+/// these entries the fields ship untyped even though their raw bits decode to
+/// real credits -- `Money` is 800 across all actors at pistol-round start and
+/// runs 0..9000 in multiples of 50; `StartOfRoundMoney` is 800 active / 0
+/// inactive; `TotalMoneyGranted` is cumulative 800..34200. `StartOfRoundMoney`'s
+/// type is descriptor-corroborated (declared Int32 under OwnerExclusivePlayerInfo
+/// at OwnerExclusivePlayerInfoDescriptor.cs:93, a separate end-of-round path).
+/// See tools/apply_type_corrections.py ADDITIONS.
+#[test]
+fn money_management_economy_is_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    let group = "/Script/ShooterGame.MoneyManagementComponent";
+    assert_eq!(table.lookup(group, "Money"), Some(FieldType::Int32));
+    assert_eq!(
+        table.lookup(group, "StartOfRoundMoney"),
+        Some(FieldType::Int32)
+    );
+    assert_eq!(
+        table.lookup(group, "TotalMoneyGranted"),
+        Some(FieldType::Int32)
+    );
+}
+
 #[test]
 fn equippable_used_is_an_object_net_guid() {
     // The C# descriptor attaches a custom decoder
