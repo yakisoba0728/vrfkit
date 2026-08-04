@@ -95,12 +95,12 @@ cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 cargo fmt --check
 # Expected: exit 0
 python tools\apply_type_corrections.py --check
-# Expected: verified: 0 replacement(s), all 27 corrections present;
-#           Raw/Custom: 157, Skip: 164, Typed: 867
-# 27 not 25: the ADDITIONS pass inserts three entries the C#
-# descriptors cannot declare -- two BaseTeamState (26-I) and
-# ChosenCeremonyForRound (32). Verified, not hand-edited; table.rs
-# stays generated.
+# Expected: verified: 0 replacement(s), all 28 corrections present;
+#           Raw/Custom: 157, Skip: 164, Typed: 868
+# 28 not 25: the ADDITIONS pass inserts four entries the C# descriptors
+# cannot declare -- two BaseTeamState (26-I) and ChosenCeremonyForRound
+# in two game states (32). Verified, not hand-edited; table.rs stays
+# generated.
 python tools\check_effect_decoder.py --check
 # Expected: OK: 12 live effect decoder cases
 python tools\check_ascii.py --check
@@ -259,8 +259,9 @@ differs on every run by design.
 ### What to do next (highest impact first)
 See Section 7 for full detail, NEXT_STEPS_FINDINGS.md for the measured
 evidence behind the 7-A correction, and Section 11 for the replay-coverage
-audit. Non-Bomb mode coverage remains input-blocked and unmeasured: supply a
-mode-labelled non-Bomb replay before making any claim about it.
+audit. Non-Bomb mode coverage is NOT input-blocked -- 32-D found 5 Swiftplay
+replays already in the corpus, identified by the GameState class they declare.
+What is missing is a metrics path for them, which is downstream.
 
 7-A, 7-B, 7-D, 7-E, 7-G, 7-I, 7-J and 7-K are all DONE. The harness reports
 **16 of 21 keys byte-identical on all 11 cross-validated replays**; excluding
@@ -2330,7 +2331,19 @@ Search and measurements were read-only except for copying three fixtures into
 vrfkit-owned machine-local baseline directories and adding their generated JSON
 baselines. The dirty C# reference repository and valplay were not modified.
 
-### 11-A. Non-Bomb mode coverage [INPUT-BLOCKED, UNMEASURED]
+### 11-A. Non-Bomb mode coverage [SUPERSEDED BY 32-D -- the input was always there]
+
+**This section's conclusion is wrong and section 32-D measured it.** 5 of
+the 215 corpus replays are Swiftplay: they declare
+`Swiftplay_EoRCredits_GameState_C` and carry NO `BombGameState`. They
+parse, and their `ChosenCeremonyForRound` decodes exactly as Bomb's does.
+
+The reasoning below is kept because it is instructive about HOW it went
+wrong: it looked for a mode label in `game_specific_data`, found none,
+and concluded the inventory was unknowable -- when the GameState class
+the replay declares is itself the label, and was sitting in every
+manifest the whole time. The audit searched for the wrong evidence and
+then trusted its own absence.
 
 Historical audit snapshot on 2026-08-01: recursive searches of all three
 scopes below found the same four physical replays and no additional `.vrf`
@@ -2363,6 +2376,12 @@ No non-Bomb baseline was created and no claim about non-Bomb parsing is made.
 To close this item, supply at least one replay per desired non-Bomb mode together
 with a trustworthy external mode label; then run inspect, validate, full export,
 and a mode-specific baseline on those inputs.
+
+**What is actually still open**, after 32-D: the five Swiftplay replays
+parse fine, but nothing CONSUMES them -- `compute_metrics.py` reads
+`BombGameState` for rounds, score and combat reports, so it produces
+nothing for them. The gap was never input. It is a Swiftplay-shaped
+metrics path, and that lives downstream in valplay.
 
 ### 11-B. Older supported builds [DONE]
 
@@ -3990,7 +4009,8 @@ for this path rests on two other legs instead:
 
 ### 20-G. What this did not check
 
-- Non-Bomb game modes, still input-blocked (section 11-A).
+- Non-Bomb game modes: NOT input-blocked (32-D corrects 11-A). 5 Swiftplay
+  replays are in the corpus; what is missing is a metrics path.
 - Checkpoint chunks, still never parsed (7-H's own standing caveat).
 - Whether the 20,291 corpus-wide moved rows outside the 11 cross-validated
   replays bind correctly. Only the 11 were diffed at row level; the other 204
@@ -5459,7 +5479,8 @@ tests, up from 82.
 and belongs after a non-trivial change rather than in the fast sweep. Its value
 is the layer it exercises, not its speed.
 
-It does NOT cover: non-Bomb game modes (no labelled input), builds newer than
+It does NOT cover: non-Bomb game modes (5 Swiftplay replays exist -- 32-D --
+but the metrics pipeline is Bomb-only), builds newer than
 13.02 (nothing to pin until one appears -- add the replay to `REPLAYS` and
 re-run with `--update`), or anything the metrics pipeline itself gets wrong,
 since valplay is the reference here and is never modified. And it depends on
@@ -5940,7 +5961,24 @@ Those replays carry NO `BombGameState` at all. PROJECT_STATUS has listed
 **There is input; it is already in the corpus.** How many replays, and whether
 their ceremony values resolve the same way, is measured in the follow-up.
 
-The entry was deliberately NOT widened to that group in this pass. Typing a
-second game mode's field is a second claim and needs its own evidence, and
-mixing it into this one would have made the 02d4d478 diff above impossible to
-read.
+The follow-up measured it. **5 of 215 corpus replays are Swiftplay**:
+
+`
+162ce859  6af3d6a3  895b088f  c62a48fc  fc9d2b74
+    all declaring Swiftplay_EoRCredits_GameState_C and NO BombGameState
+`
+
+Their ceremony values resolve identically -- 37 non-null, 37 of 37 to Default,
+Closer, Clutch or Flawless -- so the entry WAS widened to that group in a
+second pass, once it had its own evidence. Corpus-wide the field is now
+7,786 of 7,786 typed with zero unresolved. 02d4d478 stays byte-identical
+through that second change, because it is a Bomb replay and never carried the
+group.
+
+**Section 11-A is superseded.** It concluded non-Bomb coverage was
+input-blocked after searching game_specific_data for a mode label and
+finding none. The GameState class the replay declares IS the label, and it was
+in every manifest all along. What is actually missing is a metrics path:
+compute_metrics.py reads BombGameState for rounds, score and combat, so
+those five replays parse and then produce nothing. That gap is downstream, in
+valplay.
