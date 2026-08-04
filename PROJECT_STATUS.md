@@ -313,7 +313,9 @@ Riot's API because damage is FRACTIONAL on the wire (12% of values, e.g.
 13.511) and the API reports integers. Truncating each interaction reproduces
 the tracker for 9 of 10 players -- so the gap is a rounding convention, and
 ours is the one closer to what the server sent. Introducing truncation to
-close it would be a regression dressed as a bug fix.
+close it would be a regression dressed as a bug fix. Section 29 corrects the
+error bar 27-B put on this: the gap runs 0.0-0.4 ADR over 20 players across two
+replays, not "under 0.25" -- that ceiling was extrapolated from one replay.
 
 Where the open work is now, after section 23:
 
@@ -5319,12 +5321,17 @@ strictly closer to what the game computed.
 This is written down because the failure mode is predictable: a future session
 compares against a tracker, sees a 0.2 gap, and "fixes" it by introducing
 truncation. That would be a regression dressed as a bug fix. The gap is
-EXPECTED and its magnitude is bounded -- it grows with interaction count and
-stays under about 0.25 ADR.
+EXPECTED and grows with interaction count.
 
-Corroborating evidence that the difference is purely representational: `DD
-delta` matches all ten exactly, because it is (dealt - received) and the same
-rounding bias sits in both terms and cancels.
+**The ceiling this paragraph used to give ("under about 0.25 ADR") was wrong**
+-- extrapolated from this one replay. Section 29 measured 0.4 on a second one.
+Quote the mechanism, not a number.
+
+Corroborating evidence that the difference is largely representational: `DD
+delta` matches all ten here, because it is (dealt - received) and the same
+rounding bias sits in both terms and mostly cancels. **Section 29-B weakens
+this**: on a second replay two of ten differ, in OPPOSITE directions, so the
+cancellation holds on average rather than exactly.
 
 ### 27-C. What the tracker has that we cannot
 
@@ -5454,3 +5461,96 @@ re-run with `--update`), or anything the metrics pipeline itself gets wrong,
 since valplay is the reference here and is never modified. And it depends on
 valplay being present at an absolute path; if that repo moves, this guard stops
 running rather than silently passing -- it exits 2 with the path it looked for.
+
+## 29. A second tracker comparison, and 27-B's bound was wrong (2026-08-05)
+
+`e8b213ea` (Jam, 20 rounds, Red 13-7, build 13.02) was parsed and compared
+against its tracker scoreboard the same way section 27 did for `f1110ea5`.
+Joined on `(kills, deaths, assists)`, unique across all ten.
+
+```
+K / D / A                    30 values   ALL MATCH
+competitive rank             10          ALL MATCH
+K/D, KAST, FK, FD, MK        50          ALL MATCH
+ADR                          10          4 exact, 6 high by 0.1-0.4
+DD delta                     10          8 exact, 2 off by 1
+                                                      82 / 90
+```
+
+All ten agents were right again, including **two** duplicated picks this time
+(Sova and Clove, one on each team). 26's `playerLoadouts` resolution handled it,
+and the tracker confirms all four independently.
+
+### 29-A. 27-B claimed a bound it did not have
+
+That section says the ADR gap "stays under about 0.25 ADR". This replay shows
+**0.4**. The claim was extrapolated from one replay, which is exactly the habit
+this document keeps catching itself in.
+
+The mechanism still holds, and holds harder than before. Truncating each
+interaction to an integer before summing reproduces the tracker EXACTLY --
+0.0 difference, not 0.1 -- for eight of ten players:
+
+```
+                 n   float sum   float ADR   truncated   trunc ADR   tracker
+Jett            50     4543.50       227.2        4543       227.2     227.2
+Sage            46     3754.11       187.7        3753       187.7     187.7
+Sova-A          34     3485.77       174.3        3484       174.2     174.2
+Clove-B         46     2480.00       124.0        2480       124.0     124.0
+Reyna           37     2358.67       117.9        2356       117.8     117.8
+Clove-A         46     2332.61       116.6        2328       116.4     116.4
+Cypher          34     2232.09       111.6        2231       111.5     111.5
+Neon            35     1564.92        78.2        1563        78.2      78.2
+        worst |truncated - tracker| = 0.0
+```
+
+**The two that do not fit are the two the simple model cannot reconstruct at
+all.** A crude dedupe by `(owner, round, report, interaction)` reproduces
+`metrics.damage_dealt` exactly for those eight and over-counts the other two by
+32.31 and 8.10 damage. `compute_metrics` dedupes by `(owner, round,
+interaction.Index, SUBJECT)` and derives the round from `time_ms`, which
+diverges where a player's report shape is more complicated. So the residual is
+NOT spread evenly across players -- it concentrates in the two whose combat
+report resists the simple model, and for them the truncation test is
+inconclusive rather than contradicted.
+
+**Corrected statement.** Over 20 players across two replays, the gap runs
+0.0-0.4 ADR, always with ours the higher. It scales with fractional
+interactions per round, so a shorter match or a higher-volume player widens it.
+Do not quote a fixed ceiling; quote the mechanism.
+
+### 29-B. DD delta is not the clean corroboration 27 said it was
+
+27 leaned on DD delta matching all ten as evidence that the difference is purely
+representational -- the same bias in dealt and received, cancelling. Two of ten
+differ here, and the exact values show why that argument was too neat:
+
+```
+Clove-B   exact -75.5471   ours -76   tracker -75
+Sova-B    exact -57.3369   ours -57   tracker -58
+```
+
+The two disagree in OPPOSITE directions, so a single truncation bias cannot
+produce both. Clove-B is a rounding decision on a value within 0.05 of a
+boundary; Sova-B is a real ~13 damage difference on a ~2250 total (0.6%), and
+Sova-B is also one of the two players above whose report the simple model
+over-counts. The cancellation argument holds on average and is not the proof 27
+presented it as.
+
+### 29-C. What this does NOT change
+
+The decision in 27-B stands: **vrfkit keeps the float the wire carries.** The
+server sent `13.511`; the API reports integers; ours is the value closer to what
+the game computed. Nothing here argues for introducing truncation -- it argues
+that the ERROR BAR was stated too confidently, which is a different fix.
+
+Also unchanged and worth repeating: 82 of 90 values agreeing with an observer
+that never touches the replay file, including every K/D/A, every rank, and
+every reconstructed FK/FD, on a build the corpus does not contain.
+
+### 29-D. One thing that passed on a tolerance
+
+`Clove-A` HS% is 12.5% exactly (7 head hits of 56). We round to 12 (banker's
+rounding to even), the tracker shows 13. The comparison used a tolerance of 1
+and let it through. It is a tie-break convention, not a data difference, but it
+was not "an exact match" and should not be counted as one.
