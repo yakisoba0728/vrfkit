@@ -94,6 +94,12 @@ cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 # Expected: no output (exit 0)
 cargo fmt --check
 # Expected: exit 0
+python tools\apply_type_corrections.py --check
+# Expected: verified: 0 replacement(s), all 26 corrections present;
+#           Raw/Custom: 157, Skip: 164, Typed: 866
+# 26 not 25: the ADDITIONS pass (26-I) inserts two BaseTeamState
+# entries the C# descriptors cannot declare. It is verified, not
+# hand-edited -- table.rs stays generated.
 python tools\check_effect_decoder.py --check
 # Expected: OK: 12 live effect decoder cases
 python tools\check_ascii.py --check
@@ -300,14 +306,15 @@ Where the open work is now, after section 23:
     solved; characterUltimateUsed's single word is not
   - AbilitiesAndBuffsComponent stays closed. 22-D ruled out the last place its
     ClassNetCache declaration could have been hiding
-  - `TeamStates` / `BaseTeamState` is OPEN and is new (section 26-H). Build
-    13.02 moved team economy out of `BombGameState.TeamEconomy` into a
-    separately replicated `/Script/ShooterGame.BaseTeamState` actor. vrfkit
-    ALREADY READS AND EXPORTS IT -- 150 rows, `LoadoutValue` and
-    `AverageLoadoutValue` 44 each -- but every one is untyped, because the
-    generated overlay table has no entry for that group. The values are
-    recoverable from `raw_bits` today. This is a descriptor/table question, NOT
-    a new decoder; see 26-H before touching it
+  - `BaseTeamState` is TYPED as of 26-I: `LoadoutValue` and
+    `AverageLoadoutValue` decode to real integers on 13.02, pinned by two
+    replays. Its other five properties stay untyped because nothing sources
+    their types -- do not widen that list without a source. What remains open
+    is NOT in this repo: valplay's `compute_economy` reads
+    `BombGameState.TeamEconomy`, which 13.02 does not have, so
+    `economy.per_round` is still 0 there. valplay is never modified from here;
+    the data is available in `fields.parquet` and in the bundle under
+    `/Script/ShooterGame.BaseTeamState`
   - THE CORPUS IS 215 FILES OF ONE BUILD (13.01). Every guard in this project
     runs on it, so a 13.02-only break is invisible to all of them by
     construction -- which is exactly how section 26's bug survived. The four
@@ -5093,3 +5100,98 @@ evidence and it is still evidence from values, which is the kind of reasoning
 "never fabricate a decoded value" exists to restrain. Left open deliberately,
 with the measurement recorded so the next session starts from data rather than
 from 26-G's wrong sentence.
+
+### 26-I. Typing BaseTeamState, and where the line is
+
+26-H left `BaseTeamState` untyped because the evidence looked like inference
+from values. It is not, and the difference matters. `AresTeamEconomy.cs:11-12`
+in the pinned C# reference declares:
+
+```csharp
+public sealed record AresTeamEconomyUpdate(
+    int Index, uint? ReplicationId,
+    int? LoadoutValue,            // Int32
+    int? AverageLoadoutValue);    // Int32
+```
+
+Build 13.02 did not rename those properties, it RELOCATED them: out of
+`BombGameState.TeamEconomy[]` and into `/Script/ShooterGame.BaseTeamState`.
+So the type is descriptor-sourced for the property, and only the group is new.
+`OwnerExclusivePlayerInfo.{Start,End}OfRoundLoadoutValue` are `Int32` in the
+same reference, which corroborates the family.
+
+**Scope: two entries, and the boundary is the whole claim.**
+
+```
+ADDED    /Script/ShooterGame.BaseTeamState  LoadoutValue         Int32
+ADDED    /Script/ShooterGame.BaseTeamState  AverageLoadoutValue  Int32
+NOT ADDED  Wins, Points, InitialRole, TeamRole, TeamPlayerStates,
+           TeamComponent, TeamExclusiveTeamInfo
+```
+
+The same 13.02 group declares all seven of those and the reference declares
+none of them under any group, so nothing sources their types. They keep their
+raw bits and stay untyped. Widening that list by eye would remove the reason
+this addition was permitted.
+
+**Mechanism.** `tools/apply_type_corrections.py`, which already owns
+"the descriptors and the wire disagree", gained an `ADDITIONS` pass for the
+narrower case "the descriptors are SILENT". It is an insertion, not a
+`.replace()`, so it needs things the corrections never did: the slice is sorted
+by `(group_path, field_name)` and `tests::overlay::table_is_sorted` enforces
+that, and `OVERLAY_TABLE` is declared with an explicit length that does not
+compile if it goes stale. Both are handled, and the additions are appended to
+`EXPECTED` so `--check` fails if they ever stop applying -- that verification
+is what makes this different from hand-editing a generated file, which stays
+forbidden. Table is now 1187 entries, Typed 864 -> 866.
+
+`tools/tests/test_apply_type_corrections.py` is new: 9 cases, and two of them
+exist because the script's own docstring records being bitten by exactly this.
+The table lives in TWO layouts -- one entry per line as
+`extract_descriptors.py` emits it, and the rustfmt'd form that gets committed
+-- and a helper anchored on the wrong one silently matched nothing on a freshly
+generated table, which is precisely when the script runs. Insertion is tested
+against both, plus idempotency, sort order, length resync, and a refusal to
+append past the end of the slice.
+
+**Verification. The acceptance check is a different shape from 26's.**
+Byte identity on 02d4d478 still holds, but as a consequence rather than a
+coincidence: 13.01 has NO `BaseTeamState` group at all, 0 rows, so nothing
+there can move. What actually tests the change is the 13.02 side, and it is
+pinned by TWO replays:
+
+```
+                    typed rows   equal to a hand-read LE i32   Average*5 == Loadout
+f1110ea5 (13.02)        88                88 / 88                    44 / 44
+1.vrf    (13.02)        84                84 / 84                    42 / 42
+02d4d478 (13.01)         0        group absent -- nothing to type
+```
+
+A typed value disagreeing with the manual read would have meant the TYPE was
+wrong; none did. Corpus stays at 0 decode errors over 215 replays, all four
+build baselines OK, 333 rust tests, 82 tools tests (73 + 9 new), clippy 0.
+
+**Where this stops, and it stops short of the number that started it.**
+`economy.per_round` is still 0 on 13.02, and this does NOT fix it. That metric
+is computed by valplay's `compute_economy`, which reads
+`BombGameState.TeamEconomy` -- a path 13.02 does not have -- and valplay is
+never modified from here. What changed is that the DATA is now decoded and
+usable: `fields.parquet` carries real integers, and `to_valplay_bundle.py`
+emits them in the bundle as
+
+```json
+"export_group_path": "/Script/ShooterGame.BaseTeamState",
+"payload": {"LoadoutValue": 4300, "AverageLoadoutValue": 860}
+```
+
+instead of the `{BitCount, Data}` blob it used to. Any consumer can read team
+loadout per round on 13.02 today; the one frozen consumer that computes
+`economy.per_round` looks somewhere else.
+
+**Deliberately NOT done:** synthesising a `TeamEconomy` array onto
+`BombGameState` events in `to_valplay_bundle.py` so the frozen metric would
+find it. The adapter re-nests what the wire sent; manufacturing a group the
+wire does not carry, to satisfy a downstream reader, is the thing "never
+fabricate a decoded value" exists to prevent. `economy_detail` -- the richer
+per-player economy section -- is unaffected and reports all 22 rounds either
+way.

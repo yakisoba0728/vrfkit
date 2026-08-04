@@ -63,6 +63,46 @@ EXPECTED += [
     ("MulticastNotifyDamage_Point", "DamageImpactNormal", "VectorNetQuantizeNormal"),
 ]
 
+#: Entries the WIRE carries that the C# descriptors cannot declare, because the
+#: group did not exist when the reference was pinned.
+#:
+#: This is a different kind of claim from every correction above. Those say
+#: "the descriptor declares X and the wire disagrees". This says "the descriptor
+#: is SILENT and here is the type anyway", so the bar is higher and only one
+#: case clears it today.
+#:
+#: `/Script/ShooterGame.BaseTeamState` is new in build 13.02, which deleted
+#: `BombGameState.TeamEconomy` and moved team economy into a separately
+#: replicated actor. The property NAMES did not change, and the reference
+#: declares their types at the pinned commit --
+#: `GameState/AresTeamEconomy.cs:11-12`:
+#:
+#:     public sealed record AresTeamEconomyUpdate(
+#:         int Index, uint? ReplicationId,
+#:         int? LoadoutValue,            <- Int32
+#:         int? AverageLoadoutValue);    <- Int32
+#:
+#: so this is a descriptor-sourced type for a relocated property, not a type
+#: guessed from values. `OwnerExclusivePlayerInfo.{Start,End}OfRoundLoadoutValue`
+#: are Int32 in the same reference, which corroborates the family.
+#:
+#: Corroborated on the wire, not decided by it: all 44+44 payloads are 32 bits,
+#: read as little-endian i32 they run 4300/4150 at round 1 to 34300, and
+#: AverageLoadoutValue is EXACTLY LoadoutValue/5 on every row (a five-player
+#: team).
+#:
+#: DELIBERATELY NOT ADDED: `Wins`, `Points`, `InitialRole`, `TeamRole`,
+#: `TeamPlayerStates`, `TeamComponent`, `TeamExclusiveTeamInfo`. The same
+#: 13.02 group declares all of them and the reference declares NONE of them
+#: under any group, so there is no source for their types. They keep their raw
+#: bits and stay untyped. That line is what makes this addition defensible;
+#: widening it by eye would undo the reason it is allowed at all.
+ADDITIONS = [
+    ("/Script/ShooterGame.BaseTeamState", "AverageLoadoutValue", "FieldType::Int32"),
+    ("/Script/ShooterGame.BaseTeamState", "LoadoutValue", "FieldType::Int32"),
+]
+EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
+
 GROUP_RE = re.compile(r'group_path: "([^"]+)"')
 FIELD_RE = re.compile(r'field_name: "([^"]+)"')
 TYPE_MARKER = "field_type:"
@@ -117,6 +157,51 @@ def parse_entries(content: str):
             yield group.group(1), field.group(1), ftype
 
 
+def apply_additions(content: str) -> tuple[str, int]:
+    """Insert every entry in `ADDITIONS` that is not already present.
+
+    Insertion, not replacement, so it cannot reuse the `.replace()` shape the
+    corrections above use -- there is nothing to replace.
+
+    The slice is sorted by `(group_path, field_name)` and
+    `tests::overlay::table_is_sorted` enforces it, so a new entry goes at its
+    sorted position rather than at the end. We find the first existing entry
+    that sorts AFTER ours and splice in before it; if no such entry exists we
+    fail loudly rather than append, because appending past the final block
+    would write into the `];` that closes the slice.
+    """
+    added = 0
+    for group, field, ftype in ADDITIONS:
+        blocks = content.split("    OverlayEntry {")
+        keys = []
+        for block in blocks[1:]:
+            g, f = GROUP_RE.search(block), FIELD_RE.search(block)
+            keys.append((g.group(1), f.group(1)) if g and f else ("", ""))
+        if (group, field) in keys:
+            continue
+
+        target = next((i for i, k in enumerate(keys) if k > (group, field)), None)
+        if target is None:
+            raise SystemExit(
+                f"{TABLE_RS}: {group}/{field} sorts after every existing entry; "
+                f"refusing to append past the end of the slice."
+            )
+        entry = (
+            "    OverlayEntry {\n"
+            f'        group_path: "{group}",\n'
+            f'        field_name: "{field}",\n'
+            f"        field_type: {ftype},\n"
+            "    },\n"
+        )
+        # blocks[target + 1] is the block for `keys[target]`; put the new entry
+        # in front of the marker that introduces it.
+        head = "    OverlayEntry {".join(blocks[: target + 1])
+        tail = "    OverlayEntry {" + "    OverlayEntry {".join(blocks[target + 1:])
+        content = head + entry + tail
+        added += 1
+    return content, added
+
+
 def verify(content: str) -> list[str]:
     """Return one line per correction that is NOT present in `content`."""
     entries = list(parse_entries(content))
@@ -135,6 +220,26 @@ def verify(content: str) -> list[str]:
 HEADER_COUNTS_RE = re.compile(
     r"^// Raw/Custom: \d+, Skip: \d+, Typed: \d+\.$", re.MULTILINE
 )
+
+#: The slice is declared with an explicit length, so an addition that does not
+#: update it does not compile. That is the good failure -- it is caught by
+#: `cargo build` rather than by anyone noticing -- but the script should not
+#: hand over a file that cannot build.
+TABLE_LEN_RE = re.compile(r"(pub static OVERLAY_TABLE: \[OverlayEntry; )(\d+)(\])")
+
+
+def resync_table_len(content: str) -> str:
+    """Rewrite the declared `OVERLAY_TABLE` length to the entries present."""
+    n = sum(1 for _ in parse_entries(content))
+    new_content, hits = TABLE_LEN_RE.subn(
+        lambda m: f"{m.group(1)}{n}{m.group(3)}", content, count=1
+    )
+    if hits != 1:
+        raise SystemExit(
+            f"{TABLE_RS}: expected exactly one OVERLAY_TABLE length declaration, "
+            f"found {hits}."
+        )
+    return new_content
 
 
 def rewrite_header_counts(content: str) -> tuple[str, str]:
@@ -345,6 +450,11 @@ def main():
                 count += 1
             break
     content = "    OverlayEntry {".join(blocks)
+
+    # Additions last, so the bucket recount below sees them.
+    content, n_added = apply_additions(content)
+    count += n_added
+    content = resync_table_len(content)
 
     content, header_line = rewrite_header_counts(content)
 
