@@ -105,12 +105,22 @@ python tools\check_effect_decoder.py --check
 python tools\check_ascii.py --check
 # Expected: OK: 113 tracked Rust file(s), ASCII only
 python -m unittest discover -s tools\tests -p "test_*.py"
-# Expected: Ran 73 tests, OK. These guard the GENERATORS -- extract_descriptors,
-# check_ascii, check_effect_decoder, to_valplay_bundle. They are not run by
-# cargo (Cargo does not run .py) and were in no documented check until
-# 2026-08-04, which is how the .Decode() blindness in section 24 survived --
-# and how test_check_ascii sat FAILING on a hardcoded file count from the
-# moment section 22 added two Rust files. It derives the count now.
+# Expected: Ran 109 tests, OK. These guard the GENERATORS and the GUARDS --
+# extract_descriptors, apply_type_corrections, check_ascii,
+# check_effect_decoder, check_metrics_baseline, check_docs, to_valplay_bundle.
+# They are not run by cargo (Cargo does not run .py) and were in no documented
+# check until 2026-08-04, which is how the .Decode() blindness in section 24
+# survived -- and how test_check_ascii sat FAILING on a hardcoded file count
+# from the moment section 22 added two Rust files. It derives the count now.
+python tools\check_docs.py
+# Expected: OK: the docs still describe this repo
+# Reads README.md and docs/USAGE.md only; PROJECT_STATUS is a dated log and is
+# exempt by design. Runs both test suites to check the counts they quote, so
+# it is not free -- `--fast` skips that one check.
+# It exists because a stale sentence compiles and passes everything else. This
+# workspace test count has been wrong SIX times; the overlay table size was
+# quoted as 1,185 after it became 1,187; and README listed four 13.02 replays
+# for weeks after the game deleted them out of Saved\Demos.
 ```
 
 ### Regression guard (run after any non-trivial change)

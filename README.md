@@ -5,6 +5,39 @@ VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
 기존 파서들과의 차이는 목표에 있다. **리플레이에 담긴 모든 값을 내보내는 것**이
 설계 전제이고, 타입을 아는 필드만 내보내는 게 아니다.
 
+## 빠른 시작
+
+```bash
+cargo build --release -p vrfkit --features export
+
+vrfkit inspect  <file.vrf>                          # 헤더 / 브랜치 / 청크 요약
+vrfkit validate <file.vrf> [--diagnostics]          # 문법 오라클, 파일 안 씀
+vrfkit export   <file.vrf> --out <dir> [--checkpoints]
+```
+
+`02d4d478`(48,215,213바이트) 기준 export 0.83초, 출력 7종:
+
+| 파일 | 행 | 바이트 |
+|---|---|---|
+| `fields.parquet` | 1,246,812 | 13,742,379 |
+| `movement.parquet` | 1,839,607 | 31,835,557 |
+| `actors.parquet` | 3,827 | 87,281 |
+| `net_guids.parquet` | 16,167 | 153,606 |
+| `events.parquet` | 195 | 10,201 |
+| `checkpoint_fields.parquet` | 78,748 | 191,335 |
+| `manifest.json` | | 658,918 |
+
+`checkpoint_fields.parquet` 는 `--checkpoints` 를 줘야 나오고, **켜든 끄든 나머지
+다섯 테이블은 바이트 단위로 동일**합니다.
+
+`movement.parquet` 의 `timestamp` 는 128.0 Hz 서버 틱이고 **라운드마다 리셋**됩니다 —
+전역 시간축은 `time_ms` 입니다. 자세 정보는 `movement_state` 가 아니라 `bCrouchHeld`
+입니다.
+
+> **컬럼 스키마, `tools/` 스크립트, 검증 스위트, 크레이트별 사용법은
+> [`docs/USAGE.md`](docs/USAGE.md) 에 있습니다.**
+> 이 문서는 *왜 그렇게 만들었는지* 에 대한 것입니다.
+
 ## 상태
 
 작업 중. 현재 검증된 범위 (`cargo test --workspace` 333 통과, `clippy -D warnings` 0, `fmt` 0):
@@ -162,7 +195,7 @@ totals   : 136,545,822 content blocks / 98,884,839 fields / 75,571,092 RPCs
 
 걸을 수 있는 필드의 원시 비트는 항상 내보내고, 타입을 아는 필드는 `value_*` 컬럼을 **추가로** 채웁니다. 타입을 몰라도, 디코드가 실패해도 그 행의 `raw_bits`는 남습니다. 그룹을 찾지 못해 내부 스트림 자체를 걸을 수 없는 ClassNetCache 블록은 예외이며, loud failure와 skipped bits만 남습니다.
 
-오버레이 테이블은 C# 디스크립터에서 기계적으로 추출합니다(`tools/extract_descriptors.py`) — 171개 그룹 1,185개 항목. 손으로 옮기지 않는 이유는 S-box·골든 벡터와 같습니다.
+오버레이 테이블은 C# 디스크립터에서 기계적으로 추출합니다(`tools/extract_descriptors.py`) — 171개 그룹 1,187개 항목. 손으로 옮기지 않는 이유는 S-box·골든 벡터와 같습니다.
 
 `02d4d478` 기준 (`5c46851` 시점 실측):
 
@@ -200,40 +233,6 @@ cargo build --release
 | SmokeScreen 프로젝타일 `ReplicatedMovement` EOF | 회전이 `ByteComponents` | 같은 코드베이스의 다른 프로젝타일 4종은 전부 명시적으로 `ByteComponents` |
 
 `byte` 폭 처리도 정정했습니다. 배열 내부 byte 프로퍼티는 유의 비트만 기록되므로 8비트 고정 읽기가 실패합니다 — C#도 `archive.BitsRemaining`만큼 읽습니다. 이걸 고치기 전에는 `AssistType`(5비트) 364행 전부가 값 없이 남았습니다.
-
-```bash
-cargo test
-cargo clippy --all-targets -- -D warnings
-
-# 실행
-vrfkit inspect  <file.vrf>
-vrfkit validate <file.vrf> [--diagnostics]
-vrfkit export   <file.vrf> --out <dir>
-```
-
-`02d4d478`(48,215,213바이트) 기준 export 0.81초. 출력 5종:
-
-| 파일 | 행 | 바이트 |
-|---|---|---|
-| `fields.parquet` | 1,246,812 | 13,742,379 |
-| `movement.parquet` | 1,839,607 | 31,835,557 |
-| `actors.parquet` | 3,827 | 87,281 |
-| `net_guids.parquet` | 16,167 | 153,606 |
-| `events.parquet` | 195 | 10,201 |
-
-`movement.parquet` 는 14개 컬럼입니다. 위치·회전·속도 외에 `timestamp` 가 실립니다 —
-**128.0 Hz 전역 서버 틱**이고 라운드 경계마다 리셋되므로, 라운드 내 정렬에는 쓰되 전역
-시간축으로는 쓰지 마세요(그건 `time_ms`). `movement_state` 와 `move_type` 은 13.01
-코퍼스에서 상수(0, 1)이지만, 한 빌드에서 상수인 것과 일반적으로 상수인 것은 다르므로
-와이어 그대로 내보냅니다. 자세 정보가 필요하면 `bCrouchHeld` 를 쓰세요 — 별개 필드로
-이미 나갑니다.
-
-`events.parquet` 는 서버가 직접 기록한 이벤트 타임라인입니다(아래).
-
-`--checkpoints` 를 주면 Checkpoint 청크도 읽어 `checkpoint_fields.parquet` 를
-추가로 씁니다(02d4d478 기준 78,748행 / 191 KB). 기본값이 off인 이유는 파일의
-약 10%를 더 읽는 별도 패스이기 때문이고, **켜든 끄든 나머지 다섯 테이블은 바이트
-단위로 동일합니다.**
 
 Checkpoint는 한 시점의 전체 상태 스냅샷인데, 중복이 아닙니다 — 같은 타임스탬프의
 ReplayData 값과 **6~11%가 불일치**하고 0.5~2%는 ReplayData가 보낸 적 없는 키입니다.
@@ -295,14 +294,18 @@ XOR 처리, 그리고 S-box 테이블 자체까지.
 검증돼 있었는데, 로컬 클라이언트가 남긴 13.02 리플레이 4개를 실제로 통과시켰다.
 
 ```
-2a09e682 (55 MB)   686,559 blocks   507,642 fields   370,896 RPCs   pass 97.96%
-43d0f434 (85 MB) 1,004,465 blocks   727,996 fields   568,226 RPCs   pass 99.18%
-5fbbeb4a (67 MB)   797,976 blocks   574,132 fields   428,640 RPCs   pass 98.71%
-6c791012 (52 MB)   628,920 blocks   469,742 fields   345,814 RPCs   pass 99.33%
+1.vrf     (62 MB)  774,299 blocks  568,557 fields  408,591 RPCs  pass 98.919512%
+f1110ea5  (59 MB)  743,110 blocks  537,865 fields  409,103 RPCs  pass 98.938381%
 ```
 
-네 파일 모두 **malformed framing 0, transform 실패 0** 이다. 13.01과 같은 수준이며, 잔여분도
-같은 귀속 문제다. 기존 파이프라인이 쓰던 C# 파서는 이 빌드를 아예 거부한다.
+둘 다 **malformed framing 0, transform 실패 0, decode errors 0** 이다. 13.01과 같은
+수준이며 잔여분도 같은 귀속 문제다. 기존 파이프라인이 쓰던 C# 파서는 이 빌드를 아예
+거부한다.
+
+이 자리에는 한때 다른 리플레이 4개의 수치가 적혀 있었다. 더 정확해서가 아니라
+**그 파일들이 사라졌기 때문에** 바꿨다 -- `%LOCALAPPDATA%\VALORANT\Saved\Demos` 는
+게임이 소유하고 갈아치우는 디렉터리다. 지금 수치는
+`%LOCALAPPDATA%\vrfkit\baseline-corpora` 의 보존본에서 나온다.
 
 S-box 768바이트는 빌드 간 공유되므로 **바이너리에서 변환 함수를 찾는 시그니처**로도
 쓸 수 있다.
