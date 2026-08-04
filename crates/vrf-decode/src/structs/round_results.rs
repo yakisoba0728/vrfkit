@@ -3,10 +3,13 @@
 use vrf_bitio::BitReader;
 
 use super::framing::{
-    MAX_FIELDS_PER_ELEMENT, ensure_consumed, read_array_count, read_element_index,
+    MAX_FIELDS_PER_ELEMENT, ensure_consumed, member_name, read_array_count, read_element_index,
     read_field_header, read_fname, read_narrow_byte,
 };
 use super::{Result, StructBlobError};
+
+/// Names this blob in error messages.
+const CONTEXT: &str = "RoundResults";
 
 /// The role a team played during the round.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,15 +84,22 @@ pub struct RoundResult {
 ///
 /// # Wire layout
 ///
-/// Standard UE RepLayout dynamic-array framing (see module docs).
-/// Field handles: 93=WinningTeam(FName), 94=WinningTeamRole(enum),
-/// 95=RoundResult(enum), 96=EliminatedTeams(skip).
+/// Standard UE RepLayout dynamic-array framing (see module docs). Members are
+/// selected by the name the replay declares for each handle, because the
+/// numbers move between builds -- 93..=96 on 13.01, 81..=84 on 13.02.
 ///
 /// # Arguments
 ///
 /// * `reader` - A `BitReader` positioned at the start of the blob, with
 ///   `len_bits()` equal to the declared bit count.
-pub fn decode_round_results(reader: &mut BitReader<'_>) -> Result<Vec<RoundResult>> {
+/// * `declared` - The enclosing group's net field export names indexed by
+///   handle. An empty slice makes every member undeclared and the blob an
+///   error, which is the intended outcome: there is no safe fallback, only a
+///   set of build-specific numbers that would be wrong without warning.
+pub fn decode_round_results(
+    reader: &mut BitReader<'_>,
+    declared: &[Option<&str>],
+) -> Result<Vec<RoundResult>> {
     if reader.at_end() {
         return Ok(Vec::new());
     }
@@ -107,38 +117,38 @@ pub fn decode_round_results(reader: &mut BitReader<'_>) -> Result<Vec<RoundResul
                 break;
             };
             if field_idx == MAX_FIELDS_PER_ELEMENT - 1 {
-                return Err(StructBlobError::TooManyFields {
-                    context: "RoundResults",
-                });
+                return Err(StructBlobError::TooManyFields { context: CONTEXT });
             }
 
             // The sub-reader consumes the bits from the parent, so a field we
             // do not interpret still advances the stream correctly.
             let mut sub = reader.sub_reader(u64::from(bit_count))?;
-            match handle {
-                93 => winning_team = Some(read_fname(&mut sub)?),
+            match member_name(declared, handle, CONTEXT)? {
+                "WinningTeam" => winning_team = Some(read_fname(&mut sub)?),
                 // A payload of no usable width leaves the slot ALONE rather
                 // than clearing it: if a handle repeats within one element, an
                 // unreadable second copy must not erase the value the first one
                 // established. `if let` and not `= read(..).and_then(..)` for
                 // exactly that reason.
-                94 => {
+                "WinningTeamRole" => {
                     if let Some(v) = read_narrow_byte(&mut sub)? {
                         winning_team_role = AresTeamRole::from_byte(v);
                     }
                 }
-                95 => {
+                "RoundResult" => {
                     if let Some(v) = read_narrow_byte(&mut sub)? {
                         round_result = AresRoundOutcome::from_byte(v);
                     }
                 }
-                96 => {
-                    // EliminatedTeams: opaque nested array, skip.
-                }
-                _ => {
-                    return Err(StructBlobError::UnsupportedHandle {
+                // Opaque nested array, skipped. Declared at two consecutive
+                // handles in both builds; one arm covers both because the
+                // match is on the name.
+                "EliminatedTeams" => {}
+                name => {
+                    return Err(StructBlobError::UnsupportedMember {
+                        name: name.to_owned(),
                         handle,
-                        context: "RoundResults",
+                        context: CONTEXT,
                     });
                 }
             }

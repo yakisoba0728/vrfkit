@@ -85,7 +85,7 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 328 passed, 0 failed across all targets. Sum the per-target lines;
+# Expected: 333 passed, 0 failed across all targets. Sum the per-target lines;
 # the last line is one target, not the total. No per-crate breakdown is written
 # here any more: it went stale every time, and `cargo test -p <crate>` is one
 # command. This total has been stale SIX times -- 238, 246, 249, 252, 257, 287.
@@ -115,10 +115,15 @@ cargo build --release -p vrfkit
   --out out\nested
 # Must NOT change: content blocks 608020, fields 429637, RPCs 342735,
 #                  movement 1839607, NetGUID rows 16167, decode errors 0,
-#                  Event rows 195, Effect blobs 53908
-# The last two are new at section 22. Effect blobs is the ONLY counter that
-# moves when the effect decoder changes -- the overlay buckets are decided
-# before that pass runs, so Decoded OK and Not in table stay put either way.
+#                  Event rows 195, Effect blobs 53908,
+#                  Struct blobs 207 decoded / 0 failed
+# Effect blobs is the ONLY counter that moves when the effect decoder changes
+# -- the overlay buckets are decided before that pass runs, so Decoded OK and
+# Not in table stay put either way. Struct blobs (section 26) is the same kind
+# of counter for RoundResults/TeamEconomy/RoundInfos, and it exists because
+# those decoders are additive: build 13.02 broke them COMPLETELY and every
+# other number on this line stayed identical. A `0 decoded` is as much an
+# alarm as a nonzero `failed`.
 python tools\compare_combat_report.py
 # Must print: ALL INTERESTING SHAPES MATCH
 python tools\validate_corpus.py .\target\release\vrfkit.exe `
@@ -135,7 +140,8 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 # is the one that has to track HEAD.
 python tools\check_decode_errors_corpus.py .\target\release\vrfkit.exe `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
-# Expected: OK: every replay reported Decode errors: 0   (~70s, 8-wide)
+# Expected: OK: every replay reported Decode errors: 0 and 0 struct-blob
+#           failures, with struct blobs 46,215 decoded   (~50s, 8-wide)
 # RUN THIS AFTER ANY table.rs CHANGE. `vrfkit validate` does not print the
 # overlay counters -- only `export` does -- so validate_corpus.py cannot see
 # a decode error and never could. A wrong overlay type moves NONE of the
@@ -294,6 +300,21 @@ Where the open work is now, after section 23:
     solved; characterUltimateUsed's single word is not
   - AbilitiesAndBuffsComponent stays closed. 22-D ruled out the last place its
     ClassNetCache declaration could have been hiding
+  - `TeamStates` / `BaseTeamState` is OPEN and is new (section 26). Build 13.02
+    deleted `TeamEconomy` and `TeamComponents` from `BombGameState` and moved
+    team economy into a separately replicated
+    `/Script/ShooterGame.BaseTeamState` actor that no decoder reads. Team-level
+    `economy_detail` is degraded on 13.02. This needs a NEW decoder, not a
+    constant bump -- do not confuse it with the RoundResults handle shift that
+    26 fixed
+  - THE CORPUS IS 215 FILES OF ONE BUILD (13.01). Every guard in this project
+    runs on it, so a 13.02-only break is invisible to all of them by
+    construction -- which is exactly how section 26's bug survived. The four
+    `build_*.json` baselines pin one replay each and check totals, not
+    semantics, and were green throughout. If a check is added for this class of
+    failure, the layer that would have caught it is
+    `to_valplay_bundle.py` + valplay `compute_metrics.py` on a preserved replay
+    per build, not another counter on the export summary
 
 ### State of out/ directory (gitignored, safe to regenerate)
 ```
@@ -4828,3 +4849,183 @@ integrated 2.03x is the measured end-to-end figure.
 - Peak memory is now dominated by the caller's whole-file `fs::read` (46 MB of
   the 65 MB `validate` peak). Streaming the file would be the next memory win
   and is a `vrfkit` change, not a crate one.
+
+## 26. A new 13.02 replay, and the silent failure it exposed (2026-08-05)
+
+A replay recorded that day -- `f1110ea5-5d64-4f79-a4e6-5d145dfd96be.vrf`,
+61,674,373 bytes, `++Ares-Core+release-13.02`, Plummet, 36.4 minutes -- was
+handed to the parser as an ordinary parse request. It parsed. It also produced
+a match with no score, and the way that happened is the finding.
+
+### 26-A. What the parse looked like
+
+Everything the parser reports about itself was green, on a build the corpus
+does not contain:
+
+```
+oracle pass rate      98.938381%   (735,221 / 743,110 blocks)
+malformed packets     0
+decode errors         0
+content blocks        743,110      fields 537,865   RPCs 409,103
+movement rows         2,289,517    NetGUID rows 19,353   Event rows 238
+checkpoints           22           checkpoint rows 102,459
+export                1.35 s
+```
+
+Downstream, `to_valplay_bundle.py` -> valplay's `compute_metrics.py` produced
+10 players with full K/D/A, damage, ADR, HS%, 16 distinct weapons, 938 ability
+spawns, 2,287,256 movement samples -- and:
+
+```
+rounds.round_count        22        <- from ClientRoundStart RPCs
+combat.rounds_played      22        <- for all ten players
+objective.round_count     0         <- EMPTY
+objective.team_score      {}        <- EMPTY
+```
+
+### 26-B. Splitting "this replay" from "this build" from "this parser"
+
+Three controls, in order, because the first answer would have been wrong:
+
+1. **The 13.01 reference through the identical pipeline.** `02d4d478` gave
+   `rounds 18 / score {Blue: 13, Red: 5}`. The pipeline works.
+2. **The preserved 13.02 baseline** (`baseline-corpora\build_1302\1.vrf`, a
+   different match). Same hole. So it is the BUILD, not the replay.
+3. **The declaration, against the wire.** This is where it turned:
+
+```
+                          02d4d478 (13.01)      both 13.02 files
+BombGameState_C exports   59                    51
+TeamEconomy               handle 55             GONE
+TeamComponents            handle 60             GONE
+TeamStates                --                    handles 52, 53
+RoundResults              handle 92             handle 80
+  WinningTeam             93                    81
+  WinningTeamRole         94                    82
+  RoundResult             95                    83
+  EliminatedTeams         96, 97                84, 85
+```
+
+13.02 deleted two properties above `RoundResults` and added one, moving every
+later handle down by eight. `decode_round_results` matched on `93..=96` as
+literals, met handle 81, and returned `UnsupportedHandle`.
+
+The wire was never in doubt. Walking the `RoundResults` payloads directly shows
+handles 81/82/83/84 at 97-105 / 3 / 4 / 64 bits -- the same widths, the same
+shapes, the same 22 rounds. vrfkit read and preserved every bit of it. Only the
+constants naming those bits were stale.
+
+### 26-C. The actual defect is the discard, not the constant
+
+A build changing its layout is normal and expected. What is not:
+
+```rust
+let Ok(results) = decode_round_results(&mut reader) else {
+    return false;      // no counter, no message, no trace
+};
+```
+
+The struct-blob decoders are **additive** -- the parent row keeps its raw bits
+and is emitted either way -- so a total failure moves nothing else at all. Same
+blocks, same fields, same rows, same `Decode errors: 0`. There was no number
+anywhere in the export, the baselines, or the corpus tools that could differ
+between "decoded 22 rounds" and "decoded none of them". That is why a whole
+build regressed without a single check going red, and it violated this
+project's own standing rule that every discard increments a counter.
+
+### 26-D. The fix: members are selected by DECLARED NAME
+
+`RoundResults` and `RoundInfos` now take the enclosing group's declared handle
+names and match on the name, the same principle 21 applied to array leaf
+labels. The replay's own `NetFieldExportGroup` names the members, and it moves
+when they move.
+
+**Resolution runs handle -> name and NEVER the reverse.** Searching the
+declaration by name would have been the natural shape and is a trap:
+`WinningTeam` is declared at handle 50 as well -- the `BombGameState` scalar
+naming the match winner -- and `EliminatedTeams` at two consecutive handles in
+both builds. A name lookup can select handle 50 and yield a plausible wrong
+value. Asking what a handle the wire just handed us is called cannot: handle 50
+never appears inside the blob. Two tests pin this by decoding each build's
+bytes under the other build's declaration and requiring a loud error naming the
+offending handle.
+
+`TeamEconomy` deliberately keeps its handle numbers, and this is the
+interesting exception. Its `ReplicationId` member is declared as `"241"` -- a
+hardcoded FName index, not a name -- so there is nothing to match on. There is
+also nothing to generalise toward: the property does not exist in 13.02, having
+been replaced by `TeamStates` with the values moved into a separately
+replicated `/Script/ShooterGame.BaseTeamState` actor. It stays a 13.01 decoder
+pinned to 13.01 numbers, and the new counter is what reports it if they move.
+
+### 26-E. The counter, which is the more durable half
+
+`Struct blobs: N decoded / M failed` now prints unconditionally in the export
+summary, with the first failure verbatim on a `Struct blob err:` line naming
+the member and handle. The checkpoint pass reports its own under
+`Checkpoint blobs:` -- a deliberately different label, since every label in
+that summary is a regex anchor for `check_export_baseline.py` and two blocks
+sharing one would leave the harness matching whichever printed first.
+
+The zero is printed too. A conditional line cannot distinguish "no failures"
+from "this build stopped reaching the decoder at all", and the second case is
+precisely what went unnoticed.
+
+Registered in both harnesses: `check_export_baseline.py` pins
+`struct_blobs_decoded` / `struct_blobs_failed` (and the `cp_` pair), and
+`check_decode_errors_corpus.py` now fails the corpus run on any struct-blob
+failure and on a MISSING counter, the same way it already treats
+`Decode errors`.
+
+### 26-F. Verification
+
+The acceptance bar was byte identity, and it held:
+
+```
+02d4d478 Parquet, before vs after   all 5 files SHA-256 IDENTICAL
+export_02d4d478.json baseline       every existing value unchanged;
+                                    only the two new counters added
+checkpoint_02d4d478.json            same, plus the two cp_ counters
+build_1210 / 1211 / 1300 / 1302     OK
+corpus 215 replays                  blocks 136,545,822  fields 98,884,839
+                                    rpcs 75,571,092  malformed 0
+                                    skipped 1,972,018,965   (all unchanged)
+corpus struct blobs                 46,215 decoded / 0 failed
+rust 333 passed / 0 failed          tools 73 passed / 0 failed
+clippy 0   fmt clean   ascii 113 files   effect 12   combat shapes match
+```
+
+And the result the whole thing was for:
+
+```
+f1110ea5   objective.round_count  0  -> 22
+           objective.team_score  {}  -> {Blue: 13, Red: 9}
+           struct blobs           0  -> 232 decoded / 0 failed
+```
+
+13 + 9 = 22, which agrees with `rounds.round_count` and with every player's
+`rounds_played`. Three independent counts of the same match now match.
+
+### 26-G. What this did NOT fix, and what it says about the corpus
+
+- **`TeamStates` / `BaseTeamState` is open.** 13.02 moved team economy into a
+  separate replicated actor that no decoder here reads. `economy_detail`'s
+  team-level figures stay degraded on 13.02. This is a new decoder against a
+  group nobody has looked at yet, not a constant to bump -- do not confuse it
+  with the `RoundResults` fix.
+- **The corpus is 215 files of ONE build.** Every guard in this project runs on
+  13.01, so a 13.02-only break was invisible to all of them by construction.
+  The four `build_*.json` baselines each pin one replay and check totals, not
+  semantics; they were green throughout. Consider whether the next preserved
+  replay per build should also be run through `to_valplay_bundle` +
+  `compute_metrics`, because that is the layer where this surfaced.
+- **`RoundInfos` survived 13.02 by luck.** Its handles 40..=44 did not move
+  because nothing above it in `OwnerExclusivePlayerInfo` was deleted. It was
+  converted to declared names in the same pass rather than left to be found
+  the same way next time.
+- **Nothing here touched the ~86% untyped remainder or AbilitiesAndBuffs.**
+  On this replay `AbilitiesAndBuffsComponent` appears in the oracle's stream
+  failures as an ACTOR CLASS name from the NetGUID namespace, which is what
+  22-D already documented. Its export groups were re-checked: 0 of 531 contain
+  the substring. Still closed.
+

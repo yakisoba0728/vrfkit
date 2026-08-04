@@ -1,4 +1,5 @@
-"""Assert that the type overlay decodes cleanly across a whole corpus.
+"""Assert that the type overlay and the struct-blob decoders decode cleanly
+across a whole corpus.
 
 `vrfkit validate` does not print the overlay counters at all -- only `export`
 does -- so validate_corpus.py cannot see a decode error, and never could. That
@@ -29,10 +30,18 @@ Usage:
     python tools/check_decode_errors_corpus.py <vrfkit.exe> <corpus dir>
     python tools/check_decode_errors_corpus.py <vrfkit.exe> <corpus dir> --jobs 8
 
-Exit code is 0 only when every replay reported "Decode errors: 0" AND every
-replay reported the counter at all. A counter that stops being printed must
-not read as zero; that is how the corpus malformed figure stayed a vacuous 0
-for the project's whole history (see PROJECT_STATUS 5-O).
+The struct-blob decoders (RoundResults, TeamEconomy, RoundInfos) are checked
+here for the same reason and are, if anything, a worse case: they are additive,
+so a total failure moves NOTHING else on the summary. Build 13.02 shifted
+RoundResults from handle 93 to 81 and the export stayed clean on every counter
+above while the match score silently stopped being written. "Struct blobs:
+N decoded / 0 failed" is the statement that did not exist then.
+
+Exit code is 0 only when every replay reported "Decode errors: 0" and
+"Struct blobs: ... / 0 failed", AND every replay reported both counters at
+all. A counter that stops being printed must not read as zero; that is how the
+corpus malformed figure stayed a vacuous 0 for the project's whole history
+(see PROJECT_STATUS 5-O).
 """
 from __future__ import annotations
 
@@ -51,6 +60,8 @@ DECODED_OK = re.compile(r"Decoded OK:\s+(\d+)")
 NOT_IN_TABLE = re.compile(r"Not in table:\s+(\d+)")
 RAW_SKIP = re.compile(r"Raw/Skip:\s+(\d+)")
 ROWS_OFFERED = re.compile(r"Rows offered:\s+(\d+)")
+STRUCT_DECODED = re.compile(r"Struct blobs:\s+(\d+) decoded")
+STRUCT_FAILED = re.compile(r"Struct blobs:\s+\d+ decoded / (\d+) failed")
 
 
 def _export_one(exe: Path, replay: Path) -> tuple[str, dict[str, int] | None, str]:
@@ -73,13 +84,19 @@ def _export_one(exe: Path, replay: Path) -> tuple[str, dict[str, int] | None, st
             ("raw_skip", RAW_SKIP),
             ("not_in_table", NOT_IN_TABLE),
             ("rows_offered", ROWS_OFFERED),
+            ("struct_blobs_decoded", STRUCT_DECODED),
+            ("struct_blobs_failed", STRUCT_FAILED),
         ):
             m = pattern.search(text)
             if m:
                 counters[key] = int(m.group(1))
-        if "decode_errors" not in counters:
-            tail = " | ".join(l for l in text.splitlines()[-3:] if l.strip())
-            return replay.name, None, f"no Decode errors counter: {tail[:200]}"
+        for required, label in (
+            ("decode_errors", "Decode errors"),
+            ("struct_blobs_failed", "Struct blobs"),
+        ):
+            if required not in counters:
+                tail = " | ".join(l for l in text.splitlines()[-3:] if l.strip())
+                return replay.name, None, f"no {label} counter: {tail[:200]}"
         return replay.name, counters, ""
     except subprocess.TimeoutExpired:
         return replay.name, None, "timeout"
@@ -109,8 +126,10 @@ def main() -> int:
     started = time.time()
     unreadable: list[tuple[str, str]] = []
     offenders: list[tuple[str, int]] = []
+    blob_offenders: list[tuple[str, int]] = []
     totals = {"decode_errors": 0, "decoded_ok": 0, "raw_skip": 0,
-              "not_in_table": 0, "rows_offered": 0}
+              "not_in_table": 0, "rows_offered": 0,
+              "struct_blobs_decoded": 0, "struct_blobs_failed": 0}
     done = 0
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
@@ -125,9 +144,12 @@ def main() -> int:
                     totals[k] += v
                 if counters["decode_errors"]:
                     offenders.append((name, counters["decode_errors"]))
+                if counters["struct_blobs_failed"]:
+                    blob_offenders.append((name, counters["struct_blobs_failed"]))
             if done % 25 == 0 or done == len(files):
                 print(f"  [{done}/{len(files)}] unreadable={len(unreadable)} "
-                      f"with_errors={len(offenders)}")
+                      f"with_errors={len(offenders)} "
+                      f"blob_failures={len(blob_offenders)}")
 
     elapsed = time.time() - started
     print(f"\nelapsed {elapsed:.1f}s ({elapsed / len(files):.2f}s per replay)")
@@ -137,6 +159,8 @@ def main() -> int:
     print(f"raw/skip          : {totals['raw_skip']:,}")
     print(f"not in table      : {totals['not_in_table']:,}")
     print(f"rows offered      : {totals['rows_offered']:,}")
+    print(f"struct blobs      : {totals['struct_blobs_decoded']:,} decoded / "
+          f"{totals['struct_blobs_failed']:,} failed")
 
     if unreadable:
         print(f"\nFAILED: {len(unreadable)} replay(s) did not report the counter",
@@ -151,8 +175,17 @@ def main() -> int:
         for name, count in offenders[:20]:
             print(f"    {name}: {count}", file=sys.stderr)
         return 1
+    if blob_offenders:
+        blob_offenders.sort(key=lambda kv: -kv[1])
+        print(f"\nFAILED: {len(blob_offenders)} replay(s) reported struct-blob "
+              f"decode failures. Re-run one by hand and read the "
+              f"'Struct blob err:' line -- it names the member and handle.",
+              file=sys.stderr)
+        for name, count in blob_offenders[:20]:
+            print(f"    {name}: {count}", file=sys.stderr)
+        return 1
 
-    print("\nOK: every replay reported Decode errors: 0")
+    print("\nOK: every replay reported Decode errors: 0 and 0 struct-blob failures")
     return 0
 
 

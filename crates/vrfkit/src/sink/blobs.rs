@@ -174,7 +174,7 @@ impl ExportSink<'_> {
         raw: &[u8],
         bit_count: u32,
     ) -> bool {
-        match field_name {
+        let emitted = match field_name {
             "RoundResults" if self.current_group_path.contains("BombGameState") => {
                 self.decode_round_results_blob(raw, bit_count)
             }
@@ -185,7 +185,25 @@ impl ExportSink<'_> {
                 self.decode_round_infos_blob(raw, bit_count)
             }
             _ => false,
+        };
+        if emitted {
+            self.stats.struct_blobs_decoded += 1;
         }
+        emitted
+    }
+
+    /// Record a struct-blob decode failure instead of dropping it.
+    ///
+    /// Returns `false` so a call site can `return self.record_blob_failure(..)`
+    /// -- the decoders are additive and a failure emits no rows, which is the
+    /// same return value the discarding version produced. What is new is that
+    /// the run says so.
+    fn record_blob_failure(&mut self, err: &dyn std::fmt::Display) -> bool {
+        self.stats.struct_blobs_failed += 1;
+        if self.stats.struct_blob_first_error.is_none() {
+            self.stats.struct_blob_first_error = Some(err.to_string());
+        }
+        false
     }
 
     /// Decode RoundResults blob and emit sub-field rows.
@@ -193,8 +211,16 @@ impl ExportSink<'_> {
         use vrf_decode::structs::decode_round_results;
 
         let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count));
-        let Ok(results) = decode_round_results(&mut reader) else {
-            return false;
+        // Scoped so the borrow of `self.cache` ends before the emit loop needs
+        // `&mut self`. The decoded elements own their strings, so nothing
+        // outlives the declaration.
+        let decoded = {
+            let declared = Self::declared_handle_names(self.cache, &self.current_group_path);
+            decode_round_results(&mut reader, &declared)
+        };
+        let results = match decoded {
+            Ok(results) => results,
+            Err(err) => return self.record_blob_failure(&err),
         };
 
         for rr in &results {
@@ -255,8 +281,9 @@ impl ExportSink<'_> {
         use vrf_decode::structs::decode_team_economy;
 
         let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count));
-        let Ok(results) = decode_team_economy(&mut reader) else {
-            return false;
+        let results = match decode_team_economy(&mut reader) {
+            Ok(results) => results,
+            Err(err) => return self.record_blob_failure(&err),
         };
 
         for te in &results {
@@ -294,8 +321,13 @@ impl ExportSink<'_> {
         use vrf_decode::structs::decode_round_infos;
 
         let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count));
-        let Ok(results) = decode_round_infos(&mut reader) else {
-            return false;
+        let decoded = {
+            let declared = Self::declared_handle_names(self.cache, &self.current_group_path);
+            decode_round_infos(&mut reader, &declared)
+        };
+        let results = match decoded {
+            Ok(results) => results,
+            Err(err) => return self.record_blob_failure(&err),
         };
 
         for ri in &results {

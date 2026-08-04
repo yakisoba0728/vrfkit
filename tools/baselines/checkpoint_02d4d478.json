@@ -24,13 +24,17 @@
   "overlay_no_field_name": 33340,
   "overlay_rows_offered": 988983,
   "effect_blobs_decoded": 53908,
+  "struct_blobs_decoded": 207,
+  "struct_blobs_failed": 0,
   "cp_chunks": 18,
   "cp_guid_entries": 74270,
   "cp_group_records": 8307,
   "cp_exported_fields": 49314,
   "cp_frames": 18,
   "cp_frame_packets": 3691,
-  "cp_field_rows": 78748
+  "cp_field_rows": 78748,
+  "cp_struct_blobs_decoded": 35,
+  "cp_struct_blobs_failed": 0
  },
  "parquet": {
   "fields": {

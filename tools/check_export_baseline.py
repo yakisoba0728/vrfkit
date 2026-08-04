@@ -95,6 +95,14 @@ COUNTERS = {
     # is fields.parquet's byte count, and a byte count cannot say whether the
     # decoder produced values or merely different padding.
     "effect_blobs_decoded": r"Effect blobs:\s+(\d+)",
+    # The counter that would have caught build 13.02 on day one. Its decoders
+    # are additive, so when RoundResults moved from handle 93 to 81 nothing
+    # else on this summary twitched: same blocks, same fields, same rows, same
+    # "Decode errors: 0" -- and no match score in the Parquet. `failed` is the
+    # alarm; `decoded` is what keeps a decoder that silently stops running
+    # (0 decoded, 0 failed) from reading the same as a clean one.
+    "struct_blobs_decoded": r"Struct blobs:\s+(\d+) decoded",
+    "struct_blobs_failed": r"Struct blobs:\s+\d+ decoded / (\d+) failed",
 }
 PATTERNS = {k: re.compile(v) for k, v in COUNTERS.items()}
 
@@ -109,6 +117,10 @@ CHECKPOINT_COUNTERS = {
     "cp_frames": r"Frames:\s+(\d+)",
     "cp_frame_packets": r"Frame packets:\s+(\d+)",
     "cp_field_rows": r"Checkpoint rows:\s+(\d+)",
+    # Deliberately a different label from the main block's "Struct blobs", so
+    # these regexes cannot match each other's line.
+    "cp_struct_blobs_decoded": r"Checkpoint blobs:\s+(\d+) decoded",
+    "cp_struct_blobs_failed": r"Checkpoint blobs:\s+\d+ decoded / (\d+) failed",
 }
 
 PARQUET_FILES = ("fields", "movement", "actors", "net_guids", "events")

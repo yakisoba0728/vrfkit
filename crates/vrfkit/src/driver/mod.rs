@@ -128,6 +128,9 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     let mut overlay_stats = OverlayStats::default();
     let mut error_report = OverlayErrorReport::default();
     let mut effect_blobs_decoded: u64 = 0;
+    let mut struct_blobs_decoded: u64 = 0;
+    let mut struct_blobs_failed: u64 = 0;
+    let mut struct_blob_first_error: Option<String> = None;
     let mut cp_stats = CheckpointStats::default();
 
     while let Some(chunk) = chunk_iter.next_chunk()? {
@@ -206,6 +209,11 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
                 overlay_stats.not_in_table += sink.stats.overlay.not_in_table;
                 overlay_stats.no_field_name += sink.stats.overlay.no_field_name;
                 effect_blobs_decoded += sink.stats.effect_blobs_decoded;
+                struct_blobs_decoded += sink.stats.struct_blobs_decoded;
+                struct_blobs_failed += sink.stats.struct_blobs_failed;
+                if struct_blob_first_error.is_none() {
+                    struct_blob_first_error = sink.stats.struct_blob_first_error.take();
+                }
                 error_report.merge_from(&sink.stats.overlay.error_report);
             }
 
@@ -293,6 +301,9 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             event_trailing_bytes,
             elapsed,
             effect_blobs_decoded,
+            struct_blobs_decoded,
+            struct_blobs_failed,
+            struct_blob_first_error,
         },
         &overlay_stats,
         &error_report,

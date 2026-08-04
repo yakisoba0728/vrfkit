@@ -90,6 +90,35 @@ pub(super) fn read_narrow_byte(reader: &mut BitReader<'_>) -> Result<Option<u8>>
     Ok(Some(reader.read_bits(bits as u32)? as u8))
 }
 
+/// The name the REPLAY declares for `handle`, which is what selects a member.
+///
+/// Handle numbers are not stable across game builds. Build 13.02 deleted
+/// `TeamEconomy` and `TeamComponents` from `BombGameState` and added
+/// `TeamStates`, which moved every later handle down by eight: `RoundResults`'s
+/// members went from 93..=96 to 81..=84. A decoder keyed on the old numbers
+/// does not misread them, it reads NOTHING, because the first handle it meets
+/// is one it has no arm for. The declaration moves with the members, so it is
+/// the only key that survives a reshuffle.
+///
+/// Resolution is handle -> name and NEVER the reverse. A name can be declared
+/// at more than one handle: `WinningTeam` is both the `BombGameState` scalar
+/// naming the match winner (handle 50) and the `RoundResults` member (81 on
+/// 13.02, 93 on 13.01). Searching the declaration BY NAME can therefore match
+/// the wrong slot and yield a plausible wrong value, where asking what a
+/// handle the wire just handed us is called cannot -- handle 50 never appears
+/// inside the blob.
+pub(super) fn member_name<'d>(
+    declared: &[Option<&'d str>],
+    handle: u32,
+    context: &'static str,
+) -> Result<&'d str> {
+    declared
+        .get(handle as usize)
+        .copied()
+        .flatten()
+        .ok_or(StructBlobError::UndeclaredHandle { handle, context })
+}
+
 /// Ensure the reader is fully consumed.
 pub(super) fn ensure_consumed(reader: &BitReader<'_>) -> Result<()> {
     if reader.bits_remaining() > 0 {

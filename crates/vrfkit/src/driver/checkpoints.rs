@@ -55,6 +55,11 @@ pub(super) struct CheckpointStats {
     /// counter would be exactly the silent failure this project keeps finding.
     pub overlay: OverlayStats,
     pub effect_blobs: u64,
+    /// Same reasoning as `overlay`, for the same reason it exists: the
+    /// checkpoint sink runs the struct-blob decoders too, and a handle shift
+    /// that broke them only here would otherwise reach no counter.
+    pub struct_blobs_decoded: u64,
+    pub struct_blobs_failed: u64,
 }
 
 /// Everything about the replay that the checkpoint pass needs and cannot
@@ -112,6 +117,8 @@ pub(super) fn process_chunk<W: Write + Send>(
             stats.overlay.not_in_table += sink.stats.overlay.not_in_table;
             stats.overlay.no_field_name += sink.stats.overlay.no_field_name;
             stats.effect_blobs += sink.stats.effect_blobs_decoded;
+            stats.struct_blobs_decoded += sink.stats.struct_blobs_decoded;
+            stats.struct_blobs_failed += sink.stats.struct_blobs_failed;
             error_report.merge_from(&sink.stats.overlay.error_report);
         }
         stats.field_rows += buffers.fields.len() as u64;

@@ -7,7 +7,7 @@ VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
 
 ## 상태
 
-작업 중. 현재 검증된 범위 (`cargo test --workspace` 328 통과, `clippy -D warnings` 0, `fmt` 0):
+작업 중. 현재 검증된 범위 (`cargo test --workspace` 333 통과, `clippy -D warnings` 0, `fmt` 0):
 
 크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표에서 개수를 뺐습니다 -- 매번 낡았고, 재는 게 한 줄입니다.
 

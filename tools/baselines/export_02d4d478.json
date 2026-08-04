@@ -23,7 +23,9 @@
   "overlay_not_in_table": 511916,
   "overlay_no_field_name": 33340,
   "overlay_rows_offered": 988983,
-  "effect_blobs_decoded": 53908
+  "effect_blobs_decoded": 53908,
+  "struct_blobs_decoded": 207,
+  "struct_blobs_failed": 0
  },
  "parquet": {
   "fields": {

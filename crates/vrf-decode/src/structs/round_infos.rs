@@ -3,10 +3,13 @@
 use vrf_bitio::BitReader;
 
 use super::framing::{
-    MAX_FIELDS_PER_ELEMENT, ensure_consumed, read_array_count, read_element_index,
+    MAX_FIELDS_PER_ELEMENT, ensure_consumed, member_name, read_array_count, read_element_index,
     read_field_header,
 };
 use super::{Result, StructBlobError};
+
+/// Names this blob in error messages.
+const CONTEXT: &str = "RoundInfos";
 
 /// A single player round-info entry (per-round economy for one player).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,16 +32,23 @@ pub struct PlayerRoundInfo {
 ///
 /// # Wire layout
 ///
-/// Standard UE RepLayout dynamic-array framing (see module docs).
-/// Field handles: 40=RoundNumber(Int32), 41=StartOfRoundMoney(Int32),
-/// 42=StartOfRoundLoadoutValue(Int32), 43=EndOfRoundMoney(Int32),
-/// 44=EndOfRoundLoadoutValue(Int32).
+/// Standard UE RepLayout dynamic-array framing (see module docs). Members are
+/// selected by declared name. These five sit at 40..=44 in both builds
+/// measured so far, which is luck rather than a guarantee -- 13.02 shifted
+/// `RoundResults` by eight in the group next door, and this group simply had
+/// no property removed above it.
 ///
 /// # Arguments
 ///
 /// * `reader` - A `BitReader` positioned at the start of the blob, with
 ///   `len_bits()` equal to the declared bit count.
-pub fn decode_round_infos(reader: &mut BitReader<'_>) -> Result<Vec<PlayerRoundInfo>> {
+/// * `declared` - The enclosing group's net field export names indexed by
+///   handle. See [`super::round_results::decode_round_results`] on why an
+///   empty slice is an error rather than a fallback.
+pub fn decode_round_infos(
+    reader: &mut BitReader<'_>,
+    declared: &[Option<&str>],
+) -> Result<Vec<PlayerRoundInfo>> {
     let count = read_array_count(reader)?;
     let mut results = Vec::new();
 
@@ -54,22 +64,23 @@ pub fn decode_round_infos(reader: &mut BitReader<'_>) -> Result<Vec<PlayerRoundI
                 break;
             };
             if field_idx == MAX_FIELDS_PER_ELEMENT - 1 {
-                return Err(StructBlobError::TooManyFields {
-                    context: "RoundInfos",
-                });
+                return Err(StructBlobError::TooManyFields { context: CONTEXT });
             }
 
             let mut sub = reader.sub_reader(u64::from(bit_count))?;
-            match handle {
-                40 => round_number = Some(sub.read_i32()?),
-                41 => start_of_round_money = Some(sub.read_i32()?),
-                42 => start_of_round_loadout_value = Some(sub.read_i32()?),
-                43 => end_of_round_money = Some(sub.read_i32()?),
-                44 => end_of_round_loadout_value = Some(sub.read_i32()?),
-                _ => {
-                    return Err(StructBlobError::UnsupportedHandle {
+            match member_name(declared, handle, CONTEXT)? {
+                "RoundNumber" => round_number = Some(sub.read_i32()?),
+                "StartOfRoundMoney" => start_of_round_money = Some(sub.read_i32()?),
+                "StartOfRoundLoadoutValue" => {
+                    start_of_round_loadout_value = Some(sub.read_i32()?);
+                }
+                "EndOfRoundMoney" => end_of_round_money = Some(sub.read_i32()?),
+                "EndOfRoundLoadoutValue" => end_of_round_loadout_value = Some(sub.read_i32()?),
+                name => {
+                    return Err(StructBlobError::UnsupportedMember {
+                        name: name.to_owned(),
                         handle,
-                        context: "RoundInfos",
+                        context: CONTEXT,
                     });
                 }
             }

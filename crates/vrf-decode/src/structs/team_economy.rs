@@ -29,6 +29,19 @@ pub struct TeamEconomyUpdate {
 /// Field handles: 56=ReplicationId(IntPacked), 57=LoadoutValue(Int32),
 /// 58=AverageLoadoutValue(Int32).
 ///
+/// # Why this one still matches on handle numbers
+///
+/// Its two siblings select members by the name the replay declares, because
+/// handle numbers move between builds. This decoder cannot: the replay
+/// declares handle 56 as `"241"` -- a hardcoded FName index, not a name -- so
+/// `ReplicationId` has nothing to match on. Nor is there anything to
+/// generalise toward. `TeamEconomy` does not exist in build 13.02: it and
+/// `TeamComponents` were replaced by `TeamStates`, and the values moved into a
+/// separately replicated `/Script/ShooterGame.BaseTeamState` actor that
+/// nothing here decodes yet. So this stays a 13.01 decoder pinned to 13.01
+/// numbers, and the struct-blob failure counter is what reports it if those
+/// numbers ever move under it.
+///
 /// # Arguments
 ///
 /// * `reader` - A `BitReader` positioned at the start of the blob, with

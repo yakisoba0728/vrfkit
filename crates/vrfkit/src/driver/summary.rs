@@ -28,6 +28,11 @@ pub(super) struct RunTotals {
     pub event_trailing_bytes: u64,
     pub elapsed: Duration,
     pub effect_blobs_decoded: u64,
+    pub struct_blobs_decoded: u64,
+    pub struct_blobs_failed: u64,
+    /// First struct-blob failure verbatim. Printed so a build that reshuffles
+    /// handles names itself on the summary instead of being invisible.
+    pub struct_blob_first_error: Option<String>,
 }
 
 /// Print the whole `=== Export complete ===` report.
@@ -63,6 +68,16 @@ pub(super) fn print(
             "  Event unread:     {} payload bytes",
             totals.event_trailing_bytes
         );
+    }
+    // Printed unconditionally, including the zero. A conditional line cannot
+    // distinguish "no failures" from "this build stopped reaching the decoder
+    // at all", and that second case is exactly what went unnoticed on 13.02.
+    eprintln!(
+        "  Struct blobs:     {} decoded / {} failed",
+        totals.struct_blobs_decoded, totals.struct_blobs_failed
+    );
+    if let Some(err) = &totals.struct_blob_first_error {
+        eprintln!("  Struct blob err:  {err}");
     }
     eprintln!("  Elapsed:          {:.2?}", totals.elapsed);
 
@@ -100,6 +115,13 @@ fn print_checkpoints(cp: &CheckpointStats) {
         cp.overlay.not_in_table,
         cp.overlay.no_field_name,
         cp.effect_blobs
+    );
+    // NOT "Struct blobs", which the main block already uses: every label here
+    // is a regex anchor for check_export_baseline.py, and two blocks sharing
+    // one label would leave the harness matching whichever came first.
+    eprintln!(
+        "  Checkpoint blobs: {} decoded / {} failed",
+        cp.struct_blobs_decoded, cp.struct_blobs_failed
     );
 }
 

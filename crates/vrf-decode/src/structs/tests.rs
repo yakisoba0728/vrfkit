@@ -4,6 +4,58 @@
 use super::*;
 use vrf_bitio::BitReader;
 
+// -- Declarations ---------------------------------------------------------
+//
+// The decoders select members by the name the replay declares for a handle,
+// so every test has to supply the declaration its bytes were recorded under.
+// That is the point rather than an inconvenience: the SAME bytes decode under
+// two different handle layouts, which is what build 13.02 did to us.
+
+/// `BombGameState_C` on build 13.01: RoundResults members at 93..=96.
+fn bomb_game_state_1301() -> Vec<Option<&'static str>> {
+    let mut d = vec![None; 98];
+    d[92] = Some("RoundResults");
+    d[93] = Some("WinningTeam");
+    d[94] = Some("WinningTeamRole");
+    d[95] = Some("RoundResult");
+    d[96] = Some("EliminatedTeams");
+    d[97] = Some("EliminatedTeams");
+    // Handle 50 is the match-winner scalar, NOT a RoundResults member. It
+    // shares the name, which is why resolution runs handle -> name and never
+    // the reverse: a search by name could land here.
+    d[50] = Some("WinningTeam");
+    d
+}
+
+/// `BombGameState_C` on build 13.02: the same members, eight handles lower.
+///
+/// 13.02 dropped `TeamEconomy` and `TeamComponents` and added `TeamStates`.
+fn bomb_game_state_1302() -> Vec<Option<&'static str>> {
+    let mut d = vec![None; 86];
+    d[80] = Some("RoundResults");
+    d[81] = Some("WinningTeam");
+    d[82] = Some("WinningTeamRole");
+    d[83] = Some("RoundResult");
+    d[84] = Some("EliminatedTeams");
+    d[85] = Some("EliminatedTeams");
+    d[50] = Some("WinningTeam");
+    d[52] = Some("TeamStates");
+    d[53] = Some("TeamStates");
+    d
+}
+
+/// `OwnerExclusivePlayerInfo`, identical on both builds measured.
+fn owner_exclusive_player_info() -> Vec<Option<&'static str>> {
+    let mut d = vec![None; 45];
+    d[39] = Some("RoundInfos");
+    d[40] = Some("RoundNumber");
+    d[41] = Some("StartOfRoundMoney");
+    d[42] = Some("StartOfRoundLoadoutValue");
+    d[43] = Some("EndOfRoundMoney");
+    d[44] = Some("EndOfRoundLoadoutValue");
+    d
+}
+
 // -- RoundResults tests ---------------------------------------------------
 
 /// Row 0 from replay 02d4d478, t=84942ms.
@@ -12,7 +64,7 @@ use vrf_bitio::BitReader;
 fn round_results_row0_red_attacker_elimination() {
     let data = hex_to_bytes("0202bcc208000000a4cac800000000007c0d028c00c2800202c420250400000000");
     let mut r = BitReader::with_bit_len(&data, 264);
-    let results = decode_round_results(&mut r).unwrap();
+    let results = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].round_number, 0);
     assert_eq!(results[0].winning_team.as_deref(), Some("Red"));
@@ -26,7 +78,7 @@ fn round_results_row0_red_attacker_elimination() {
 fn round_results_row4_blue_defender_time_expired() {
     let data = hex_to_bytes("0a0abcd20a00000084d8eaca00000000007c0d048c300000");
     let mut r = BitReader::with_bit_len(&data, 192);
-    let results = decode_round_results(&mut r).unwrap();
+    let results = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].round_number, 4);
     assert_eq!(results[0].winning_team.as_deref(), Some("Blue"));
@@ -40,7 +92,7 @@ fn round_results_row4_blue_defender_time_expired() {
 fn round_results_row6_blue_defender_defuse() {
     let data = hex_to_bytes("0e0ebcd20a00000084d8eaca00000000007c0d048c100000");
     let mut r = BitReader::with_bit_len(&data, 192);
-    let results = decode_round_results(&mut r).unwrap();
+    let results = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].round_number, 6);
     assert_eq!(results[0].winning_team.as_deref(), Some("Blue"));
@@ -53,8 +105,90 @@ fn round_results_row6_blue_defender_defuse() {
 fn round_results_empty() {
     let data = [];
     let mut r = BitReader::with_bit_len(&data, 0);
-    let results = decode_round_results(&mut r).unwrap();
+    let results = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap();
     assert!(results.is_empty());
+}
+
+// -- RoundResults on build 13.02 ------------------------------------------
+
+/// Round 0 from replay `f1110ea5`, build `++Ares-Core+release-13.02`,
+/// t=72684ms. Members sit at 81..=84 here; the 13.01 decoder read nothing.
+#[test]
+fn round_results_1302_round0() {
+    let data = hex_to_bytes("0202a4d20a00000084d8eaca00000000004c0d848a00aa800202ac20f50200000000");
+    let mut r = BitReader::with_bit_len(&data, 272);
+    let results = decode_round_results(&mut r, &bomb_game_state_1302()).unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].round_number, 0);
+    assert_eq!(results[0].winning_team.as_deref(), Some("Blue"));
+    assert_eq!(results[0].winning_team_role, Some(AresTeamRole::Defender));
+    assert_eq!(results[0].round_result, Some(AresRoundOutcome::Elimination));
+}
+
+/// The regression that motivated all of this: 13.02 bytes under the 13.01
+/// declaration must FAIL, loudly and by name.
+///
+/// It must not return an empty vector. An empty vector is indistinguishable
+/// from a round with nothing to report, and the sink treats it as "decoder had
+/// nothing to add" -- which is exactly how a whole build's worth of missing
+/// match scores looked like a clean export.
+#[test]
+fn round_results_1302_bytes_under_1301_declaration_is_an_error() {
+    let data = hex_to_bytes("0202a4d20a00000084d8eaca00000000004c0d848a00aa800202ac20f50200000000");
+    let mut r = BitReader::with_bit_len(&data, 272);
+    let err = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            StructBlobError::UndeclaredHandle {
+                handle: 81,
+                context: "RoundResults"
+            }
+        ),
+        "expected an undeclared-handle error naming handle 81, got {err:?}"
+    );
+}
+
+/// The mirror: 13.01 bytes under the 13.02 declaration.
+///
+/// Handle 93 is undeclared there, so this fails too. Together the two prove
+/// the decoder is keyed on the declaration and not on either set of numbers.
+#[test]
+fn round_results_1301_bytes_under_1302_declaration_is_an_error() {
+    let data = hex_to_bytes("0202bcc208000000a4cac800000000007c0d028c00c2800202c420250400000000");
+    let mut r = BitReader::with_bit_len(&data, 264);
+    let err = decode_round_results(&mut r, &bomb_game_state_1302()).unwrap_err();
+    assert!(
+        matches!(err, StructBlobError::UndeclaredHandle { handle: 93, .. }),
+        "expected an undeclared-handle error naming handle 93, got {err:?}"
+    );
+}
+
+/// An empty declaration is an error, not an empty result. There is no safe
+/// fallback set of handle numbers to guess with.
+#[test]
+fn round_results_with_no_declaration_is_an_error() {
+    let data = hex_to_bytes("0202bcc208000000a4cac800000000007c0d028c00c2800202c420250400000000");
+    let mut r = BitReader::with_bit_len(&data, 264);
+    assert!(decode_round_results(&mut r, &[]).is_err());
+}
+
+/// A handle that IS declared, under a name with no arm, names itself in the
+/// error. This is the shape a renamed or added member takes.
+#[test]
+fn round_results_unknown_member_name_is_reported_by_name() {
+    let data = hex_to_bytes("0202bcc208000000a4cac800000000007c0d028c00c2800202c420250400000000");
+    let mut r = BitReader::with_bit_len(&data, 264);
+    let mut declared = bomb_game_state_1301();
+    declared[93] = Some("WinningTeamV2");
+    let err = decode_round_results(&mut r, &declared).unwrap_err();
+    match err {
+        StructBlobError::UnsupportedMember { name, handle, .. } => {
+            assert_eq!(name, "WinningTeamV2");
+            assert_eq!(handle, 93);
+        }
+        other => panic!("expected UnsupportedMember, got {other:?}"),
+    }
 }
 
 // -- TeamEconomy tests ----------------------------------------------------
@@ -122,7 +256,7 @@ fn team_economy_row2_midgame() {
 fn round_infos_row0_end_of_round1() {
     let data = hex_to_bytes("020252400000000054400000000056400000000058406c0700005a40000000000000");
     let mut r = BitReader::with_bit_len(&data, 272);
-    let results = decode_round_infos(&mut r).unwrap();
+    let results = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].index, 0);
     assert_eq!(results[0].round_number, Some(0));
@@ -139,7 +273,7 @@ fn round_infos_row0_end_of_round1() {
 fn round_infos_row1_different_player() {
     let data = base64_to_bytes("AgJSQAAAAABUQAAAAABWQAAAAABYQNAHAABaQMgAAAAAAA==");
     let mut r = BitReader::with_bit_len(&data, 272);
-    let results = decode_round_infos(&mut r).unwrap();
+    let results = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].index, 0);
     assert_eq!(results[0].round_number, Some(0));
@@ -156,7 +290,7 @@ fn round_infos_row1_different_player() {
 fn round_infos_row2_another_player() {
     let data = base64_to_bytes("AgJSQAAAAABUQAAAAABWQAAAAABYQDQIAABaQFgCAAAAAA==");
     let mut r = BitReader::with_bit_len(&data, 272);
-    let results = decode_round_infos(&mut r).unwrap();
+    let results = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].index, 0);
     assert_eq!(results[0].end_of_round_money, Some(2100));

@@ -146,6 +146,25 @@ pub struct ExportStats {
     /// diffs two summaries, sees every counter identical, and concludes
     /// nothing changed. Failures already land in `overlay.decoded_err`.
     pub effect_blobs_decoded: u64,
+
+    /// Struct-blob (`RoundResults`, `TeamEconomy`, `RoundInfos`) parent rows
+    /// whose dedicated decoder produced elements.
+    pub struct_blobs_decoded: u64,
+
+    /// Struct-blob decodes that returned an error.
+    ///
+    /// These used to be `let Ok(..) else { return false }` -- discarded with no
+    /// counter and no line. That is how build 13.02 moving `RoundResults` from
+    /// handle 93 to 81 read as a completely clean export: every counter on the
+    /// summary was identical to a good run and the match score simply was not
+    /// in the Parquet. The decoders are additive, so a failure still costs no
+    /// rows and no bits; it must not also cost the operator the knowledge that
+    /// it happened.
+    pub struct_blobs_failed: u64,
+
+    /// The first failure verbatim, so the summary can name the member and the
+    /// handle instead of only admitting that something went wrong.
+    pub struct_blob_first_error: Option<String>,
 }
 
 /// The record buffers a sink fills for one packet.

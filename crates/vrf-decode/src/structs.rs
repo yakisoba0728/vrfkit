@@ -25,25 +25,42 @@
 //! }
 //! ```
 //!
-//! Field handles and payload types per blob:
+//! # Members are selected by DECLARED NAME, not by handle number
 //!
-//! ## RoundResults (handles from `AresRoundResults.cs`)
-//! - 93: WinningTeam (FName)
-//! - 94: WinningTeamRole (enum byte, variable bit width)
-//! - 95: RoundResult (enum byte, variable bit width)
-//! - 96: EliminatedTeams (skipped - opaque nested array)
+//! Handle numbers are a per-build layout detail. Build 13.02 removed
+//! `TeamEconomy` and `TeamComponents` from `BombGameState` and added
+//! `TeamStates`, shifting every later handle down by eight; `RoundResults`
+//! moved from 92 and its members from 93..=96 to 80 and 81..=84. Decoders
+//! pinned to the old numbers produced NOTHING on that build -- not a wrong
+//! value, no value -- and because the failure was discarded without a counter
+//! it read as a clean parse for a whole build. See [`framing::member_name`]
+//! for why resolution runs handle -> name and never the reverse.
 //!
-//! ## TeamEconomy (handles from `AresTeamEconomy.cs`)
-//! - 56: ReplicationId (IntPacked)
-//! - 57: LoadoutValue (Int32)
-//! - 58: AverageLoadoutValue (Int32)
+//! Members and payload types per blob, with the handles each build happens to
+//! use written down as a reading aid ONLY. Nothing matches on them:
 //!
-//! ## RoundInfos (handles from `OwnerExclusivePlayerInfoDescriptor.cs`)
-//! - 40: RoundNumber (Int32)
-//! - 41: StartOfRoundMoney (Int32)
-//! - 42: StartOfRoundLoadoutValue (Int32)
-//! - 43: EndOfRoundMoney (Int32)
-//! - 44: EndOfRoundLoadoutValue (Int32)
+//! ## RoundResults (`BombGameState`)      13.01: 93..=96   13.02: 81..=84
+//! - `WinningTeam` (FName)
+//! - `WinningTeamRole` (enum byte, variable bit width)
+//! - `RoundResult` (enum byte, variable bit width)
+//! - `EliminatedTeams` (skipped - opaque nested array). Declared at TWO
+//!   consecutive handles in both builds; matching on the name covers both
+//!   without either being written down.
+//!
+//! ## RoundInfos (`OwnerExclusivePlayerInfo`)   40..=44 in both builds
+//! - `RoundNumber`, `StartOfRoundMoney`, `StartOfRoundLoadoutValue`,
+//!   `EndOfRoundMoney`, `EndOfRoundLoadoutValue` (all Int32)
+//!
+//! ## TeamEconomy (`BombGameState`, 13.01 only) -- HANDLES, deliberately
+//! - 56: ReplicationId (IntPacked), 57: LoadoutValue (Int32),
+//!   58: AverageLoadoutValue (Int32)
+//!
+//! This one keeps the numbers because it has no choice: the replay declares
+//! handle 56 as `"241"`, a hardcoded FName index rather than a name, so there
+//! is nothing to match on. Generalising it is also pointless -- the property
+//! does not exist in 13.02, where team economy moved into a separately
+//! replicated `/Script/ShooterGame.BaseTeamState` actor that no decoder here
+//! reads yet. The failure counter covers it if 13.01's numbers ever move.
 //!
 //! # FName wire format (from `FArchive.ReadFNameCore`)
 //! ```text
@@ -89,9 +106,24 @@ pub enum StructBlobError {
     #[error("field payload {bits} bits exceeds remaining {remaining}")]
     PayloadTooLarge { bits: u32, remaining: u64 },
 
-    /// An unexpected field handle was encountered.
+    /// An unexpected field handle was encountered. Only [`team_economy`] can
+    /// raise this; the other two select members by declared name.
     #[error("unsupported field handle {handle} in {context}")]
     UnsupportedHandle { handle: u32, context: &'static str },
+
+    /// The replay declares no name for a handle the blob carries, so there is
+    /// nothing to select a member with.
+    #[error("undeclared field handle {handle} in {context}")]
+    UndeclaredHandle { handle: u32, context: &'static str },
+
+    /// The handle is declared, under a name this decoder has no arm for --
+    /// the shape this takes when a build renames or adds a member.
+    #[error("unsupported member {name} (handle {handle}) in {context}")]
+    UnsupportedMember {
+        name: String,
+        handle: u32,
+        context: &'static str,
+    },
 
     /// Too many fields in a single element (guard against infinite loops).
     #[error("too many fields in element ({context})")]
