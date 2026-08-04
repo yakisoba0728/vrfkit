@@ -5248,7 +5248,10 @@ external check this parser has had.
 
 Rows joined on `(kills, deaths, assists)`, which is unique across all ten
 players, so the join does not presuppose the agent labels and can therefore
-test them.
+test them. **Section 31-B found the flaw in this**: a join key that includes a
+value under test HIDES a difference in that value as a matching failure. A
+later comparison had to fall back to `(kills, assists)` to see a deaths
+discrepancy at all.
 
 ```
 K / D / A              30 values    ALL MATCH
@@ -5666,3 +5669,112 @@ conclusion this document had just written down (26-G/26-H was the first). Both
 times the wrong version was the one that stopped at "explained well enough",
 and both times the correction came from reconciling to the cent instead of to
 the tenth. The residual WAS the finding.
+
+## 31. Four replays, four tracker scoreboards, 431 of 468 (2026-08-05)
+
+All four replays currently in `Saved\Demos` parsed and compared against their
+tracker scoreboards. Boards were matched to replays AUTOMATICALLY on the
+multiset of (kills, assists) -- no hand assignment, so a wrong pairing is an
+error rather than a quiet mislabel.
+
+```
+board-1 -> f1110ea5 (22 rounds)    board-3 -> 120b4365 (24 rounds)
+board-2 -> 4ac964f9 (21 rounds)    board-4 -> e8b213ea (20 rounds)
+```
+
+All four are build 13.02, all parse with malformed 0, transform failures 0,
+decode errors 0 and struct-blob failures 0.
+
+```
+field    exact       note
+K        39/39
+D        39/39
+A        39/39
+rank     39/39
+K/D      39/39
+FK       39/39       reconstructed here, not server-stored
+FD       39/39       likewise
+MK       38/39       one 1-off, unexplained
+KAST     37/39       one denominator (31-A), one 1-round reconstruction diff
+DDd      36/39       rounding, see 30
+HS%      36/39       rounding ties at .5
+ADR      11/39       the truncation convention, see 27-B and 30
+TOTAL   431/468
+```
+
+39 and not 40 because one player is joined separately -- see 31-B.
+
+### 31-A. A player who played 13 of 21 rounds
+
+The single largest gap in the whole comparison, and it is not an error on
+either side:
+
+```
+                         ours     tracker
+ADR                     136.6        84.5
+KAST                      54%         33%
+```
+
+Same numbers underneath, different denominator:
+
+```
+damage 1775.92  / rounds_played 13 = 136.6      (ours)
+                / match rounds  21 =  84.6      (tracker says 84.5)
+kast_rounds  7  / 13 = 54%                      (ours)
+                / 21 = 33%                      (tracker says 33%)
+```
+
+That player joined mid-match. Every other player in that replay has
+`rounds_played == 21`. **Ours is per-round-PLAYED, the tracker's is
+per-match-round.** Both are defensible; ours answers "how did they do while
+they were in", the tracker's answers "what did they contribute to the match".
+Neither is wrong, and a comparison that does not check `rounds_played` first
+will read this as a catastrophic disagreement.
+
+### 31-B. Deaths are ambiguous exactly when resurrection is involved
+
+One player's deaths differ: ours 19, tracker 18. It is the only hard-data
+difference across 40 players, and it has a clean cause.
+
+```
+pid 248 (Clove)   19 deaths across only 16 DISTINCT rounds
+                  rounds 6, 11 and 21 each carry TWO bDied=true reports
+                  MulticastReceivePlayerResurrectEvent fires 3 times, all with
+                  ResurrectorPlayer == ResurrectedPlayer == 248
+every other player  deaths == distinct rounds, zero doubles
+```
+
+Self-resurrection is Clove's ultimate. They died, resurrected themselves, and
+died again -- three times in the match. We count every `bDied`; the tracker
+counts 18, which is neither 16 (one per round) nor 19 (all of them), so Riot
+drops exactly one of the three. Which one, and why, is their policy and is not
+observable from the replay. The third resurrect carries
+`KillNumberInRoundForResurrector` / `...ForResurrected` fields the other two do
+not, which is the only visible difference between them.
+
+**What to take from this:** a resurrect makes "deaths" a definition rather than
+a count, and `Rounds[N].Reports[1]` existing at all is the wire's marker for
+it. Any consumer comparing deaths against Riot should expect to differ by up to
+the number of resurrections.
+
+This also explains why the strict (K, D, A) join used in 27 and 29 rejected
+this board outright. The join key was changed to (kills, assists), which is
+still unique across these four replays, so the death difference becomes a
+reported difference instead of a matching failure. **A join key that includes
+the value under test hides the finding.**
+
+### 31-C. What is still unexplained
+
+Two 1-offs, both in derived metrics, both left open rather than rationalised:
+
+- **MK 4 vs 3** for a player whose `multi_kills` is `{2:5, 3:0, 4:3, 5:1}` with
+  `multikill_best: 6`. The bucket dict has no `6` key, so a six-kill round is
+  landing in the `5` bucket; whether the tracker merges it differently is not
+  determinable from here.
+- **KAST 54% vs 50%** for a player who DID play all 24 rounds, so 31-A does not
+  apply. 13 KAST rounds ours against 12 theirs. KAST is reconstructed here with
+  our own trade-window policy, so a one-round difference is within what that
+  reconstruction can be expected to produce.
+
+Neither is worth a fix without knowing Riot's definition. Both are recorded so
+the next comparison does not rediscover them as new.
