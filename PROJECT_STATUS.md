@@ -5785,9 +5785,36 @@ t=2067406   pid 170 kills pid 244
 
 Five distinct enemies, six kills, with the resurrect RPC sitting between the
 two Clove kills. This is the ONLY round with 5+ kills across all four replays
-and it is the only MK disagreement. The tracker classifies it as something
-other than a multikill -- most likely an Ace, which trackers usually report in
-a separate column -- but its exact rule is not observable from the replay.
+and it is the only MK disagreement.
+
+**And the server says so itself.** `BombGameState.ChosenCeremonyForRound` is
+untyped in the overlay table, so it lands as raw bits -- but read as IntPacked
+every value is an even NetGUID that resolves in `actors.parquet`:
+
+```
+guid 596  DefaultCeremony_C    16 rounds
+guid 602  ClutchCeremony_C      rounds 8, 16, 17
+guid 568  CloserCeremony_C      rounds 13, 19, 23
+guid 598  FlawlessCeremony_C    round 2
+guid 594  AceCeremony_C         round 22 ONLY
+          /Game/UI/InGame/HUD/Ceremonies/AceCeremony.AceCeremony_C
+```
+
+Round 22 is the only ACE in the match, and it is the six-kill round. So the
+tracker's MK column counts triples and quadras and reports the Ace separately,
+which is what VALORANT's own ceremony system does. **This is read off the wire,
+not inferred from the tracker.** MK is closed.
+
+Worth noting for its own sake: the ceremony per round was recoverable the whole
+time from a field nothing types. `ChosenCeremonyForRound` is in neither
+`table.rs` nor the C# reference -- the replay declares the NAME and no source
+declares the TYPE, which is the same position `BaseTeamState.Wins` is in
+(26-I). Typing it `ObjectNetGuid` would make round ceremonies a first-class
+column; the evidence is 24 of 24 rounds resolving to `*Ceremony_C` actors
+across four replays, which is wire evidence of exactly the shape that justified
+the `EquippableUsed` correction. It is NOT done here, because that correction
+had a C# descriptor the extractor could not see, and this has no descriptor at
+all. Deciding that is a separate call, not a side effect of a comparison.
 
 **KAST 54% vs 50%.** That player is pid 258, who was Clove's first kill in the
 same round 22. They qualify for that round ONLY by having been traded: pid 170
@@ -5798,12 +5825,28 @@ round: 13 -> 12.
 This last one is a strong candidate, NOT proof -- a simplified reconstruction
 here reaches 10 of 24 because it does not model assists, so it cannot pin which
 round the tracker drops. What it does establish is that round 22 is the only
-round where that player's KAST hinges on a trade against a resurrected player.
+round where that player's KAST hinges on a trade against a resurrected player,
+and that 13 - 1 = 12 is exactly the tracker's figure. Arithmetic consistency,
+not proof.
 
-**So the whole 31 comparison has exactly one unexplained event, not three
-unexplained numbers**, and it is a self-resurrection: it makes a death
-ambiguous (31-B), it produces the only 6-kill round in the corpus (MK), and it
-is the round whose trade credit is in question (KAST).
+**So the whole 31 comparison comes down to one event, not three unexplained
+numbers**, and it is a self-resurrection: it makes a death ambiguous (31-B), it
+produces the only 6-kill round in the corpus, and it is the round whose trade
+credit is in question.
+
+Final status of the three:
+
+```
+MK 4 vs 3        CLOSED   round 22 is AceCeremony_C on the wire
+deaths 19 vs 18  MECHANISM PROVEN, RULE UNKNOWN   Clove died twice in each of
+                 rounds 7, 12, 22 -- all three resurrect RPCs sit between the
+                 two bDied timestamps -- and Riot reports 18, which is neither
+                 16 (one per round) nor 19 (all). Which of the three they drop
+                 is their policy. The round-22 resurrect is the only one
+                 carrying KillNumberInRoundForResurrector/Resurrected, so it is
+                 the one that looks different, but that is a hint not a proof.
+KAST 13 vs 12    CONSISTENT, UNPROVEN   see above
+```
 
 Resurrection is now the single biggest known source of definitional
 disagreement with Riot's numbers. `Rounds[N].Reports[1]` existing is its marker
