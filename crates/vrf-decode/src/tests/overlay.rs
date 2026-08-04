@@ -4,9 +4,79 @@
 use crate::decode::FieldType;
 use crate::overlay::{
     OverlayEntry, OverlayHandleEntry, OverlayStats, OverlayTable, apply_overlay,
-    apply_overlay_with_handle,
+    apply_overlay_with_handle, canonical_group, resolve_field_type,
 };
 use crate::{OVERLAY_HANDLE_TABLE, OVERLAY_TABLE};
+
+const BOMB_GS: &str = "/Game/GameModes/Bomb/BombGameState.BombGameState_C";
+const BOMB_PS: &str = "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C";
+const SWIFT_GS: &str = "/Game/GameModes/_Development/Swiftplay_EndOfRoundCredits\
+/Swiftplay_EoRCredits_GameState.Swiftplay_EoRCredits_GameState_C";
+const SWIFT_PS: &str = "/Game/GameModes/_Development/Swiftplay_EndOfRoundCredits\
+/Swiftplay_EoRCredits_PlayerState.Swiftplay_EoRCredits_PlayerState_C";
+
+/// A Bomb class is already canonical and must not be rewritten.
+#[test]
+fn canonical_group_leaves_a_bomb_class_alone() {
+    assert_eq!(canonical_group(BOMB_GS), BOMB_GS);
+    assert_eq!(canonical_group(BOMB_PS), BOMB_PS);
+    assert_eq!(
+        canonical_group("/Game/Whatever.Whatever_C"),
+        "/Game/Whatever.Whatever_C"
+    );
+}
+
+#[test]
+fn canonical_group_maps_the_swiftplay_siblings() {
+    assert_eq!(canonical_group(SWIFT_GS), BOMB_GS);
+    assert_eq!(canonical_group(SWIFT_PS), BOMB_PS);
+}
+
+/// Suffixed forms are deliberately NOT aliased: the table holds no entries for
+/// the Bomb spellings of `_ClassNetCache` or `<Class>:<Function>`, so aliasing
+/// them would be an untested claim buying nothing. Pinned so a later "make it
+/// consistent" edit has to argue with a test.
+#[test]
+fn canonical_group_does_not_alias_the_suffixed_forms() {
+    for suffix in ["_ClassNetCache", ":SomeFunction"] {
+        let path = format!("{SWIFT_GS}{suffix}");
+        assert_eq!(canonical_group(&path), path, "{suffix} should not alias");
+    }
+}
+
+/// The point of the alias: a Swiftplay field resolves to the type its Bomb
+/// twin has. `ChosenCeremonyForRound` is the live case -- it is in the table
+/// exactly once, under the Bomb game state.
+#[test]
+fn a_swiftplay_field_resolves_through_its_bomb_twin() {
+    let table = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
+    for field in ["ChosenCeremonyForRound", "RoundResults", "BombState"] {
+        let bomb = resolve_field_type(&table, BOMB_GS, Some(field), None);
+        let swift = resolve_field_type(&table, SWIFT_GS, Some(field), None);
+        assert_eq!(swift, bomb, "{field} must resolve the same on both classes");
+        assert!(bomb.is_some(), "{field} should be in the table at all");
+    }
+}
+
+/// The alias must not invent types. A name in neither class stays unresolved.
+#[test]
+fn the_alias_does_not_invent_a_type() {
+    let table = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
+    assert_eq!(
+        resolve_field_type(&table, SWIFT_GS, Some("NoSuchFieldAnywhere"), None),
+        None,
+    );
+    // and an unaliased group gains nothing
+    assert_eq!(
+        resolve_field_type(
+            &table,
+            "/Game/Nope.Nope_C",
+            Some("ChosenCeremonyForRound"),
+            None
+        ),
+        None,
+    );
+}
 
 #[test]
 fn table_is_sorted() {

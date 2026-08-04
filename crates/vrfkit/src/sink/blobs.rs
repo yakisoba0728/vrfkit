@@ -155,11 +155,25 @@ impl ExportSink<'_> {
         }
     }
 
+    /// The group this block belongs to, with game-mode sibling classes mapped
+    /// to the class everything here is keyed on.
+    ///
+    /// A Swiftplay replay carries `RoundResults` and `TeamEconomy` on
+    /// `Swiftplay_EoRCredits_GameState_C`, so a bare `contains("BombGameState")`
+    /// silently skips the struct-blob decoders for it -- the export looked
+    /// clean and the match had no score, which is section 26 happening again
+    /// one game mode over. `vrf_decode::canonical_group` is the single alias
+    /// table the overlay uses, so the two cannot disagree about what a game
+    /// state is.
+    fn canonical_group(&self) -> &str {
+        vrf_decode::canonical_group(&self.current_group_path)
+    }
+
     /// Check if a field is a struct blob that has a dedicated decoder.
     pub(super) fn is_struct_blob_field(&self, field_name: Option<&str>) -> bool {
         match field_name {
             Some("RoundResults") | Some("TeamEconomy") => {
-                self.current_group_path.contains("BombGameState")
+                self.canonical_group().contains("BombGameState")
             }
             Some("RoundInfos") => self.current_group_path.contains("OwnerExclusivePlayerInfo"),
             _ => false,
@@ -175,10 +189,10 @@ impl ExportSink<'_> {
         bit_count: u32,
     ) -> bool {
         let emitted = match field_name {
-            "RoundResults" if self.current_group_path.contains("BombGameState") => {
+            "RoundResults" if self.canonical_group().contains("BombGameState") => {
                 self.decode_round_results_blob(raw, bit_count)
             }
-            "TeamEconomy" if self.current_group_path.contains("BombGameState") => {
+            "TeamEconomy" if self.canonical_group().contains("BombGameState") => {
                 self.decode_team_economy_blob(raw, bit_count)
             }
             "RoundInfos" if self.current_group_path.contains("OwnerExclusivePlayerInfo") => {

@@ -116,18 +116,12 @@ EXPECTED += [
 #: This is a WEAKER justification than the BaseTeamState pair above, where the
 #: reference declares the property's type and only its group moved. Recorded as
 #: such deliberately -- see PROJECT_STATUS 31-C and 32.
-#: The same field in the Swiftplay game state. 5 of the 215 corpus replays are
-#: Swiftplay and carry no `BombGameState` at all; their 37 non-null values
-#: resolve 37 of 37 to the same ceremony classes (Default, Closer, Clutch,
-#: Flawless). A much smaller sample than the Bomb entry above -- said plainly
-#: -- but leaving it out would mean one field decoding in one game mode and not
-#: another for no reason anybody chose, which is the latent inconsistency
-#: 25-G's fourth item closed elsewhere.
+#: Swiftplay's copy of this field is NOT listed here. It was, briefly, and the
+#: entry was removed when `GROUP_ALIASES` landed in `vrf-decode/src/overlay.rs`
+#: -- Swiftplay's game state now falls back to the Bomb class for every field,
+#: so a second entry would state the same fact twice and drift from it.
 ADDITIONS = [
     ("/Game/GameModes/Bomb/BombGameState.BombGameState_C",
-     "ChosenCeremonyForRound", "FieldType::ObjectNetGuid"),
-    ("/Game/GameModes/_Development/Swiftplay_EndOfRoundCredits"
-     "/Swiftplay_EoRCredits_GameState.Swiftplay_EoRCredits_GameState_C",
      "ChosenCeremonyForRound", "FieldType::ObjectNetGuid"),
     ("/Script/ShooterGame.BaseTeamState", "AverageLoadoutValue", "FieldType::Int32"),
     ("/Script/ShooterGame.BaseTeamState", "LoadoutValue", "FieldType::Int32"),

@@ -256,7 +256,7 @@ python tools/check_docs.py --fast    # 개수 대조 생략
 
 | 스크립트 | 생성물 |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (오버레이 테이블 1,189 + 핸들 84) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (오버레이 테이블 1,188 + 핸들 84) |
 | `apply_type_corrections.py` | 위 파일에 검증된 정정/추가를 적용 |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
 | `extract_golden.py` | `crates/vrf-transform/tests/data/golden_vectors.rs` |
@@ -296,7 +296,7 @@ python tools/check_ascii.py --check               # 113 파일, ASCII only
 python tools/check_effect_decoder.py --check      # 12 케이스
 python -m unittest discover -s tools/tests -p "test_*.py"   # 109 통과
 python tools/check_docs.py --fast                 # 문서가 아직 이 저장소를 설명하는가
-python tools/apply_type_corrections.py --check    # 28 정정 present
+python tools/apply_type_corrections.py --check    # 27 정정 present
 ```
 
 **ASCII 규칙은 스타일이 아니라 정확성 문제입니다.** Windows 콘솔이 cp949라서 포맷
@@ -388,8 +388,11 @@ f1110ea5  (59 MB)  743,110 blocks  537,865 fields  409,103 RPCs  pass 98.938381%
 - **`economy.per_round` (13.02)** — 팀 이코노미가 `BaseTeamState`로 옮겨갔고 값은
   디코드됩니다만, valplay의 `compute_economy`가 옛 경로를 봅니다. valplay는 수정
   대상이 아닙니다.
-- **비-Bomb 게임 모드** — 코퍼스 215개 중 5개가 Swiftplay입니다(32-D).
-  파싱은 되고 세리머니도 디코드되지만, 지표 파이프라인은 Bomb 전용이라
-  라운드/점수/전투 리포트가 안 나옵니다. 입력이 없는 게 아니라 소비자가 없습니다.
+- **비-Bomb 게임 모드** — 코퍼스 215개 중 5개가 Swiftplay이고, **파서 쪽은
+  끝났습니다**(33절): `GROUP_ALIASES`가 Swiftplay의 GameState/PlayerState를
+  Bomb 클래스로 매핑해 필드가 전부 타입을 얻습니다. 남은 건 valplay의
+  `compute_metrics.py`가 클래스 이름 5곳을 하드코딩하고 있다는 것뿐이고,
+  패치는 `docs/swiftplay-metrics.patch`에 있습니다. valplay는 수정 대상이
+  아니라 적용은 그쪽 판단입니다.
 - **ADR은 트래커보다 0.1~0.2 높습니다.** 버그가 아닙니다 — 와이어 데미지가 소수인데
   Riot API가 정수로 보고합니다. **버림을 넣어 "고치지" 마세요**(PROJECT_STATUS 27-B).

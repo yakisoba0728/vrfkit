@@ -95,12 +95,13 @@ cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 cargo fmt --check
 # Expected: exit 0
 python tools\apply_type_corrections.py --check
-# Expected: verified: 0 replacement(s), all 28 corrections present;
-#           Raw/Custom: 157, Skip: 164, Typed: 868
-# 28 not 25: the ADDITIONS pass inserts four entries the C# descriptors
+# Expected: verified: 0 replacement(s), all 27 corrections present;
+#           Raw/Custom: 157, Skip: 164, Typed: 867
+# 27 not 25: the ADDITIONS pass inserts three entries the C# descriptors
 # cannot declare -- two BaseTeamState (26-I) and ChosenCeremonyForRound
-# in two game states (32). Verified, not hand-edited; table.rs stays
-# generated.
+# (32). Swiftplay needs no entry of its own: GROUP_ALIASES in
+# vrf-decode/src/overlay.rs maps its classes onto the Bomb ones (33).
+# Verified, not hand-edited; table.rs stays generated.
 python tools\check_effect_decoder.py --check
 # Expected: OK: 12 live effect decoder cases
 python tools\check_ascii.py --check
@@ -5982,3 +5983,111 @@ in every manifest all along. What is actually missing is a metrics path:
 compute_metrics.py reads BombGameState for rounds, score and combat, so
 those five replays parse and then produce nothing. That gap is downstream, in
 valplay.
+
+## 33. Swiftplay produces metrics (2026-08-05)
+
+32-D found 5 Swiftplay replays in the corpus and left them parsing but
+unconsumed. They now produce a full metrics document.
+
+```
+162ce859, Duality, 12.8 min, 8 rounds
+  score Red 5 - Blue 3     players 10     kills 65 == deaths 65
+  score sums to 8 == rounds 8
+  per-player K/D/A, ADR, HS%, KAST, FK/FD, multikills, ultimates, credits
+  16 weapons, 328 ability spawns, 756,415 movement samples
+```
+
+### 33-A. It was two problems, and only one of them was ours
+
+Swiftplay carries the SAME field names on differently named classes:
+
+```
+BombGameState_C     ->  Swiftplay_EoRCredits_GameState_C
+BombPlayerState_C   ->  Swiftplay_EoRCredits_PlayerState_C
+    RoundResults, BombState, MatchState, TeamEconomy, PossessedCharacter,
+    PlayerInfo, CompetitiveTier, NumUltimatePoints, Subject -- all identical
+```
+
+**Ours:** the overlay table is keyed by `(group_path, field_name)`, so every
+one of those fields arrived untyped -- `compute_metrics` got
+`{BitCount, Data}` where it expected an int, and crashed on
+`tier >= 0`. The struct-blob dispatch in `sink/blobs.rs` also gated
+`RoundResults` and `TeamEconomy` on `contains("BombGameState")`, so a Swiftplay
+replay silently got no round results at all. That is section 26 happening
+again, one game mode over.
+
+**Theirs:** `compute_metrics.py` hard-matches the Bomb class name in five
+places.
+
+### 33-B. An alias, not 28 duplicated entries
+
+`GROUP_ALIASES` in `vrf-decode/src/overlay.rs` maps the two Swiftplay classes
+onto the Bomb ones, and `resolve_entry` retries the WHOLE resolution order
+against the alias -- so an aliased field gets the b-prefix and handle fallbacks
+exactly as a native one does.
+
+Duplicating 28 table entries was the alternative and was rejected: it encodes
+one fact 28 times, it drifts the moment `extract_descriptors.py` regenerates,
+and `ADDITIONS` is explicitly the "no descriptor declares this" mechanism --
+these descriptors are not silent, they name a sibling class. The
+`len(ADDITIONS) <= 8` guard in the tools tests refused that path on its own,
+which is the test earning its keep.
+
+`canonical_group` is published from the same table because the overlay is not
+the only thing keying on a class name; `sink/blobs.rs` uses it for the
+struct-blob gate. Two places deciding "is this a game state" from two different
+string tests is how they drift.
+
+**Only the two base classes are aliased.** `_ClassNetCache` and
+`<Class>:<Function>` are not, because the table holds zero entries for the Bomb
+spellings of those, so aliasing them would be an untested claim buying nothing.
+A test pins that, so a later "make it consistent" edit has to argue with it.
+
+### 33-C. Soundness: same names, same widths?
+
+That is the whole risk, and the corpus answers it.
+
+```
+decode errors across 215 replays        0
+  (a mistyped width on any aliased name surfaces as BitIo or
+   NotFullyConsumed, and all 5 Swiftplay replays are in that run)
+decoded OK       84,934,024 -> 85,182,556   (+248,532)
+not in table    116,462,014 -> 116,213,316   (-248,698)
+raw/skip            +166
+                    248,532 + 166 = 248,698, so nothing left by another route
+corpus totals    blocks/fields/rpcs/malformed/skipped ALL UNCHANGED
+                    -- the alias touches typing, never framing
+02d4d478         all five Parquet files byte-identical, struct blobs 207
+```
+
+### 33-D. The valplay half is a patch, not a change
+
+`compute_metrics.py` lives in valplay, which is never modified from here. The
+change was developed and verified on a COPY in scratch, with the original
+confirmed untouched, and is committed as `docs/swiftplay-metrics.patch`: five
+substring tests replaced by two helpers over
+
+```
+GAME_STATE_CLASSES   = ("BombGameState", "Swiftplay_EoRCredits_GameState")
+PLAYER_STATE_CLASSES = ("BombPlayerState", "Swiftplay_EoRCredits_PlayerState")
+```
+
+Applying it is valplay's call. Without it, Swiftplay replays export with full
+types and produce an empty metrics document; with it, the numbers above.
+
+### 33-E. What the metrics document does and does not contain
+
+Reported rather than summarised as success:
+
+- **Present and self-consistent:** rounds, score, per-player K/D/A, ADR, HS%,
+  KAST, FK/FD, multikills, ultimates, credits, weapons, abilities, movement.
+  Kills equal deaths and the score sums to the round count.
+- **All ten ranks read `Unranked`**, which is correct -- Swiftplay is unrated.
+- **`objective_detail` reports 5 plants and 0 defuses** while `round_results`
+  records 3 defuse wins. The defuser attribution path keys on something the
+  Bomb pipeline supplies and this mode does not; not chased here.
+- **4 of 10 agents unresolved** in the ad-hoc report, which is that script's
+  duplicate-agent inference, not the parser.
+
+The claim is "Swiftplay produces metrics", and it does. It is not "Swiftplay is
+at parity with Bomb", which the defuse line above already disproves.

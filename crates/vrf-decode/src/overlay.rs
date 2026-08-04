@@ -334,7 +334,85 @@ pub fn resolve_field_type(
     resolve_entry(table, group_path, field_name, handle).map(|(field_type, _)| field_type)
 }
 
+/// Game-mode sibling classes that carry the SAME property set under a
+/// different class name, mapped to the class the table is keyed on.
+///
+/// Swiftplay replays -- 5 of the 215-replay corpus -- declare
+/// `Swiftplay_EoRCredits_GameState_C` and `Swiftplay_EoRCredits_PlayerState_C`
+/// where a Bomb replay declares `BombGameState_C` and `BombPlayerState_C`. The
+/// FIELD names are identical: `RoundResults`, `BombState`, `MatchState`,
+/// `TeamEconomy`, `PossessedCharacter`, `PlayerInfo`, `CompetitiveTier`,
+/// `NumUltimatePoints`, `Subject`. Only the class differs, so every one of
+/// those fields was arriving untyped.
+///
+/// An ALIAS rather than 28 duplicated table entries, for three reasons: the
+/// duplicates would encode one fact 28 times, they would drift the moment
+/// `extract_descriptors.py` regenerates, and `ADDITIONS` in
+/// `apply_type_corrections.py` is explicitly the "no descriptor declares this"
+/// mechanism -- these descriptors are not silent, they name a sibling class.
+///
+/// Soundness rests on same-name properties having the same WIDTH on both
+/// classes, which is exactly what `check_decode_errors_corpus.py` tests: a
+/// mistyped width surfaces as `BitIo` or `NotFullyConsumed` on one of the five
+/// Swiftplay replays.
+///
+/// Only the two base classes are aliased. The `_ClassNetCache` and
+/// `<Class>:<Function>` forms are NOT, because the table holds zero entries
+/// for the Bomb spellings of those, so aliasing them would be an untested
+/// claim buying nothing.
+const GROUP_ALIASES: &[(&str, &str)] = &[
+    (
+        "/Game/GameModes/_Development/Swiftplay_EndOfRoundCredits\
+/Swiftplay_EoRCredits_GameState.Swiftplay_EoRCredits_GameState_C",
+        "/Game/GameModes/Bomb/BombGameState.BombGameState_C",
+    ),
+    (
+        "/Game/GameModes/_Development/Swiftplay_EndOfRoundCredits\
+/Swiftplay_EoRCredits_PlayerState.Swiftplay_EoRCredits_PlayerState_C",
+        "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C",
+    ),
+];
+
+/// The class whose table entries `group_path` should fall back to, if any.
+#[must_use]
+fn alias_group(group_path: &str) -> Option<&'static str> {
+    GROUP_ALIASES
+        .iter()
+        .find(|(from, _)| *from == group_path)
+        .map(|(_, to)| *to)
+}
+
+/// `group_path` rewritten to the class the table and the struct-blob decoders
+/// are keyed on, or unchanged when it already is one.
+///
+/// Published because the overlay is not the only thing that keys on a class
+/// name: `vrfkit`'s struct-blob dispatch gates `RoundResults` and `TeamEconomy`
+/// on the group containing `BombGameState`, and a Swiftplay replay carries
+/// both under its own game state. Two places deciding "is this a game state"
+/// from two different string tests is how they drift; this is the one table.
+#[must_use]
+pub fn canonical_group(group_path: &str) -> &str {
+    alias_group(group_path).unwrap_or(group_path)
+}
+
+/// The full order, then the same order again against the aliased class.
+///
+/// Retrying the WHOLE order rather than just the name lookup keeps the alias
+/// from being a fourth resolution step with its own rules -- an aliased field
+/// gets the b-prefix and handle fallbacks exactly as a native one does.
 fn resolve_entry<'a>(
+    table: &OverlayTable,
+    group_path: &str,
+    field_name: Option<&'a str>,
+    handle: Option<u32>,
+) -> Option<(FieldType, &'a str)> {
+    if let Some(hit) = resolve_in_group(table, group_path, field_name, handle) {
+        return Some(hit);
+    }
+    resolve_in_group(table, alias_group(group_path)?, field_name, handle)
+}
+
+fn resolve_in_group<'a>(
     table: &OverlayTable,
     group_path: &str,
     field_name: Option<&'a str>,

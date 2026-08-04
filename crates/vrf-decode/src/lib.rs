@@ -115,7 +115,8 @@ pub use effect::{EffectArrayKind, EffectBlobError, decode_effect_blob_json};
 #[cfg(feature = "overlay")]
 pub use overlay::{
     DecodeErrorKind, OverlayEntry, OverlayErrorReport, OverlayErrorRow, OverlayHandleEntry,
-    OverlayStats, OverlayTable, apply_overlay, apply_overlay_with_handle, resolve_field_type,
+    OverlayStats, OverlayTable, apply_overlay, apply_overlay_with_handle, canonical_group,
+    resolve_field_type,
 };
 #[cfg(feature = "overlay")]
 pub use table::{OVERLAY_HANDLE_TABLE, OVERLAY_TABLE};
