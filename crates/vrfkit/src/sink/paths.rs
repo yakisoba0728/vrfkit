@@ -46,7 +46,7 @@ use std::sync::Arc;
 
 use vrf_net::content::ContentBlockHeader;
 use vrf_net::types::NetworkGuid;
-use vrf_schema::{NetFieldExportGroup, class_net_cache_lookup_keys, replay_path_lookup_keys};
+use vrf_schema::{NetFieldExportGroup, find_class_net_cache_key, find_replay_path_key};
 
 use super::{ChannelState, ExportSink};
 
@@ -343,14 +343,10 @@ impl ExportSink<'_> {
     /// `resolve_actor_group_path`.
     fn match_group(&self, candidate: Option<&str>, want: GroupKind) -> Option<String> {
         let candidate = candidate?;
-        for key in want.lookup_keys(candidate) {
-            if let Some(g) = self.cache.get_group_by_path(&key) {
-                if want.accepts(g) {
-                    return Some(g.path.clone());
-                }
-            }
-        }
-        None
+        want.find(candidate, |key| {
+            let group = self.cache.get_group_by_path(key)?;
+            want.accepts(group).then(|| group.path.clone())
+        })
     }
 
     /// Determine the package path and archetype path for an actor channel.
@@ -491,14 +487,10 @@ impl ExportSink<'_> {
 
     /// Declared length of the `_ClassNetCache` group `candidate` resolves to.
     fn class_net_cache_len(&self, candidate: &str) -> Option<u32> {
-        for key in class_net_cache_lookup_keys(candidate) {
-            if let Some(group) = self.cache.get_group_by_path(&key) {
-                if is_class_net_cache(group) {
-                    return Some(group.len());
-                }
-            }
-        }
-        None
+        find_class_net_cache_key(candidate, |key| {
+            let group = self.cache.get_group_by_path(key)?;
+            is_class_net_cache(group).then(|| group.len())
+        })
     }
 }
 
@@ -523,10 +515,14 @@ impl GroupKind {
         }
     }
 
-    fn lookup_keys(self, path: &str) -> Vec<String> {
+    /// Probe each of this kind's lookup keys, in order, until one is accepted.
+    ///
+    /// The key generators are visitors rather than `Vec<String>` builders, so a
+    /// path with no alias -- the common case -- costs no allocation at all.
+    fn find<T>(self, path: &str, probe: impl FnMut(&str) -> Option<T>) -> Option<T> {
         match self {
-            Self::RepLayout => replay_path_lookup_keys(path),
-            Self::ClassNetCache => class_net_cache_lookup_keys(path),
+            Self::RepLayout => find_replay_path_key(path, probe),
+            Self::ClassNetCache => find_class_net_cache_key(path, probe),
         }
     }
 

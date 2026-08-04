@@ -27,7 +27,7 @@
 use crate::export::{NetFieldExport, NetFieldExportGroup};
 use crate::guid::{NetGuidEntry, NetworkGuid};
 use crate::hash::FxHashMap;
-use crate::path::replay_path_lookup_keys;
+use crate::path::for_each_replay_path_key;
 use crate::resolve::register_leaf;
 
 /// The path used for the gameplay-tag name table group.
@@ -124,17 +124,23 @@ impl NetGuidCache {
             // Ensure both maps point to the same group.
             self.by_path.insert(group.path.clone(), idx);
             self.by_index.insert(group.path_name_index, idx);
-            // Also register all path aliases.
-            for alias in replay_path_lookup_keys(&group.path).into_iter().skip(1) {
-                self.by_path.entry(alias).or_insert(idx);
-            }
+            // Also register all path aliases. The base key is skipped: it was
+            // just inserted above, and `or_insert` would not overwrite anyway.
+            let mut first = true;
+            for_each_replay_path_key(&group.path, |alias| {
+                if first {
+                    first = false;
+                } else if !self.by_path.contains_key(alias) {
+                    self.by_path.insert(alias.to_owned(), idx);
+                }
+            });
             idx
         } else {
             let idx = self.groups.len();
             // Register aliases before pushing.
-            for alias in replay_path_lookup_keys(&group.path) {
-                self.by_path.insert(alias, idx);
-            }
+            for_each_replay_path_key(&group.path, |alias| {
+                self.by_path.insert(alias.to_owned(), idx);
+            });
             self.by_index.insert(group.path_name_index, idx);
             // Register leaf-suffix index for UniqueLeafMatch resolution.
             register_leaf(&mut self.by_leaf, &group.path, idx);

@@ -71,7 +71,7 @@ pub use cache::NetGuidCache;
 pub use error::SchemaError;
 pub use export::{NetFieldExport, NetFieldExportGroup};
 pub use guid::{ExportFlags, NetGuidEntry, NetworkGuid};
-pub use path::{class_net_cache_lookup_keys, replay_path_lookup_keys};
+pub use path::{find_class_net_cache_key, find_replay_path_key, for_each_replay_path_key};
 pub use reader::{read_export_guids, read_net_field_exports};
 
 #[cfg(feature = "checkpoint")]
