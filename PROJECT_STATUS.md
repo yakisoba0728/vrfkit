@@ -95,11 +95,12 @@ cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 cargo fmt --check
 # Expected: exit 0
 python tools\apply_type_corrections.py --check
-# Expected: verified: 0 replacement(s), all 26 corrections present;
-#           Raw/Custom: 157, Skip: 164, Typed: 866
-# 26 not 25: the ADDITIONS pass (26-I) inserts two BaseTeamState
-# entries the C# descriptors cannot declare. It is verified, not
-# hand-edited -- table.rs stays generated.
+# Expected: verified: 0 replacement(s), all 27 corrections present;
+#           Raw/Custom: 157, Skip: 164, Typed: 867
+# 27 not 25: the ADDITIONS pass inserts three entries the C#
+# descriptors cannot declare -- two BaseTeamState (26-I) and
+# ChosenCeremonyForRound (32). Verified, not hand-edited; table.rs
+# stays generated.
 python tools\check_effect_decoder.py --check
 # Expected: OK: 12 live effect decoder cases
 python tools\check_ascii.py --check
@@ -5851,3 +5852,95 @@ KAST 13 vs 12    CONSISTENT, UNPROVEN   see above
 Resurrection is now the single biggest known source of definitional
 disagreement with Riot's numbers. `Rounds[N].Reports[1]` existing is its marker
 on the wire, and `MulticastReceivePlayerResurrectEvent` names both sides.
+
+## 32. Typing ChosenCeremonyForRound, on wire evidence alone (2026-08-05)
+
+31-C found round ceremonies recoverable from a field nothing types, and left
+adding it as a separate decision. Added.
+
+```
+/Game/GameModes/Bomb/BombGameState.BombGameState_C
+    ChosenCeremonyForRound -> FieldType::ObjectNetGuid
+```
+
+### 32-A. This clears a LOWER bar than 26-I, deliberately stated
+
+`BaseTeamState.LoadoutValue` had `AresTeamEconomy.cs` declaring `int?` for the
+same property name; only its group had moved. **This has no descriptor at all**
+-- not in `table.rs`, not in the C# reference, in either build. The type rests
+entirely on the wire.
+
+That evidence is unusually complete, which is why it was accepted:
+
+```
+corpus-wide, 215 replays        7,717 values decoded
+  3,777  GUID 0 -- the null reference, written at round start
+  2,853  DefaultCeremony_C
+    397  CloserCeremony_C
+    275  FlawlessCeremony_C
+    251  ClutchCeremony_C
+     82  AceCeremony_C
+     48  TeamAceCeremony_C
+     34  ThriftyCeremony_C
+      0  values that resolved to anything that is NOT a *Ceremony_C
+      0  odd GUIDs (a dynamic NetGUID must be even)
+      0  decode errors
+```
+
+Every non-zero value names an actor **that the same export already lists in
+`actors.parquet`**, so the type is self-checking: a wrong reading could not
+land on a ceremony class 3,940 times in a row. `ObjectNetGuid` reads an
+IntPacked, so the 8-bit `00` and the 16-bit GUID need no special case.
+
+### 32-B. Byte identity could not hold, so the bar was raised instead
+
+Unlike 26-I, this field EXISTS on 13.01, so the reference export had to move.
+That makes "all files byte-identical" unavailable as an acceptance test, and
+the replacement is stricter, not looser -- a row-level diff of 02d4d478 before
+and after:
+
+```
+rows                     1,246,812 -> 1,246,812   unchanged
+columns that changed     value_i64 ONLY
+rows touched             35, every one ChosenCeremonyForRound in BombGameState_C
+raw_bits                 unchanged on all 35
+decoded                  17 null + 16 Default + 1 Clutch + 1 Closer
+movement / actors / net_guids / events   byte-identical
+Decoded OK  369,743 -> 369,778     Not in table  511,916 -> 511,881
+```
+
+The two overlay counters move by exactly 35 in opposite directions, so nothing
+left the table by another route. Corpus-wide the same holds: decoded OK
++7,717, not-in-table -7,717, decode errors still 0 over 215 replays.
+
+### 32-C. What it makes possible
+
+Round ceremonies become a first-class column: which round was an Ace, a Clutch,
+a Flawless, a Thrifty. That is how 31-C closed the MK question -- the server
+labelling round 22 `AceCeremony_C` is what made "the tracker counts Aces
+separately" a fact rather than a guess. Before this it took a hand-written
+IntPacked reader over `raw_bits` plus a join to `actors.parquet`.
+
+`ThriftyCeremony_C` and `TeamAceCeremony_C` appear nowhere in the four demo
+replays and only turn up in the corpus, which is a small argument for checking
+these things at corpus scale rather than on the file in front of you.
+
+### 32-D. The scan found something else: THE CORPUS IS NOT ALL BOMB MODE
+
+69 `ChosenCeremonyForRound` rows stayed untyped, and the reason is not a gap in
+the entry -- they are in a different group:
+
+```
+/Game/GameModes/_Development/Swiftplay_EndOfRoundCredits
+    /Swiftplay_EoRCredits_GameState.Swiftplay_EoRCredits_GameState_C
+```
+
+Those replays carry NO `BombGameState` at all. PROJECT_STATUS has listed
+"non-Bomb game modes -- no labelled input" as an open item since section 22.
+**There is input; it is already in the corpus.** How many replays, and whether
+their ceremony values resolve the same way, is measured in the follow-up.
+
+The entry was deliberately NOT widened to that group in this pass. Typing a
+second game mode's field is a second claim and needs its own evidence, and
+mixing it into this one would have made the 02d4d478 diff above impossible to
+read.

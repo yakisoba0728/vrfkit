@@ -243,7 +243,8 @@ python "<valplay>/pipeline/metrics/compute_metrics.py" <bundle_dir> -o metrics.j
 `check_docs.py`는 이 문서 자신을 검사합니다 — 모든 `tools/` 스크립트가 여기 언급돼
 있는지, 모든 크레이트가 표에 있는지, 링크가 살아 있는지, 인용된 테이블 크기와 테스트
 개수가 현재 값인지. 이 저장소에서 문서 숫자는 반복적으로 낡았습니다(테스트 개수만 6번,
-오버레이 테이블 크기 1,185 → 1,187, 그리고 게임이 지운 리플레이 4개가 몇 주간 남아
+오버레이 테이블 크기가 1,185 → 1,187 → 1,188로 두 번 낡았고, 게임이 지운
+리플레이 4개가 몇 주간 남아
 있었습니다). 낡은 문장은 컴파일도 되고 테스트도 통과하므로 다른 어떤 검사도 못 잡습니다.
 
 ```bash
@@ -255,7 +256,7 @@ python tools/check_docs.py --fast    # 개수 대조 생략
 
 | 스크립트 | 생성물 |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (오버레이 테이블 1,187 + 핸들 84) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (오버레이 테이블 1,188 + 핸들 84) |
 | `apply_type_corrections.py` | 위 파일에 검증된 정정/추가를 적용 |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
 | `extract_golden.py` | `crates/vrf-transform/tests/data/golden_vectors.rs` |
@@ -271,9 +272,11 @@ python tools/apply_type_corrections.py           # 적용 후 검증
 python tools/apply_type_corrections.py --check   # 검증만
 ```
 
-`ADDITIONS` 패스는 C# 디스크립터가 **침묵하는** 그룹을 넣습니다(현재
-`BaseTeamState.LoadoutValue` / `AverageLoadoutValue` 둘뿐). 근거 없이 넓히면 이 추가가
-허용된 이유 자체가 없어집니다 — PROJECT_STATUS 26-I를 먼저 읽으세요.
+`ADDITIONS` 패스는 C# 디스크립터가 **침묵하는** 항목을 넣습니다. 현재 셋뿐입니다 —
+`BaseTeamState.LoadoutValue` / `AverageLoadoutValue`(26-I, 레퍼런스가 같은
+프로퍼티의 타입을 선언하고 그룹만 옮겨감)와 `BombGameState.ChosenCeremonyForRound`
+(32절, 와이어 증거만). 근거 없이 넓히면 이 추가가 허용된 이유 자체가 없어집니다 —
+PROJECT_STATUS 26-I와 32를 먼저 읽으세요.
 
 ### 분석 보조
 
@@ -293,7 +296,7 @@ python tools/check_ascii.py --check               # 113 파일, ASCII only
 python tools/check_effect_decoder.py --check      # 12 케이스
 python -m unittest discover -s tools/tests -p "test_*.py"   # 109 통과
 python tools/check_docs.py --fast                 # 문서가 아직 이 저장소를 설명하는가
-python tools/apply_type_corrections.py --check    # 26 정정 present
+python tools/apply_type_corrections.py --check    # 27 정정 present
 ```
 
 **ASCII 규칙은 스타일이 아니라 정확성 문제입니다.** Windows 콘솔이 cp949라서 포맷

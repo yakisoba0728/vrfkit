@@ -97,7 +97,28 @@ EXPECTED += [
 #: under any group, so there is no source for their types. They keep their raw
 #: bits and stay untyped. That line is what makes this addition defensible;
 #: widening it by eye would undo the reason it is allowed at all.
+#: `ChosenCeremonyForRound` is the second entry of this kind, and it rests on
+#: wire evidence alone -- no descriptor names it, in either build. It is added
+#: because that evidence is unusually complete and completely self-checking:
+#:
+#:   246 occurrences across 6 replays and BOTH builds (13.01 and 13.02)
+#:   126 are 16 bits and read as IntPacked resolve, 126 of 126, to an actor
+#:       whose class path ends in `Ceremony_C` -- Default, Clutch, Closer,
+#:       Flawless, Ace, TeamAce
+#:   120 are 8 bits of `00`, i.e. GUID 0, the null reference, written at round
+#:       start and replaced by a real ceremony at round end
+#:     0 odd GUIDs, and a dynamic NetGUID must be even
+#:
+#: An ObjectNetGuid reads an IntPacked, so it covers both widths without a
+#: special case. A wrong type here cannot hide: every non-zero value has to
+#: name a ceremony actor that the same export already lists in actors.parquet.
+#:
+#: This is a WEAKER justification than the BaseTeamState pair above, where the
+#: reference declares the property's type and only its group moved. Recorded as
+#: such deliberately -- see PROJECT_STATUS 31-C and 32.
 ADDITIONS = [
+    ("/Game/GameModes/Bomb/BombGameState.BombGameState_C",
+     "ChosenCeremonyForRound", "FieldType::ObjectNetGuid"),
     ("/Script/ShooterGame.BaseTeamState", "AverageLoadoutValue", "FieldType::Int32"),
     ("/Script/ShooterGame.BaseTeamState", "LoadoutValue", "FieldType::Int32"),
 ]
