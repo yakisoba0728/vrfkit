@@ -5504,6 +5504,11 @@ Neon            35     1564.92        78.2        1563        78.2      78.2
         worst |truncated - tracker| = 0.0
 ```
 
+**RETRACTED BY 30-A. Both fit exactly; the reconstruction below was mine and
+it was wrong** -- it summed friendly fire into `damage_dealt`, which
+`compute_metrics` correctly excludes. The paragraph is kept because the
+reasoning it records is the kind that sounds sufficient and is not.
+
 **The two that do not fit are the two the simple model cannot reconstruct at
 all.** A crude dedupe by `(owner, round, report, interaction)` reproduces
 `metrics.damage_dealt` exactly for those eight and over-counts the other two by
@@ -5515,11 +5520,19 @@ report resists the simple model, and for them the truncation test is
 inconclusive rather than contradicted.
 
 **Corrected statement.** Over 20 players across two replays, the gap runs
-0.0-0.4 ADR, always with ours the higher. It scales with fractional
-interactions per round, so a shorter match or a higher-volume player widens it.
-Do not quote a fixed ceiling; quote the mechanism.
+0.0-0.4 ADR, always with ours the higher. That range still holds. The
+MECHANISM, however, is complete only in 30: it takes TWO rules, per-interaction
+truncation AND excluding friendly fire, and with both the tracker is
+reproduced 19/20 on ADR and 20/20 on DD delta.
 
-### 29-B. DD delta is not the clean corroboration 27 said it was
+### 29-B. DD delta is not the clean corroboration 27 said it was [WRONG -- see 30-B]
+
+**This whole subsection is retracted.** One truncation bias does produce both
+directions, because both values sat within 0.06 of a rounding boundary and
+truncation pushed them across it in opposite ways. 27's corroboration was
+right, and stronger than 27 itself claimed. Kept as written because the bad
+inference -- "opposite signs implies more than one cause" -- is worth being
+able to recognise again.
 
 27 leaned on DD delta matching all ten as evidence that the difference is purely
 representational -- the same bias in dealt and received, cancelling. Two of ten
@@ -5554,3 +5567,102 @@ every reconstructed FK/FD, on a build the corpus does not contain.
 rounding to even), the tracker shows 13. The comparison used a tolerance of 1
 and let it through. It is a tie-break convention, not a data difference, but it
 was not "an exact match" and should not be counted as one.
+
+## 30. The tracker gap is fully explained, and section 29 was wrong twice (2026-08-05)
+
+29 left two players "not fitting" the truncation model and used that to weaken
+27's argument. Digging into those two dissolved the residual entirely. The
+complete rule is TWO things, not one:
+
+```
+1. Riot's API truncates each interaction's damage to an integer.
+2. FRIENDLY FIRE is excluded from damage_dealt, and from both sides of
+   the damage delta.
+```
+
+Apply both and the tracker is reproduced exactly:
+
+```
+                        ADR              DD delta
+f1110ea5 (22 rounds)    9 / 10           10 / 10
+e8b213ea (20 rounds)   10 / 10           10 / 10
+```
+
+The single ADR exception is a last-digit display tie: truncated damage 3816
+over 22 rounds is 173.4545, we show 173.5, the tracker shows 173.4. There is no
+disagreement about the damage.
+
+### 30-A. What the two "misfits" actually were
+
+Nothing to do with report shape or dedupe keys. My reconstruction summed
+FRIENDLY FIRE into `damage_dealt`; `compute_metrics` correctly does not.
+
+```
+owner 242 (Sova-B)   enemy 41 slots  2253.10   == metrics damage_dealt exactly
+                     teammate 1 slot    8.10   <- my sum wrongly included this
+owner 266 (Raze)     enemy 43 slots  4511.19   == metrics damage_dealt exactly
+                     teammate 3 slots  51.66   <- likewise
+```
+
+Both reconcile to the cent. Once excluded, both land on the tracker's ADR
+exactly (225.3 and 112.3) -- they were never outliers, my measurement was.
+
+`ParticipantSubject` is on the wire per interaction, so classifying a hit as
+enemy or teammate needs nothing external: the subject either maps to a player
+on the other team or it does not. No slot ever reuses an index for a different
+subject (checked across all ten owners on both replays), so the index-keyed
+dedupe was fine; only the friendly-fire filter was missing.
+
+### 30-B. 29-B's argument was backwards
+
+29-B said the two DD-delta mismatches point in OPPOSITE directions, so "one
+truncation bias cannot produce both". It can, and does:
+
+```
+        float DD    ours   truncated DD   tracker
+pid 188  -75.547     -76      -75.450       -75
+pid 180  -57.337     -57      -57.550       -58
+```
+
+Both sat within 0.06 of a rounding boundary. Truncation moved one up across it
+and the other down across it. Opposite visible directions, one mechanism. The
+inference "opposite signs implies more than one cause" was simply wrong.
+
+So 27's DD-delta corroboration is not merely restored, it is stronger than 27
+claimed: this is not "mostly cancels on average", it is exact under the stated
+rule, 20 of 20.
+
+### 30-C. The decision is unchanged and better supported
+
+**vrfkit keeps the float the wire carries.** The gap between our ADR and a
+tracker's is still 0.0-0.4 and still always in our favour, because the tracker
+is reading integers where the server sent `13.511`. What changed is that the
+gap is now fully accounted for rather than approximately explained, so a future
+session comparing against a tracker can predict the difference instead of
+investigating it.
+
+Do not introduce truncation. Do not "fix" ADR.
+
+### 30-D. A separate finding: valplay's team_damage_dealt undercounts
+
+Falling out of 30-A: the friendly fire on the wire does not equal the
+`team_damage_dealt` the metrics report.
+
+```
+pid 180   wire 8.10 across 1 interaction    metrics 0.00
+pid 168   wire 51.66 across 3 interactions  metrics 50.01
+```
+
+This is downstream of vrfkit -- the export carries every interaction with its
+`ParticipantSubject`, and the classification above uses nothing but exported
+columns. valplay is never modified from here, so it is recorded rather than
+fixed. Anyone using `team_damage_dealt` should know it is not the wire's
+figure; recompute from `fields.parquet` if the exact number matters.
+
+### 30-E. Method note
+
+This is the second time in two days that going one level deeper overturned a
+conclusion this document had just written down (26-G/26-H was the first). Both
+times the wrong version was the one that stopped at "explained well enough",
+and both times the correction came from reconciling to the cent instead of to
+the tenth. The residual WAS the finding.
