@@ -108,6 +108,18 @@ def check_table_sizes(docs: dict[str, str]) -> list[str]:
 ENTRY_PHRASE_RE = re.compile(r"([\d,]+)-entry (?:generated )?table")
 
 
+def stale_entry_phrases(text: str, live: set[str]) -> list[tuple[int, str]]:
+    """`(line number, quoted size)` for every table-size claim not in `live`.
+
+    Split out from the file walk so it can be tested on a string. `live` holds
+    both spellings of the same number -- 1188 and 1,188 are the same claim.
+    """
+    return [(i, quoted)
+            for i, line in enumerate(text.splitlines(), 1)
+            for quoted in ENTRY_PHRASE_RE.findall(line)
+            if quoted not in live]
+
+
 def check_source_table_size() -> list[str]:
     """Rust prose quotes the table size too, and nothing was reading it.
 
@@ -119,19 +131,15 @@ def check_source_table_size() -> list[str]:
     lengths = table_lengths()
     if lengths is None:
         return []
-    live = {lengths[0], f"{int(lengths[0]):,}"}
+    n = int(lengths[0])
+    live = {lengths[0], f"{n:,}"}
 
-    problems = []
-    for path in sorted((REPO / "crates").rglob("*.rs")) + \
-            sorted((REPO / "crates").rglob("Cargo.toml")):
-        for i, line in enumerate(read(path).splitlines(), 1):
-            for quoted in ENTRY_PHRASE_RE.findall(line):
-                if quoted not in live:
-                    rel = path.relative_to(REPO).as_posix()
-                    problems.append(
-                        f"{rel}:{i}: says {quoted}-entry table; it is "
-                        f"{int(lengths[0]):,}")
-    return problems
+    sources = sorted((REPO / "crates").rglob("*.rs"))
+    sources += sorted((REPO / "crates").rglob("Cargo.toml"))
+    return [f"{path.relative_to(REPO).as_posix()}:{i}: says {quoted}-entry "
+            f"table; it is {n:,}"
+            for path in sources
+            for i, quoted in stale_entry_phrases(read(path), live)]
 
 
 def measure_tests() -> tuple[int, int, list[str]]:

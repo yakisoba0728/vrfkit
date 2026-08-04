@@ -317,7 +317,7 @@ cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 113 파일, ASCII only
 python tools/check_effect_decoder.py --check      # 12 케이스
-python -m unittest discover -s tools/tests -p "test_*.py"   # 114 통과
+python -m unittest discover -s tools/tests -p "test_*.py"   # 119 통과
 python tools/check_docs.py --fast                 # 문서가 아직 이 저장소를 설명하는가
 python tools/apply_type_corrections.py --check    # 27 정정 present
 ```

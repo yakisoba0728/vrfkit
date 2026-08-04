@@ -117,7 +117,7 @@ python tools\check_effect_decoder.py --check
 python tools\check_ascii.py --check
 # Expected: OK: 113 tracked Rust file(s), ASCII only
 python -m unittest discover -s tools\tests -p "test_*.py"
-# Expected: Ran 114 tests, OK. These guard the GENERATORS and the GUARDS --
+# Expected: Ran 119 tests, OK. These guard the GENERATORS and the GUARDS --
 # extract_descriptors, apply_type_corrections, check_ascii,
 # check_effect_decoder, check_metrics_baseline, check_docs, to_valplay_bundle.
 # They are not run by cargo (Cargo does not run .py) and were in no documented
@@ -125,7 +125,8 @@ python -m unittest discover -s tools\tests -p "test_*.py"
 # survived -- and how test_check_ascii sat FAILING on a hardcoded file count
 # from the moment section 22 added two Rust files. It derives the count now.
 python tools\check_docs.py
-# Expected: OK: the docs still describe this repo ... 6 checks
+# Expected: OK: the docs still describe this repo ... 7 checks
+#           (--fast prints 6; the 7th is the test-count comparison)
 # Reads README.md and docs/USAGE.md, plus every crates/**/*.rs and Cargo.toml
 # for the phrase "N-entry table"; PROJECT_STATUS is a dated log and is
 # exempt by design. Runs both test suites to check the counts they quote, so
@@ -6490,7 +6491,9 @@ argues for are still the contract.
 ### 36-H. Verification
 
 ```
-rust 338          tools 114 (was 111: +3 header guards)
+rust 338          tools 119 (was 111: +3 header guards, +5 for the
+                  sixth check_docs check, which shipped untested in the
+                  commit arguing that guards need tests)
 clippy 0          fmt clean        ascii 113        effect 12
 apply_type_corrections --check : 27 corrections, 1188 entries from 172 groups,
                                  Raw/Custom 157, Skip 164, Typed 867

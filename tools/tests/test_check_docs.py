@@ -102,5 +102,43 @@ class TableSizeTests(unittest.TestCase):
         self.assertEqual(guard.check_table_sizes(comma), [])
 
 
+class SourceTableSizeTests(unittest.TestCase):
+    """The sixth check: Rust prose and Cargo.toml quote the size too.
+
+    Three places said 1,185 after the table reached 1,188 and nothing read
+    them, which is the whole argument for check_docs.py happening one directory
+    outside its reach.
+    """
+
+    LIVE = {"1188", "1,188"}
+
+    def test_a_stale_size_is_reported_with_its_line(self):
+        text = "one\n// the 1,185-entry generated table\nthree"
+        self.assertEqual(guard.stale_entry_phrases(text, self.LIVE), [(2, "1,185")])
+
+    def test_both_comma_and_plain_forms_are_accepted(self):
+        for spelling in ("1,188-entry table", "1188-entry table"):
+            self.assertEqual(guard.stale_entry_phrases(spelling, self.LIVE), [])
+
+    def test_the_optional_generated_word_is_matched_either_way(self):
+        """`N-entry table` and `N-entry generated table` are both in the tree."""
+        for phrase in ("999-entry table", "999-entry generated table"):
+            self.assertEqual(guard.stale_entry_phrases(phrase, self.LIVE),
+                             [(1, "999")], phrase)
+
+    def test_a_bare_entry_count_is_not_a_size_claim(self):
+        """Scoped to the exact phrasing so the check has no judgement to make.
+
+        Dated measurements elsewhere legitimately say things like "1,054
+        entries" about a table that no longer exists; only "N-entry table" is
+        read as a claim about the live one.
+        """
+        self.assertEqual(
+            guard.stale_entry_phrases("measured over 1,054 entries", self.LIVE), [])
+
+    def test_the_shipped_crates_quote_the_live_size(self):
+        self.assertEqual(guard.check_source_table_size(), [])
+
+
 if __name__ == "__main__":
     unittest.main()
