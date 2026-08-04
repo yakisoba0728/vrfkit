@@ -44,10 +44,12 @@ import struct as _struct
 import sys
 import time
 from collections import defaultdict
+from itertools import islice
 from pathlib import Path
 from typing import NamedTuple
 
 try:
+    import pyarrow as pa
     import pyarrow.parquet as pq
     import pyarrow.compute as pc
 except ImportError:
@@ -241,6 +243,66 @@ def _f32_shortest(value):
         if _struct.unpack("f", _struct.pack("f", candidate))[0] == packed:
             return int(candidate) if candidate.is_integer() else candidate
     return int(packed) if float(packed).is_integer() else packed
+
+
+#: One encoder, reused. `json.dumps` with non-default kwargs cannot use the
+#: module's cached encoder and CONSTRUCTS A NEW JSONEncoder on every call --
+#: 2.4 million of them here, 1.8 s of pure setup. `.encode()` on a single
+#: instance is the same code path with the same output.
+_JSON = json.JSONEncoder(separators=(',', ':'), ensure_ascii=True)
+
+#: The movement record, as a format string. Key order is the order the record
+#: dict used, which is what `json.dumps` emitted; every slot is filled with
+#: text `_JSON.encode` produced for that value, so the line is byte-for-byte
+#: what encoding the dict would have written.
+_MOVEMENT_LINE = (
+    '{"time_ms":%s,"shooter_character_net_guid":%s,'
+    '"position":{"x":%s,"y":%s,"z":%s},'
+    '"velocity":{"x":%s,"y":%s,"z":%s},'
+    '"yaw":%s,"pitch":%s}\n'
+)
+
+
+def _json_scalar_column(values, *, shorten=False):
+    """The JSON TEXT of each value, computed once per distinct value.
+
+    Exact by construction rather than by resemblance: the string stored is
+    whatever `_JSON.encode` produces for that exact value, so substituting it
+    into a hand-built line is what the encoder would have written -- including
+    the non-obvious cases, `Infinity` and `NaN`, which an f-string would spell
+    `inf` and `nan` and quietly emit as invalid JSON.
+
+    This is what lets `_write_movement` skip building 1.8 million dicts and
+    calling the encoder 1.8 million times; the row loop becomes a join of
+    strings that already exist.
+
+    `shorten=True` folds `_f32_shortest` into the same pass. Composing the two
+    as separate calls also works and was the first version, but it holds two
+    memos and a 1.8-million-element intermediate list at once; fusing them
+    keeps one of each.
+
+    Worth it because these columns are quantized on the wire and repeat
+    heavily. Measured on 02d4d478's 1,837,220 kept movement rows:
+
+        pos_x 691,850 distinct    pos_z  70,260    vel_y 17,248
+        pos_y 696,435             vel_x  17,358    vel_z  6,071
+
+    so the six shortened columns need 1,499,222 `_f32_shortest` calls instead
+    of 11,023,320 -- 7.4x fewer -- and that function was 52% of the whole
+    bundle step. yaw and pitch memoize too (65,491 and 16,943 distinct) but
+    are NOT shortened; see `_write_movement`.
+    """
+    memo = {}
+    out = []
+    append = out.append
+    encode = _JSON.encode
+    for v in values:
+        try:
+            append(memo[v])
+        except KeyError:
+            s = memo[v] = encode(_f32_shortest(v) if shorten else v)
+            append(s)
+    return out
 
 
 def _vec3(x, y, z) -> dict:
@@ -1355,6 +1417,25 @@ def _write_manifest(manifest: dict, output_dir: Path):
     )
 
 
+def _dict_column_to_pylist(column):
+    """A dictionary-encoded column as a list that SHARES its string objects.
+
+    `column.cast('string').to_pylist()` builds one Python str per ROW. On
+    02d4d478's fields.parquet that is 1,246,812 objects for `group_path`'s 443
+    distinct values and 1,207,778 for `field_name`'s 3,954 -- a hundred-odd MB
+    of duplicates, and 2.3x slower than reading the dictionary and indexing it.
+
+    Falls back to `to_pylist` for a column that is not dictionary-encoded, so
+    the caller does not have to care which it got.
+    """
+    arr = column.combine_chunks()
+    if not pa.types.is_dictionary(arr.type):
+        return column.to_pylist()
+    values = arr.dictionary.to_pylist()
+    return [values[i] if i is not None else None
+            for i in arr.indices.to_pylist()]
+
+
 class _FieldColumns(NamedTuple):
     """fields.parquet held column-wise.
 
@@ -1406,9 +1487,9 @@ def _load_field_columns(fields_path: Path, verbose: bool) -> _FieldColumns:
             else [None] * n_rows
         ),
         channel=table.column('channel_index').to_pylist(),
-        group_path=table.column('group_path').cast('string').to_pylist(),
+        group_path=_dict_column_to_pylist(table.column('group_path')),
         handle=table.column('handle').to_pylist(),
-        field_name=table.column('field_name').cast('string').to_pylist(),
+        field_name=_dict_column_to_pylist(table.column('field_name')),
         bit_count=table.column('bit_count').to_pylist(),
         raw_bits=table.column('raw_bits').to_pylist(),
         value_i64=table.column('value_i64').to_pylist(),
@@ -1500,8 +1581,8 @@ def _build_actor_events(export_dir: Path, actor_first: dict, actor_last: dict,
         a_chan = actors_table.column('channel_index').to_pylist()
         a_guid = actors_table.column('actor_net_guid').to_pylist()
         a_event = actors_table.column('event').to_pylist()
-        a_class = actors_table.column('class_path').cast('string').to_pylist()
-        a_arch = actors_table.column('archetype_path').cast('string').to_pylist()
+        a_class = _dict_column_to_pylist(actors_table.column('class_path'))
+        a_arch = _dict_column_to_pylist(actors_table.column('archetype_path'))
         a_sx = actors_table.column('spawn_x').to_pylist()
         a_sy = actors_table.column('spawn_y').to_pylist()
         a_sz = actors_table.column('spawn_z').to_pylist()
@@ -1809,10 +1890,12 @@ def _write_events(events: list, output_dir: Path, verbose: bool) -> int:
     events.sort(key=lambda x: (x[0], x[1]))
 
     events_written = 0
+    encode = _JSON.encode
     with open(output_dir / "events.ndjson", 'w', encoding='utf-8') as f:
+        write = f.write
         for _, _, evt in events:
-            f.write(json.dumps(evt, separators=(',', ':'), ensure_ascii=True))
-            f.write('\n')
+            write(encode(evt))
+            write('\n')
             events_written += 1
 
     if verbose:
@@ -1870,44 +1953,62 @@ def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> int
     keep = sorted(last_of_group.values())
     movement_collapsed = n_mv - len(keep)
 
-    movement_written = 0
+    # Every position and velocity component is Float32 on the wire and in
+    # Parquet; widening to a Python float prints the binary artefact
+    # (349.989990234375 for what the reference shows as 349.99).
+    # position_bbox is min/max of the raw values, so it surfaced there even
+    # though the derived distances agreed either way.
+    #
+    # yaw and pitch are NOT shortened. The reference serializes those two
+    # through a different path from position/velocity and writes the widened
+    # float32 (253.289794921875), not its shortest round-trip. Measured over
+    # 4,000 reference rows: yaw and pitch are exactly float32-representable
+    # 4000/4000, position.x only 25/4000 -- the discriminating signal.
+    # Applying _f32_shortest here was a regression introduced in 3d37c68
+    # alongside the position fix, and it moved 1,821,648 yaw and 1,699,418
+    # pitch rows away from the reference. It changed no metric, which is
+    # exactly why it survived.
+    #
+    # Each column is turned into its JSON TEXT once per distinct value, and
+    # the row loop below concatenates strings that already exist instead of
+    # building 1.8 million dicts and encoding each one. Rebinding frees the
+    # source lists as it goes.
+    mv_px = _json_scalar_column(mv_px, shorten=True)
+    mv_py = _json_scalar_column(mv_py, shorten=True)
+    mv_pz = _json_scalar_column(mv_pz, shorten=True)
+    mv_vx = _json_scalar_column(mv_vx, shorten=True)
+    mv_vy = _json_scalar_column(mv_vy, shorten=True)
+    mv_vz = _json_scalar_column(mv_vz, shorten=True)
+    mv_yaw = _json_scalar_column(mv_yaw)
+    mv_pitch = _json_scalar_column(mv_pitch)
+
+    # Select the kept rows once per column, so the write loop indexes nothing.
+    # `int.__repr__` is what the JSON encoder uses for an int, so `str` here
+    # is the same text; these two columns are uint32 and nearly all distinct,
+    # which makes memoizing them pure overhead where a plain map is not.
+    cols = (
+        [str(mv_time[i]) for i in keep],
+        [str(mv_char[i]) for i in keep],
+        [mv_px[i] for i in keep], [mv_py[i] for i in keep],
+        [mv_pz[i] for i in keep],
+        [mv_vx[i] for i in keep], [mv_vy[i] for i in keep],
+        [mv_vz[i] for i in keep],
+        [mv_yaw[i] for i in keep], [mv_pitch[i] for i in keep],
+    )
+    movement_written = len(keep)
+
+    # `%` against a tuple formats in C, where a Python-level chain of `+`
+    # does not; and lines go out in blocks because 1.8 million pairs of
+    # `write` calls on a TextIOWrapper cost more than the joins do. The block
+    # is bounded so peak memory stays flat instead of holding 340 MB of text.
     with open(output_dir / "movement.ndjson", 'w', encoding='utf-8') as f:
-        for i in keep:
-            # Every one of these is Float32 on the wire and in Parquet;
-            # widening to a Python float prints the binary artefact
-            # (349.989990234375 for what the reference shows as 349.99).
-            # position_bbox is min/max of the raw values, so it surfaced
-            # there even though the derived distances agreed either way.
-            rec = {
-                "time_ms": mv_time[i],
-                "shooter_character_net_guid": mv_char[i],
-                "position": {
-                    "x": _f32_shortest(mv_px[i]),
-                    "y": _f32_shortest(mv_py[i]),
-                    "z": _f32_shortest(mv_pz[i]),
-                },
-                "velocity": {
-                    "x": _f32_shortest(mv_vx[i]),
-                    "y": _f32_shortest(mv_vy[i]),
-                    "z": _f32_shortest(mv_vz[i]),
-                },
-                # yaw and pitch are NOT shortened. The reference serializes
-                # these two through a different path from position/velocity
-                # and writes the widened float32 (253.289794921875), not its
-                # shortest round-trip. Measured over 4,000 reference rows:
-                # yaw and pitch are exactly float32-representable 4000/4000,
-                # position.x only 25/4000 -- the discriminating signal.
-                #
-                # Applying _f32_shortest here was a regression introduced in
-                # 3d37c68 alongside the position fix, and it moved 1,821,648
-                # yaw and 1,699,418 pitch rows away from the reference. It
-                # changed no metric, which is exactly why it survived.
-                "yaw": mv_yaw[i],
-                "pitch": mv_pitch[i],
-            }
-            f.write(json.dumps(rec, separators=(',', ':'), ensure_ascii=True))
-            f.write('\n')
-            movement_written += 1
+        write = f.write
+        rows = zip(*cols)
+        while True:
+            block = [_MOVEMENT_LINE % r for r in islice(rows, 16384)]
+            if not block:
+                break
+            write(''.join(block))
 
     if verbose and movement_collapsed:
         print(f"  {movement_collapsed:,} intra-packet sub-moves collapsed "

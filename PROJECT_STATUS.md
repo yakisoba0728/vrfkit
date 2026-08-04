@@ -6175,3 +6175,103 @@ That is the third time this session a "reasonable-sounding" justification
 turned out to be the wrong mechanism for a right call (26-G, 29-B, this). The
 pattern is the same each time -- a plausible cause accepted without measuring
 because the conclusion it supported was already correct.
+
+## 35. The bundle converter: 1.9x faster, 8% less memory, same bytes (2026-08-05)
+
+Section 25 closed Rust performance. The Python adapter was never looked at, and
+34 measured it at ~45x the parse -- 13-60 s of bundle against 0.3-1.3 s of
+export. That is where the wall clock is.
+
+```
+                     before    after   speedup
+02d4d478 (48 MB)      40.55    21.72     1.87x
+120b4365 (71 MB)      57.23    29.21     1.96x
+4ac964f9 (59 MB)      49.03    25.46     1.93x
+162ce859 (18 MB)      15.82     9.31     1.70x   Swiftplay
+c62a48fc (21 MB)      18.26    10.64     1.72x   Swiftplay
+peak Python heap    2,023 MB  1,864 MB   -8%
+```
+
+**Byte-identical output on all five, across both game modes.** That was the
+acceptance bar throughout, checked by extracting HEAD's converter with
+`git show` and running both against the same exports -- the same method the
+Rust rewrite used, for the same reason.
+
+### 35-A. Profile first; the answer was not where it looked
+
+```
+_write_movement                  55.4 s cum   78% of the run
+  _f32_shortest    11,034,445 calls   36.7 s cum, 27.6 s tot
+  json.dumps        2,413,468 calls   11.3 s cum
+_load_field_columns                   4.4 s
+```
+
+`_f32_shortest` alone was 52% of the step. It finds the shortest decimal that
+round-trips through float32 by scanning digit counts, so each call costs up to
+nine format-and-repack cycles -- and it was being called once per VALUE.
+
+### 35-B. Three changes, all exact by construction
+
+**Memoize per distinct value.** Movement columns are quantized on the wire and
+repeat heavily: `pos_x` has 691,850 distinct values in 1,837,220 rows, `vel_z`
+has 6,071. The six shortened columns need 1,499,222 calls instead of
+11,023,320 -- 7.4x fewer.
+
+**Precompute JSON text, not values.** `_json_scalar_column` stores what
+`_JSON.encode` produced for each distinct value, and `_write_movement`
+concatenates strings that already exist instead of building 1.8 million dicts
+and encoding each. Exact *by construction* rather than by resemblance: an
+f-string would spell `Infinity` and `NaN` as `inf` and `nan` and quietly emit
+invalid JSON; going through the encoder cannot.
+
+Also: `json.dumps` with non-default kwargs CANNOT use the module's cached
+encoder and constructs a new `JSONEncoder` per call. 2.4 million of them, 1.8 s
+of pure setup, removed by holding one instance.
+
+**Read dictionary columns through their dictionary.** This one was the
+surprise and it is where the memory went:
+
+```
+group_path   443 distinct values -> cast('string').to_pylist() built
+                                    1,246,812 distinct str OBJECTS
+field_name  3,954 distinct values -> 1,207,778 objects
+```
+
+Decoding via `arr.dictionary` + `arr.indices` shares the objects: same values,
+2.3x faster, and it is what turned a +5% memory regression from the memo dicts
+into a net -8%.
+
+### 35-C. Measured and rejected
+
+**Bisecting `_f32_shortest`.** Round-tripping is monotone in digit count, so
+binary search over [1,9] replaces a ~5.66-probe linear scan with at most four.
+Measured: 2.99 s -> 1.86 s over the 1,274,448 distinct values in the reference
+replay, zero disagreements. **Rejected anyway** -- it is ~5% of the run, and it
+buys that by assuming monotonicity of a `%g` round-trip predicate that nothing
+proves in general. A formatter whose output IS the acceptance bar is the wrong
+place to install an untested assumption for 5%.
+
+**Replacing the row concat with `%` formatting.** 23.92 s -> 23.80 s. Neutral;
+the cost had already moved into the column passes. Kept the version that reads
+better rather than the one that measured 0.5% faster.
+
+**numpy.** `str(np.float32(x))` is the shortest round-trip in one call and
+would have replaced the scan outright. numpy is not installed -- recent pyarrow
+does not require it -- and adding a dependency to a tool for one function is a
+worse trade than the memo.
+
+### 35-D. Where the time goes now
+
+```
+_write_movement       5.8 s tot   the row loop and the block joins
+_f32_shortest         5.1 s       1,510,347 calls, down from 11,034,445
+_json_scalar_column   3.1 s
+_load_field_columns   2.9 s       was 4.4 s
+json iterencode       2.1 s       2,157,904 calls, nearly all events
+```
+
+Flat. Nothing left is more than ~18% of the run, and the two structural wins
+(memoize, share dictionary objects) are both spent. Further gains would need
+either a different serialization contract -- which the consumer fixes -- or
+parallelism, which belongs to the caller processing several replays, not to a
+converter handling one.
