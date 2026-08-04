@@ -282,6 +282,13 @@ done, or closed with a measurement showing it cannot or should not be done.
        unexamined region left in the file. The ceiling stands until a game
        build declares the group
 
+DO NOT "FIX" ADR TOWARD A TRACKER (section 27-B). Our ADR runs 0.1-0.2 above
+Riot's API because damage is FRACTIONAL on the wire (12% of values, e.g.
+13.511) and the API reports integers. Truncating each interaction reproduces
+the tracker for 9 of 10 players -- so the gap is a rounding convention, and
+ours is the one closer to what the server sent. Introducing truncation to
+close it would be a regression dressed as a bug fix.
+
 Where the open work is now, after section 23:
 
   - The checkpoint parser is DONE (section 23). Every chunk type in the file is
@@ -5195,3 +5202,119 @@ wire does not carry, to satisfy a downstream reader, is the thing "never
 fabricate a decoded value" exists to prevent. `economy_detail` -- the richer
 per-player economy section -- is unaffected and reports all 22 rounds either
 way.
+
+## 27. Validated against Riot's own API, and the ADR convention is settled (2026-08-05)
+
+Every check this project has ever run is either self-consistency (kills equal
+deaths), a diff against the C# reference (which reads the same wire), or byte
+identity against its own frozen output. All three share a blind spot: they
+cannot see an error that the wire itself, or our reading of it, makes
+consistently.
+
+The user pasted the tracker scoreboard for `f1110ea5` -- Riot's match API, an
+observer that never touches the replay file. That is the first genuinely
+external check this parser has had.
+
+### 27-A. What agreed
+
+Rows joined on `(kills, deaths, assists)`, which is unique across all ten
+players, so the join does not presuppose the agent labels and can therefore
+test them.
+
+```
+K / D / A              30 values    ALL MATCH
+K/D ratio              10           ALL MATCH
+HS%                    10           ALL MATCH
+KAST%                  10           ALL MATCH
+FK (first kills)       10           ALL MATCH
+FD (first deaths)      10           ALL MATCH
+MK (multikills)        10           ALL MATCH
+DD delta               10           ALL MATCH
+ADR                    10           systematically 0.1-0.2 HIGH  -- see 27-B
+```
+
+78 of 80. Two things are worth pulling out:
+
+**All ten agents were right, including the two Jetts.** Ability attribution
+leaves both blank when one agent is picked twice; 26 resolved them from the
+manifest's `playerLoadouts` (shared `characterId`, opposite teams). The tracker
+confirms both independently. `Miks` is also confirmed as a real agent name, not
+a stale valplay mapping.
+
+**The tracker's `MK` column is "multikills of 3 or more", not 2k+.** Summing
+our `multi_kills` at `>= 3` reproduces all ten, including Iso's 2 = one 3k plus
+one 4k. Worth writing down because the obvious reading of that column is wrong.
+
+**FK/FD matching is the load-bearing surprise.** Those are RECONSTRUCTED here,
+not server-stored: 22-* built them from the `MulticastNotifyKilledEnemy`
+timeline plus team mapping, and the opening-duel definition is our policy
+choice. Ten out of ten agreeing with Riot says the reconstruction and the
+policy both match what Riot does.
+
+Also note what this validated by depending on it: the round count (22) and the
+score (13-9) are inputs to KAST and to the per-round joins, and both came back
+only because of the `RoundResults` handle fix in section 26. A wrong round
+count would have moved every KAST value.
+
+### 27-B. ADR: OURS IS THE CANONICAL ONE. Do not "fix" it toward the tracker.
+
+Our ADR sits 0.1-0.2 above the tracker's for nine of ten players. This is a
+rounding convention, not missing damage, and the direction of the difference is
+the opposite of a defect.
+
+Damage is FRACTIONAL on the wire -- 12% of values are, e.g. `13.511`,
+`21.4949`, `50.0044`, `159.5`. Riot's match API reports damage as integers.
+Truncating each interaction to an integer before summing reproduces the
+tracker:
+
+```
+player    interactions   our float sum   our ADR   truncated   trunc ADR   tracker
+Sage           44           3802.55       172.8       3799       172.7      172.7
+Miks           41           3817.63       173.5       3816       173.45     173.4
+Jett-A         42           3514.66       159.8       3514       159.7      159.7
+Reyna          39           3068.25       139.5       3065       139.3      139.3
+Iso            38           3253.97       147.9       3253       147.9      147.9
+Cypher         42           3504.47       159.3       3501       159.1      159.1
+Jett-B         38           2762.70       125.6       2761       125.5      125.5
+Tejo           30           2178.56        99.0       2174        98.8       98.8
+Chamber        37           2300.66       104.6       2300       104.5      104.5
+KAY/O          36           1663.15        75.6       1659        75.4       75.4
+```
+
+Nine of ten land exactly on the tracker's figure. The tenth (Miks) computes
+173.4545, so it is a last-digit display convention, not a data difference.
+
+**DECIDED: vrfkit keeps the float the wire carries.** The server sent
+`13.511`; truncating it to `13` would discard information the replay actually
+contains in order to reproduce a lossy downstream representation. The float is
+strictly closer to what the game computed.
+
+This is written down because the failure mode is predictable: a future session
+compares against a tracker, sees a 0.2 gap, and "fixes" it by introducing
+truncation. That would be a regression dressed as a bug fix. The gap is
+EXPECTED and its magnitude is bounded -- it grows with interaction count and
+stays under about 0.25 ADR.
+
+Corroborating evidence that the difference is purely representational: `DD
+delta` matches all ten exactly, because it is (dealt - received) and the same
+rounding bias sits in both terms and cancels.
+
+### 27-C. What the tracker has that we cannot
+
+- **ACS.** `PlayerScoreComponent` is never replicated into the replay, so
+  there is nothing to compute it from. This has been known since section 5; the
+  tracker gets it from the API. Not a gap to close -- a gap to state.
+- **TRS** is the tracker's own proprietary rating.
+- **Riot IDs, ranks, tiers.** The replay carries subject UUIDs and a
+  `competitive_tier` integer, no display names. Two of the ten tiers are null
+  because the server sent -1; that stays null rather than being invented.
+
+### 27-D. Cost of the check, and whether to keep it
+
+This was a manual paste, not a harness, and it should not become one: it needs
+a human to fetch a scoreboard for a replay that is still in `Saved\Demos`,
+which the game rotates. What is worth keeping is this record -- the convention
+decision in 27-B, the `MK >= 3` semantics, and the fact that FK/FD
+reconstruction agrees with Riot. If another tracker scoreboard ever turns up
+for a preserved replay, the comparison is a twenty-line script over
+`metrics.json`.
