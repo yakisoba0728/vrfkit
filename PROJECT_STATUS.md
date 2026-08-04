@@ -165,6 +165,22 @@ python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # another program writes to guards nothing. Re-pinned at one preserved 62 MB
 # demo under baseline-corpora, like the other three builds. Do not point it
 # back at Saved\Demos.
+python tools\check_metrics_baseline.py
+# Expected: OK: 5 build(s) pass 25 invariant checks and match 115 pinned
+#           metric values   (~65s, 3-wide; the two 50-65 MB matches dominate)
+# THE ONLY CHECK THAT CAN SEE A SEMANTIC BREAK. Everything else here reads
+# framing counters or compares bytes, and a decoder that stops producing
+# values moves neither. Section 26 is the worked example: every check above
+# was green while the match score silently stopped being written.
+# It runs the layer that could see it -- export -> to_valplay_bundle ->
+# valplay compute_metrics -- on one preserved replay per build, and asserts
+# five invariants that need no baseline (R1 rounds exist, R2 the two round
+# sources agree, R3 the score sums, R4 players exist, R5 kills imply damage)
+# plus pinned per-build values for drift.
+# PROVEN, not claimed: built 309cf05 (the commit before the fix) into a
+# throwaway worktree and ran this guard against it. 13.02 failed on R1 and R2
+# -- "ClientRoundStart RPCs say 21, RoundResults say 0" -- and 13.01 passed.
+# Slow by design; run it after a non-trivial change, not in the fast sweep.
 python tools\check_export_baseline.py --baseline tools\baselines\export_02d4d478.json
 # Expected: OK ... 4 printed counters cross-check against their Parquet files.
 # Production fields baseline: 1,246,812 rows, 13,742,379 bytes. 6,364 of those
@@ -5028,9 +5044,10 @@ f1110ea5   objective.round_count  0  -> 22
 - **The corpus is 215 files of ONE build.** Every guard in this project runs on
   13.01, so a 13.02-only break was invisible to all of them by construction.
   The four `build_*.json` baselines each pin one replay and check totals, not
-  semantics; they were green throughout. Consider whether the next preserved
-  replay per build should also be run through `to_valplay_bundle` +
-  `compute_metrics`, because that is the layer where this surfaced.
+  semantics; they were green throughout. **RESOLVED in section 28**:
+  `tools/check_metrics_baseline.py` runs `to_valplay_bundle` +
+  `compute_metrics` on one preserved replay per build, and was proven against
+  the pre-fix binary -- 13.02 fails, 13.01 passes.
 - **`RoundInfos` survived 13.02 by luck.** Its handles 40..=44 did not move
   because nothing above it in `OwnerExclusivePlayerInfo` was deleted. It was
   converted to declared names in the same pass rather than left to be found
@@ -5318,3 +5335,112 @@ decision in 27-B, the `MK >= 3` semantics, and the fact that FK/FD
 reconstruction agrees with Riot. If another tracker scoreboard ever turns up
 for a preserved replay, the comparison is a twenty-line script over
 `metrics.json`.
+
+## 28. A guard that can see a semantic break (2026-08-05)
+
+Section 26-G said the corpus being 215 files of one build is why nothing caught
+the 13.02 regression. That was half the reason. The other half is that every
+check in this repo reads the WRONG LAYER: `validate_corpus.py`,
+`check_corpus_baseline.py`, `check_export_baseline.py` and the byte oracle all
+read framing counters or compare bytes, and a decoder that stops producing
+values moves neither. Blocks, fields, RPCs, malformed, skipped, and even
+`Decode errors: 0` were all identical while the match score stopped being
+written.
+
+`tools/check_metrics_baseline.py` runs the layer that can see it:
+
+```
+vrfkit export -> tools/to_valplay_bundle.py -> valplay compute_metrics.py
+```
+
+on one preserved replay per build.
+
+### 28-A. The small fixtures turned out to be enough
+
+The design hinged on a measurement, because three of the five fixtures are
+~0.5 MB and might have carried no match at all:
+
+```
+build   size     rounds(rpc)  rounds(objective)  score   players  kills
+12.10   0.5 MB        7              7            6-1       1        0
+12.11   0.4 MB        6              6            5-1       1        0
+13.00   0.4 MB        6              6            5-1       1        0
+13.01  48.2 MB       18             18           13-5      10      132
+13.02  65.0 MB       21             21           13-8      10      151
+```
+
+The tiny ones carry one player and no kills, but they DO produce a round count
+and a score -- which means they exercise the exact `RoundResults` path that
+broke. A fixture does not have to be a full match to guard the thing worth
+guarding.
+
+### 28-B. Invariants first, pinned values second
+
+Five invariants need no baseline, survive legitimate changes that move counts,
+and encode the section-26 failure directly:
+
+```
+R1  objective.round_count > 0
+R2  rounds.round_count == objective.round_count
+       -- ClientRoundStart RPCs vs BombGameState RoundResults, two
+          independent sources for the same fact
+R3  sum(team_score) == objective.round_count
+R4  players > 0
+R5  kills > 0 implies damage > 0
+```
+
+Then 23 pinned values per build (players, kills, deaths, damage, first bloods,
+KAST rounds, weapons, shots, ability spawns, movement samples,
+`economy_detail.rounds`, ...) as drift detection.
+
+**One file for all five builds, not one per build.** A build vanishing from the
+set is then itself a failure. Per-file baselines structurally cannot see that,
+which is exactly how `check_corpus_baseline.py` was guarding nothing while the
+game rotated four pinned replays out of `Saved\Demos`.
+
+**`kills == deaths` is pinned, NOT asserted.** It holds on all five fixtures,
+but a partial replay can capture a kill whose victim's combat report never
+replicates, and that is not a parser defect.
+
+**R3 does not fire on the section-26 break, and that is correct.** An empty
+`team_score` sums to 0 and `objective.round_count` is also 0, so the two are
+internally consistent. R3's job is a round with no recorded winner inside a
+WORKING stream; the stream being absent is R1 and R2's job. Rewiring R3 to
+compare against the RPC count would duplicate R2 and risk a false positive on a
+recording that stops mid-round. The test asserts R3 stays silent here so nobody
+"fixes" it.
+
+### 28-C. Proven against the actual broken binary
+
+Not a claim. Commit 309cf05 -- the one before the fix -- was built into a
+throwaway worktree and this guard was run against that binary:
+
+```
+13.01  rounds=18  score={'Blue': 13, 'Red': 5}  players=10  kills=132   PASS
+13.02  rounds= 0  score={}                      players=10  kills=151   FAIL
+    R1 objective.round_count is 0
+    R2 ClientRoundStart RPCs say 21, BombGameState RoundResults say 0
+exit 1
+```
+
+13.02 fails on exactly the two invariants written for it, 13.01 passes, and the
+worktree was removed (384 MB reclaimed). The guard catches the bug it was built
+for, on the binary that had it.
+
+`tools/tests/test_check_metrics_baseline.py` adds 13 cases pinning the
+invariant logic itself, using the real broken shape as the headline case, so
+the guard cannot rot into something that passes everything. Tools suite is 95
+tests, up from 82.
+
+### 28-D. Cost, and what it does not cover
+
+~65 s, three-wide; the two full matches dominate. It is the slowest check here
+and belongs after a non-trivial change rather than in the fast sweep. Its value
+is the layer it exercises, not its speed.
+
+It does NOT cover: non-Bomb game modes (no labelled input), builds newer than
+13.02 (nothing to pin until one appears -- add the replay to `REPLAYS` and
+re-run with `--update`), or anything the metrics pipeline itself gets wrong,
+since valplay is the reference here and is never modified. And it depends on
+valplay being present at an absolute path; if that repo moves, this guard stops
+running rather than silently passing -- it exits 2 with the path it looked for.
