@@ -85,7 +85,7 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 333 passed, 0 failed across all targets. Sum the per-target lines;
+# Expected: 338 passed, 0 failed across all targets. Sum the per-target lines;
 # the last line is one target, not the total. No per-crate breakdown is written
 # here any more: it went stale every time, and `cargo test -p <crate>` is one
 # command. This total has been stale SIX times -- 238, 246, 249, 252, 257, 287.
@@ -107,7 +107,7 @@ python tools\check_effect_decoder.py --check
 python tools\check_ascii.py --check
 # Expected: OK: 113 tracked Rust file(s), ASCII only
 python -m unittest discover -s tools\tests -p "test_*.py"
-# Expected: Ran 109 tests, OK. These guard the GENERATORS and the GUARDS --
+# Expected: Ran 111 tests, OK. These guard the GENERATORS and the GUARDS --
 # extract_descriptors, apply_type_corrections, check_ascii,
 # check_effect_decoder, check_metrics_baseline, check_docs, to_valplay_bundle.
 # They are not run by cargo (Cargo does not run .py) and were in no documented
@@ -159,7 +159,7 @@ python tools\validate_corpus.py .\target\release\vrfkit.exe `
 python tools\check_decode_errors_corpus.py .\target\release\vrfkit.exe `
   "C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
 # Expected: OK: every replay reported Decode errors: 0 and 0 struct-blob
-#           failures, with struct blobs 46,215 decoded   (~50s, 8-wide)
+#           failures, with struct blobs 46,294 decoded   (~50s, 8-wide)
 # RUN THIS AFTER ANY table.rs CHANGE. `vrfkit validate` does not print the
 # overlay counters -- only `export` does -- so validate_corpus.py cannot see
 # a decode error and never could. A wrong overlay type moves NONE of the
@@ -179,7 +179,8 @@ python tools\check_corpus_baseline.py --baseline tools\baselines\build_1302.json
 # back at Saved\Demos.
 python tools\check_metrics_baseline.py
 # Expected: OK: 5 build(s) pass 25 invariant checks and match 115 pinned
-#           metric values   (~65s, 3-wide; the two 50-65 MB matches dominate)
+#           metric values   (~46s, 3-wide; the two 50-65 MB matches dominate.
+#           Was ~65s until section 35 made the bundle step 1.9x faster.)
 # THE ONLY CHECK THAT CAN SEE A SEMANTIC BREAK. Everything else here reads
 # framing counters or compares bytes, and a decoder that stops producing
 # values moves neither. Section 26 is the worked example: every check above
@@ -367,6 +368,15 @@ Where the open work is now, after section 23:
 out\baseline\             -- regression baseline Parquet (do NOT delete)
 out\nested\               -- latest export of 02d4d478
 out\valplay_bundle\       -- latest adapter output + metrics.json
+out\cp_check\             -- checkpoint export used by the QUICK START command
+out\audit_effect\         -- measurements.txt only; the 504 MB of exports it
+                             sat next to were one-off and are gone
+
+Everything else that used to live here was removed on 2026-08-05: eight
+unreferenced investigation directories, 13,358 MB, none named by any tracked
+file. The two largest were `inject_gekko` (5,784 MB) and `xval_bundle`
+(5,357 MB), both one-off runs from 2026-08-01/02 whose conclusions are in this
+document. Re-creating any of them is a command, not a recovery.
 ```
 To regenerate everything from scratch:
 ```powershell
@@ -2569,7 +2579,7 @@ column. If the port pins that too, the keep-reason dissolves and deleting
 `effect.rs` is defensible. If it does not, that decision is unpinned on both
 sides, so keeping `effect.rs` still buys nothing.
 
-Evidence log: `out/audit_effect/measurements.txt`, 303 lines, every command's
+Evidence log: `out/audit_effect/measurements.txt`, 270 lines, every command's
 raw output. Not committed -- `out/` is gitignored.
 
 ### 12-E. Non-ASCII in string literals [FIXED, commits e8f40cb and the cli.rs follow-up]
@@ -6055,6 +6065,10 @@ decoded OK       84,934,024 -> 85,182,556   (+248,532)
 not in table    116,462,014 -> 116,213,316   (-248,698)
 raw/skip            +166
                     248,532 + 166 = 248,698, so nothing left by another route
+corpus struct blobs  46,215 -> 46,294  (+79)
+                    -- the canonical_group gate in sink/blobs.rs, i.e. the five
+                       Swiftplay replays now getting their RoundResults and
+                       TeamEconomy decoded at all
 corpus totals    blocks/fields/rpcs/malformed/skipped ALL UNCHANGED
                     -- the alias touches typing, never framing
 02d4d478         all five Parquet files byte-identical, struct blobs 207
@@ -6112,7 +6126,9 @@ the patched copy returns the table above. That is the same five-line difference
 33-D describes, now shown per replay rather than asserted once.
 
 Export is 0.31-0.40 s. The bundle step is 13.6-18.5 s, so it remains ~45x the
-parse, as measured on the Bomb demos.
+parse, as measured on the Bomb demos. **Those bundle figures are
+pre-optimization**; section 35 took the same step 1.9x faster and the ratio
+with it.
 
 ### 34-A. Two replays have one more death than kill
 

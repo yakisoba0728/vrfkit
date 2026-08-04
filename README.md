@@ -15,16 +15,16 @@ vrfkit validate <file.vrf> [--diagnostics]          # 문법 오라클, 파일 �
 vrfkit export   <file.vrf> --out <dir> [--checkpoints]
 ```
 
-`02d4d478`(48,215,213바이트) 기준 export 0.83초, 출력 7종:
+`02d4d478`(48,215,213바이트) 기준 export 0.79초, 출력 7종:
 
 | 파일 | 행 | 바이트 |
 |---|---|---|
-| `fields.parquet` | 1,246,812 | 13,742,379 |
+| `fields.parquet` | 1,246,812 | 13,742,276 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
 | `events.parquet` | 195 | 10,201 |
-| `checkpoint_fields.parquet` | 78,748 | 191,335 |
+| `checkpoint_fields.parquet` | 78,748 | 191,324 |
 | `manifest.json` | | 658,918 |
 
 `checkpoint_fields.parquet` 는 `--checkpoints` 를 줘야 나오고, **켜든 끄든 나머지
@@ -40,7 +40,7 @@ vrfkit export   <file.vrf> --out <dir> [--checkpoints]
 
 ## 상태
 
-작업 중. 현재 검증된 범위 (`cargo test --workspace` 333 통과, `clippy -D warnings` 0, `fmt` 0):
+작업 중. 현재 검증된 범위 (`cargo test --workspace` 338 통과, `clippy -D warnings` 0, `fmt` 0):
 
 크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표에서 개수를 뺐습니다 -- 매번 낡았고, 재는 게 한 줄입니다.
 
@@ -73,8 +73,8 @@ ZSTD만 일부러 플래그로 빼지 않았습니다 -- 모든 라이터가 그
 
 | | 이전 | 현재 |
 |---|---|---|
-| `export` | 1.64초 / 201 MB | **0.808초 / 109 MB** |
-| `validate` | 1.42초 / 65 MB | **0.685초 / 65 MB** |
+| `export` | 1.64초 / 201 MB | **0.79초 / 109 MB** |
+| `validate` | 1.42초 / 65 MB | **0.65초 / 65 MB** |
 
 출력은 **바이트 단위로 동일**합니다. 자세한 내역과 측정 후 기각한 최적화들은
 `PROJECT_STATUS.md` 25절에 있습니다.

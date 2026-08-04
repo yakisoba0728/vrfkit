@@ -104,15 +104,15 @@ vrfkit export replay.vrf --out out/ --checkpoints
 
 | 파일 | 행 | 바이트 |
 |---|---|---|
-| `fields.parquet` | 1,246,812 | 13,742,379 |
+| `fields.parquet` | 1,246,812 | 13,742,276 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
 | `events.parquet` | 195 | 10,201 |
-| `checkpoint_fields.parquet` | 78,748 | 191,335 | `--checkpoints` 필요 |
+| `checkpoint_fields.parquet` | 78,748 | 191,324 | `--checkpoints` 필요 |
 | `manifest.json` | | 658,918 |
 
-export 0.83초. 문자열 컬럼은 딕셔너리 인코딩 + ZSTD입니다.
+export 0.79초. 문자열 컬럼은 딕셔너리 인코딩 + ZSTD입니다.
 
 ### `fields.parquet` — 리플리케이션된 프로퍼티와 RPC 파라미터
 
@@ -233,6 +233,18 @@ python tools/to_valplay_bundle.py <export_dir> -o <bundle_dir>
 python "<valplay>/pipeline/metrics/compute_metrics.py" <bundle_dir> -o metrics.json
 ```
 
+**여기가 파이프라인의 병목입니다.** 48 MB 리플레이 하나 기준:
+
+| 단계 | 시간 |
+|---|---|
+| `vrfkit export` | 0.79초 |
+| `to_valplay_bundle.py` | **21.7초** |
+| `compute_metrics.py` | 약 14초 |
+
+번들 변환이 파싱의 약 27배입니다(35절에서 1.9배 개선한 뒤 수치). 리플레이를
+여러 개 처리한다면 **병렬로 돌리는 게 가장 큰 지렛대**입니다 — 각 리플레이는
+완전히 독립적이고, 위 측정은 정확도를 위해 일부러 순차로 잰 값입니다.
+
 ### 검증 (자세한 건 6절)
 
 `validate_corpus.py`, `validate_metrics_corpus.py`, `check_corpus_baseline.py`,
@@ -289,12 +301,12 @@ PROJECT_STATUS 26-I와 32를 먼저 읽으세요.
 ### 빠른 스윕 — 어떤 변경 후에도
 
 ```bash
-cargo test                                        # 333 통과
+cargo test                                        # 338 통과
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 113 파일, ASCII only
 python tools/check_effect_decoder.py --check      # 12 케이스
-python -m unittest discover -s tools/tests -p "test_*.py"   # 109 통과
+python -m unittest discover -s tools/tests -p "test_*.py"   # 111 통과
 python tools/check_docs.py --fast                 # 문서가 아직 이 저장소를 설명하는가
 python tools/apply_type_corrections.py --check    # 27 정정 present
 ```
@@ -323,7 +335,7 @@ python tools/compare_combat_report.py
 | `validate_corpus.py` | 프레이밍 (215개 전수) | 타입 오류, 의미 파손 | ~30초 |
 | `check_export_baseline.py` | 23개 export 카운터 + 파일별 행·바이트 | 다른 빌드 | 1초 |
 | `check_decode_errors_corpus.py` | 오버레이 타입 오류 + struct blob 실패 (215개) | 의미 파손 | ~50초 |
-| `check_metrics_baseline.py` | **의미** — 라운드, 점수, K/D/A (빌드 5개) | 비-Bomb 모드 | ~65초 |
+| `check_metrics_baseline.py` | **의미** — 라운드, 점수, K/D/A (빌드 5개) | 지표 파이프라인 자체의 오류 | ~46초 |
 | `compare_combat_report.py` | 지표 입력값 다중집합 | 프레이밍 | 수초 |
 
 **층이 다릅니다.** 위 넷 중 앞의 셋은 프레이밍 카운터를 읽거나 바이트를 비교하는데,
