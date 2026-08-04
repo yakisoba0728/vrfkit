@@ -317,6 +317,23 @@ pub fn apply_overlay_with_handle(
 /// and it can only hit an entry that the C# author spelled with the Unreal
 /// boolean prefix. Measured across all 1,054 entries and every undecoded row on
 /// 02d4d478, exactly one field resolves this way and it is the correct one.
+/// The full resolution order a replicated field gets, for callers that hold a
+/// name and a handle but not a whole row.
+///
+/// Exists because the array walker was doing only the first of the three steps
+/// -- a bare name lookup -- so a flattened leaf could miss a type that the same
+/// field would have been given outside an array. Duplicating the order at the
+/// call site is how the two drift apart, so it is published once here.
+#[must_use]
+pub fn resolve_field_type(
+    table: &OverlayTable,
+    group_path: &str,
+    field_name: Option<&str>,
+    handle: Option<u32>,
+) -> Option<FieldType> {
+    resolve_entry(table, group_path, field_name, handle).map(|(field_type, _)| field_type)
+}
+
 fn resolve_entry<'a>(
     table: &OverlayTable,
     group_path: &str,

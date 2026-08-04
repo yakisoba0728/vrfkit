@@ -112,12 +112,19 @@ impl ExportSink<'_> {
         let leaf_types: Vec<Option<FieldType>> = flattened
             .iter()
             .map(|f| {
-                declared
-                    .get(f.handle as usize)
-                    .copied()
-                    .flatten()
-                    .and_then(|n| TABLE.lookup(&self.current_group_path, n))
-                    .filter(|ft| !matches!(ft, FieldType::Raw | FieldType::Skip))
+                // The FULL resolution order, not a bare name lookup. An
+                // ordinary field gets three steps -- name, b-prefixed name,
+                // then handle -> descriptor name -> type -- and a flattened
+                // leaf was getting only the first, so the same property could
+                // be typed outside an array and untyped inside one.
+                let name = declared.get(f.handle as usize).copied().flatten();
+                vrf_decode::resolve_field_type(
+                    &TABLE,
+                    &self.current_group_path,
+                    name,
+                    Some(f.handle),
+                )
+                .filter(|ft| !matches!(ft, FieldType::Raw | FieldType::Skip))
             })
             .collect();
 
