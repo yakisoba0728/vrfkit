@@ -13,6 +13,10 @@ Section 22-D retires a hope this document carried since 7-H: checkpoint chunks
 are NOT the key to the unattributed-bits ceiling. Measured over all 4,024
 checkpoints in the corpus, not argued.
 
+Section 25-G is CLOSED: the API-unfreeze pass it proposed was carried out and
+all three targets measured neutral or not worth their cost. Performance work on
+this codebase is finished.
+
 Section 22-I then measured the other question about them and got the opposite
 of the expected answer: checkpoints are NOT redundant with ReplayData. 6-11% of
 their property values disagree with the incremental stream at the same
@@ -81,7 +85,7 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 325 passed, 0 failed across all targets. Sum the per-target lines;
+# Expected: 328 passed, 0 failed across all targets. Sum the per-target lines;
 # the last line is one target, not the total. No per-crate breakdown is written
 # here any more: it went stale every time, and `cargo test -p <crate>` is one
 # command. This total has been stale SIX times -- 238, 246, 249, 252, 257, 287.
@@ -274,6 +278,11 @@ Where the open work is now, after section 23:
     it -- the two disagree (22-I) and nothing adjudicates them. The checkpoint
     guid table and the 46-51 checkpoint-only group paths are read but not
     exported
+  - performance work is CLOSED. Section 25 took export to 0.808 s / 109 MB and
+    validate to 0.685 s, and 25-G then measured every remaining candidate and
+    rejected all three. The codebase is allocation-lean enough that structural
+    API costs no longer show above the noise floor. Do not reopen it without a
+    new measurement showing something this pass did not
   - the untyped remainder is NOT one number and mostly NOT addressable here.
     Section 24 measured it: of 27.2M untyped RPC-parameter bits, ~86% have no
     upstream type information at all (no descriptor, no <TParams>, or no name
@@ -345,7 +354,7 @@ branches     : master only. No worktrees, no stashes, no remote
 commits      : run `git rev-list --count HEAD`. No number is written here
                on purpose: the two that were had both gone stale, and this
                one would be wrong the moment the line was committed
-tests        : 325 passing, 0 failed. Stale SIX times -- 238, 246, 249, 252,
+tests        : 328 passing, 0 failed. Stale SIX times -- 238, 246, 249, 252,
                257, 287. Re-measure with `cargo test --workspace`
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
@@ -4732,28 +4741,68 @@ Three crates got **no** flags, and the reasons are findings:
 ZSTD is deliberately not optional. Every writer selects it, so gating it would
 permit a build that emits a file this crate cannot describe.
 
-### 25-G. What the freeze now blocks
+### 25-G. What the freeze blocked, and what unblocking it was worth [MEASURED, CLOSED]
 
-The API freeze made five-way parallelism possible and is now the ceiling.
-Three agents independently reached the same conclusion:
+The API freeze made five-way parallelism possible, and when 25 was written it
+looked like the ceiling. Three agents independently named the same three costs:
 
-- `BitError` is 32 bytes, so `Result<u64, BitError>` returns through memory
-  rather than registers. Only `requested` is unrecoverable from the reader; an
-  8-byte error makes the `Result` 16.
-- `replay_path_lookup_keys` returns `Vec<String>`, allocating 1-4 times per
-  call inside the per-block loop -- the reason `get_group_by_path` is probed
-  ~3.0M times per export. A callback or iterator form removes essentially all
-  of it.
-- `FlattenedField` forces a `String` + `Vec<u8>` per array leaf; a visitor form
-  handing out `&str` / `&[u8]` removes both.
+- `BitError` is 32 bytes, so every `Result<_, BitError>` is 32 bytes and returns
+  through memory rather than registers.
+- `replay_path_lookup_keys` returns `Vec<String>`, allocating 1-4 times per call
+  inside the per-block loop -- the reason `get_group_by_path` was probed ~3.0M
+  times per export.
+- `FlattenedField` forces a `String` + `Vec<u8>` per array leaf.
 
-Also noted: `sink.rs` types array leaves with a bare `TABLE.lookup(group, n)`,
-so those leaves get neither the `b`-prefix nor the handle fallback that
-ordinary fields get. A public `resolve(group, name, handle)` would fix that
-without duplicating the resolution order.
+**All three were then done or bounded, and none of them is worth having as a
+performance change.** The sequential pass is finished; do not reopen it.
 
-A second pass on these must be **sequential**. Changing APIs concurrently is
-exactly what the freeze prevented.
+| Target | Result |
+|---|---|
+| lookup keys -> visitors | **Neutral.** export 0.808 -> 0.811 s, validate 0.685 -> 0.684 s |
+| `BitError` shrink | **Rejected.** Upper bound export -3.0%, validate -1.8% |
+| `FlattenedField` visitor | **Not attempted.** Array leaves are 21,336 of 1,246,812 rows (1.71%) |
+
+**Why the predictions missed.** Each agent measured its own crate in isolation,
+before the other four landed. The 2,989,695 `get_group_by_path` calls were
+counted before the group-path memo existed; the memo now answers 489,996 of
+608,011 probes, so resolution runs 5.2x less often and the allocations the
+visitor removes are no longer hot. Two optimizations aimed at the same path and
+the other one arrived first.
+
+**Why `BitError` was rejected rather than tried.** The upper bound was measured
+first, with a throwaway build whose error type was a **1-byte** enum -- every
+field destroyed, the best case that could possibly exist. That bought export
+-3.0% and validate -1.8%. A real implementation boxes the payload, which is 8
+bytes and therefore worth less, and costs one of two things: either `BitError`
+starts requiring `alloc`, which removes the allocator-free `no_std` build
+`vrf-bitio` just gained, or it drops fields, which degrades the diagnostics that
+decide which blocks are recorded as malformed. Two to three percent does not buy
+either.
+
+**The visitor form was kept anyway, and not as a performance claim.** A path
+with no alias -- the common case -- now costs no allocation, `find_*`
+short-circuits so aliases past a hit are never built, and the tests got
+strictly better: the old ones asserted membership, which cannot see a
+reordering, and order is the contract here because it decides which spelling of
+an ambiguous path wins. They assert exact sequences now, with both old vector
+implementations kept as a differential reference over 14 paths.
+
+**The fourth item was not a performance item and is fixed.** `sink.rs` typed
+array leaves with a bare name lookup, so a flattened leaf got one of the three
+resolution steps an ordinary field gets. `resolve_field_type` publishes the
+order once and the walker uses it. It changes **no output**, and structurally
+cannot: all four group paths in the handle table are RPC parameter groups
+(`Class:Function`) while array leaves live in RepLayout groups, so the handle
+step is unreachable for them; the `b`-prefix step is reachable and fires zero
+times on 02d4d478, verified by exporting both ways and diffing all 1,246,812
+rows (0 newly typed, 0 that lost a value, 0 changed). It closes a latent
+inconsistency that starts mattering the moment a descriptor gains a
+`b`-prefixed name for an array member.
+
+**The useful conclusion is the null one.** After 25, this codebase is
+allocation-lean enough that its remaining structural API costs do not show above
+the noise floor. Performance work here is done; the open items in section 24 and
+22-I are not performance items.
 
 ### 25-H. A caveat about single-crate benchmarks here
 
