@@ -5763,18 +5763,48 @@ still unique across these four replays, so the death difference becomes a
 reported difference instead of a matching failure. **A join key that includes
 the value under test hides the finding.**
 
-### 31-C. What is still unexplained
+### 31-C. The other two 1-offs are the SAME EVENT as 31-B
 
-Two 1-offs, both in derived metrics, both left open rather than rationalised:
+They were filed as unexplained. Counting per round dissolved that: all three
+differences in this replay point at one round.
 
-- **MK 4 vs 3** for a player whose `multi_kills` is `{2:5, 3:0, 4:3, 5:1}` with
-  `multikill_best: 6`. The bucket dict has no `6` key, so a six-kill round is
-  landing in the `5` bucket; whether the tracker merges it differently is not
-  determinable from here.
-- **KAST 54% vs 50%** for a player who DID play all 24 rounds, so 31-A does not
-  apply. 13 KAST rounds ours against 12 theirs. KAST is reconstructed here with
-  our own trade-window policy, so a one-round difference is within what that
-  reconstruction can be expected to produce.
+**MK 4 vs 3.** Per-round kills for that player are `{1 kill: 6 rounds,
+2: 5, 4: 3, 6: 1}` -- and a SIX-kill round in a 5v5 is impossible unless
+somebody died twice. Round 22, kill by kill:
 
-Neither is worth a fix without knowing Riot's definition. Both are recorded so
-the next comparison does not rediscover them as new.
+```
+t=2039664   pid 248 (Clove) kills pid 258
+t=2039818   pid 170 kills pid 248            <- Clove's first death
+t=2040326   MulticastReceivePlayerResurrectEvent, 248 resurrects 248
+t=2044920   pid 170 kills pid 248 AGAIN      <- the sixth kill
+t=2046007   pid 170 kills pid 246
+t=2047090   pid 170 kills pid 250
+t=2055999   pid 170 kills pid 238
+t=2067406   pid 170 kills pid 244
+```
+
+Five distinct enemies, six kills, with the resurrect RPC sitting between the
+two Clove kills. This is the ONLY round with 5+ kills across all four replays
+and it is the only MK disagreement. The tracker classifies it as something
+other than a multikill -- most likely an Ace, which trackers usually report in
+a separate column -- but its exact rule is not observable from the replay.
+
+**KAST 54% vs 50%.** That player is pid 258, who was Clove's first kill in the
+same round 22. They qualify for that round ONLY by having been traded: pid 170
+killed their killer 154 ms later. But the traded victim then RESURRECTED. If
+Riot does not credit a trade whose victim comes back, that removes exactly one
+round: 13 -> 12.
+
+This last one is a strong candidate, NOT proof -- a simplified reconstruction
+here reaches 10 of 24 because it does not model assists, so it cannot pin which
+round the tracker drops. What it does establish is that round 22 is the only
+round where that player's KAST hinges on a trade against a resurrected player.
+
+**So the whole 31 comparison has exactly one unexplained event, not three
+unexplained numbers**, and it is a self-resurrection: it makes a death
+ambiguous (31-B), it produces the only 6-kill round in the corpus (MK), and it
+is the round whose trade credit is in question (KAST).
+
+Resurrection is now the single biggest known source of definitional
+disagreement with Riot's numbers. `Rounds[N].Reports[1]` existing is its marker
+on the wire, and `MulticastReceivePlayerResurrectEvent` names both sides.
