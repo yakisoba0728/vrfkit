@@ -15,15 +15,16 @@ and passes every test. So this reads the repo and the docs and compares:
   3. every crate has a row in the layer table
   4. every relative link resolves
   5. the overlay table sizes quoted are the live ones
-  6. the test counts quoted are the live ones
+  6. no Rust doc comment or Cargo.toml quotes a stale one
+  7. the test counts quoted are the live ones
 
-It runs the test suites to get (6), so it is not free -- roughly the cost of
+It runs the test suites to get (7), so it is not free -- roughly the cost of
 `cargo test` plus the tools suite. Run it when touching docs, or before
 calling a session finished.
 
 Usage:
     python tools/check_docs.py
-    python tools/check_docs.py --fast     # skip (6), no test runs
+    python tools/check_docs.py --fast     # skip (7), no test runs
 """
 from __future__ import annotations
 
@@ -78,21 +79,58 @@ def check_links(path: Path, text: str) -> list[str]:
     return problems
 
 
-def check_table_sizes(docs: dict[str, str]) -> list[str]:
-    """The generated overlay table's declared lengths, as quoted in prose."""
+def table_lengths() -> tuple[str, str] | None:
     table = read(REPO / "crates" / "vrf-decode" / "src" / "table.rs")
     entries = re.search(r"OVERLAY_TABLE: \[OverlayEntry; (\d+)\]", table)
     handles = re.search(r"OVERLAY_HANDLE_TABLE: \[OverlayHandleEntry; (\d+)\]", table)
-    if not entries or not handles:
+    return (entries.group(1), handles.group(1)) if entries and handles else None
+
+
+def check_table_sizes(docs: dict[str, str]) -> list[str]:
+    """The generated overlay table's declared lengths, as quoted in prose."""
+    lengths = table_lengths()
+    if lengths is None:
         return ["table.rs: could not read the declared slice lengths"]
 
     problems = []
-    for n, what, where in ((entries.group(1), "overlay table", ("README.md", "USAGE.md")),
-                           (handles.group(1), "handle table", ("USAGE.md",))):
+    for n, what, where in ((lengths[0], "overlay table", ("README.md", "USAGE.md")),
+                           (lengths[1], "handle table", ("USAGE.md",))):
         pretty = f"{int(n):,}"
         for name in where:
             if n not in docs[name] and pretty not in docs[name]:
                 problems.append(f"{name}: {what} is {pretty}, not quoted")
+    return problems
+
+
+#: The phrase Rust doc comments and Cargo.toml use for the table's size. Kept
+#: to this exact wording rather than any "N entries" -- narrow enough that a
+#: match is always a size claim, so the check has no judgement to make.
+ENTRY_PHRASE_RE = re.compile(r"([\d,]+)-entry (?:generated )?table")
+
+
+def check_source_table_size() -> list[str]:
+    """Rust prose quotes the table size too, and nothing was reading it.
+
+    `check_table_sizes` covers README and USAGE. The same number is also written
+    into `vrf-decode`'s crate docs, its feature table and its Cargo.toml, and all
+    three still said 1,185 after the table reached 1,188 -- the exact rot this
+    file exists to catch, one directory over from where it was looking.
+    """
+    lengths = table_lengths()
+    if lengths is None:
+        return []
+    live = {lengths[0], f"{int(lengths[0]):,}"}
+
+    problems = []
+    for path in sorted((REPO / "crates").rglob("*.rs")) + \
+            sorted((REPO / "crates").rglob("Cargo.toml")):
+        for i, line in enumerate(read(path).splitlines(), 1):
+            for quoted in ENTRY_PHRASE_RE.findall(line):
+                if quoted not in live:
+                    rel = path.relative_to(REPO).as_posix()
+                    problems.append(
+                        f"{rel}:{i}: says {quoted}-entry table; it is "
+                        f"{int(lengths[0]):,}")
     return problems
 
 
@@ -136,9 +174,10 @@ def main() -> int:
         + check_links(README, readme)
         + check_links(USAGE, usage)
         + check_table_sizes(docs)
+        + check_source_table_size()
     )
 
-    checked = 5
+    checked = 6
     if not args.fast:
         rust, tools_n, run_problems = measure_tests()
         problems += run_problems

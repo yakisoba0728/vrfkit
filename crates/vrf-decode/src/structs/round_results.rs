@@ -35,6 +35,24 @@ impl AresTeamRole {
             _ => Option::None,
         }
     }
+
+    /// The snake_case spelling exporters write.
+    ///
+    /// Here rather than at the export site so the exhaustive match sits with
+    /// the enum it enumerates: a new variant then fails to compile one file
+    /// away from where it was added, instead of in a crate that does not own
+    /// the type.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Attacker => "attacker",
+            Self::Defender => "defender",
+            Self::FreeForAll => "free_for_all",
+            Self::Any => "any",
+            Self::RoleCount => "role_count",
+        }
+    }
 }
 
 /// How the round ended.
@@ -63,6 +81,21 @@ impl AresRoundOutcome {
             6 => Some(Self::RoundOutcomeCount),
             7 => Some(Self::Invalid),
             _ => Option::None,
+        }
+    }
+
+    /// The snake_case spelling exporters write. See [`AresTeamRole::as_str`].
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Elimination => "elimination",
+            Self::Defuse => "defuse",
+            Self::Detonate => "detonate",
+            Self::TimeExpired => "time_expired",
+            Self::Cheat => "cheat",
+            Self::Surrendered => "surrendered",
+            Self::RoundOutcomeCount => "round_outcome_count",
+            Self::Invalid => "invalid",
         }
     }
 }

@@ -3,7 +3,10 @@
 CLI, 출력 스키마, 크레이트별 사용, `tools/` 스크립트, 검증 스위트.
 
 설계 근거와 기존 파서 대조 결과는 [`../README.md`](../README.md), 작업 이력과 측정
-기록은 [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md)에 있습니다.
+기록은 [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md)에 있습니다. 체크포인트 청크의
+바이트 레벨 포맷은 [`../CHECKPOINT_SPEC.md`](../CHECKPOINT_SPEC.md), 완료된 작업
+명세는 [`archive/`](archive/README.md)에 있습니다 — 전부 기록용이고 실행 대상이
+아닙니다.
 
 ---
 
@@ -112,7 +115,7 @@ vrfkit export replay.vrf --out out/ --checkpoints
 | `checkpoint_fields.parquet` | 78,748 | 191,324 | `--checkpoints` 필요 |
 | `manifest.json` | | 658,918 |
 
-export 0.79초. 문자열 컬럼은 딕셔너리 인코딩 + ZSTD입니다.
+export 0.85초. 문자열 컬럼은 딕셔너리 인코딩 + ZSTD입니다.
 
 ### `fields.parquet` — 리플리케이션된 프로퍼티와 RPC 파라미터
 
@@ -237,13 +240,19 @@ python "<valplay>/pipeline/metrics/compute_metrics.py" <bundle_dir> -o metrics.j
 
 | 단계 | 시간 |
 |---|---|
-| `vrfkit export` | 0.79초 |
+| `vrfkit export` | 0.85초 |
 | `to_valplay_bundle.py` | **21.7초** |
 | `compute_metrics.py` | 약 14초 |
 
-번들 변환이 파싱의 약 27배입니다(35절에서 1.9배 개선한 뒤 수치). 리플레이를
+번들 변환이 파싱의 약 25배입니다(35절에서 1.9배 개선한 뒤 수치). 리플레이를
 여러 개 처리한다면 **병렬로 돌리는 게 가장 큰 지렛대**입니다 — 각 리플레이는
 완전히 독립적이고, 위 측정은 정확도를 위해 일부러 순차로 잰 값입니다.
+
+> **시간 수치는 ±10% 흔들립니다.** 같은 기계·같은 커밋인데 2026-08-04에는
+> export 0.79초, 2026-08-05에는 0.85초였습니다. 36-F에서 변경 전/후 바이너리를
+> 번갈아 7쌍 돌려 확인했습니다 — 중앙값 0.870 대 0.874로 코드는 중립이고, 차이는
+> 기계 상태입니다. **여기 숫자가 조금 크게 나온다고 회귀를 찾아 나서지 마세요.**
+> 회귀인지 아닌지는 A/B로만 답이 나옵니다.
 
 ### 검증 (자세한 건 6절)
 
@@ -254,7 +263,9 @@ python "<valplay>/pipeline/metrics/compute_metrics.py" <bundle_dir> -o metrics.j
 
 `check_docs.py`는 이 문서 자신을 검사합니다 — 모든 `tools/` 스크립트가 여기 언급돼
 있는지, 모든 크레이트가 표에 있는지, 링크가 살아 있는지, 인용된 테이블 크기와 테스트
-개수가 현재 값인지. 이 저장소에서 문서 숫자는 반복적으로 낡았습니다(테스트 개수만 6번,
+개수가 현재 값인지. **Rust 문서 주석과 `Cargo.toml`이 인용한 테이블 크기까지** 봅니다 —
+36절에서 `vrf-decode`의 크레이트 문서·기능 표·`Cargo.toml` 세 군데가 모두 1,185에
+멈춰 있는 걸 이 검사가 잡았습니다. 이 저장소에서 문서 숫자는 반복적으로 낡았습니다(테스트 개수만 6번,
 오버레이 테이블 크기가 1,185 → 1,187 → 1,188로 두 번 낡았고, 게임이 지운
 리플레이 4개가 몇 주간 남아
 있었습니다). 낡은 문장은 컴파일도 되고 테스트도 통과하므로 다른 어떤 검사도 못 잡습니다.
@@ -269,7 +280,7 @@ python tools/check_docs.py --fast    # 개수 대조 생략
 | 스크립트 | 생성물 |
 |---|---|
 | `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (오버레이 테이블 1,188 + 핸들 84) |
-| `apply_type_corrections.py` | 위 파일에 검증된 정정/추가를 적용 |
+| `apply_type_corrections.py` | 위 파일에 검증된 정정/추가를 적용하고, 생성 헤더 두 줄을 재계산 |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
 | `extract_golden.py` | `crates/vrf-transform/tests/data/golden_vectors.rs` |
 | `extract_equippables.py` | `tools/equippable_table.py` |
@@ -306,7 +317,7 @@ cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 113 파일, ASCII only
 python tools/check_effect_decoder.py --check      # 12 케이스
-python -m unittest discover -s tools/tests -p "test_*.py"   # 111 통과
+python -m unittest discover -s tools/tests -p "test_*.py"   # 114 통과
 python tools/check_docs.py --fast                 # 문서가 아직 이 저장소를 설명하는가
 python tools/apply_type_corrections.py --check    # 27 정정 present
 ```

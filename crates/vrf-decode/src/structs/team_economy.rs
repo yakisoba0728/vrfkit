@@ -37,10 +37,11 @@ pub struct TeamEconomyUpdate {
 /// `ReplicationId` has nothing to match on. Nor is there anything to
 /// generalise toward. `TeamEconomy` does not exist in build 13.02: it and
 /// `TeamComponents` were replaced by `TeamStates`, and the values moved into a
-/// separately replicated `/Script/ShooterGame.BaseTeamState` actor that
-/// nothing here decodes yet. So this stays a 13.01 decoder pinned to 13.01
-/// numbers, and the struct-blob failure counter is what reports it if those
-/// numbers ever move under it.
+/// separately replicated `/Script/ShooterGame.BaseTeamState` actor -- which
+/// needs no decoder of its own, because it replicates plain Int32 scalars that
+/// the overlay table types and the field stream writes directly. So this stays
+/// a 13.01 decoder pinned to 13.01 numbers, and the struct-blob failure counter
+/// is what reports it if those numbers ever move under it.
 ///
 /// # Arguments
 ///

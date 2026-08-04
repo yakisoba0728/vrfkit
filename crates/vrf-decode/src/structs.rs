@@ -59,8 +59,12 @@
 //! handle 56 as `"241"`, a hardcoded FName index rather than a name, so there
 //! is nothing to match on. Generalising it is also pointless -- the property
 //! does not exist in 13.02, where team economy moved into a separately
-//! replicated `/Script/ShooterGame.BaseTeamState` actor that no decoder here
-//! reads yet. The failure counter covers it if 13.01's numbers ever move.
+//! replicated `/Script/ShooterGame.BaseTeamState` actor. Nothing in THIS module
+//! reads that one and nothing needs to: it replicates plain scalars, so the
+//! overlay table types them directly (`LoadoutValue` and `AverageLoadoutValue`,
+//! Int32, from `ADDITIONS` in `apply_type_corrections.py`) and the field stream
+//! writes them like any other property. The failure counter covers this decoder
+//! if 13.01's numbers ever move.
 //!
 //! # FName wire format (from `FArchive.ReadFNameCore`)
 //! ```text

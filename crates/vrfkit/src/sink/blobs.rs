@@ -23,6 +23,14 @@ use super::{ExportSink, FieldValues, TABLE};
 /// rather than a union.
 type DecodedColumns = (Option<i64>, Option<f64>, Option<bool>, Option<String>);
 
+/// The struct-blob fields that have a dedicated decoder in `vrf-decode`.
+#[derive(Clone, Copy)]
+enum StructBlob {
+    RoundResults,
+    TeamEconomy,
+    RoundInfos,
+}
+
 impl ExportSink<'_> {
     /// Every name the replay declares for `group_path`, indexed by handle.
     ///
@@ -169,15 +177,33 @@ impl ExportSink<'_> {
         vrf_decode::canonical_group(&self.current_group_path)
     }
 
+    /// Which dedicated decoder owns this field on this group, if any.
+    ///
+    /// One classifier rather than a predicate and a dispatcher that each spell
+    /// the gate out. The field stream asks the predicate whether to hand the
+    /// blob over at all and then asks the dispatcher to decode it, so two
+    /// copies that disagreed would take the blob off the ordinary path and
+    /// then decline it -- the row would lose its decoded leaves and no counter
+    /// would move. Section 33 changed this gate for Swiftplay; it had to be
+    /// changed in three places.
+    fn struct_blob_kind(&self, field_name: Option<&str>) -> Option<StructBlob> {
+        match field_name? {
+            "RoundResults" if self.canonical_group().contains("BombGameState") => {
+                Some(StructBlob::RoundResults)
+            }
+            "TeamEconomy" if self.canonical_group().contains("BombGameState") => {
+                Some(StructBlob::TeamEconomy)
+            }
+            "RoundInfos" if self.current_group_path.contains("OwnerExclusivePlayerInfo") => {
+                Some(StructBlob::RoundInfos)
+            }
+            _ => None,
+        }
+    }
+
     /// Check if a field is a struct blob that has a dedicated decoder.
     pub(super) fn is_struct_blob_field(&self, field_name: Option<&str>) -> bool {
-        match field_name {
-            Some("RoundResults") | Some("TeamEconomy") => {
-                self.canonical_group().contains("BombGameState")
-            }
-            Some("RoundInfos") => self.current_group_path.contains("OwnerExclusivePlayerInfo"),
-            _ => false,
-        }
+        self.struct_blob_kind(field_name).is_some()
     }
 
     /// Decode a struct blob and emit flattened sub-field rows.
@@ -188,17 +214,11 @@ impl ExportSink<'_> {
         raw: &[u8],
         bit_count: u32,
     ) -> bool {
-        let emitted = match field_name {
-            "RoundResults" if self.canonical_group().contains("BombGameState") => {
-                self.decode_round_results_blob(raw, bit_count)
-            }
-            "TeamEconomy" if self.canonical_group().contains("BombGameState") => {
-                self.decode_team_economy_blob(raw, bit_count)
-            }
-            "RoundInfos" if self.current_group_path.contains("OwnerExclusivePlayerInfo") => {
-                self.decode_round_infos_blob(raw, bit_count)
-            }
-            _ => false,
+        let emitted = match self.struct_blob_kind(Some(field_name)) {
+            Some(StructBlob::RoundResults) => self.decode_round_results_blob(raw, bit_count),
+            Some(StructBlob::TeamEconomy) => self.decode_team_economy_blob(raw, bit_count),
+            Some(StructBlob::RoundInfos) => self.decode_round_infos_blob(raw, bit_count),
+            None => false,
         };
         if emitted {
             self.stats.struct_blobs_decoded += 1;
@@ -251,39 +271,20 @@ impl ExportSink<'_> {
                     Some(team.clone()),
                 );
             }
-            if let Some(role) = rr.winning_team_role {
-                let role_str = match role {
-                    vrf_decode::structs::AresTeamRole::None => "none",
-                    vrf_decode::structs::AresTeamRole::Attacker => "attacker",
-                    vrf_decode::structs::AresTeamRole::Defender => "defender",
-                    vrf_decode::structs::AresTeamRole::FreeForAll => "free_for_all",
-                    vrf_decode::structs::AresTeamRole::Any => "any",
-                    vrf_decode::structs::AresTeamRole::RoleCount => "role_count",
-                };
-                self.emit_struct_sub_field(
-                    |out| put(out, format_args!("RoundResults[{index}].WinningTeamRole")),
-                    None,
-                    Some(role_str.to_owned()),
-                );
-            }
-            if let Some(outcome) = rr.round_result {
-                let outcome_str = match outcome {
-                    vrf_decode::structs::AresRoundOutcome::Elimination => "elimination",
-                    vrf_decode::structs::AresRoundOutcome::Defuse => "defuse",
-                    vrf_decode::structs::AresRoundOutcome::Detonate => "detonate",
-                    vrf_decode::structs::AresRoundOutcome::TimeExpired => "time_expired",
-                    vrf_decode::structs::AresRoundOutcome::Cheat => "cheat",
-                    vrf_decode::structs::AresRoundOutcome::Surrendered => "surrendered",
-                    vrf_decode::structs::AresRoundOutcome::RoundOutcomeCount => {
-                        "round_outcome_count"
-                    }
-                    vrf_decode::structs::AresRoundOutcome::Invalid => "invalid",
-                };
-                self.emit_struct_sub_field(
-                    |out| put(out, format_args!("RoundResults[{index}].RoundResult")),
-                    None,
-                    Some(outcome_str.to_owned()),
-                );
+            // `as_str` lives on the enums in `vrf-decode`; these used to be two
+            // fully-qualified matches here, a second copy of the variant list in
+            // a crate that does not own the types.
+            for (member, text) in [
+                ("WinningTeamRole", rr.winning_team_role.map(|r| r.as_str())),
+                ("RoundResult", rr.round_result.map(|o| o.as_str())),
+            ] {
+                if let Some(text) = text {
+                    self.emit_struct_sub_field(
+                        |out| put(out, format_args!("RoundResults[{index}].{member}")),
+                        None,
+                        Some(text.to_owned()),
+                    );
+                }
             }
         }
 

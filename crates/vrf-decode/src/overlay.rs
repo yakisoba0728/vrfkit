@@ -297,26 +297,6 @@ pub fn apply_overlay_with_handle(
     )
 }
 
-/// Resolve which table entry a wire field belongs to, and the name to report it
-/// under if the decode later fails.
-///
-/// Order: the declared name, then the `b`-prefixed spelling of it, then the
-/// explicit property handle.
-///
-/// # Why the `b`-prefix step exists
-///
-/// The C# descriptors bind a property to its handle number and carry a name
-/// only as a label, so a descriptor that spells a boolean
-/// `bDeathMontageEffectOverrideIsQueued` still matches a wire field the replay
-/// declares as `DeathMontageEffectOverrideIsQueued`. Our table is keyed on the
-/// name, so that spelling difference makes the lookup miss and the field stays
-/// raw -- 581 rows on 02d4d478, shipped as an undecoded blob where the
-/// reference has a plain bool.
-///
-/// Narrow by construction: it only fires when the direct lookup already missed,
-/// and it can only hit an entry that the C# author spelled with the Unreal
-/// boolean prefix. Measured across all 1,054 entries and every undecoded row on
-/// 02d4d478, exactly one field resolves this way and it is the correct one.
 /// The full resolution order a replicated field gets, for callers that hold a
 /// name and a handle but not a whole row.
 ///
@@ -412,6 +392,30 @@ fn resolve_entry<'a>(
     resolve_in_group(table, alias_group(group_path)?, field_name, handle)
 }
 
+/// Resolve which table entry a wire field belongs to within ONE group, and the
+/// name to report it under if the decode later fails.
+///
+/// Order: the declared name, then the `b`-prefixed spelling of it, then the
+/// explicit property handle.
+///
+/// # Why the `b`-prefix step exists
+///
+/// The C# descriptors bind a property to its handle number and carry a name
+/// only as a label, so a descriptor that spells a boolean
+/// `bDeathMontageEffectOverrideIsQueued` still matches a wire field the replay
+/// declares as `DeathMontageEffectOverrideIsQueued`. Our table is keyed on the
+/// name, so that spelling difference makes the lookup miss and the field stays
+/// raw where the reference has a plain bool.
+///
+/// Narrow by construction: it only fires when the direct lookup already missed,
+/// and it can only hit an entry that the C# author spelled with the Unreal
+/// boolean prefix. Re-measured against the current 1,188-entry table by joining
+/// every distinct `(group, name)` 02d4d478 exports against it, RPC parameters
+/// under the group `sink/rpc.rs` actually asks with: 632 rows resolve this way
+/// and no others. They are ONE property name, arriving on two RPC groups --
+/// `MulticastNotifyDamage_Point` (581 rows) and `_Base` (51). The figure stood
+/// at "581 rows, exactly one field", measured when the table held 1,054
+/// entries; it counted the larger group and not its sibling.
 fn resolve_in_group<'a>(
     table: &OverlayTable,
     group_path: &str,

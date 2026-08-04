@@ -4,9 +4,9 @@
 //!
 //! Resolving the reference replay's 988,983 offered rows costs about 1.5
 //! million `(group_path, field_name)` probes -- one per row, plus a second for
-//! the `b`-prefixed spelling on each of the 511,916 that miss -- and another
+//! the `b`-prefixed spelling on each of the 511,881 that miss -- and another
 //! ~0.5 million `(group_path, handle)` probes. Every one of those was a binary
-//! search over a 1,185-entry table. That is ~11 comparisons, and every
+//! search over a 1,188-entry table. That is ~10 comparisons, and every
 //! comparison looks at `group_path` first -- paths like
 //! `/Game/Characters/AggroBot/AggroBot_PC.AggroBot_PC_C` that share 20 to 40
 //! leading bytes with their neighbours, so each comparison is a real memcmp
@@ -17,7 +17,7 @@
 //! This replaces it with open addressing on a 64-bit key hash. A lookup hashes
 //! `group_path` and `field_name` once (8 bytes per multiply) and probes once;
 //! the stored 32-bit tag rejects a non-matching slot without touching the
-//! strings at all. Most lookups on a real replay MISS -- 511,916 of 988,983
+//! strings at all. Most lookups on a real replay MISS -- 511,881 of 988,983
 //! offered rows are not in the table -- and a miss now ends at an empty slot
 //! with zero string comparisons.
 //!
@@ -26,7 +26,7 @@
 //! The hash only chooses *which* entries to compare. Every candidate is still
 //! confirmed by full string equality on both key halves before it is returned,
 //! so a collision costs time and never an answer. `tests::overlay` walks all
-//! 1,185 entries plus their `b`-stripped spellings plus synthetic misses and
+//! 1,188 entries plus their `b`-stripped spellings plus synthetic misses and
 //! asserts this index agrees with the binary search on every one.
 //!
 //! # The `b`-prefix table
@@ -175,7 +175,7 @@ pub(super) fn handle_hash(group_path: &str, handle: u32) -> u64 {
 /// The three probe tables an [`OverlayTable`](super::OverlayTable) needs.
 ///
 /// Built once per table on first lookup. For the generated table that is
-/// 1,185 + ~200 + 84 insertions and about 40 KB of slots -- paid once, against
+/// 1,188 + 139 + 84 insertions and about 40 KB of slots -- paid once, against
 /// two million lookups.
 #[derive(Debug, Clone)]
 pub(super) struct OverlayIndex {

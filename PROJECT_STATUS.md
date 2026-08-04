@@ -1,6 +1,6 @@
 # vrfkit Project Status
 
-Last updated: 2026-08-04. Includes the replay-coverage audit through 8eb5909,
+Last updated: 2026-08-05. Includes the replay-coverage audit through 8eb5909,
 the concurrent master audit corrections through 101c33a, the code audit fixes
 in section 12, the Codex needs-work results through 45223c9 in section 14,
 production whole-block ClassNetCache payload preservation in section 7-C, and
@@ -16,6 +16,13 @@ checkpoints in the corpus, not argued.
 Section 25-G is CLOSED: the API-unfreeze pass it proposed was carried out and
 all three targets measured neutral or not worth their cost. Performance work on
 this codebase is finished.
+
+Section 36 re-checked that in both languages rather than taking it on trust,
+and both held: an interleaved A/B on the Rust binary and a fresh profile of
+the Python converter. What 36 DID find is a generated file disagreeing with
+itself -- table.rs declared 1188 entries in a slice whose own header said
+1185 -- and three Rust doc comments quoting the older size, which nothing
+was reading. check_docs.py reads them now.
 
 Section 22-I then measured the other question about them and got the opposite
 of the expected answer: checkpoints are NOT redundant with ReplayData. 6-11% of
@@ -96,7 +103,10 @@ cargo fmt --check
 # Expected: exit 0
 python tools\apply_type_corrections.py --check
 # Expected: verified: 0 replacement(s), all 27 corrections present;
-#           Raw/Custom: 157, Skip: 164, Typed: 867
+#           1188 entries from 172 groups; Raw/Custom: 157, Skip: 164, Typed: 867
+# BOTH generated header lines are recounted and both are checked. The
+# entries/groups line was not, and sat at "1185 entries from 171 groups"
+# directly above a bucket line summing to 1188 -- see section 36.
 # 27 not 25: the ADDITIONS pass inserts three entries the C# descriptors
 # cannot declare -- two BaseTeamState (26-I) and ChosenCeremonyForRound
 # (32). Swiftplay needs no entry of its own: GROUP_ALIASES in
@@ -107,7 +117,7 @@ python tools\check_effect_decoder.py --check
 python tools\check_ascii.py --check
 # Expected: OK: 113 tracked Rust file(s), ASCII only
 python -m unittest discover -s tools\tests -p "test_*.py"
-# Expected: Ran 111 tests, OK. These guard the GENERATORS and the GUARDS --
+# Expected: Ran 114 tests, OK. These guard the GENERATORS and the GUARDS --
 # extract_descriptors, apply_type_corrections, check_ascii,
 # check_effect_decoder, check_metrics_baseline, check_docs, to_valplay_bundle.
 # They are not run by cargo (Cargo does not run .py) and were in no documented
@@ -115,8 +125,9 @@ python -m unittest discover -s tools\tests -p "test_*.py"
 # survived -- and how test_check_ascii sat FAILING on a hardcoded file count
 # from the moment section 22 added two Rust files. It derives the count now.
 python tools\check_docs.py
-# Expected: OK: the docs still describe this repo
-# Reads README.md and docs/USAGE.md only; PROJECT_STATUS is a dated log and is
+# Expected: OK: the docs still describe this repo ... 6 checks
+# Reads README.md and docs/USAGE.md, plus every crates/**/*.rs and Cargo.toml
+# for the phrase "N-entry table"; PROJECT_STATUS is a dated log and is
 # exempt by design. Runs both test suites to check the counts they quote, so
 # it is not free -- `--fast` skips that one check.
 # It exists because a stale sentence compiles and passes everything else. This
@@ -196,7 +207,7 @@ python tools\check_metrics_baseline.py
 # Slow by design; run it after a non-trivial change, not in the fast sweep.
 python tools\check_export_baseline.py --baseline tools\baselines\export_02d4d478.json
 # Expected: OK ... 4 printed counters cross-check against their Parquet files.
-# Production fields baseline: 1,246,812 rows, 13,742,379 bytes. 6,364 of those
+# Production fields baseline: 1,246,812 rows, 13,742,276 bytes. 6,364 of those
 # rows preserve unresolved whole blocks. This line read 1,246,809 / 13,564,140
 # for a whole session while the pinned JSON said 1,246,812 / 13,586,343 -- the
 # FILE was right and the comment was not, which is the direction that matters
@@ -2336,7 +2347,8 @@ the decode trait signature. Current approach works; refactoring is optional.
 
 ## 11. Delegate Coverage Audit (2026-08-01)
 
-This audit addressed the two live input-coverage questions in CODEX_TASK_BRIEF.md
+This audit addressed the two live input-coverage questions in
+docs/archive/CODEX_TASK_BRIEF.md (moved out of the root in 36-G)
 and independently confirmed why its original resolver task was withdrawn.
 Search and measurements were read-only except for copying three fixtures into
 vrfkit-owned machine-local baseline directories and adding their generated JSON
@@ -6291,3 +6303,211 @@ Flat. Nothing left is more than ~18% of the run, and the two structural wins
 either a different serialization contract -- which the consumer fixes -- or
 parallelism, which belongs to the caller processing several replays, not to a
 converter handling one.
+
+---
+
+## 36. The audit pass: what the comments claimed vs what the code does
+
+A full re-read of the hand-written source against the artefacts it describes.
+The brief was "refactor, re-optimize, freshen the comments, cut lines" -- and
+the answer to two of those four is *no, and here is the measurement*. What it
+did find was a generated file contradicting itself in three consecutive lines.
+
+### 36-A. table.rs disagreed with table.rs
+
+The generated header, verbatim, as committed at fc2134d:
+
+```
+// GENERATED by tools/extract_descriptors.py -- do not edit by hand.
+// 1185 entries from 171 groups.
+// Raw/Custom: 157, Skip: 164, Typed: 867.
+pub static OVERLAY_TABLE: [OverlayEntry; 1188] = [
+```
+
+157 + 164 + 867 = **1188**. So does the slice length. The line between them
+said 1185, and the group count was 172, not 171 -- `ADDITIONS` introduces
+`/Script/ShooterGame.BaseTeamState`, a group no descriptor declares.
+
+This is not a stale comment that drifted. `apply_type_corrections.py` already
+recounted the bucket line **for exactly this reason**, and its docstring argues
+the case: "Nothing reads the header, which is exactly why it went unnoticed and
+why it is worth fixing." The function did one line of a two-line header and
+left the other to rot, one row above the line it was fixing.
+
+`rewrite_header_counts` is now `rewrite_header` and recounts both, `--check`
+fails on either, and three tests in `test_apply_type_corrections.py` pin it:
+both lines recounted, idempotent, and a missing line is a hard failure rather
+than a silent skip. The guard was driven to failure before the fix:
+
+```
+FAILED: the generated header disagrees with the table.
+  file says // 1185 entries from 171 groups.
+  counted   // 1188 entries from 172 groups.
+```
+
+One comment line changed in `table.rs`. The table itself is untouched.
+
+### 36-B. Three more places said 1,185, and now something reads them
+
+`check_docs.py` exists because "a stale sentence compiles and passes every
+test". It reads README and USAGE. It was not reading Rust, and Rust said:
+
+```
+crates/vrf-decode/src/lib.rs:74    "Also compiles the 1,185-entry generated table"
+crates/vrf-decode/src/lib.rs:81    "it is what pulls in the 1,185-entry generated table"
+crates/vrf-decode/Cargo.toml:20    "# 1,185-entry generated table."
+```
+
+Plus `overlay/index.rs`, which describes the CURRENT cost of the CURRENT table
+in three places and was quoting 1,185 entries, ~11 binary-search comparisons
+(it is ~10 at 1,188), "~200" b-stripped insertions (it is 139, counted), and
+511,916 misses where the export prints 511,881. That last one moved when
+`ChosenCeremonyForRound` became a typed column in section 32 -- 35 rows.
+
+`check_docs.py` gained a sixth check that scans every `crates/**/*.rs` and
+`Cargo.toml` for the phrase `N-entry table` and requires N to be live. Scoped
+to that exact wording on purpose: narrow enough that a match is always a size
+claim, so the check has no judgement to make and cannot false-positive on a
+dated measurement. It caught a fourth site immediately -- one written in this
+session, in the very comment being rewritten in 36-C.
+
+### 36-C. The b-prefix fallback: 632 rows, not 581, and two groups, not one
+
+`overlay.rs` carried a welded doc comment. The `b`-prefix rationale -- a whole
+"# Why the `b`-prefix step exists" section -- was attached to
+`resolve_field_type`, which does not perform that step, and ran without a
+paragraph break straight into a second doc block that belonged there. The
+rationale now sits on `resolve_in_group`, which is the function that does it.
+
+Its measurement was also stale, and re-measurable without instrumentation: join
+every distinct `(group, name)` the export writes against the table, asking the
+two questions the overlay asks. The first attempt returned **0** and was wrong
+-- an RPC parameter is WRITTEN under the ClassNetCache group as `Func.Param`
+but LOOKED UP as `<base>:<Func>` / `Param` (`sink/rpc.rs`
+`compute_rpc_param_group_path`). Joining on the written shape finds nothing.
+
+Corrected, against the current 1,188 entries:
+
+```
+fields.parquet              1,246,812 rows
+  resolve only via b-prefix       632 rows, 2 distinct keys
+      581  ...DamageableComponent:MulticastNotifyDamage_Point::DeathMontageEffectOverrideIsQueued
+       51  ...DamageableComponent:MulticastNotifyDamage_Base ::DeathMontageEffectOverrideIsQueued
+checkpoint_fields.parquet           0
+```
+
+The old text said "581 rows" and "exactly one field". One property NAME, yes --
+but it arrives on two RPC groups and the figure counted the larger and not its
+sibling. 632 is a number this repo already knew: `to_valplay_bundle.py:1357`
+records the same 632 events for the same field.
+
+### 36-D. BaseTeamState "that no decoder here reads yet" -- retracted
+
+`structs.rs` and `team_economy.rs` both said the 13.02 team-economy actor is
+read by nothing. This is 26-G's mistake, still in the tree after 26-H corrected
+it: `/Script/ShooterGame.BaseTeamState` is in `table.rs` at two entries typed
+Int32, and the field stream writes those rows like any other property. It needs
+no decoder in `structs/` because it is not a struct blob -- it replicates plain
+scalars. Both comments now say that instead of implying the data is missing.
+
+### 36-E. The refactor, and its bill
+
+Two changes, both byte-identical:
+
+* `AresTeamRole::as_str` / `AresRoundOutcome::as_str` live on the enums in
+  `vrf-decode` instead of as two fully-qualified matches in `vrfkit`'s
+  `blobs.rs`. A new variant now fails to compile in the file that declares it.
+* `struct_blob_kind` replaces a predicate and a dispatcher that each spelled
+  the gate out. They must agree: the field stream asks the predicate whether to
+  hand the blob over and then asks the dispatcher to decode it, so a
+  disagreement takes the blob off the ordinary path and then declines it -- the
+  row loses its decoded leaves and NO counter moves. Section 33 changed that
+  gate for Swiftplay and had to change it in three places.
+
+**Lines went UP, not down.** Net +134 in `tools/` and +129 in `crates/`, almost
+all of it the three new tests, the sixth `check_docs` check, and the comments
+recording the measurements above. The enum collapse removed 18 lines and the
+classifier added 20. This codebase is 201 commits deep with `clippy -D warnings`
+clean; there was no line-reduction dividend to collect, and manufacturing one
+by deleting `#[allow(dead_code)]` constants that document a 3-bit wire field
+(`ExportFlags::NO_LOAD`, twice) would have made the layout comment lie.
+
+Explicitly NOT touched, because a line-count target points straight at them:
+`table.rs` (6,420 lines, generated, and its shape is the descriptor provenance
+chain in 13-H), the test files (cutting them moves 338/114 downward and that is
+the wrong direction), and this document's dated measurements.
+
+### 36-F. Re-optimization: a profile, not a diff
+
+25-G closed Rust performance. 35 closed Python at 1.9x and measured and
+rejected three further changes. Both were re-checked rather than re-opened.
+
+**Rust.** Interleaved A/B, 7 pairs, pre-change binary vs post-change binary
+built from the same tree via `git stash`:
+
+```
+old : 2.198, 0.858, 0.874, 0.822, 0.843, 0.876, 0.870   median 0.870
+new : 1.012, 0.849, 0.841, 0.834, 0.877, 0.883, 0.874   median 0.874
+```
+
+Neutral. (Both first runs are cold cache; the interleave is why that does not
+matter.)
+
+**Python.** Fresh cProfile of the bundle converter, and it reproduces 35-D's
+shape exactly -- `_f32_shortest` at 1,510,347 calls, `_write_movement` the
+largest single block, nothing above ~18% of the run in `tottime`. No new
+hotspot appeared, so nothing was changed. 35-C's rejection of the
+`_f32_shortest` bisection stands on its own reasoning and was not revisited.
+
+**The timings in README and USAGE moved anyway, and it is not the code.**
+
+```
+                2026-08-04    2026-08-05
+export             0.79 s        0.850 s     median of 5
+validate           0.685 s       0.693 s     median of 3
+_f32_shortest      5.1 s tot     5.8 s tot   same call count
+```
+
+Same machine, same commit for the parts being compared, ~8-10% apart, and the
+A/B above proves the delta is not the refactor. Two independent measurements
+(the export A/B and the Python profile) show the same offset with identical
+relative structure. The docs now quote 2026-08-05's figures WITH that variance
+stated, because the alternative -- a single point estimate that moves every
+session -- is how a future session goes hunting for a regression that is not
+there. That has already happened here twice (17-A's stale baseline comment,
+and the phantom `fields.parquet` regression at 199).
+
+### 36-G. Root tidy
+
+`CODEX_TASK_BRIEF.md`, `_2` and `_3` (47.6 KB) moved to `docs/archive/` with an
+index. All three are headed `[COMPLETED -- HISTORICAL]` and say "Do not action
+this", so they are deliberately-kept records, not junk -- but a repository root
+full of task specs reads like work in progress. Nothing referenced `_2` or
+`_3`; the one reference to the first is updated. Brief #3 is worth keeping
+readable for a live reason, noted in the index: the design constraints it
+argues for are still the contract.
+
+### 36-H. Verification
+
+```
+rust 338          tools 114 (was 111: +3 header guards)
+clippy 0          fmt clean        ascii 113        effect 12
+apply_type_corrections --check : 27 corrections, 1188 entries from 172 groups,
+                                 Raw/Custom 157, Skip 164, Typed 867
+check_docs                     : 6 checks, OK
+export + checkpoint baselines  : OK, 4 printed counters cross-check
+build baselines 12.10 / 12.11 / 13.00 / 13.02 : OK
+combat report                  : ALL INTERESTING SHAPES MATCH
+corpus validate  : blocks 136,545,822  fields 98,884,839  rpcs 75,571,092
+                   malformed 0  skipped 1,972,018,965
+corpus decode    : 226,256,016 rows offered, 0 decode errors,
+                   struct blobs 46,294 decoded / 0 failed
+metrics baseline : 5 builds, 25 invariants, 115 pinned values
+```
+
+Byte-identity was the acceptance bar for the refactor, checked directly rather
+than through the counters: all 7 outputs of a `--checkpoints` export hashed
+before and after. `manifest.json` needs normalizing first -- it embeds
+`elapsed_ms` and the absolute output path, both environmental -- and the other
+658 KB of it still has to match exactly. The oracle itself was validated by
+exporting twice to different directories before it was trusted.
