@@ -7,6 +7,7 @@
 
 use std::sync::Arc;
 
+use smallvec::SmallVec;
 use vrf_bitio::BitReader;
 use vrf_decode::apply_overlay_with_handle;
 use vrf_export::{ActorRecord, MovementRecord, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME};
@@ -397,7 +398,7 @@ impl ReplicationSink for ExportSink<'_> {
             handle: u32::MAX,
             field_name: Some(field_name),
             bit_count: failure.bit_count,
-            raw_bits: Some(payload.to_vec()),
+            raw_bits: Some(SmallVec::from_slice(payload)),
             ..FieldValues::default()
         });
     }

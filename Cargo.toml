@@ -21,6 +21,12 @@ vrf-frame = { path = "crates/vrf-frame", version = "0.1.0" }
 vrf-movement = { path = "crates/vrf-movement", version = "0.1.0" }
 vrf-decode = { path = "crates/vrf-decode", version = "0.1.0" }
 thiserror = "2"
+# Inlines payloads <=16 bytes (u32/u64/FVector/FString-prefix) so the 1.25 M
+# field rows per export don't each allocate a heap buffer. The `union` feature
+# overlaps the inline array and the spilled pointer inside SmallVec itself; the
+# unsafe lives in this crate, not in ours -- `#![forbid(unsafe_code)]` on
+# vrf-export governs vrf-export's own source, not its dependencies.
+smallvec = { version = "1", features = ["union"] }
 
 # The parser is throughput-bound: one replay is ~780k content blocks and ~2.4M
 # movement samples. Every decode is a short burst of shifts, rotates and table

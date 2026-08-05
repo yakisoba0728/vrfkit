@@ -20,6 +20,7 @@
 //! therefore the bytes on disk -- is identical. All 11 Parquet outputs of the
 //! reference replay are byte-for-byte what they were before interning.
 
+use smallvec::SmallVec;
 use std::sync::Arc;
 
 /// Reserved `field_name` for a whole ClassNetCache block whose function table
@@ -63,6 +64,13 @@ pub struct FieldRecord {
     pub bit_count: u32,
     /// Raw bit payload; `None` for zero-bit fields.
     ///
+    /// Inlined as `SmallVec<[u8; 16]>`: most field payloads are <=16 bytes
+    /// (u32/u64/FVector/FString-prefix), so the inline array eliminates the
+    /// heap allocation on the ~1.25 M-row reference export. Larger payloads
+    /// spill to the heap transparently -- SmallVec derefs to `&[u8]`, so the
+    /// Arrow `BinaryArray` sees an identical byte sequence either way and the
+    /// Parquet output is byte-for-byte unchanged.
+    ///
     /// Not interned, and not an arena. Interning is the wrong shape: these are
     /// payload bytes rather than names, so the pool would approach one entry
     /// per row and buy nothing. An arena -- one shared buffer with per-row
@@ -73,7 +81,7 @@ pub struct FieldRecord {
     /// (see `writer::MAX_BUFFERED_ROWS`) cut the live payload vectors from
     /// ~390,000 to ~90,000, and `validate` -- which builds every record and
     /// writes no file -- brackets the whole remaining writer path at ~41 MB.
-    pub raw_bits: Option<Vec<u8>>,
+    pub raw_bits: Option<SmallVec<[u8; 16]>>,
     pub value_i64: Option<i64>,
     pub value_f64: Option<f64>,
     pub value_bool: Option<bool>,

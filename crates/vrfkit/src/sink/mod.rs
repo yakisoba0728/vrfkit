@@ -40,6 +40,7 @@ mod stream;
 
 use std::sync::Arc;
 
+use smallvec::SmallVec;
 use vrf_decode::{
     ArrayDecodeStats, GroupHashState, OVERLAY_HANDLE_TABLE, OVERLAY_TABLE, OverlayStats,
     OverlayTable, group_hash_state,
@@ -444,7 +445,7 @@ struct FieldValues {
     handle: u32,
     field_name: Option<Arc<str>>,
     bit_count: u32,
-    raw_bits: Option<Vec<u8>>,
+    raw_bits: Option<SmallVec<[u8; 16]>>,
     value_i64: Option<i64>,
     value_f64: Option<f64>,
     value_bool: Option<bool>,

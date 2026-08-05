@@ -45,4 +45,5 @@ vrf-export = { path = "../vrf-export", version = "0.1.0", default-features = fal
 vrf-frame = { workspace = true }
 vrf-movement = { workspace = true }
 vrf-decode = { workspace = true }
+smallvec = { workspace = true }
 thiserror = { workspace = true }

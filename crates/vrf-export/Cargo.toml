@@ -27,6 +27,10 @@ snappy = ["parquet?/snap"]
 
 [dependencies]
 thiserror = { workspace = true }
+# `record` (unconditional) carries raw_bits as SmallVec<[u8; 16]>: most field
+# payloads are <=16 bytes, so the inline array saves one allocation per row on
+# the ~1.25 M-row reference export. `union` is on for the smaller struct footprint.
+smallvec = { workspace = true }
 # arrow and parquet release in lockstep; keep the two majors identical or the
 # ArrowWriter types will not line up.
 arrow-array = { version = "59", optional = true }

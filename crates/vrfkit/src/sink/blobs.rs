@@ -11,6 +11,7 @@
 //! - **Struct blobs.** `RoundResults`, `TeamEconomy` and `RoundInfos` are
 //!   opaque to the overlay table but have dedicated decoders in `vrf-decode`.
 
+use smallvec::SmallVec;
 use vrf_bitio::BitReader;
 use vrf_decode::{COMBAT_ROUNDS_SCHEMA, FieldType};
 use vrf_schema::NetGuidCache;
@@ -153,7 +154,7 @@ impl ExportSink<'_> {
                 handle: f.handle,
                 field_name: Some(full_name),
                 bit_count: f.bit_count,
-                raw_bits: Some(f.raw_bits.clone()),
+                raw_bits: Some(SmallVec::from_slice(&f.raw_bits)),
                 value_i64: vi,
                 value_f64: vf,
                 value_bool: vb,

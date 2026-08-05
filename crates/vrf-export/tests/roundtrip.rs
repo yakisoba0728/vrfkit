@@ -79,7 +79,7 @@ fn make_field_record(i: u32) -> FieldRecord {
         raw_bits: if i % 4 == 0 {
             None
         } else {
-            Some(vec![(i & 0xFF) as u8; ((i % 16) + 1) as usize])
+            Some(vec![(i & 0xFF) as u8; ((i % 16) + 1) as usize].into())
         },
         value_i64: if i % 5 == 0 {
             Some(i as i64 * 100)
@@ -199,7 +199,7 @@ fn field_null_preservation() {
                 handle: 1,
                 field_name: Some("Health".into()),
                 bit_count: 8,
-                raw_bits: Some(vec![0xAB]),
+                raw_bits: Some(vec![0xAB].into()),
                 value_i64: None,
                 value_f64: None,
                 value_bool: None,
@@ -269,7 +269,7 @@ fn field_binary_preservation() {
                 handle: 0,
                 field_name: None,
                 bit_count: 256 * 8,
-                raw_bits: Some(payload.clone()),
+                raw_bits: Some(payload.clone().into()),
                 value_i64: None,
                 value_f64: None,
                 value_bool: None,
@@ -305,7 +305,7 @@ fn unresolved_class_net_cache_payload_marker_roundtrips_exact_bits() {
                 handle: u32::MAX,
                 field_name: Some(UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME.into()),
                 bit_count: 7,
-                raw_bits: Some(vec![0x66]),
+                raw_bits: Some(vec![0x66].into()),
                 value_i64: None,
                 value_f64: None,
                 value_bool: None,
