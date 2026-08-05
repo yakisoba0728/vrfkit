@@ -218,6 +218,11 @@ pub fn events_schema() -> Schema {
         // statistics without touching the binary column.
         Field::new("payload_size", DataType::Int32, false),
         Field::new("raw_payload", DataType::Binary, false),
+        // The first two payload words (after the u32 group tag), for groups
+        // whose word count is structurally fixed. Nullable: most groups carry
+        // zero or one. `raw_payload` still keeps every byte.
+        Field::new("word0", DataType::UInt32, true),
+        Field::new("word1", DataType::UInt32, true),
     ])
 }
 

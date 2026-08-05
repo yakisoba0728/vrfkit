@@ -994,6 +994,8 @@ fn event_roundtrip_preserves_payload_bytes_exactly() {
                 time2: 62,
                 payload_size: REFERENCE_EVENT_PAYLOAD.len() as i32,
                 raw_payload: REFERENCE_EVENT_PAYLOAD.to_vec(),
+                word0: None,
+                word1: None,
             })
             .unwrap();
         // A second group, so the dictionary column carries more than one value.
@@ -1006,6 +1008,8 @@ fn event_roundtrip_preserves_payload_bytes_exactly() {
                 time2: 50402,
                 payload_size: 3,
                 raw_payload: vec![0x00, 0xFF, 0x80],
+                word0: None,
+                word1: None,
             })
             .unwrap();
         writer.finish().unwrap();
@@ -1096,6 +1100,8 @@ fn event_multiple_row_groups() {
                     time2: i * 1000,
                     payload_size: 4,
                     raw_payload: i.to_le_bytes().to_vec(),
+                    word0: None,
+                    word1: None,
                 })
                 .unwrap();
         }

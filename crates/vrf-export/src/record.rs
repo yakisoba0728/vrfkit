@@ -169,4 +169,12 @@ pub struct EventRecord {
     pub payload_size: i32,
     /// The payload verbatim. Undecoded on purpose.
     pub raw_payload: Vec<u8>,
+    /// First payload word (after the u32 group tag), for groups that carry
+    /// any. `None` when the group carries none (spike events), is unknown, or
+    /// the payload is too short. See `vrf_container::EventChunk` for the
+    /// payload layout.
+    pub word0: Option<u32>,
+    /// Second payload word. `None` unless the group carries two
+    /// (characterDeath: killer then killed NetGUID).
+    pub word1: Option<u32>,
 }

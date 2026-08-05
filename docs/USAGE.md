@@ -172,12 +172,14 @@ failed`로 카운트되고, 필드로 재해석하려면 원본 `.vrf`에서 다
 
 ### `events.parquet` — 서버가 직접 기록한 타임라인
 
-`id`, `group`, `metadata`, `time1`, `time2`, `payload_size`, `raw_payload`.
+`id`, `group`, `metadata`, `time1`, `time2`, `payload_size`, `raw_payload`, `word0`, `word1`.
 
 `group`은 `characterDeath`, `characterUltimateUsed`, `roundStarted`, `spikePlanted`,
-`spikeDefused`, `spikeExploded`, `switchTeams` 등입니다. **페이로드 워드는 `raw_payload`로 그대로
-둡니다** — 워드 개수가 그룹마다 다르고 와이어에 개수가 없으며, 7개 그룹 중 2개만 의미가
-증명됐기 때문입니다. `characterDeath`의 두 워드는 killer/killed NetGUID로 확인됐습니다.
+`spikeDefused`, `spikeExploded`, `switchTeams` 등입니다. 페이로드는 `[u32 태그][N×u32 워드]
+[FString][f32]` 구조이고 `N`이 그룹마다 고정이라(CharacterDeath=2, CharacterUltimateUsed/
+RoundStart/SwitchTeams=1, SpikePlanted/Defused/Exploded=0 — 코퍼스에서 잔여 0으로 도출) 첫 두
+워드를 `word0`/`word1`로 내보냅니다. `characterDeath`의 (word0,word1)은 (killer, killed) NetGUID,
+`roundStarted`의 word0는 라운드 번호입니다. 원본은 `raw_payload`에 그대로 남아 재해석 가능합니다.
 
 ### `checkpoint_fields.parquet` — 스냅샷
 

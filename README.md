@@ -153,9 +153,10 @@ NetGUID인데 **132/132가 순서까지 일치**했습니다(역순 매칭 0/132
 **215개 파일 43,397청크 전수**가 잔여 바이트 0으로 소비됩니다.
 
 페이로드는 `[u32 그룹 태그][N x u32 워드][FString "EReplayEventGroup::<Name>"][f32 초]`
-구조인데, `N`이 그룹마다 다르고 와이어에 개수가 없으며 7개 그룹 중 2개만 의미가
-증명됐습니다. 그래서 워드를 타입 컬럼이 아니라 `raw_payload`로 내보냅니다 — 아는 것보다
-많이 주장하지 않기 위해서입니다.
+구조인데, `N`이 그룹마다 다릅니다. 전 7그룹의 `N`이 코퍼스에서 잔여 0으로 도출돼
+(CharacterDeath=2, CharacterUltimateUsed/RoundStart/SwitchTeams=1, SpikePlanted/Defused/Exploded=0)
+첫 두 워드를 `word0`/`word1` 컬럼으로 내보냅니다(CharacterDeath는 killer·killed NetGUID,
+RoundStart는 라운드 번호). 원본은 `raw_payload`에 그대로 남습니다.
 
 ## 전 코퍼스 견고성 검증
 

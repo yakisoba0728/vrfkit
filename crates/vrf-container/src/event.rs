@@ -36,7 +36,9 @@
 //! total size -- the solution is unique for all 43397 chunks in the corpus --
 //! but every one of those 215 files is the same build
 //! (`++Ares-Core+release-13.01`), so uniqueness is a property of this sample,
-//! not of the format. Naming the words would be a guess. The payload is
+//! not of the format. The driver emits the first two words as `word0`/`word1`
+//! for groups whose `N` is structurally fixed (see `vrf_export::EventRecord`);
+//! the payload is
 //! therefore handed to the caller byte for byte, and `trailing_bytes` reports
 //! anything this layout does not account for rather than dropping it silently.
 

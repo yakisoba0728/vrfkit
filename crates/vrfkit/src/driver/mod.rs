@@ -148,6 +148,24 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
         if chunk.chunk_type == ChunkType::Event {
             let event = parse_event_chunk(payload)?;
             event_trailing_bytes += event.trailing_bytes as u64;
+            // Typed payload words for groups whose word count is structurally
+            // fixed (zero residue over the corpus). Payload layout:
+            // [u32 tag][N x u32 words][FString][f32]; word0/word1 are the words
+            // right after the tag. `raw_payload` still keeps every byte.
+            let payload = event.payload;
+            let word_count: u8 = match event.group.as_str() {
+                "characterDeath" => 2,
+                "characterUltimateUsed" | "roundStarted" | "switchTeams" => 1,
+                // spikePlanted/Defused/Exploded carry no words; any unknown
+                // group claims none rather than guessing.
+                _ => 0,
+            };
+            let word_at = |i: usize| -> Option<u32> {
+                let start = 4 + i * 4;
+                payload
+                    .get(start..start + 4)
+                    .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            };
             event_writer.push(EventRecord {
                 id: event.id,
                 group: event.group,
@@ -156,6 +174,8 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
                 time2: event.time2,
                 payload_size: event.size_in_bytes,
                 raw_payload: event.payload.to_vec(),
+                word0: if word_count >= 1 { word_at(0) } else { None },
+                word1: if word_count >= 2 { word_at(1) } else { None },
             })?;
             event_rows += 1;
             continue;

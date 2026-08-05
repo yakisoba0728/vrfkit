@@ -77,10 +77,22 @@ impl Table for EventsTable {
         let raw_payload: ArrayRef = Arc::new(BinaryArray::from_iter_values(
             rows.iter().map(|r| r.raw_payload.as_slice()),
         ));
+        let word0: ArrayRef = Arc::new(UInt32Array::from_iter(rows.iter().map(|r| r.word0)));
+        let word1: ArrayRef = Arc::new(UInt32Array::from_iter(rows.iter().map(|r| r.word1)));
 
         RecordBatch::try_new(
             events_schema_ref(),
-            vec![id, group, metadata, time1, time2, payload_size, raw_payload],
+            vec![
+                id,
+                group,
+                metadata,
+                time1,
+                time2,
+                payload_size,
+                raw_payload,
+                word0,
+                word1,
+            ],
         )
         .map_err(|e| ExportError::Parquet(e.into()))
     }
