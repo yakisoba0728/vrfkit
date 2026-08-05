@@ -97,7 +97,19 @@ impl OverlayErrorReport {
                 error_kind: *ek,
             })
             .collect();
-        rows.sort_by_key(|r| std::cmp::Reverse(r.count));
+        // Deterministic ordering: descending count, then by the row's identity
+        // fields so equal-count buckets have a stable order run-to-run. A plain
+        // `Reverse(count)` left ties in HashMap iteration order, which varied
+        // per run and made the printed error report non-reproducible.
+        rows.sort_by(|a, b| {
+            b.count.cmp(&a.count).then_with(|| {
+                a.group_path
+                    .cmp(&b.group_path)
+                    .then_with(|| a.field_name.cmp(&b.field_name))
+                    .then_with(|| a.declared_type.cmp(&b.declared_type))
+                    .then_with(|| a.bit_count.cmp(&b.bit_count))
+            })
+        });
         rows.truncate(n);
         rows
     }
