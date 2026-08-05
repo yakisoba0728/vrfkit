@@ -54,10 +54,18 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Six Parquet tables + manifest** — `fields`, `movement`, `actors`,
   `net_guids`, `events`, `checkpoint_fields`, ready for polars / pandas /
   DuckDB.
-- **Per-player economy, account identity, typed events** —
-  `MoneyManagementComponent` credits, `manifest.players` (account UUID →
+- **Spike state** — carrier over time (`CurrentEquippable` → bomb actor), plant
+  site A/B (`PlantedAtSite` + position), defuser (`CurrentDefuser`), timer, and
+  the canonical detonation signal.
+- **Combat & abilities** — per-player economy, magazine ammo and equipped
+  weapon over time, ability casts, cooldowns, status effects (concussion / blind
+  / ability fuel / heal / decay), and the GAS attribute/effect stream.
+- **Persistent effects** — smoke / wall / molly / slow / trap position and
+  lifetime from actor lifecycles; one command via
+  `tools/extract_active_effects.py`.
+- **Account identity & typed events** — `manifest.players` (account UUID →
   actor → character), event `word0`/`word1` (killer/killed NetGUID, round
-  index).
+  index), ping/latency.
 - **Cross-validated** against the C# reference parser — movement is
   near-bit-identical, CombatReport identical, and the server-written Event
   chunk independently confirms the kill count.

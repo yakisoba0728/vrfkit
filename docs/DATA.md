@@ -181,3 +181,43 @@ purchase; all ten players' purchases are replicated.
   detonation signal and is always emitted. `RoundResults` records the round
   *win reason* (elimination/detonate/defuse), not whether the spike detonated,
   so it under-counts detonations and is not a reliable proxy.
+
+---
+
+## What's next (where to start)
+
+Roughly in value order. Each names the file to touch first.
+
+1. **Remaining Blueprint components** — `ZoomStateMachine`, `ReserveAmmo`,
+   `CalloutRegionTracker`, `VisionComponent`, `*StateMachine`, ... resolve to a
+   bare Blueprint class name instead of their native parent group, exactly as
+   `InventoryComponent` did before the remap. Two ways to get the
+   Blueprint->native parent map:
+   - **Authoritative**: open the VALORANT paks in FModel/UModel, read each BP
+     component's parent class, and add `(leaf, native_path, RepLayout)` rows to
+     `KNOWN_SUBOBJECT_CLASS_PATHS` in `crates/vrfkit/src/sink/paths.rs`.
+   - **Inferred**: for each bare group, match its handle/bit-width structure
+     against the manifest's declared native groups (the handles and types line
+     up 1:1) -- no game files needed, but it is confirmation, not authority.
+2. **Spike carrier -> player subject** — `CurrentEquippable` already gives the
+   bomb actor; the missing step is `inventory_guid -> outer_net_guid -> player
+   subject`, an `outer_net_guid` chain join. A `tools/` script in the style of
+   `extract_active_effects.py` would do it; the raw data is already in
+   `net_guids.parquet` + `fields.parquet`.
+3. **`HANDLE_ADDITIONS` for the next unnamed single handle** — the mechanism
+   added for `MagazineAmmo` generalizes. `ReserveAmmo` (reserve bullets) is the
+   obvious next candidate once its group is resolved (it may fall out of item 1).
+   Add to `HANDLE_ADDITIONS` + `ADDITIONS` in `tools/apply_type_corrections.py`,
+   pin in `crates/vrf-decode/src/tests/overlay.rs`.
+4. **AbilitiesAndBuffs inner payload** — structurally decoded (`flag + u32`
+   stream in `crates/vrf-decode/src/cnc.rs`), but the per-word meaning needs the
+   GAS C++ serializer, which is compiled and not in the assets. Effectively
+   blocked without game source. The fc=34 RPC timing/size is already exported.
+5. **Exact ability cast count** — confirmed wire-limit: the GAS stream is
+   state-sync, not one RPC per cast. No on-wire work helps; the approximation is
+   ability-actor spawns + `characterUltimateUsed`/`UltimateActive`.
+
+The overlay table and all generated files are off-limits to hand-editing:
+`tools/extract_descriptors.py` then `tools/apply_type_corrections.py` then
+`cargo fmt` is the only path, and `python tools/check_docs.py` + the export
+baseline must stay green.
