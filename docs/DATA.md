@@ -200,14 +200,14 @@ Roughly in value order. Each names the file to touch first.
    - **Inferred**: for each bare group, match its handle/bit-width structure
      against the manifest's declared native groups (the handles and types line
      up 1:1) -- no game files needed, but it is confirmation, not authority.
-2. **The other name-resolvable engine properties** — `Owner`, `Instigator`,
-   `AttachParent` and `Controller` now resolve by name for any group
-   (`ENGINE_OBJECT_REFS` in `crates/vrf-decode/src/overlay.rs`), which typed
-   6,048 rows the C# descriptors never covered and deleted the hand-rolled
-   NetGUID unpacker from `tools/extract_spike_carrier.py`. The same argument
-   may hold for other engine-level properties replicated on every actor, but
-   each needs the same evidence: typed on many groups, identical encoding, and
-   zero decode errors across the corpus after the change.
+2. **RPC signature aliasing** — untested lead, and the largest untyped
+   population left: 386,005 of the 469,624 unresolved rows are RPC parameters.
+   `MulticastPlayContinuousEffectFromClient` carries the same 15 parameters
+   across 19 groups with no table entry, and shares 11 parameter names with
+   `EffectManagerComponent:MulticastPlayContinuousEffect`, which *is* declared.
+   The parameter sets are not identical, so this is a lead and not a plan. The
+   shape to reach for is `GROUP_ALIASES` in `crates/vrf-decode/src/overlay.rs`,
+   not a name rule -- see the closed question below for why.
 3. **`HANDLE_ADDITIONS` for the next unnamed single handle** — the mechanism
    added for `MagazineAmmo` generalizes. `ReserveAmmo` (reserve bullets) is the
    obvious next candidate once its group is resolved (it may fall out of item 1).
@@ -220,6 +220,42 @@ Roughly in value order. Each names the file to touch first.
 5. **Exact ability cast count** — confirmed wire-limit: the GAS stream is
    state-sync, not one RPC per cast. No on-wire work helps; the approximation is
    ability-actor spawns + `characterUltimateUsed`/`UltimateActive`.
+
+### Closed: more name-resolved properties
+
+`ENGINE_OBJECT_REFS` typed 6,048 rows by resolving four `AActor` object
+references by name, so the obvious next question was which other properties
+deserve the same. The answer, after auditing every field name in the generated
+table rather than only the ones this replay spawned, is **none**, and the reason
+is worth keeping.
+
+`Owner` was safe because its *encoding* is fixed, not because its name is
+standard. `ReplicatedMovement` is just as standard a name and is declared three
+different ways in the table -- `RepMovement{ByteComponents}` on 18 groups,
+`RepMovement{ShortComponents}` on 6, `Skip` on 1. Those differ in width, so a
+name rule there would not read a wrong value quietly; it would desync the block.
+`RelativeScale3D` and `CosmeticRandomSeed` split the same way, and only on
+groups this replay never spawned -- measuring against the wire alone would have
+called both of them clean.
+
+**RPC parameters are categorically excluded.** A parameter name is scoped to one
+function signature, and the table already contains the counterexample:
+`AllianceFilter` is `EnumByte` under `EffectManagerComponent:MulticastPlay`
+`ContinuousEffect` and `EnumRemainingBits` under `ReplayEffectComponent:`
+`ReplayPlayContinuousEffectAtLocation`. Same name, different type, no engine
+contract behind it. That is why item 2 above reaches for an alias and not a
+name.
+
+Three names did clear the mechanical bar -- `AttachComponent` (declared `Raw`,
+so it would produce no values at all), `PreventPickupCharacter` and
+`OwningPrimaryDataAsset`. Together they would fill 59 rows of 1,255,920, and
+each is a claim about Valorant's class hierarchy rather than about Unreal, so
+each moves with a game patch. Not worth the standing risk.
+
+Two loose ends found on the way, neither a live bug: `RemoteRole` is declared
+`ObjectNetGuid` on one group and `Skip` on 36, and `StartTimeStamp` is `Double`
+on one and `Float` on another. `RemoteRole` never appears on the wire in this
+corpus, so nothing decodes through the odd entry.
 
 The overlay table and all generated files are off-limits to hand-editing:
 `tools/extract_descriptors.py` then `tools/apply_type_corrections.py` then
