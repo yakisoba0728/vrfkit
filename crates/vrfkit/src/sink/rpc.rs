@@ -74,6 +74,12 @@ impl ExportSink<'_> {
     /// Returns `true` if parameters were emitted (even if just handle-indexed),
     /// `false` if the payload could not be walked at all (caller should emit
     /// raw_bits row).
+    ///
+    /// A walk that starts but breaks on a malformed read (truncated handle,
+    /// truncated payload length, or a length exceeding the remaining bits) is
+    /// neither a clean parse nor an unparseable blob: whatever rows were already
+    /// emitted stay, and `self.stats.truncated_rpcs` is bumped so the summary
+    /// can distinguish "completed" from "ran out of bits".
     pub(super) fn try_parse_rpc_params(
         &mut self,
         rpc_handle: u32,
@@ -97,6 +103,11 @@ impl ExportSink<'_> {
         }
 
         let mut emitted_any = false;
+        // Set on the four malformed-read break paths below, so the caller can
+        // tell a completed walk from one that ran out of bits. The normal exits
+        // (clean end-of-stream, the trailing alignment bit, the zero-handle
+        // terminator) leave it `false`.
+        let mut truncated = false;
         let param_group_path_ref = param_group_path.as_deref();
 
         loop {
@@ -111,6 +122,7 @@ impl ExportSink<'_> {
             }
 
             let Ok(encoded_handle) = rpc_reader.read_int_packed() else {
+                truncated = true;
                 break;
             };
             if encoded_handle == 0 {
@@ -119,16 +131,19 @@ impl ExportSink<'_> {
 
             let param_handle = encoded_handle - 1;
             let Ok(payload_bits) = rpc_reader.read_int_packed() else {
+                truncated = true;
                 break;
             };
 
             if u64::from(payload_bits) > rpc_reader.bits_remaining() {
                 // Malformed: more bits declared than available. Stop parsing
                 // but keep what we have (emitted_any may be true).
+                truncated = true;
                 break;
             }
 
             let Ok(sub) = rpc_reader.sub_reader(u64::from(payload_bits)) else {
+                truncated = true;
                 break;
             };
 
@@ -255,6 +270,10 @@ impl ExportSink<'_> {
             self.stats.fields_emitted += 1;
 
             emitted_any = true;
+        }
+
+        if truncated {
+            self.stats.truncated_rpcs = self.stats.truncated_rpcs.saturating_add(1);
         }
 
         emitted_any

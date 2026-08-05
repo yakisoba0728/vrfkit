@@ -44,6 +44,9 @@ pub(super) struct RunTotals {
     /// from their own raw_bits, so this is the only signal that flattened
     /// leaves were lost.
     pub array_decode_errors: u64,
+    /// RPC parameter walks that broke mid-stream on a malformed read. Zero on a
+    /// valid replay; printed only when non-zero, like `array_decode_errors`.
+    pub truncated_rpcs: u64,
 }
 
 /// Print the whole `=== Export complete ===` report.
@@ -100,6 +103,12 @@ pub(super) fn print(
     // array walker abandoned bits mid-element and flattened leaves were lost.
     if totals.array_decode_errors > 0 {
         eprintln!("  Array decode err: {}", totals.array_decode_errors);
+    }
+    // Same shape as Array decode err: zero on a valid replay, and a non-zero
+    // value means an RPC parameter loop kept its partial rows but broke before
+    // the terminating zero handle.
+    if totals.truncated_rpcs > 0 {
+        eprintln!("  Truncated RPCs:   {}", totals.truncated_rpcs);
     }
     eprintln!("  Elapsed:          {:.2?}", totals.elapsed);
 

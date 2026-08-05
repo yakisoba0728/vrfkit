@@ -200,6 +200,17 @@ pub struct ExportStats {
 
     /// The first movement-decode problem verbatim, for the summary to name.
     pub movement_first_error: Option<String>,
+
+    /// RPC payloads whose RepLayout parameter loop broke on a malformed read
+    /// before the terminating zero handle.
+    ///
+    /// `try_parse_rpc_params` keeps whatever rows it already parsed and returns
+    /// `true`, so a truncated RPC reads as success: fewer parameter rows than
+    /// declared, no other counter moves, and `rpcs_emitted` ticks up exactly as
+    /// it does for a clean parse. This is the one signal that distinguishes
+    /// "completed" from "abandoned mid-stream". Zero on valid replays; a non-zero
+    /// value means the wire declared more parameters than the bits could carry.
+    pub truncated_rpcs: u64,
 }
 
 impl ExportStats {

@@ -533,4 +533,83 @@ mod tests {
         assert_eq!(sink.stats.overlay.not_in_table, 0);
         assert_eq!(sink.stats.overlay.no_field_name, 0);
     }
+
+    /// Encode `value` as Unreal's `IntPacked` into `bits`, LSB-first.
+    /// Mirrors the reference wire encoder in `vrf-net`'s field tests.
+    fn write_int_packed(bits: &mut Vec<bool>, mut value: u32) {
+        loop {
+            let mut next_byte = ((value & 0x7F) << 1) as u8;
+            value >>= 7;
+            if value != 0 {
+                next_byte |= 1;
+            }
+            for i in 0..8 {
+                bits.push((next_byte & (1 << i)) != 0);
+            }
+            if value == 0 {
+                break;
+            }
+        }
+    }
+
+    /// Pack a LSB-first bit list into bytes.
+    fn bits_to_bytes(bits: &[bool]) -> Vec<u8> {
+        let byte_count = bits.len().div_ceil(8);
+        let mut bytes = vec![0u8; byte_count];
+        for (i, &bit) in bits.iter().enumerate() {
+            if bit {
+                bytes[i >> 3] |= 1 << (i & 7);
+            }
+        }
+        bytes
+    }
+
+    /// A truncated RPC payload -- the first parameter declares more bits than
+    /// the stream carries -- must bump `truncated_rpcs`. No parameter row lands
+    /// (the break fires before the field push), so the caller's raw_bits
+    /// fallback still fires; the counter is the only thing that distinguishes
+    /// this from a payload that simply had no parameters.
+    #[test]
+    fn a_truncated_rpc_payload_increments_truncated_rpcs() {
+        let mut bits = Vec::new();
+        bits.push(false); // property checksum
+        write_int_packed(&mut bits, 1); // encodedHandle = 1 -> handle 0
+        write_int_packed(&mut bits, 100); // payload_bits = 100 (exceeds remaining)
+        // No payload data follows: the walker breaks here.
+        let data = bits_to_bytes(&bits);
+        let reader = BitReader::with_bit_len(&data, bits.len() as u64);
+
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        let emitted = sink.try_parse_rpc_params(7, reader, Some("SomeFunction"));
+        assert!(!emitted, "no parameter rows are emitted before the break");
+        assert_eq!(sink.stats.truncated_rpcs, 1);
+    }
+
+    /// A well-formed RPC payload -- one parameter then the zero-handle
+    /// terminator -- must leave `truncated_rpcs` at zero. This is the
+    /// byte-identical-output invariant on valid input.
+    #[test]
+    fn a_completed_rpc_payload_leaves_truncated_rpcs_at_zero() {
+        let mut bits = Vec::new();
+        bits.push(false); // property checksum
+        write_int_packed(&mut bits, 1); // encodedHandle = 1 -> handle 0
+        write_int_packed(&mut bits, 8); // payload_bits = 8
+        bits.extend(std::iter::repeat_n(false, 8)); // 8 bits of payload data
+        write_int_packed(&mut bits, 0); // terminator handle
+        let data = bits_to_bytes(&bits);
+        let reader = BitReader::with_bit_len(&data, bits.len() as u64);
+
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        let emitted = sink.try_parse_rpc_params(7, reader, Some("SomeFunction"));
+        assert!(emitted, "one parameter row is emitted");
+        assert_eq!(sink.stats.truncated_rpcs, 0);
+    }
 }
