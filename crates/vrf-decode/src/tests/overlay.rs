@@ -618,3 +618,103 @@ fn blind_duration_is_typed() {
         Some(FieldType::Float)
     );
 }
+
+/// `MulticastNotifyHeal` and `MulticastNotifyOverhealDecay` are RPC parameter
+/// blocks whose group paths the wire registers as
+/// `/Script/ShooterGame.DamageableComponent:MulticastNotifyHeal` and
+/// `:MulticastNotifyOverhealDecay`. The DamageableComponent C# descriptor
+/// (DamageableComponentClassNetCacheDescriptor.cs) only declares the two
+/// `MulticastNotifyDamage_*` handles, so the heal/decay parameter groups ship
+/// untyped even though their scalars decode cleanly. The RPC sink resolves
+/// these under their colon-group path with the bare parameter name, the same
+/// shape as the EquippableUsed correction.
+///
+/// On the 98605b1b Demos export `HealTaken` is 32 bits on all 1252 rows and
+/// reads as Float a 0.05..400 heal magnitude -- the 0x3f800000 bit pattern
+/// (1.0f, the IEEE-754 identity) recurs, which is a float signature no int
+/// read produces. `DecayApplied` is 32 bits on all 699 rows and reads as Float
+/// a 0.07..50 overheal-decay amount, clustering tightly around 0.195 (a
+/// per-tick decay). No descriptor declares either field, so these are
+/// ADDITIONS in the same wire-evidence class as `Money` and `Ping`.
+#[test]
+fn heal_and_overheal_decay_scalars_are_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    assert_eq!(
+        table.lookup(
+            "/Script/ShooterGame.DamageableComponent:MulticastNotifyHeal",
+            "HealTaken"
+        ),
+        Some(FieldType::Float)
+    );
+    assert_eq!(
+        table.lookup(
+            "/Script/ShooterGame.DamageableComponent:MulticastNotifyOverhealDecay",
+            "DecayApplied"
+        ),
+        Some(FieldType::Float)
+    );
+}
+
+/// `PlayerScoreComponent.Score` is the per-player combat score. No C#
+/// descriptor declares the group. On 98605b1b it is 32 bits on all 430 rows.
+/// Read as Float the bytes are denormal slop (~1e-44) -- the float read
+/// rejects itself -- but read as Int32 the values run 21..5833 with 415
+/// distinct values, exactly the shape of a cumulative combat score across a
+/// full match. Typed as Int32. ADDITION, same wire-evidence class as `Money`.
+#[test]
+fn player_score_is_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    assert_eq!(
+        table.lookup("/Script/ShooterGame.PlayerScoreComponent", "Score"),
+        Some(FieldType::Int32)
+    );
+}
+
+/// `ZoomMultiplierComponent` drives the ADS/scope FOV transition. No C#
+/// descriptor declares the group, so its properties ship raw even though the
+/// values are textbook floats. On 98605b1b all five fields below are 32 bits
+/// on every row with zero NaN:
+///   - SourceFov/TargetFov: 20.6..103.0, and 103.0 is Valorant's documented
+///     default hip-fire FOV (the mode the player is in when not ADS), so a
+///     wrong type cannot produce it.
+///   - SourceFov1P/TargetFov1P: 5.0..70.0, and 70.0 is the default 1P FOV.
+///   - TotalTransitionTimeDuration: 0.0..0.25, the ADS transition time.
+///
+/// SourceZoomLevel/TargetZoomLevel are deliberately NOT typed: ~70% of their
+/// rows are the 0xFFFFFFFF sentinel, which Float reads as NaN, and the rest
+/// are 0.0, so the field is an enum-or-sentinel, not a clean float. These
+/// five are ADDITIONS, same wire-evidence class as `Money`.
+#[test]
+fn zoom_multiplier_fov_fields_are_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    let group = "/Script/ShooterGame.ZoomMultiplierComponent";
+    assert_eq!(table.lookup(group, "SourceFov"), Some(FieldType::Float));
+    assert_eq!(table.lookup(group, "TargetFov"), Some(FieldType::Float));
+    assert_eq!(table.lookup(group, "SourceFov1P"), Some(FieldType::Float));
+    assert_eq!(table.lookup(group, "TargetFov1P"), Some(FieldType::Float));
+    assert_eq!(
+        table.lookup(group, "TotalTransitionTimeDuration"),
+        Some(FieldType::Float)
+    );
+}
+
+/// `FiniteSpeedMovementComponent` drives projectile travel. No C# descriptor
+/// declares the group. `MaximumRange` is the projectile's max travel distance
+/// in Unreal units: 32 bits on all 11699 rows on 98605b1b, reads as Float a
+/// 397.6..49986.1 range with the mode at ~19993 UU (~500 m), which is the
+/// right order of magnitude for a Valorant projectile. Typed as Float.
+/// (bIsActive is deliberately NOT typed despite a clean 1-bit width: all 574
+/// rows are 0x01, so the field carries no information a consumer can use, and
+/// widening the table for a constant is not worth it.) ADDITION, same
+/// wire-evidence class as `Money`.
+#[test]
+fn finite_speed_movement_max_range_is_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    assert_eq!(
+        table.lookup(
+            "/Script/ShooterGame.FiniteSpeedMovementComponent",
+            "MaximumRange"
+        ),
+        Some(FieldType::Float)
+    );
+}

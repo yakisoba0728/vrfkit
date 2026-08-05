@@ -190,16 +190,72 @@ EXPECTED += [
 #: `BlindManagerComponent.ActiveBlinds`/`LongestActiveBlindDuration`
 #: (ActiveBlinds is a variable-width array; the duration was outside the
 #: brief and its Float read is not yet corroborated against gameplay).
+#: Final-sweep ADDITIONS. Four descriptor-silent groups whose raw bits decode
+#: cleanly to real game values on the 98605b1b Demos export. Each is held to
+#: the same wire-evidence bar as Money/Ping: a single consistent bit width on
+#: every row, and a value distribution that a wrong type cannot reproduce.
+#:
+#: `DamageableComponent:MulticastNotifyHeal.HealTaken` and
+#: `:MulticastNotifyOverhealDecay.DecayApplied`. The DamageableComponent C#
+#: descriptor (DamageableComponentClassNetCacheDescriptor.cs) declares only the
+#: two MulticastNotifyDamage_* handles, so the heal/decay RPC parameter groups
+#: -- which the wire still carries by name -- have no declared type. The RPC
+#: sink resolves these under their colon-group paths
+#: (`/Script/ShooterGame.DamageableComponent:MulticastNotifyHeal` etc.) with
+#: the bare parameter name, the same shape as the EquippableUsed correction.
+#: HealTaken is 32 bits on all 1252 rows and reads as Float a 0.05..400 heal
+#: magnitude; the 0x3f800000 pattern (1.0f) recurs and is a float signature no
+#: int produces. DecayApplied is 32 bits on all 699 rows and reads as Float a
+#: 0.07..50 overheal-decay amount clustering at 0.195. The sibling
+#: LifeChangeBySection (177 bits, a struct array) and the *Instigator/*Causer
+#: actor refs are deliberately NOT added: the first is variable-width and the
+#: second are metadata refs this project does not type.
+#:
+#: `PlayerScoreComponent.Score` is the per-player combat score. No descriptor
+#: declares the group. 32 bits on all 430 rows. Read as Float the bytes are
+#: denormal slop (~1e-44) -- the float read rules itself out -- but read as
+#: Int32 the values run 21..5833 with 415 distinct values, the exact shape of
+#: a cumulative combat score across a full match.
+#:
+#: `ZoomMultiplierComponent` drives the ADS/scope FOV transition. No descriptor
+#: declares the group. The five fields below are 32 bits on every row with zero
+#: NaN: SourceFov/TargetFov run 20.6..103.0 and 103.0 is Valorant's documented
+#: default hip-fire FOV; SourceFov1P/TargetFov1P run 5.0..70.0 and 70.0 is the
+#: default 1P FOV; TotalTransitionTimeDuration runs 0.0..0.25 (the ADS
+#: transition seconds). A wrong type cannot yield 103.0. Deliberately NOT added:
+#: SourceZoomLevel/TargetZoomLevel (~70% of rows are the 0xFFFFFFFF sentinel,
+#: which Float reads as NaN -- an enum-or-sentinel, not a clean float) and
+#: CooldownOption/TransitionState (2-bit enums the wire count alone cannot
+#: disambiguate from a SerializedInt).
+#:
+#: `FiniteSpeedMovementComponent.MaximumRange` is a projectile's max travel
+#: distance in Unreal units. No descriptor declares the group. 32 bits on all
+#: 11699 rows, reads as Float 397.6..49986.1 with the mode at ~19993 UU
+#: (~500 m), the right order of magnitude for a Valorant projectile.
+#: Deliberately NOT added: bIsActive (1 bit but all 574 rows are 0x01 -- a
+#: constant that carries no consumer information), ServerMovementTime (a
+#: movement-clock timestamp whose epoch is undocumented, so the Float read is
+#: correct but the values are not interpretable), NumCollisions (32 bits but
+#: the i32 values are all 0/1, indistinguishable from a Bool widened to 32
+#: bits by the property block -- not worth a guess), and RequestedIgnoreActors
+#: (a variable-width array).
 ADDITIONS = [
     ("/Game/GameModes/Bomb/BombGameState.BombGameState_C",
      "ChosenCeremonyForRound", "FieldType::ObjectNetGuid"),
     ("/Script/ShooterGame.BaseTeamState", "AverageLoadoutValue", "FieldType::Int32"),
     ("/Script/ShooterGame.BaseTeamState", "LoadoutValue", "FieldType::Int32"),
+    ("/Script/ShooterGame.DamageableComponent:MulticastNotifyHeal",
+     "HealTaken", "FieldType::Float"),
+    ("/Script/ShooterGame.DamageableComponent:MulticastNotifyOverhealDecay",
+     "DecayApplied", "FieldType::Float"),
+    ("/Script/ShooterGame.FiniteSpeedMovementComponent",
+     "MaximumRange", "FieldType::Float"),
     ("/Script/ShooterGame.MoneyManagementComponent", "Money", "FieldType::Int32"),
     ("/Script/ShooterGame.MoneyManagementComponent", "StartOfRoundMoney", "FieldType::Int32"),
     ("/Script/ShooterGame.MoneyManagementComponent", "TotalMoneyGranted", "FieldType::Int32"),
     ("/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C",
      "Ping", "FieldType::SerializedInt { max: 65536 }"),
+    ("/Script/ShooterGame.PlayerScoreComponent", "Score", "FieldType::Int32"),
     ("/Game/Characters/Components/Comp_Actor_Concussable.Comp_Actor_Concussable_C",
      "ConcussStartTime", "FieldType::Float"),
     ("/Game/Characters/Components/Comp_Actor_Concussable.Comp_Actor_Concussable_C",
@@ -212,6 +268,16 @@ ADDITIONS = [
      "IsFuelDraining", "FieldType::Bool"),
     ("/Script/ShooterGame.BlindManagerComponent",
      "LongestActiveBlindDuration", "FieldType::Float"),
+    ("/Script/ShooterGame.ZoomMultiplierComponent",
+     "SourceFov", "FieldType::Float"),
+    ("/Script/ShooterGame.ZoomMultiplierComponent",
+     "SourceFov1P", "FieldType::Float"),
+    ("/Script/ShooterGame.ZoomMultiplierComponent",
+     "TargetFov", "FieldType::Float"),
+    ("/Script/ShooterGame.ZoomMultiplierComponent",
+     "TargetFov1P", "FieldType::Float"),
+    ("/Script/ShooterGame.ZoomMultiplierComponent",
+     "TotalTransitionTimeDuration", "FieldType::Float"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 
@@ -293,11 +359,6 @@ def apply_additions(content: str) -> tuple[str, int]:
             continue
 
         target = next((i for i, k in enumerate(keys) if k > (group, field)), None)
-        if target is None:
-            raise SystemExit(
-                f"{TABLE_RS}: {group}/{field} sorts after every existing entry; "
-                f"refusing to append past the end of the slice."
-            )
         entry = (
             "    OverlayEntry {\n"
             f'        group_path: "{group}",\n'
@@ -305,11 +366,37 @@ def apply_additions(content: str) -> tuple[str, int]:
             f"        field_type: {ftype},\n"
             "    },\n"
         )
-        # blocks[target + 1] is the block for `keys[target]`; put the new entry
-        # in front of the marker that introduces it.
-        head = "    OverlayEntry {".join(blocks[: target + 1])
-        tail = "    OverlayEntry {" + "    OverlayEntry {".join(blocks[target + 1:])
-        content = head + entry + tail
+        if target is None:
+            # The new entry is the new tail of OVERLAY_TABLE. Splice it in
+            # before the `];` that closes that slice. The split puts the final
+            # block (blocks[-1]) as the last OverlayEntry's text followed by
+            # `];` and the OVERLAY_HANDLE_TABLE that comes after, so the first
+            # `\n];` in that block is the OVERLAY_TABLE close. Refusing here
+            # used to be the safe choice, but a sorted table whose last group
+            # is new (e.g. ZoomMultiplierComponent) cannot gain entries without
+            # it, so the append is handled rather than rejected.
+            last = blocks[-1]
+            close = last.find("\n];")
+            if close == -1:
+                raise SystemExit(
+                    f"{TABLE_RS}: {group}/{field} would append but the "
+                    f"OVERLAY_TABLE closing '];' could not be located."
+                )
+            head = (
+                "    OverlayEntry {".join(blocks[:-1])
+                + "    OverlayEntry {"
+                + last[:close]
+            )
+            content = head + entry + last[close:]
+        else:
+            # blocks[target + 1] is the block for `keys[target]`; put the new
+            # entry in front of the marker that introduces it.
+            head = "    OverlayEntry {".join(blocks[: target + 1])
+            tail = (
+                "    OverlayEntry {"
+                + "    OverlayEntry {".join(blocks[target + 1:])
+            )
+            content = head + entry + tail
         added += 1
     return content, added
 

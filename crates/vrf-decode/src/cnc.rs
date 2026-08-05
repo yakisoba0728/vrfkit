@@ -262,10 +262,10 @@ mod tests {
         // fc=65..127 also gives 7 bits for value=1 (1+64=65 < 65..127), but
         // fc=64 gives 6 bits (1+64=65 >= 64). The minimum fc requiring the
         // 7-bit encoding is 66. But wait -- for value=1 with fc=66: ilog2=6,
-        // read 6 bits → 1, 1+64=65 < 66, read extra bit → 7 bits.
+        // read 6 bits -> 1, 1+64=65 < 66, read extra bit -> 7 bits.
         //
-        // For fc=65: ilog2=6, read 6 bits → 1, 1+64=65 >= 65 → 6 bits.
-        // For fc=66: ilog2=6, read 6 bits → 1, 1+64=65 < 66 → 7 bits.
+        // For fc=65: ilog2=6, read 6 bits -> 1, 1+64=65 >= 65 -> 6 bits.
+        // For fc=66: ilog2=6, read 6 bits -> 1, 1+64=65 < 66 -> 7 bits.
         //
         // So the minimum fc for 7-bit handle is 66, not 128.
         let (data, bit_count) = build_one_rpc_stream(128, 50);

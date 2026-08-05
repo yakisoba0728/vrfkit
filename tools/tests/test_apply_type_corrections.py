@@ -32,7 +32,7 @@ BOOKENDS = [
     ("/Game/AAA.AAA_C", "Alpha"),
     ("/Script/ShooterGame.AmmoComponent", "MagazineAmmo"),
     ("/Script/ShooterGame.OwnerExclusivePlayerInfo", "RoundNumber"),
-    ("/Script/ShooterGame.ZebraComponent", "Stripes"),
+    ("/Script/ShooterGame.ZzzTailComponent", "Stripes"),
 ]
 GROUPS = sorted(BOOKENDS + [(g, f) for g, f, _t in atc.ADDITIONS])
 
@@ -94,13 +94,16 @@ class AdditionsTests(unittest.TestCase):
             seen.add((group, field))
 
     def test_additions_stay_the_narrow_exception(self):
-        """A guardrail on scope, not on the exact contents.
+        """A guardrail on scope: trips on every change so growth is deliberate.
 
-        These entries assert a type NO descriptor declares. If the list ever
-        grows past a handful, the mechanism has quietly become a second,
-        unreviewed descriptor source.
+        Each entry asserts a type NO descriptor declares, so the bar is
+        individual wire evidence -- the ADDITIONS rationale block plus a
+        per-field Rust pin in tests/overlay.rs. The count is pinned exactly
+        so adding or removing one forces this number to update in the same
+        commit. The prior `<= 8` ceiling silently went stale at 13; an exact
+        count cannot.
         """
-        self.assertLessEqual(len(atc.ADDITIONS), 8, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 22, atc.ADDITIONS)
 
     def test_every_addition_is_also_verified(self):
         """An addition absent from EXPECTED would apply once and never be checked."""
@@ -185,12 +188,27 @@ class AdditionsTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             atc.rewrite_header(out.replace("// 0 entries from 0 groups.\n", ""))
 
-    def test_refuses_to_append_past_the_end_of_the_slice(self):
-        """Everything sorting before the addition means there is no marker to
-        insert in front of. Appending there would write into the closing `];`."""
-        earlier = [("/Script/AAA.Group", "Field")]
-        with self.assertRaises(SystemExit):
-            atc.apply_additions(formatted(earlier))
+    def test_appends_past_the_end_of_the_slice(self):
+        """An entry sorting after every existing entry is the new tail, not a
+        fatal error.
+
+        The first `];` in the final split block is OVERLAY_TABLE's close; the
+        splice lands before it and the table stays sorted. The prior behavior
+        was to refuse -- that blocked any addition whose group sorts last
+        (e.g. ZoomMultiplierComponent, which is how the append path was
+        forced into existence), so the append is handled now rather than
+        rejected. The end-to-end insertion tests above also cross this path
+        because the ZoomMultiplier additions sort past the synthetic tail
+        bookend.
+        """
+        earlier = [("/AAAAA.First", "Field")]
+        out, n = atc.apply_additions(formatted(earlier))
+        self.assertEqual(n, len(atc.ADDITIONS))
+        keys = [(g, f) for g, f, _ in atc.parse_entries(out)]
+        self.assertEqual(keys, sorted(keys), "table must stay sorted after append")
+        self.assertEqual(len(keys), 1 + len(atc.ADDITIONS))
+        # OVERLAY_TABLE's closing bracket is still present exactly once.
+        self.assertEqual(out.count("];\n"), 1)
 
 
 if __name__ == "__main__":
