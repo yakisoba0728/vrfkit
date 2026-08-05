@@ -16,11 +16,18 @@ and passes every test. So this reads the repo and the docs and compares:
   4. every relative link resolves
   5. the overlay table sizes quoted are the live ones
   6. no Rust doc comment or Cargo.toml quotes a stale one
-  7. the test counts quoted are the live ones
+  7. the test counts quoted are the live ones, and no stale count sits beside
+     a live one -- presence alone was not enough, see `stale_test_counts`
 
 It runs the test suites to get (7), so it is not free -- roughly the cost of
 `cargo test` plus the tools suite. Run it when touching docs, or before
 calling a session finished.
+
+**CI runs `--fast`, so (7) does not run there** and cannot: the Python job is
+Ubuntu-only by design (the Rust job needs Windows for the Oodle FFI), and (7)
+shells out to `cargo test`. Check (7) is a local gate, not an enforced one --
+which is precisely how `355 passing` survived twelve commits next to a correct
+`387 tests`. Run the full guard by hand before finishing a session.
 
 Usage:
     python tools/check_docs.py
@@ -142,6 +149,26 @@ def check_source_table_size() -> list[str]:
             for i, quoted in stale_entry_phrases(read(path), live)]
 
 
+#: The phrase the docs use to state a suite size. Narrow enough that a match is
+#: always a claim about one of the two suites, so the check has no judgement to
+#: make -- the same bargain `ENTRY_PHRASE_RE` strikes one check up.
+TEST_COUNT_RE = re.compile(r"(\d[\d,]*)\s+(?:tests|passing)\b")
+
+
+def stale_test_counts(text: str, live: set[str]) -> list[tuple[int, str]]:
+    """`(line number, quoted count)` for every suite-size claim not in `live`.
+
+    Asking whether the live number appears *somewhere* is not enough: README
+    carried `387 tests` and `355 passing` at once and satisfied that check with
+    the first while the second rotted. `live` holds both suite counts in both
+    spellings, and every claim must be one of them.
+    """
+    return [(i, quoted)
+            for i, line in enumerate(text.splitlines(), 1)
+            for quoted in TEST_COUNT_RE.findall(line)
+            if quoted not in live]
+
+
 def measure_tests() -> tuple[int, int, list[str]]:
     problems = []
     r = subprocess.run(["cargo", "test", "--quiet"], cwd=REPO, capture_output=True,
@@ -196,6 +223,11 @@ def main() -> int:
                 if str(count) not in text:
                     problems.append(
                         f"{name}: {label} test count is {count}, not quoted")
+        live = {s for c in (rust, tools_n) for s in (str(c), f"{c:,}")}
+        for name, text in docs.items():
+            problems += [
+                f"{name}:{i}: says {quoted}; the suites are {rust} and {tools_n}"
+                for i, quoted in stale_test_counts(text, live)]
         print(f"tests: rust {rust}, tools {tools_n}")
         checked += 1
 

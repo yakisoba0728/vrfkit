@@ -140,5 +140,37 @@ class SourceTableSizeTests(unittest.TestCase):
         self.assertEqual(guard.check_source_table_size(), [])
 
 
+class TestCountTests(unittest.TestCase):
+    """The seventh check: a doc may not carry a stale suite size beside a live one.
+
+    The count check used to ask only whether the live number appeared somewhere
+    in the file, so a README saying 387 in one place and 355 in another passed
+    it -- and did, for twelve commits. Presence is not agreement.
+    """
+
+    LIVE = {"387", "120"}
+
+    def test_a_stale_count_is_reported_with_its_line(self):
+        text = "one\ncargo test --workspace **355 passing**\nthree"
+        self.assertEqual(guard.stale_test_counts(text, self.LIVE), [(2, "355")])
+
+    def test_a_live_count_elsewhere_does_not_excuse_a_stale_one(self):
+        text = "- **387 tests** plus a validation suite\nverified: **355 passing**"
+        self.assertEqual(guard.stale_test_counts(text, self.LIVE), [(2, "355")])
+
+    def test_either_suite_count_is_accepted(self):
+        self.assertEqual(guard.stale_test_counts("387 passing\n120 tests", self.LIVE), [])
+
+    def test_a_number_that_is_not_a_count_claim_is_ignored(self):
+        """Only "N tests" / "N passing" is read as a claim about the suites.
+
+        Prose legitimately quotes unrelated figures -- README recovers "2,387
+        intermediate moves", which is how the old presence check was satisfied
+        by accident.
+        """
+        self.assertEqual(
+            guard.stale_test_counts("we recover 2,387 intermediate moves", self.LIVE), [])
+
+
 if __name__ == "__main__":
     unittest.main()
