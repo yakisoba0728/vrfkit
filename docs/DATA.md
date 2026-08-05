@@ -114,7 +114,7 @@ purchase; all ten players' purchases are replicated.
 | Planter / defuser | `BombPlantedRPC.BombPlanter` / `BombDefusedRPC.DefusingCharacter` | ✅ |
 | Bomb-carrier kill | `BombCarrierKilledRPC.OldCarrier` | ✅ |
 | Spike timer | `TimedBomb.TimeRemainingToExplode` / `DefuseProgress` | ✅ Double |
-| spikeExploded under-count | events + RPCs (server under-emits) | ◐ infer detonations from RoundResults |
+| Detonation source | `events.spikeExploded` is canonical (always emitted) | ✅ `RoundResults` under-counts: it logs win-reason, not detonation |
 
 ## Actor / GUID / structure
 
@@ -150,7 +150,13 @@ purchase; all ten players' purchases are replicated.
 - **Display names** — the replay carries no player names, only account UUIDs.
 - **ACS** — `PlayerScoreComponent` is not replicated.
 - **AbilitiesAndBuffsComponent** — the replay never declares its `_ClassNetCache`
-  group, so its blocks can't be attributed (97.3% of unattributed bits). Verified
-  across 4,024 checkpoints.
-- **spikeExploded** — the server under-emits detonation events; infer from
-  `RoundResults`.
+  group, so `function_count` is unknown and is brute-forced (fc=34). The outer
+  RPC framing is fully recovered, and the inner payload is decomposed (a flag
+  bit followed by a little-endian `u32` stream); the activation key pair
+  (`_cnc_h1_word0` / `_cnc_h1_word1`) is exported as typed rows. The semantic
+  meaning of the later words (ability-class signature, effect specs) needs game
+  assets, so they stay in `raw_bits`.
+- **spikeExploded** — not a limitation: `events.spikeExploded` is the canonical
+  detonation signal and is always emitted. `RoundResults` records the round
+  *win reason* (elimination/detonate/defuse), not whether the spike detonated,
+  so it under-counts detonations and is not a reliable proxy.

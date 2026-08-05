@@ -192,6 +192,12 @@ pub struct ExportStats {
     /// structure rather than silently leaving the opaque blob.
     pub cnc_rpcs_emitted: u64,
 
+    /// Ability-activation key pairs (`word0`/`word1`) emitted as typed rows by
+    /// the `AbilitiesAndBuffsComponent` inner decoder. Each is two extra rows;
+    /// this counter is the only signal that the inner payload was decomposed
+    /// rather than left as raw bits only.
+    pub cnc_activation_keys_emitted: u64,
+
     /// Struct-blob decodes that returned an error.
     ///
     /// These used to be `let Ok(..) else { return false }` -- discarded with no

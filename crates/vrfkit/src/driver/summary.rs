@@ -52,6 +52,10 @@ pub(super) struct RunTotals {
     /// empties the decoder does not read as a clean run. Unpinned by the export
     /// baseline (its regex table does not name this label).
     pub multi_contents_items_emitted: u64,
+    /// Ability-activation key pairs emitted by the `AbilitiesAndBuffsComponent`
+    /// inner decoder. Unpinned by the export baseline (its regex table does not
+    /// name this label).
+    pub cnc_activation_keys_emitted: u64,
 }
 
 /// Print the whole `=== Export complete ===` report.
@@ -115,6 +119,10 @@ pub(super) fn print(
     eprintln!(
         "  MultiContents items: {}",
         totals.multi_contents_items_emitted
+    );
+    eprintln!(
+        "  Ability activations: {}",
+        totals.cnc_activation_keys_emitted
     );
     eprintln!("  Elapsed:          {:.2?}", totals.elapsed);
 

@@ -419,7 +419,7 @@ impl ExportSink<'_> {
     /// Only the i64 and str columns are reachable: no struct-blob member
     /// decodes to a float or a bool today, and a parameter for a column no
     /// caller can fill reads as if the shape were open when it is not.
-    fn emit_struct_sub_field(
+    pub(super) fn emit_struct_sub_field(
         &mut self,
         name: impl FnOnce(&mut String),
         value_i64: Option<i64>,

@@ -39,14 +39,18 @@
 //! the **minimum** valid `function_count`, which is sufficient to decode the
 //! stream: every fc in the valid range produces identical RPC structure.
 //!
-//! # What the decoder does NOT do
+//! # What the decoder does NOT name
 //!
-//! The RPC payload itself may use custom serialization rather than the standard
-//! RepLayout `FunctionParameters` grammar. On `AbilitiesAndBuffsComponent` the
-//! inner payload does not parse as `FunctionParameters` -- the function at
-//! handle 1 uses a class-specific serializer. This module recovers the outer
-//! RPC framing (handle, payload offset/size) but leaves the inner payload as
-//! raw bits.
+//! The RPC payload itself does not parse as the standard RepLayout
+//! `FunctionParameters` grammar -- the function at handle 1 uses a
+//! class-specific serializer. This module recovers the outer RPC framing
+//! (handle, payload offset/size) and, for `AbilitiesAndBuffsComponent`,
+//! decomposes the inner payload into its deterministic structure (a flag bit
+//! followed by a little-endian `u32` stream; see
+//! [`decode_abilities_and_buffs_inner`]). What it does not do is assign
+//! authoritative semantic names to the later words: those (ability-class
+//! signature, effect specs) depend on game assets, so the raw bits are
+//! preserved alongside the recovered structure.
 
 use vrf_bitio::BitReader;
 
@@ -168,6 +172,91 @@ fn walk_cnc(payload: &[u8], bit_count: u32, function_count: u32) -> Option<Vec<C
     }
 
     Some(rpcs)
+}
+
+/// Decoded inner structure of an `AbilitiesAndBuffsComponent` ClassNetCache
+/// RPC payload.
+///
+/// The outer RPC framing -- function handle plus payload size -- is recovered
+/// by [`decode_cnc_payload`]. This decomposes the payload itself, which was
+/// long believed to be an opaque class-specific blob. It is not: across
+/// thousands of payloads the layout is fully deterministic. A single flag bit
+/// (always `1`) is followed by a stream of little-endian `u32` words and an
+/// optional sub-32-bit trailing residual, and `bit_count == 1 + 32 * words +
+/// trailing` holds exactly on every payload.
+///
+/// The first two words are a pair of small, time-monotonic counters whose
+/// difference is a small constant (1 in ~83% of payloads) -- the shape of
+/// Unreal's `FPredictionKey {Current, Base}`. They are not globally unique on
+/// their own, because the component emits periodic state updates, so several
+/// payloads share a pair; grouping the pair per owning actor recovers
+/// individual ability activations. The later words carry small constant
+/// fields followed, on the larger payloads, by ability-class signature
+/// constants and a variable-length array; their exact semantics are
+/// game-asset-dependent, so they are exposed as a raw word list rather than
+/// named fields.
+#[derive(Debug, Clone)]
+pub struct AbilitiesActivation {
+    /// The leading flag bit. Observed to be `1` on every payload; kept as a
+    /// field so a future build that clears it is visible rather than silent.
+    pub flag: bool,
+    /// The little-endian `u32` words immediately after the flag bit.
+    pub words: Vec<u32>,
+    /// Trailing bits that did not form a full word, packed LSB-first.
+    pub trailing: u32,
+    /// Number of valid bits in `trailing` (always `0..32`).
+    pub trailing_bit_count: u32,
+}
+
+impl AbilitiesActivation {
+    /// The activation key pair, when the payload carries at least two words.
+    ///
+    /// These are the two small time-monotonic counters (a prediction-key
+    /// `{Current, Base}` pair) used to group payloads into ability activations
+    /// alongside the owning actor.
+    #[must_use]
+    pub fn key_pair(&self) -> Option<(u32, u32)> {
+        Some((*self.words.first()?, *self.words.get(1)?))
+    }
+}
+
+/// Decompose the inner payload of an `AbilitiesAndBuffsComponent` ClassNetCache
+/// RPC into its deterministic structure.
+///
+/// Skips the flag bit, reads whole little-endian `u32` words while at least 32
+/// bits remain, and captures any trailing residual. Returns `None` only for an
+/// empty payload: the decomposition is a pure bit-stream walk, so on a
+/// non-empty payload it always succeeds and the words are exactly the bits the
+/// wire carried.
+#[must_use]
+pub fn decode_abilities_and_buffs_inner(
+    payload: &[u8],
+    bit_count: u32,
+) -> Option<AbilitiesActivation> {
+    let mut reader = BitReader::with_bit_len(payload, u64::from(bit_count));
+    if reader.bits_remaining() == 0 {
+        return None;
+    }
+    let flag = reader.read_bit().ok()?;
+    let mut words = Vec::new();
+    while reader.bits_remaining() >= 32 {
+        match reader.read_u32() {
+            Ok(w) => words.push(w),
+            Err(_) => break,
+        }
+    }
+    let trailing_bit_count = u32::try_from(reader.bits_remaining()).unwrap_or(0);
+    let trailing = if trailing_bit_count > 0 {
+        reader.read_bits(trailing_bit_count).unwrap_or(0) as u32
+    } else {
+        0
+    };
+    Some(AbilitiesActivation {
+        flag,
+        words,
+        trailing,
+        trailing_bit_count,
+    })
 }
 
 #[cfg(test)]
@@ -320,5 +409,81 @@ mod tests {
         let result = brute_force_function_count(&data, bit_count).unwrap();
         // The minimum fc where the 6-bit handle walks cleanly is 34.
         assert_eq!(result.function_count, 34);
+    }
+
+    /// Build a bit buffer from an explicit flag + a sequence of LE u32 words +
+    /// an optional trailing residual. Mirrors the wire layout of an
+    /// `AbilitiesAndBuffsComponent` RPC payload.
+    fn build_activation_stream(
+        flag: bool,
+        words: &[u32],
+        trailing_bits: u32,
+        trailing: u32,
+    ) -> (Vec<u8>, u32) {
+        let mut bits = Vec::new();
+        bits.push(flag);
+        for &w in words {
+            for k in 0..32 {
+                bits.push((w >> k) & 1 != 0);
+            }
+        }
+        for k in 0..trailing_bits {
+            bits.push((trailing >> k) & 1 != 0);
+        }
+        let bit_count = bits.len() as u32;
+        (bits_to_bytes(&bits), bit_count)
+    }
+
+    /// A real-shape payload: flag(1) + 5 LE u32 words, no trailing. This is
+    /// the 161-bit family observed across thousands of payloads, the simplest
+    /// and most common `AbilitiesAndBuffsComponent` RPC.
+    #[test]
+    fn abilities_inner_flag_then_u32_stream() {
+        let words = [5u32, 3, 1, 0, 2];
+        let (data, bit_count) = build_activation_stream(true, &words, 0, 0);
+        let decoded = decode_abilities_and_buffs_inner(&data, bit_count).unwrap();
+        assert!(decoded.flag);
+        assert_eq!(decoded.words, words);
+        assert_eq!(decoded.trailing_bit_count, 0);
+        assert_eq!(decoded.key_pair(), Some((5, 3)));
+    }
+
+    /// A large payload carries a sub-32-bit trailing residual after the last
+    /// whole word. The decoder must capture it without losing bits.
+    #[test]
+    fn abilities_inner_captures_trailing_residual() {
+        // flag(1) + 1 word + 16 trailing bits = 49 bits.
+        let (data, bit_count) = build_activation_stream(true, &[7], 16, 0xABCD);
+        let decoded = decode_abilities_and_buffs_inner(&data, bit_count).unwrap();
+        assert!(decoded.flag);
+        assert_eq!(decoded.words, vec![7]);
+        assert_eq!(decoded.trailing_bit_count, 16);
+        assert_eq!(decoded.trailing & 0xFFFF, 0xABCD);
+    }
+
+    /// An empty payload has no flag bit and yields `None`.
+    #[test]
+    fn abilities_inner_empty_is_none() {
+        assert!(decode_abilities_and_buffs_inner(&[], 0).is_none());
+    }
+
+    /// A flag bit alone (no words, no trailing) decodes cleanly.
+    #[test]
+    fn abilities_inner_flag_only() {
+        let (data, bit_count) = build_activation_stream(true, &[], 0, 0);
+        let decoded = decode_abilities_and_buffs_inner(&data, bit_count).unwrap();
+        assert!(decoded.flag);
+        assert!(decoded.words.is_empty());
+        assert_eq!(decoded.trailing_bit_count, 0);
+        assert_eq!(decoded.key_pair(), None);
+    }
+
+    /// A single-word payload has a flag but no key pair.
+    #[test]
+    fn abilities_inner_single_word_has_no_key_pair() {
+        let (data, bit_count) = build_activation_stream(true, &[42], 0, 0);
+        let decoded = decode_abilities_and_buffs_inner(&data, bit_count).unwrap();
+        assert_eq!(decoded.words, vec![42]);
+        assert_eq!(decoded.key_pair(), None);
     }
 }
