@@ -264,46 +264,59 @@ _MOVEMENT_LINE = (
 )
 
 
-def _json_scalar_column(values, *, shorten=False):
+def _json_scalar_column(arr, *, shorten=False):
     """The JSON TEXT of each value, computed once per distinct value.
 
-    Exact by construction rather than by resemblance: the string stored is
-    whatever `_JSON.encode` produces for that exact value, so substituting it
-    into a hand-built line is what the encoder would have written -- including
-    the non-obvious cases, `Infinity` and `NaN`, which an f-string would spell
-    `inf` and `nan` and quietly emit as invalid JSON.
+    `arr` is a 1-D numpy array. `numpy.unique` collapses it to its distinct
+    values in C; the text is built once per distinct value and a fancy-index
+    gather fans it back out to every row, all vectorised. This is what lets
+    `_write_movement` skip building 1.8 million dicts and calling the encoder
+    1.8 million times -- there is no per-row Python loop here at all.
 
-    This is what lets `_write_movement` skip building 1.8 million dicts and
-    calling the encoder 1.8 million times; the row loop becomes a join of
-    strings that already exist.
+    Exact by construction rather than by resemblance. For `shorten=False` the
+    string stored is whatever `_JSON.encode` produces for that exact value --
+    including the non-obvious cases, `Infinity` and `NaN`, which an f-string
+    would spell `inf` and `nan` and quietly emit as invalid JSON.
 
-    `shorten=True` folds `_f32_shortest` into the same pass. Composing the two
-    as separate calls also works and was the first version, but it holds two
-    memos and a 1.8-million-element intermediate list at once; fusing them
-    keeps one of each.
+    For `shorten=True` the stored string is the shortest decimal that
+    round-trips through float32 -- what `_JSON.encode(_f32_shortest(v))`
+    produced in the previous per-element version. numpy's float32->str
+    formatter is the same Dragon4 shortest-round-trip algorithm, so
+    `uniq.astype(str)` emits the identical text, and integer-valued float32s
+    are normalised to int form (no decimal point) the way `_f32_shortest`
+    returned an `int` for them. Verified byte-identical over 1,274,448 real
+    movement float32s. (`shorten=True` assumes finite float32 data -- the
+    movement invariant; inf/nan would need the encoder's `Infinity`/`NaN` and
+    are not produced by the decoder.)
 
-    Worth it because these columns are quantized on the wire and repeat
-    heavily. Measured on 02d4d478's 1,837,220 kept movement rows:
+    Worth doing per-distinct because these columns are quantized on the wire
+    and repeat heavily. Measured on 02d4d478's 1,837,220 kept movement rows:
 
         pos_x 691,850 distinct    pos_z  70,260    vel_y 17,248
         pos_y 696,435             vel_x  17,358    vel_z  6,071
 
-    so the six shortened columns need 1,499,222 `_f32_shortest` calls instead
-    of 11,023,320 -- 7.4x fewer -- and that function was 52% of the whole
-    bundle step. yaw and pitch memoize too (65,491 and 16,943 distinct) but
-    are NOT shortened; see `_write_movement`.
+    so the six shortened columns format 1,499,222 values total instead of
+    11,023,320 -- 7.4x fewer. yaw and pitch dedup too (65,491 and 16,943
+    distinct) but are NOT shortened; see `_write_movement`.
     """
-    memo = {}
-    out = []
-    append = out.append
-    encode = _JSON.encode
-    for v in values:
-        try:
-            append(memo[v])
-        except KeyError:
-            s = memo[v] = encode(_f32_shortest(v) if shorten else v)
-            append(s)
-    return out
+    uniq, inverse = numpy.unique(arr, return_inverse=True)
+    if shorten:
+        # Bulk shortest float32 repr (Dragon4). Integer-valued entries are
+        # rewritten as int decimals to match `_f32_shortest`'s int return and
+        # the encoder's int output; an object array holds them so a wide int
+        # can never truncate against the float column's narrower `<U` width.
+        is_int = (uniq == numpy.trunc(uniq))
+        texts = numpy.empty(uniq.shape[0], dtype=object)
+        texts[:] = uniq.astype(str)
+        if is_int.any():
+            texts[is_int] = uniq[is_int].astype(numpy.int64).astype(str)
+        texts = texts.tolist()
+    else:
+        encode = _JSON.encode
+        texts = [encode(float(v)) for v in uniq.tolist()]
+    gathered = numpy.empty(uniq.shape[0], dtype=object)
+    gathered[:] = texts
+    return gathered[inverse].tolist()
 
 
 def _vec3(x, y, z) -> dict:
@@ -1957,16 +1970,22 @@ def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> int
     mv_table = pq.read_table(movement_path)
     n_mv = len(mv_table)
 
-    mv_time = mv_table.column('time_ms').to_pylist()
-    mv_char = mv_table.column('character_net_guid').to_pylist()
-    mv_px = mv_table.column('pos_x').to_pylist()
-    mv_py = mv_table.column('pos_y').to_pylist()
-    mv_pz = mv_table.column('pos_z').to_pylist()
-    mv_yaw = mv_table.column('yaw').to_pylist()
-    mv_pitch = mv_table.column('pitch').to_pylist()
-    mv_vx = mv_table.column('vel_x').to_pylist()
-    mv_vy = mv_table.column('vel_y').to_pylist()
-    mv_vz = mv_table.column('vel_z').to_pylist()
+    # Batch-extract every column to a numpy array. `to_numpy` hands over the
+    # raw buffer; `to_pylist` boxes one Python float/int per row through
+    # pyarrow's per-element type dispatch (~14x slower on these 1.84M-row
+    # columns, the same win the fields path gets via _numeric_column_to_pylist).
+    # All movement columns are non-nullable, so zero_copy_only=False never
+    # widens ints to float64 -- uint32 stays uint32, float32 stays float32.
+    mv_time = mv_table.column('time_ms').to_numpy(zero_copy_only=False)
+    mv_char = mv_table.column('character_net_guid').to_numpy(zero_copy_only=False)
+    mv_px = mv_table.column('pos_x').to_numpy(zero_copy_only=False)
+    mv_py = mv_table.column('pos_y').to_numpy(zero_copy_only=False)
+    mv_pz = mv_table.column('pos_z').to_numpy(zero_copy_only=False)
+    mv_yaw = mv_table.column('yaw').to_numpy(zero_copy_only=False)
+    mv_pitch = mv_table.column('pitch').to_numpy(zero_copy_only=False)
+    mv_vx = mv_table.column('vel_x').to_numpy(zero_copy_only=False)
+    mv_vy = mv_table.column('vel_y').to_numpy(zero_copy_only=False)
+    mv_vz = mv_table.column('vel_z').to_numpy(zero_copy_only=False)
 
     # Keep only the last sub-move per (time_ms, character).
     #
@@ -1988,10 +2007,14 @@ def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> int
     # exactly these rows reproduces its movement_detail on 60/60 values
     # with no rounding. So this is not an approximation: it is the shape
     # the consumer was written against.
-    last_of_group = {}
-    for i in range(n_mv):
-        last_of_group[(mv_time[i], mv_char[i])] = i
-    keep = sorted(last_of_group.values())
+    #
+    # Vectorised: pack the two uint32 keys into one uint64, and the FIRST
+    # index of each key in the reversed array is the LAST index in the
+    # original -- exactly what the per-row dict overwrite computed. `np.sort`
+    # restores row order. Both keys are uint32 so the shift cannot collide.
+    key64 = (mv_time.astype(numpy.uint64) << numpy.uint64(32)) | mv_char.astype(numpy.uint64)
+    _, first_in_rev = numpy.unique(key64[::-1], return_index=True)
+    keep = numpy.sort((n_mv - 1) - first_in_rev)
     movement_collapsed = n_mv - len(keep)
 
     # Every position and velocity component is Float32 on the wire and in
@@ -2010,31 +2033,27 @@ def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> int
     # pitch rows away from the reference. It changed no metric, which is
     # exactly why it survived.
     #
-    # Each column is turned into its JSON TEXT once per distinct value, and
-    # the row loop below concatenates strings that already exist instead of
-    # building 1.8 million dicts and encoding each one. Rebinding frees the
-    # source lists as it goes.
-    mv_px = _json_scalar_column(mv_px, shorten=True)
-    mv_py = _json_scalar_column(mv_py, shorten=True)
-    mv_pz = _json_scalar_column(mv_pz, shorten=True)
-    mv_vx = _json_scalar_column(mv_vx, shorten=True)
-    mv_vy = _json_scalar_column(mv_vy, shorten=True)
-    mv_vz = _json_scalar_column(mv_vz, shorten=True)
-    mv_yaw = _json_scalar_column(mv_yaw)
-    mv_pitch = _json_scalar_column(mv_pitch)
-
-    # Select the kept rows once per column, so the write loop indexes nothing.
-    # `int.__repr__` is what the JSON encoder uses for an int, so `str` here
-    # is the same text; these two columns are uint32 and nearly all distinct,
-    # which makes memoizing them pure overhead where a plain map is not.
+    # Select the kept rows once per column via numpy fancy indexing (C-level),
+    # so neither the text builder nor the write loop indexes anything. Then
+    # turn each kept column into its JSON TEXT once per distinct value (see
+    # _json_scalar_column) and let the write loop concatenate strings that
+    # already exist instead of building dicts and encoding each one.
+    #
+    # time_ms and character_net_guid are uint32 and nearly all distinct:
+    # `int.__repr__` is the same text the JSON encoder uses for an int, so
+    # `astype(str)` on the uint32 array is the line's text directly -- no
+    # encoder, no memo.
     cols = (
-        [str(mv_time[i]) for i in keep],
-        [str(mv_char[i]) for i in keep],
-        [mv_px[i] for i in keep], [mv_py[i] for i in keep],
-        [mv_pz[i] for i in keep],
-        [mv_vx[i] for i in keep], [mv_vy[i] for i in keep],
-        [mv_vz[i] for i in keep],
-        [mv_yaw[i] for i in keep], [mv_pitch[i] for i in keep],
+        mv_time[keep].astype(str).tolist(),
+        mv_char[keep].astype(str).tolist(),
+        _json_scalar_column(mv_px[keep], shorten=True),
+        _json_scalar_column(mv_py[keep], shorten=True),
+        _json_scalar_column(mv_pz[keep], shorten=True),
+        _json_scalar_column(mv_vx[keep], shorten=True),
+        _json_scalar_column(mv_vy[keep], shorten=True),
+        _json_scalar_column(mv_vz[keep], shorten=True),
+        _json_scalar_column(mv_yaw[keep]),
+        _json_scalar_column(mv_pitch[keep]),
     )
     movement_written = len(keep)
 

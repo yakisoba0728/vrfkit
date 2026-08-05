@@ -39,7 +39,7 @@
  "parquet": {
   "fields": {
    "rows": 1246974,
-   "bytes": 13784994
+   "bytes": 13785038
   },
   "movement": {
    "rows": 1839607,
@@ -59,7 +59,7 @@
   },
   "checkpoint_fields": {
    "rows": 78748,
-   "bytes": 192413
+   "bytes": 192457
   }
  }
 }
