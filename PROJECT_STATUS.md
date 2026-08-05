@@ -146,9 +146,9 @@ no parser change, and section 8 carries the invariant it produced.
 - [16. Falsification pass over this session's own claims (2026-08-02)](#16-falsification-pass-over-this-sessions-own-claims-2026-08-02)
   - [16-A. REFUTED: "SpawnTransform is the only genuinely dead typed entry"](#16-a-refuted-spawntransform-is-the-only-genuinely-dead-typed-entry)
   - [16-B. Vacuity disclosures for the parity claims](#16-b-vacuity-disclosures-for-the-parity-claims)
-  - [16-C. Two gaps nobody claimed [OPEN]](#16-c-two-gaps-nobody-claimed-open)
+  - [16-C. Two gaps nobody claimed [CLOSED f80aece, TESTS this commit]](#16-c-two-gaps-nobody-claimed-closed-f80aece-tests-this-commit)
 - [17. The controller's property block, found (2026-08-02)](#17-the-controllers-property-block-found-2026-08-02)
-  - [17-A. vrfkit frames one bunch nine bits early [MECHANISM FOUND, FIX PENDING]](#17-a-vrfkit-frames-one-bunch-nine-bits-early-mechanism-found-fix-pending)
+  - [17-A. vrfkit frames one bunch nine bits early [FIX APPLIED f80aece, TESTS this commit]](#17-a-vrfkit-frames-one-bunch-nine-bits-early-fix-applied-f80aece-tests-this-commit)
   - [16-D. Corrections to this session's own supporting text](#16-d-corrections-to-this-sessions-own-supporting-text)
   - [16-E. What the audit did not check](#16-e-what-the-audit-did-not-check)
 - [18. `Ping` -- encoding settled, deliberately not typed (2026-08-02)](#18-ping-encoding-settled-deliberately-not-typed-2026-08-02)
@@ -3708,7 +3708,7 @@ And on 13-C: 3,077 of the 3,077 rows that moved to raw/skip are
 85% of that "recovery" is data the descriptor deliberately discards. The
 commit says so; the summary figure alone does not.
 
-### 16-C. Two gaps nobody claimed [OPEN]
+### 16-C. Two gaps nobody claimed [CLOSED f80aece, TESTS this commit]
 
 **The reference emits an export group we emit nothing for.** On
 `/Game/Characters/_Core/BaseReplayController.BaseReplayController_C` -- the
@@ -3780,7 +3780,7 @@ wants them.
 
 ## 17. The controller's property block, found (2026-08-02)
 
-### 17-A. vrfkit frames one bunch nine bits early [MECHANISM FOUND, FIX PENDING]
+### 17-A. vrfkit frames one bunch nine bits early [FIX APPLIED f80aece, TESTS this commit]
 
 16-C asked why we emit zero rows on the `BaseReplayController` RepLayout group
 and concluded "the byte must NOT be consumed there, and our current framing of
@@ -3857,11 +3857,19 @@ group, handles 3, 12, 14 and 18. `PlayerState` and `SpawnLocation` match the
 reference exactly on all 11 replays. `actors`, `movement` and `net_guids`
 unchanged. All tests pass -- nothing pinned the old behaviour.
 
-NOT YET APPLIED. The proper form of divergence 2 replaces `pc_guids` with a
-cache path lookup and `is_player_controller_path`, which needs a lookup method on
-`GuidPathSink` and therefore touches `sink.rs`, which another session was
-rewriting when this landed. Apply both together -- one without the other is the
-one-bit-off failure above. Do not apply divergence 1 alone.
+APPLIED f80aece (2026-08-02, same day). Both divergences landed together:
+divergence 1 removed the velocity gate, divergence 2 replaced `pc_guids` with a
+defaulted `GuidPathSink::path_for_guid` that asks the cache (the lookup method on
+`GuidPathSink` this entry said was needed). The `pc_guids` set itself was later
+removed as dead code in 912981a, which confirmed by instrumentation that it had
+never been populated while the cache lookup answered true 2 028 times.
+
+Regression tests were absent until this commit. Three tests now pin the fix:
+`controller_property_block_is_reached` verifies both halves together (remove
+either and the content-block header misframes); `non_controller_dynamic_actor_
+skips_net_player_index_byte` guards against over-consuming the byte on a
+non-controller channel; `controller_byte_unconsumed_without_cache_path_
+misframes_header` documents the pre-fix failure mode.
 
 ### 16-D. Corrections to this session's own supporting text
 

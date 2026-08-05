@@ -538,11 +538,19 @@ mod tests {
         opens: Vec<u32>,
         closes: Vec<u32>,
         paths: Vec<(u32, String)>,
+        /// GUID-to-path map consulted by `path_for_guid`. Empty by default, so
+        /// existing tests get the pre-cache behaviour (every lookup is `None`).
+        guid_paths: std::collections::HashMap<u32, String>,
+        /// Content-block headers, in arrival order.
+        content_blocks: Vec<ContentBlockHeader>,
     }
 
     impl GuidPathSink for TestSink {
         fn register_path(&mut self, guid: u32, path: &str, _outer: NetworkGuid) {
             self.paths.push((guid, path.to_owned()));
+        }
+        fn path_for_guid(&self, guid: u32) -> Option<&str> {
+            self.guid_paths.get(&guid).map(|s| s.as_str())
         }
     }
 
@@ -566,8 +574,9 @@ mod tests {
             &mut self,
             _channel_index: u32,
             _actor_net_guid: NetworkGuid,
-            _header: &ContentBlockHeader,
+            header: &ContentBlockHeader,
         ) -> u32 {
+            self.content_blocks.push(header.clone());
             0
         }
         fn on_deleted_block(
@@ -1062,5 +1071,183 @@ mod tests {
             }
             _ => panic!("expected ContentBitsOverrun"),
         }
+    }
+
+    // --- controller property-block regression tests (PROJECT_STATUS 17-A) ---
+
+    /// Build a non-partial open bunch around `payload_bits` and return the
+    /// full packet bytes, ready for `process_packet`.
+    fn build_open_bunch_packet(ch_index: u32, payload_bits: &[bool]) -> Vec<u8> {
+        let mut bits = vec![
+            true,  // bControl
+            true,  // bOpen
+            false, // bClose
+            false, // bIsReplicationPaused
+            true,  // bReliable
+        ];
+        write_int_packed(&mut bits, ch_index);
+        bits.extend_from_slice(&[
+            false, // bHasPackageMapExports
+            false, // bHasMustBeMappedGUIDs
+            false, // bPartial
+            false, // VALORANT bit
+            true,  // FName isHardcoded
+        ]);
+        write_int_packed(&mut bits, 1); // FName index
+        write_serialized_int(
+            &mut bits,
+            payload_bits.len() as u32,
+            crate::types::MAX_PACKET_SIZE_BITS,
+        );
+        bits.extend_from_slice(payload_bits);
+        build_packet(&bits)
+    }
+
+    /// Write the spawn block for a dynamic actor: archetype, level, and the
+    /// four optional transform vectors (location, rotation, scale, velocity),
+    /// every one absent (leading `false` bit). Velocity is included to match
+    /// the unconditional read -- omitting it is the one-bit regression.
+    fn write_minimal_spawn_data(bits: &mut Vec<bool>, archetype_guid: u32) {
+        write_int_packed(bits, archetype_guid); // archetype GUID
+        write_int_packed(bits, 0); // level GUID (0 -> not valid, returns early)
+        bits.push(false); // location: hasValue = false
+        bits.push(false); // rotation: hasComponent = false
+        bits.push(false); // scale: hasValue = false
+        bits.push(false); // velocity: hasValue = false (unconditional read)
+    }
+
+    /// The controller's opening bunch carries nine bits between the spawn
+    /// block and the first content-block header: one velocity bit (read
+    /// unconditionally) plus an eight-bit net-player-index byte (consumed
+    /// because `is_player_controller_channel` resolves the archetype through
+    /// the path cache). Without either one, the first header misframes and
+    /// the controller's own RepLayout property block -- `PlayerState` and
+    /// `SpawnLocation` -- is never walked. PROJECT_STATUS 17-A found the
+    /// mechanism; this pins the fix.
+    ///
+    /// Applying either half alone is the one-bit-off failure that destroyed
+    /// seven real subobject rows in the earlier experiment. This test fires
+    /// both together because that is the only combination that works.
+    #[test]
+    fn controller_property_block_is_reached() {
+        let mut payload: Vec<bool> = Vec::new();
+
+        // Actor GUID 2: dynamic (even, non-zero), so a spawn block follows.
+        write_int_packed(&mut payload, 2);
+        // Spawn data. Archetype GUID 9 is what the cache will resolve.
+        write_minimal_spawn_data(&mut payload, 9);
+        // Net-player-index byte (value 0). On the wire because this is a
+        // PlayerController; consumed only if path_for_guid answers.
+        payload.extend(std::iter::repeat_n(false, 8));
+        // The actor's own RepLayout block.
+        payload.push(true); // hasRepLayout
+        payload.push(true); // isActor
+        write_int_packed(&mut payload, 0); // contentBits = 0
+
+        let packet = build_open_bunch_packet(2, &payload);
+
+        let mut sink = TestSink::default();
+        // The cache knows the archetype path from chunk-level exports that
+        // arrived before this bunch; the old pc_guids set did not. That is
+        // the asymmetry the cache lookup fixes.
+        sink.guid_paths
+            .insert(9, "Default__BaseReplayController_C".to_string());
+
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        let stats = reader.stats();
+        assert_eq!(stats.actor_opens, 1);
+        assert_eq!(stats.skipped_bits, 0, "nothing may be abandoned");
+        assert_eq!(
+            sink.content_blocks.len(),
+            1,
+            "exactly one content block -- the property block"
+        );
+        let block = &sink.content_blocks[0];
+        assert!(
+            block.has_rep_layout,
+            "the block must be RepLayout (the property group), not ClassNetCache"
+        );
+        assert!(
+            block.is_actor,
+            "the block must describe the actor itself, not a subobject"
+        );
+    }
+
+    /// A non-controller dynamic actor has no net-player-index byte on the wire,
+    /// so the byte must NOT be consumed. The content-block header must sit
+    /// immediately after the spawn data and frame correctly.
+    ///
+    /// This is the guard against over-consuming: if the byte read were
+    /// unconditional rather than gated on the cache lookup, it would eat the
+    /// first eight bits of the content header here.
+    #[test]
+    fn non_controller_dynamic_actor_skips_net_player_index_byte() {
+        let mut payload: Vec<bool> = Vec::new();
+        write_int_packed(&mut payload, 2); // actor GUID 2 (dynamic)
+        write_minimal_spawn_data(&mut payload, 9); // archetype 9, no path in cache
+        // NO net-player-index byte -- this actor is not a controller.
+        payload.push(true); // hasRepLayout
+        payload.push(true); // isActor
+        write_int_packed(&mut payload, 0); // contentBits = 0
+
+        let packet = build_open_bunch_packet(2, &payload);
+
+        let mut sink = TestSink::default();
+        // guid_paths is empty: path_for_guid returns None for every GUID,
+        // so is_player_controller_channel is false.
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        assert_eq!(reader.stats().actor_opens, 1);
+        assert_eq!(reader.stats().skipped_bits, 0);
+        assert_eq!(sink.content_blocks.len(), 1);
+        assert!(sink.content_blocks[0].has_rep_layout);
+        assert!(sink.content_blocks[0].is_actor);
+    }
+
+    /// If the net-player-index byte is on the wire but the cache does NOT
+    /// resolve the channel as a controller, the byte is left unconsumed and
+    /// the first content-block header misframes. This is the exact failure
+    /// mode 17-A describes: the misframed header re-synchronises, so the
+    /// bunch is not lost -- the property block is simply routed to the
+    /// ClassNetCache path instead.
+    ///
+    /// This test proves the cache lookup is what makes the difference: same
+    /// payload as the controller test, but without the path mapping, the
+    /// block is NOT the actor's RepLayout property block.
+    #[test]
+    fn controller_byte_unconsumed_without_cache_path_misframes_header() {
+        let mut payload: Vec<bool> = Vec::new();
+        write_int_packed(&mut payload, 2); // actor GUID 2
+        write_minimal_spawn_data(&mut payload, 9);
+        // The byte IS on the wire (this is really a controller bunch)...
+        payload.extend(std::iter::repeat_n(false, 8));
+        payload.push(true); // hasRepLayout
+        payload.push(true); // isActor
+        write_int_packed(&mut payload, 0); // contentBits = 0
+
+        let packet = build_open_bunch_packet(2, &payload);
+
+        let mut sink = TestSink::default();
+        // ...but the cache does not know the archetype path. This is the
+        // pre-fix state: pc_guids was empty, and the cache lookup that
+        // replaced it had not been added yet.
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        // The block that lands is NOT the actor's property block. With the
+        // fix applied (cache lookup), this misframing cannot happen on a real
+        // controller bunch. Without the fix it is exactly what occurred.
+        let actor_blocks: Vec<_> = sink
+            .content_blocks
+            .iter()
+            .filter(|b| b.is_actor && b.has_rep_layout)
+            .collect();
+        assert!(
+            actor_blocks.is_empty(),
+            "without the cache path the byte shifts the header, so no block is the actor's RepLayout"
+        );
     }
 }
