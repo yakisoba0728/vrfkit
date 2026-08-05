@@ -716,6 +716,32 @@ fn usable_component_interaction_is_typed() {
     assert_eq!(table.lookup(group, "bIsActive"), Some(FieldType::Bool));
 }
 
+/// `MagazineAmmo` is a bare group the replay never names -- every row is
+/// handle 2 with field_name None. `HANDLE_ADDITIONS` names it `AmmoCount` and
+/// the overlay types it Int32. On a bomb replay the u32 steps down 25,24,23...
+/// per weapon as the magazine empties: classic ammo. This pins the full path
+/// (handle table -> name -> type) that a name-only ADDITION cannot exercise.
+#[test]
+fn magazine_ammo_is_typed_via_handle_addition() {
+    let table = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
+    let mut stats = OverlayStats::default();
+    let data = 12i32.to_le_bytes();
+    // field_name is None on the wire; the handle table must supply "AmmoCount".
+    let result = apply_overlay_with_handle(
+        &table,
+        "MagazineAmmo",
+        group_hash_state("MagazineAmmo"),
+        None,
+        2,
+        Some(&data),
+        32,
+        &mut stats,
+    );
+    assert_eq!(result.and_then(|v| v.value_i64), Some(12));
+    assert_eq!(stats.decoded_ok, 1);
+    assert_eq!(stats.not_in_table, 0);
+}
+
 /// `FiniteSpeedMovementComponent` drives projectile travel. No C# descriptor
 /// declares the group. `MaximumRange` is the projectile's max travel distance
 /// in Unreal units: 32 bits on all 11699 rows on 98605b1b, reads as Float a

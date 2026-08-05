@@ -40,8 +40,17 @@ impl ExportSink<'_> {
             current_group_path,
             ..
         } = self;
-        let group = cache.get_group_by_path(current_group_path)?;
-        let name = group.get_field(handle)?.name.as_str();
+        // The replay's own export group names the handle when it can.
+        if let Some(group) = cache.get_group_by_path(current_group_path) {
+            if let Some(field) = group.get_field(handle) {
+                return Some(channel_state.names.intern(field.name.as_str()));
+            }
+        }
+        // Some groups (e.g. `MagazineAmmo`) are declared without field names, so
+        // a handle the wire leaves unnamed falls back to the overlay's handle
+        // table -- without this the row keeps field_name None even though the
+        // overlay resolved and typed it.
+        let name = TABLE.lookup_handle(current_group_path, handle)?;
         Some(channel_state.names.intern(name))
     }
 }

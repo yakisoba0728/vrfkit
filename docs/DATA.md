@@ -98,6 +98,7 @@ purchase; all ten players' purchases are replicated.
 |---|---|---|
 | Weapon instance class | `actors.parquet` class_path + `tools/equippable_table.py` (display name) | ✅ |
 | Shot events (ammo, projectiles, vectors, seed, fire mode) | effect blobs | ✅ typed JSON |
+| Magazine ammo over time | `MagazineAmmo.AmmoCount` (Int32, per weapon) | ✅ typed via handle addition (3..25, depletion ramp) |
 | Equipped weapon | `MulticastNotifyDamage.EquippableUsed` | ✅ |
 | Skin / spray / charm | `manifest` playerLoadouts (per subject) | ✅ |
 
@@ -155,6 +156,13 @@ purchase; all ten players' purchases are replicated.
 
 - **Display names** — the replay carries no player names, only account UUIDs.
 - **ACS** — `PlayerScoreComponent` is not replicated.
+- **InventoryComponent slots** — the replay declares `InventoryComponent` (a
+  bare group) with handles 1-31 but no field names, and the authoritative C#
+  models it under a different path (`AresInventory`) without handle numbers, so
+  the overlay handle table has no entries to name them. Typing it would mean
+  guessing which handle is which slot, so it stays raw until per-handle evidence
+  is found. (`MagazineAmmo`, by contrast, is a single confident handle and is
+  typed as `AmmoCount` Int32.)
 - **AbilitiesAndBuffsComponent** — the replay never declares its `_ClassNetCache`
   group, so `function_count` is brute-forced (fc=34). The outer RPC framing is
   fully recovered, and the inner payload is decomposed (a flag bit followed by a

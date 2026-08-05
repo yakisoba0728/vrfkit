@@ -87,7 +87,10 @@ class AdditionsTests(unittest.TestCase):
         """
         seen = set()
         for group, field, ftype in atc.ADDITIONS:
-            self.assertTrue(group.startswith("/"), group)
+            # Most groups are full UE paths ("/Script/..."); a few replay-declared
+            # groups are bare names ("MagazineAmmo"). Either is valid; empty or
+            # non-alphanumeric-leading garbage is not.
+            self.assertTrue(group.startswith("/") or group[0].isalpha(), group)
             self.assertTrue(field and not field.startswith("_"), field)
             self.assertTrue(ftype.startswith("FieldType::"), ftype)
             self.assertNotIn((group, field), seen, f"duplicate {group}/{field}")
@@ -103,7 +106,22 @@ class AdditionsTests(unittest.TestCase):
         commit. The prior `<= 8` ceiling silently went stale at 13; an exact
         count cannot.
         """
-        self.assertEqual(len(atc.ADDITIONS), 24, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 25, atc.ADDITIONS)
+
+    def test_handle_additions_stay_the_narrow_exception(self):
+        """Same guardrail for the handle -> name additions.
+
+        Each names a handle the replay leaves unnamed so the overlay can type
+        it; the (group, field_name) must also appear in ADDITIONS, or the name
+        resolves to nothing. Pinned exactly like ADDITIONS.
+        """
+        self.assertEqual(len(atc.HANDLE_ADDITIONS), 1, atc.HANDLE_ADDITIONS)
+        addition_keys = {(g, f) for g, f, _t in atc.ADDITIONS}
+        for group, _handle, field in atc.HANDLE_ADDITIONS:
+            self.assertIn(
+                (group, field), addition_keys,
+                f"handle addition {group}/{field} has no matching ADDITION type",
+            )
 
     def test_every_addition_is_also_verified(self):
         """An addition absent from EXPECTED would apply once and never be checked."""

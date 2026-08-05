@@ -353,7 +353,7 @@ disabling it would produce files this crate could not explain.
 
 | Script | Produces |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,209 + 84 handles) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,210 + 85 handles) |
 | `apply_type_corrections.py` | Applies verified corrections/additions to that file and recomputes the two-line generation header |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
 | `extract_golden.py` | `crates/vrf-transform/tests/data/golden_vectors.rs` |
@@ -447,6 +447,7 @@ deliberately sequential for accuracy.
 |---|---|
 | `analyze_coverage.py` | Coverage analysis |
 | `find_skips.py` | Finds skipped bits |
+| `extract_active_effects.py` | Derives an `active_effects.parquet` view from an export -- one row per persistent ability instance (smoke/wall/molly/slow/trap/recon/orb) with class, spawn position, and open/close lifetime. The data already lives in `actors.parquet`; this filters and pairs it. |
 
 ---
 
@@ -455,12 +456,12 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 384 passing
+cargo test                                        # 385 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 113 files, ASCII only
 python tools/check_effect_decoder.py --check      # 12 cases
-python -m unittest discover -s tools/tests -p "test_*.py"   # 119 passing
+python -m unittest discover -s tools/tests -p "test_*.py"   # 120 passing
 python tools/check_docs.py --fast                 # do the docs still describe this repo
 python tools/apply_type_corrections.py --check    # 30 corrections present
 ```

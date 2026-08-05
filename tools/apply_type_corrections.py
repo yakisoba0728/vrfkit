@@ -285,8 +285,22 @@ ADDITIONS = [
     # typed from wire evidence, same bar as Ping/Money.
     ("/Script/ShooterGame.UsableComponent", "HighestProgress", "FieldType::Float"),
     ("/Script/ShooterGame.UsableComponent", "bIsActive", "FieldType::Bool"),
+    # MagazineAmmo is a bare group the replay never names (every row is handle 2,
+    # field_name None), so the handle table has to name it first -- see
+    # HANDLE_ADDITIONS. On a bomb replay the u32 runs 3..25 and steps down a
+    # 25,24,23... depletion ramp per weapon: classic magazine ammo. Int32,
+    # wire-evidence only (no C# descriptor).
+    ("MagazineAmmo", "AmmoCount", "FieldType::Int32"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
+
+#: Handle -> field_name additions for groups the replay never names. Each pairs
+#: with an ADDITION of the same (group_path, field_name) so the overlay can type
+#: the newly-named handle. Keyed on (group_path, handle) and inserted at the
+#: sorted position the binary search over OVERLAY_HANDLE_TABLE requires.
+HANDLE_ADDITIONS = [
+    ("MagazineAmmo", 2, "AmmoCount"),
+]
 
 GROUP_RE = re.compile(r'group_path: "([^"]+)"')
 FIELD_RE = re.compile(r'field_name: "([^"]+)"')
@@ -448,6 +462,93 @@ def resync_table_len(content: str) -> str:
         raise SystemExit(
             f"{TABLE_RS}: expected exactly one OVERLAY_TABLE length declaration, "
             f"found {hits}."
+        )
+    return new_content
+
+
+HANDLE_GROUP_RE = re.compile(r'group_path: "([^"]+)"')
+HANDLE_NUM_RE = re.compile(r"handle: (\d+)")
+
+
+def parse_handle_entries(content: str):
+    """Yield (group_path, handle, field_name) for every OverlayHandleEntry."""
+    for block in content.split("    OverlayHandleEntry {")[1:]:
+        g = HANDLE_GROUP_RE.search(block)
+        h = HANDLE_NUM_RE.search(block)
+        f = FIELD_RE.search(block)
+        if g and h and f:
+            yield g.group(1), int(h.group(1)), f.group(1)
+
+
+def apply_handle_additions(content: str) -> tuple[str, int]:
+    """Insert every OverlayHandleEntry in HANDLE_ADDITIONS not already present.
+
+    Mirrors `apply_additions` but keys on `(group_path, handle)` and writes into
+    the OVERLAY_HANDLE_TABLE slice. Some groups (e.g. `MagazineAmmo`) are never
+    given field names by the replay or the C# descriptors, so the handle table
+    is the only place that can name them -- and without a name the overlay
+    cannot type the handle.
+    """
+    added = 0
+    for group, handle, field in HANDLE_ADDITIONS:
+        blocks = content.split("    OverlayHandleEntry {")
+        keys = []
+        for block in blocks[1:]:
+            g, h = HANDLE_GROUP_RE.search(block), HANDLE_NUM_RE.search(block)
+            keys.append((g.group(1), int(h.group(1))) if g and h else ("", -1))
+        if (group, handle) in keys:
+            continue
+
+        target = next((i for i, k in enumerate(keys) if k > (group, handle)), None)
+        entry = (
+            "    OverlayHandleEntry {\n"
+            f'        group_path: "{group}",\n'
+            f"        handle: {handle},\n"
+            f'        field_name: "{field}",\n'
+            "    },\n"
+        )
+        if target is None:
+            # OVERLAY_HANDLE_TABLE is the last slice in the file; splice the new
+            # entry in before its closing `];`.
+            last = blocks[-1]
+            close = last.rfind("\n];")
+            if close == -1:
+                raise SystemExit(
+                    f"{TABLE_RS}: {group}/handle {handle} would append but the "
+                    f"OVERLAY_HANDLE_TABLE closing '];' could not be located."
+                )
+            head = (
+                "    OverlayHandleEntry {".join(blocks[:-1])
+                + "    OverlayHandleEntry {"
+                + last[:close]
+            )
+            content = head + entry + last[close:]
+        else:
+            head = "    OverlayHandleEntry {".join(blocks[: target + 1])
+            tail = (
+                "    OverlayHandleEntry {"
+                + "    OverlayHandleEntry {".join(blocks[target + 1:])
+            )
+            content = head + entry + tail
+        added += 1
+    return content, added
+
+
+HANDLE_TABLE_LEN_RE = re.compile(
+    r"(pub static OVERLAY_HANDLE_TABLE: \[OverlayHandleEntry; )(\d+)(\])"
+)
+
+
+def resync_handle_table_len(content: str) -> str:
+    """Rewrite the declared `OVERLAY_HANDLE_TABLE` length to the entries present."""
+    n = sum(1 for _ in parse_handle_entries(content))
+    new_content, hits = HANDLE_TABLE_LEN_RE.subn(
+        lambda m: f"{m.group(1)}{n}{m.group(3)}", content, count=1
+    )
+    if hits != 1:
+        raise SystemExit(
+            f"{TABLE_RS}: expected exactly one OVERLAY_HANDLE_TABLE length "
+            f"declaration, found {hits}."
         )
     return new_content
 
@@ -679,6 +780,10 @@ def main():
     content, n_added = apply_additions(content)
     count += n_added
     content = resync_table_len(content)
+
+    content, n_handle_added = apply_handle_additions(content)
+    count += n_handle_added
+    content = resync_handle_table_len(content)
 
     content, header_lines = rewrite_header(content)
 
