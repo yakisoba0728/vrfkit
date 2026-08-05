@@ -200,7 +200,14 @@ pub(super) fn decode_and_parse_rep_layout(
 
     let mut field_reader = BitReader::with_bit_len(stage.scratch, bit_count as u64);
     match field::parse_rep_layout(&mut field_reader, sink) {
-        Ok(count) => stage.stats.fields += u64::from(count),
+        Ok((count, abandoned_bits)) => {
+            stage.stats.fields += u64::from(count);
+            // The field stream returned Ok but abandoned bits mid-block (a
+            // declared payload overran the remainder). The framing layer only
+            // counts `skipped_bits` on Err, so without this those bits would
+            // vanish from every counter. Mirrors the Err path's accounting.
+            stage.stats.skipped_bits += abandoned_bits;
+        }
         Err(_) => {
             let remaining = field_reader.bits_remaining();
             sink.on_stream_failure(StreamFailure {
@@ -231,7 +238,12 @@ pub(super) fn decode_and_parse_class_net_cache(
 
     let mut rpc_reader = BitReader::with_bit_len(stage.scratch, bit_count as u64);
     match field::parse_class_net_cache(&mut rpc_reader, function_count, sink) {
-        Ok(count) => stage.stats.rpcs += u64::from(count),
+        Ok((count, abandoned_bits)) => {
+            stage.stats.rpcs += u64::from(count);
+            // See the RepLayout match above: Ok-but-abandoned bits must reach
+            // `skipped_bits`, not vanish.
+            stage.stats.skipped_bits += abandoned_bits;
+        }
         Err(error) => {
             let remaining = rpc_reader.bits_remaining();
             let failure = StreamFailure {

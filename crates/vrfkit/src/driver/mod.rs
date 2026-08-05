@@ -133,6 +133,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     let mut struct_blob_first_error: Option<String> = None;
     let mut movement_rpc_errors: u64 = 0;
     let mut movement_first_error: Option<String> = None;
+    let mut array_decode_errors: u64 = 0;
     let mut cp_stats = CheckpointStats::default();
 
     while let Some(chunk) = chunk_iter.next_chunk()? {
@@ -220,6 +221,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
                 if movement_first_error.is_none() {
                     movement_first_error = sink.stats.movement_first_error.take();
                 }
+                array_decode_errors += sink.stats.array.errors;
                 error_report.merge_from(&sink.stats.overlay.error_report);
             }
 
@@ -312,6 +314,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             struct_blob_first_error,
             movement_rpc_errors,
             movement_first_error,
+            array_decode_errors,
         },
         &overlay_stats,
         &error_report,

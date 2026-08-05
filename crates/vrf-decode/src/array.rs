@@ -104,6 +104,17 @@ pub struct ArrayDecodeStats {
     pub fields_emitted: u64,
     /// Number of times a limit was hit (element count, field count, or depth).
     pub truncations: u64,
+    /// BitIo read failures or declared-vs-available overruns the walker
+    /// recovered from by abandoning the rest of the stream.
+    ///
+    /// Without this, a truncated element-count read or a payload that EOFs
+    /// mid-element returned an empty/partial `Vec` with `truncations == 0`,
+    /// indistinguishable from a legitimately empty array. The parent row's
+    /// `raw_bits` are still emitted by the caller (`emit_flattened_array`
+    /// always emits the parent), so this counter is the only signal that
+    /// flattened leaves were lost. Mirrors `struct_blobs_failed`: counted and
+    /// surfaced, never silently dropped.
+    pub errors: u64,
 }
 
 /// Everything one walk carries down through the recursion.
@@ -162,6 +173,7 @@ fn decode_array_level(
 
     // Read element count.
     let Ok(element_count) = reader.read_int_packed() else {
+        stats.errors += 1;
         return;
     };
 
@@ -175,6 +187,7 @@ fn decode_array_level(
     // Read elements.
     while !reader.at_end() {
         let Ok(encoded_index) = reader.read_int_packed() else {
+            stats.errors += 1;
             break;
         };
 
@@ -218,6 +231,7 @@ fn decode_struct_fields(
         }
 
         let Ok(encoded_handle) = reader.read_int_packed() else {
+            stats.errors += 1;
             return;
         };
         if encoded_handle == 0 {
@@ -226,13 +240,17 @@ fn decode_struct_fields(
         let handle = encoded_handle - 1;
 
         let Ok(payload_bits) = reader.read_int_packed() else {
+            stats.errors += 1;
             return;
         };
         if payload_bits == 0 {
             continue;
         }
         if u64::from(payload_bits) > reader.bits_remaining() {
-            // Malformed: skip remaining.
+            // Malformed: declared more bits than available. The abandoned bits
+            // are counted as an error so the loss of flattened leaves is
+            // visible, never a silent empty Vec.
+            stats.errors += 1;
             reader.skip_remaining();
             return;
         }
@@ -656,5 +674,64 @@ mod tests {
 
         assert!(fields.is_empty());
         assert_eq!(stats.elements_decoded, 0);
+        // A legitimately empty array must read as zero errors so a malformed
+        // run cannot hide behind the same number.
+        assert_eq!(stats.errors, 0);
+    }
+
+    /// A payload that declares an element but EOFs mid-field must surface an
+    /// error, not return an empty `Vec` indistinguishable from a clean empty
+    /// array. This is the core silent-drop bug: the parent row's raw_bits are
+    /// emitted by the caller regardless, but flattened leaves are lost and,
+    /// without `errors`, the loss was invisible.
+    #[test]
+    fn truncated_payload_mid_element_counts_error() {
+        // elementCount=2, element 0 starts, its first field declares 32 bits
+        // of payload but only 8 remain -> overrun.
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 2); // elementCount = 2
+        write_int_packed(&mut bits, 1); // encodedIndex = 1 -> element 0
+        write_int_packed(&mut bits, 4); // encodedHandle = 4 -> handle 3
+        write_int_packed(&mut bits, 32); // payloadBits = 32 (overruns)
+        bits.extend(std::iter::repeat_n(true, 8)); // only 8 bits of payload
+
+        let data = bits_to_bytes(&bits);
+        let bit_count = bits.len() as u32;
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(&data, bit_count, None, &[], &mut stats);
+
+        assert!(
+            stats.errors >= 1,
+            "truncated array must count errors, got {}",
+            stats.errors
+        );
+        // No complete leaf was emitted; the caller still emits the parent row
+        // from its own raw_bits, independent of this Vec.
+        assert!(fields.is_empty());
+    }
+
+    /// A BitIo read failure (fewer than 8 bits left for an IntPacked read) must
+    /// also count as an error rather than returning silently.
+    #[test]
+    fn read_failure_mid_stream_counts_error() {
+        // elementCount=1, element 0 starts, its field header declares a handle,
+        // then the stream ends with too few bits for the payloadBits IntPacked.
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 1); // elementCount = 1
+        write_int_packed(&mut bits, 1); // encodedIndex = 1 -> element 0
+        write_int_packed(&mut bits, 4); // encodedHandle = 4 -> handle 3
+        // Three stray bits: not enough for an IntPacked payloadBits read.
+        bits.extend(std::iter::repeat_n(false, 3));
+
+        let data = bits_to_bytes(&bits);
+        let bit_count = bits.len() as u32;
+        let mut stats = ArrayDecodeStats::default();
+        let _fields = decode_struct_array(&data, bit_count, None, &[], &mut stats);
+
+        assert!(
+            stats.errors >= 1,
+            "mid-stream read failure must count errors, got {}",
+            stats.errors
+        );
     }
 }

@@ -905,6 +905,55 @@ mod tests {
         assert_eq!(stats.skipped_bits, 7);
     }
 
+    /// A field stream that returns Ok but abandons bits mid-block must land
+    /// those bits in `skipped_bits`. Before the fix, `parse_class_net_cache`
+    /// did `reader.skip_remaining(); break; return Ok(count)` and the framing
+    /// layer only counted `skipped_bits` on Err, so the abandoned bits vanished
+    /// from every counter.
+    ///
+    /// Same golden V13.01 vector as the unresolved test (wire 0xBF -> 0x66 for
+    /// actor 2), but `function_count=2` so the parser walks the stream instead
+    /// of bailing with UnresolvedFunctionCount. Decoded 0x66 yields one handle
+    /// bit (handle=0) then leaves 6 bits -- fewer than the 8 an IntPacked
+    /// payload-length read needs -- so the stream returns Ok(0) after skipping
+    /// those 6 bits. They must be accounted.
+    #[test]
+    fn class_net_cache_overrun_ok_path_counts_skipped_bits() {
+        let wire = [0xBF];
+        let mut payload = BitReader::with_bit_len(&wire, 7);
+        let mut scratch = vec![0xFF; 16];
+        let mut stats = NetStats::default();
+        let mut channels = ChannelTable::default();
+        let mut sink = TestSink::default();
+        let mut stage = Stage {
+            stats: &mut stats,
+            channels: &mut channels,
+            transform: TransformVersion::V1301,
+            scratch: &mut scratch,
+        };
+
+        framing::decode_and_parse_class_net_cache(
+            &mut payload,
+            7,
+            NetworkGuid(2),
+            2,
+            &mut stage,
+            &mut sink,
+        );
+
+        assert_eq!(payload.position(), 7);
+        // Ok path: the block was processed, just malformed internally, so no
+        // hard stream failure is recorded.
+        assert_eq!(stats.rpc_stream_failures, 0);
+        assert_eq!(stats.rpcs, 0);
+        // The 6 abandoned bits must be counted, not silently dropped.
+        assert!(
+            stats.skipped_bits >= 6,
+            "abandoned mid-block bits must land in skipped_bits, got {}",
+            stats.skipped_bits
+        );
+    }
+
     /// Verifies that a content-block overrun produces a DiagnosticEvent with
     /// full context (packet id, channel, bunch flags, consumed/remaining bits).
     ///

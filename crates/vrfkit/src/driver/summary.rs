@@ -37,6 +37,13 @@ pub(super) struct RunTotals {
     /// unconditionally so "0" is distinguishable from "decoder not reached".
     pub movement_rpc_errors: u64,
     pub movement_first_error: Option<String>,
+    /// Flattened-array decode errors (BitIo read failures or declared-vs-
+    /// available overruns in the array walker). Zero on a valid replay; printed
+    /// only when non-zero so the line cannot read as "no failures" on a build
+    /// that silently stopped decoding arrays. The parent rows are still emitted
+    /// from their own raw_bits, so this is the only signal that flattened
+    /// leaves were lost.
+    pub array_decode_errors: u64,
 }
 
 /// Print the whole `=== Export complete ===` report.
@@ -87,6 +94,12 @@ pub(super) fn print(
     eprintln!("  Movement errors:  {}", totals.movement_rpc_errors);
     if let Some(err) = &totals.movement_first_error {
         eprintln!("  Movement err:     {err}");
+    }
+    // Printed only when non-zero: valid replays produce zero and the line would
+    // otherwise be noise on the pinned summary. A non-zero value means the
+    // array walker abandoned bits mid-element and flattened leaves were lost.
+    if totals.array_decode_errors > 0 {
+        eprintln!("  Array decode err: {}", totals.array_decode_errors);
     }
     eprintln!("  Elapsed:          {:.2?}", totals.elapsed);
 

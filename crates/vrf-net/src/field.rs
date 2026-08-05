@@ -55,12 +55,20 @@ pub trait FieldSink {
 
 /// Parse a RepLayout property stream, emitting every field to the sink.
 ///
-/// Returns the number of fields emitted.
-pub fn parse_rep_layout(reader: &mut BitReader<'_>, sink: &mut dyn FieldSink) -> Result<u32> {
+/// Returns the number of fields emitted and the count of bits the stream
+/// abandoned mid-block (a declared payload that overran the remaining bits).
+/// The caller folds the abandoned count into `skipped_bits` so the loss is
+/// visible: previously these bits were consumed by `skip_remaining` with zero
+/// accounting because the framing layer only counted `skipped_bits` on `Err`.
+pub fn parse_rep_layout(
+    reader: &mut BitReader<'_>,
+    sink: &mut dyn FieldSink,
+) -> Result<(u32, u64)> {
     // Property checksum bit -- always present, always ignored.
     let _checksum = reader.read_bit()?;
 
     let mut field_count = 0u32;
+    let mut abandoned_bits = 0u64;
 
     while !reader.at_end() {
         let encoded_handle = reader.read_int_packed()?;
@@ -75,8 +83,10 @@ pub fn parse_rep_layout(reader: &mut BitReader<'_>, sink: &mut dyn FieldSink) ->
         let payload_bits = reader.read_int_packed()?;
 
         if payload_bits as u64 > reader.bits_remaining() {
-            // Malformed: declared more bits than available.
-            // Skip remaining and return what we have.
+            // Malformed: declared more bits than available. Hand the abandoned
+            // remainder back to the caller so it lands in `skipped_bits`
+            // rather than vanishing from every counter.
+            abandoned_bits = reader.bits_remaining();
             reader.skip_remaining();
             break;
         }
@@ -86,7 +96,7 @@ pub fn parse_rep_layout(reader: &mut BitReader<'_>, sink: &mut dyn FieldSink) ->
         field_count += 1;
     }
 
-    Ok(field_count)
+    Ok((field_count, abandoned_bits))
 }
 
 /// Parse a ClassNetCache RPC stream, emitting every invocation to the sink.
@@ -119,12 +129,17 @@ pub fn parse_rep_layout(reader: &mut BitReader<'_>, sink: &mut dyn FieldSink) ->
 /// Source: `Engine/Source/Runtime/Engine/Private/DataChannel.cpp`, confirmed by
 /// `Shiqan/FortniteReplayDecompressor` (C#) and `xNocken/replay-reader` (JS).
 ///
-/// Returns the number of RPCs emitted.
+/// Returns the number of RPCs emitted and the count of bits the stream
+/// abandoned mid-block (either too few bits remained for an IntPacked
+/// payload-length read, or a declared payload overran the remainder). The
+/// caller folds the abandoned count into `skipped_bits` so the loss is visible:
+/// previously these bits were consumed by `skip_remaining` with zero accounting
+/// because the framing layer only counted `skipped_bits` on `Err`.
 pub fn parse_class_net_cache(
     reader: &mut BitReader<'_>,
     function_count: u32,
     sink: &mut dyn FieldSink,
-) -> Result<u32> {
+) -> Result<(u32, u64)> {
     if function_count == 0 {
         // Zero does not mean "a class with no functions", it means the export
         // group could not be resolved, so the handle width is unknown and the
@@ -143,12 +158,15 @@ pub fn parse_class_net_cache(
     let handle_max = function_count.max(2);
 
     let mut rpc_count = 0u32;
+    let mut abandoned_bits = 0u64;
 
     while !reader.at_end() {
         let handle = reader.read_serialized_int(handle_max)?;
 
         if reader.bits_remaining() < 8 {
-            // Not enough bits for a payload length -- malformed tail.
+            // Not enough bits for a payload length -- malformed tail. Account
+            // the abandoned remainder so it is not silently dropped.
+            abandoned_bits = reader.bits_remaining();
             reader.skip_remaining();
             break;
         }
@@ -156,6 +174,7 @@ pub fn parse_class_net_cache(
         let payload_bits = reader.read_int_packed()?;
 
         if payload_bits as u64 > reader.bits_remaining() {
+            abandoned_bits = reader.bits_remaining();
             reader.skip_remaining();
             break;
         }
@@ -165,7 +184,7 @@ pub fn parse_class_net_cache(
         rpc_count += 1;
     }
 
-    Ok(rpc_count)
+    Ok((rpc_count, abandoned_bits))
 }
 
 #[cfg(test)]
@@ -241,7 +260,7 @@ mod tests {
         let data = bits_to_bytes(&bits);
         let mut reader = BitReader::new(&data);
         let mut sink = RecordingSink::default();
-        let count = parse_rep_layout(&mut reader, &mut sink).unwrap();
+        let (count, _) = parse_rep_layout(&mut reader, &mut sink).unwrap();
 
         assert_eq!(count, 1);
         assert_eq!(sink.fields, vec![(0, 32)]);
@@ -264,7 +283,7 @@ mod tests {
         let data = bits_to_bytes(&bits);
         let mut reader = BitReader::new(&data);
         let mut sink = RecordingSink::default();
-        let count = parse_rep_layout(&mut reader, &mut sink).unwrap();
+        let (count, _) = parse_rep_layout(&mut reader, &mut sink).unwrap();
 
         assert_eq!(count, 2);
         assert_eq!(sink.fields, vec![(0, 8), (4, 16)]);
@@ -279,7 +298,7 @@ mod tests {
         let data = bits_to_bytes(&bits);
         let mut reader = BitReader::new(&data);
         let mut sink = RecordingSink::default();
-        let count = parse_rep_layout(&mut reader, &mut sink).unwrap();
+        let (count, _) = parse_rep_layout(&mut reader, &mut sink).unwrap();
         assert_eq!(count, 0);
     }
 
@@ -293,7 +312,7 @@ mod tests {
         let data = bits_to_bytes(&bits);
         let mut reader = BitReader::new(&data);
         let mut sink = RecordingSink::default();
-        let count = parse_class_net_cache(&mut reader, 10, &mut sink).unwrap();
+        let (count, _) = parse_class_net_cache(&mut reader, 10, &mut sink).unwrap();
 
         assert_eq!(count, 1);
         assert_eq!(sink.rpcs, vec![(2, 16)]);
@@ -330,7 +349,7 @@ mod tests {
         // verify consumption without byte-padding interference.
         let mut reader = BitReader::with_bit_len(&data, bits.len() as u64);
         let mut sink = RecordingSink::default();
-        let count = parse_class_net_cache(&mut reader, 1, &mut sink).unwrap();
+        let (count, _) = parse_class_net_cache(&mut reader, 1, &mut sink).unwrap();
 
         assert_eq!(count, 1, "should emit exactly one RPC");
         assert_eq!(sink.rpcs, vec![(0, 0)]);
@@ -356,7 +375,7 @@ mod tests {
         let data = bits_to_bytes(&bits);
         let mut reader = BitReader::new(&data);
         let mut sink = RecordingSink::default();
-        let count = parse_class_net_cache(&mut reader, 3, &mut sink).unwrap();
+        let (count, _) = parse_class_net_cache(&mut reader, 3, &mut sink).unwrap();
 
         assert_eq!(count, 1);
         assert_eq!(sink.rpcs, vec![(1, 8)]);
@@ -383,5 +402,69 @@ mod tests {
 
         assert!(parse_class_net_cache(&mut reader, 0, &mut sink).is_err());
         assert!(sink.rpcs.is_empty());
+    }
+
+    /// A RepLayout field whose declared payload overruns the remaining bits
+    /// must return the abandoned bit count so the caller can account it. Before
+    /// the fix these bits were skip_remaining'd with the parser returning
+    /// `Ok(count)`, and the framing layer only counted skipped_bits on Err.
+    #[test]
+    fn rep_layout_overrun_returns_abandoned_bits() {
+        let mut bits = Vec::new();
+        bits.push(false); // checksum
+        write_int_packed(&mut bits, 1); // encodedHandle = 1 -> handle 0
+        write_int_packed(&mut bits, 32); // payloadBits = 32 (overruns)
+        bits.extend(std::iter::repeat_n(false, 8)); // only 8 bits of payload
+
+        // Bound to the exact bit count, the way the framing layer does: the
+        // byte-padded tail must not be counted as abandoned stream data.
+        let data = bits_to_bytes(&bits);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let mut sink = RecordingSink::default();
+        let (count, abandoned) = parse_rep_layout(&mut reader, &mut sink).unwrap();
+
+        assert_eq!(count, 0, "no complete field emitted");
+        assert_eq!(
+            abandoned, 8,
+            "the 8 leftover bits must be reported abandoned"
+        );
+        assert!(sink.fields.is_empty());
+    }
+
+    /// A clean terminator (no overrun) reports zero abandoned bits, so the
+    /// caller does not inflate skipped_bits with ordinary block padding.
+    #[test]
+    fn rep_layout_clean_terminator_reports_zero_abandoned() {
+        let mut bits = Vec::new();
+        bits.push(false); // checksum
+        write_int_packed(&mut bits, 1); // handle 0
+        write_int_packed(&mut bits, 8); // 8 bits payload
+        bits.extend(std::iter::repeat_n(false, 8));
+        write_int_packed(&mut bits, 0); // terminator
+
+        let data = bits_to_bytes(&bits);
+        let mut reader = BitReader::new(&data);
+        let mut sink = RecordingSink::default();
+        let (_count, abandoned) = parse_rep_layout(&mut reader, &mut sink).unwrap();
+        assert_eq!(abandoned, 0);
+    }
+
+    /// A ClassNetCache stream that EOFs before an IntPacked payload-length read
+    /// completes must return the abandoned tail bits.
+    #[test]
+    fn class_net_cache_short_tail_returns_abandoned_bits() {
+        // function_count = 2 -> handle reads 1 bit. After the handle bit only 3
+        // bits remain: fewer than the 8 an IntPacked read needs.
+        let mut bits = Vec::new();
+        write_serialized_int(&mut bits, 0, 2); // handle = 0, 1 bit
+        bits.extend(std::iter::repeat_n(false, 3)); // 3 stray bits
+
+        let data = bits_to_bytes(&bits);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let mut sink = RecordingSink::default();
+        let (count, abandoned) = parse_class_net_cache(&mut reader, 2, &mut sink).unwrap();
+
+        assert_eq!(count, 0);
+        assert_eq!(abandoned, 3, "the 3 stray tail bits must be reported");
     }
 }
