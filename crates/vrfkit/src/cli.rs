@@ -21,11 +21,12 @@ SUBCOMMANDS:
     inspect   Print replay info, header, branch, and chunk summary
     validate  Run the RepLayout grammar oracle on all content blocks
               --diagnostics  Print full context for every malformed/skipped event
-    export    Write fields.parquet + movement.parquet + manifest.json
+    export    Write five Parquet tables (fields, movement, actors,
+              net_guids, events) + manifest.json
               --checkpoints  Also parse Checkpoint chunks into
                              checkpoint_fields.parquet. Off by default: the
                              snapshots are ~10% of the file and a separate
-                             read, and the four other tables are unaffected
+                             read, and the five other tables are unaffected
                              either way.
 ";
 
