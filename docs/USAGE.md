@@ -137,9 +137,11 @@ export 0.85초. 문자열 컬럼은 딕셔너리 인코딩 + ZSTD입니다.
 최대 하나만 채워집니다. 나중에 포맷을 알아내도 이미 내보낸 행을 다시 파싱할 필요가
 없습니다.
 
-예외 하나: 그룹을 특정 못 해 내부 스트림 자체를 못 걷는 ClassNetCache 블록은 행이
-없습니다. 그건 `validate`의 `RPC stream failed`로 카운트되고, 재해석하려면 원본
-`.vrf`가 필요합니다.
+예외 하나: 그룹을 특정 못 해 내부 스트림 자체를 못 걷는 ClassNetCache 블록은 전체
+페이로드를 한 보존 행(`field_name` =
+`__vrfkit_unresolved_class_net_cache_payload__`, `handle` = `u32::MAX`, `raw_bits`에
+전체 페이로드)으로만 내보내고 필드로는 풀지 못합니다. 그건 `validate`의 `RPC stream
+failed`로 카운트되고, 필드로 재해석하려면 원본 `.vrf`에서 다시 export해야 합니다.
 
 배열은 평탄화돼서 `Rounds[3].Reports[1].Interactions[0].DamageDealt` 같은 이름으로
 나옵니다. `LIKE 'Rounds[%].Reports[%].DamageDealt'`로 필터할 수 있습니다.
@@ -160,7 +162,7 @@ export 0.85초. 문자열 컬럼은 딕셔너리 인코딩 + ZSTD입니다.
 
 ### `actors.parquet` — 액터 생성/소멸
 
-`event`(`spawned` / `closed`), `class_path`, `archetype_path`, `spawn_x/y/z`,
+`event`(`open` / `close`), `class_path`, `archetype_path`, `spawn_x/y/z`,
 `spawn_pitch/yaw/roll`. 무기·어빌리티 인스턴스의 클래스를 여기서 찾습니다.
 
 ### `net_guids.parquet` — GUID → 경로, 그리고 포함 관계
@@ -173,7 +175,7 @@ export 0.85초. 문자열 컬럼은 딕셔너리 인코딩 + ZSTD입니다.
 `id`, `group`, `metadata`, `time1`, `time2`, `payload_size`, `raw_payload`.
 
 `group`은 `characterDeath`, `characterUltimateUsed`, `roundStarted`, `spikePlanted`,
-`spikeDefused`, `switchTeams` 등입니다. **페이로드 워드는 `raw_payload`로 그대로
+`spikeDefused`, `spikeExploded`, `switchTeams` 등입니다. **페이로드 워드는 `raw_payload`로 그대로
 둡니다** — 워드 개수가 그룹마다 다르고 와이어에 개수가 없으며, 7개 그룹 중 2개만 의미가
 증명됐기 때문입니다. `characterDeath`의 두 워드는 killer/killed NetGUID로 확인됐습니다.
 
@@ -383,12 +385,11 @@ R5  kills > 0 이면 damage > 0
 | 13.01 | 코퍼스 215개 전수 |
 | 13.02 | 보존 리플레이 62 MB + 실측 |
 
-13.02 실측:
+13.02 실측 (보존본 `1.vrf`; 작성 시점 데모 27개 전수 결과도 동일):
 
 ```
 1.vrf     (62 MB)  774,299 blocks  568,557 fields  408,591 RPCs  pass 98.919512%
-f1110ea5  (59 MB)  743,110 blocks  537,865 fields  409,103 RPCs  pass 98.938381%
-                   둘 다 malformed 0 / transform 실패 0 / decode errors 0
+                   malformed 0 / transform 실패 0 / decode errors 0
 ```
 
 새 빌드를 붙이려면 `SeededTransform` 구현 하나면 됩니다 — 상수 2개와 워드 함수 3개.
