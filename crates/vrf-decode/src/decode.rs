@@ -77,6 +77,12 @@ pub enum DecodeError {
     NotFullyConsumed { remaining: u64 },
     #[error("field type is Raw/Skip -- no decode attempted")]
     RawOrSkip,
+    /// A `UInt64` value exceeded `i64::MAX`. The overlay stores integers as
+    /// `i64`, so a value with its high bit set cannot be represented without a
+    /// silent sign flip; error loudly rather than emit a plausible wrong
+    /// (negative) number.
+    #[error("unsigned value {value} (0x{value:016X}) exceeds i64::MAX")]
+    UnsignedOverflow { value: u64 },
 }
 
 /// Decode raw bits according to the given [`FieldType`].

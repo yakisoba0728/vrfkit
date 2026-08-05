@@ -49,8 +49,16 @@ pub(super) fn decode_u32(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeEr
 }
 
 pub(super) fn decode_u64(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeError> {
-    // Store as i64 (reinterpret); values > i64::MAX are rare in practice.
-    Ok(DecodedValue::I64(r.read_u64()? as i64))
+    // The overlay stores integers as i64. A u64 with its high bit set cannot
+    // be represented without a silent sign flip, so reject it loudly rather
+    // than emit a plausible wrong (negative) number. The only UInt64 overlay
+    // entries are effect IDs (small values), so this never fires on supported
+    // replays -- it is a defensive loud failure for malformed input.
+    let value = r.read_u64()?;
+    if value > i64::MAX as u64 {
+        return Err(DecodeError::UnsignedOverflow { value });
+    }
+    Ok(DecodedValue::I64(value as i64))
 }
 
 pub(super) fn decode_float(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeError> {

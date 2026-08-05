@@ -121,15 +121,17 @@ pub(crate) fn parse_replay_info(data: &[u8]) -> Result<(ReplayInfo, usize), Cont
         }
         seen_guids.push(guid);
 
-        if guid != LOCAL_REPLAY_GUID {
-            return Err(ContainerError::UnregisteredCustomVersion { guid });
+        if guid == LOCAL_REPLAY_GUID {
+            // The one custom version this parser pins. Its version is validated;
+            // every other GUID is ignored so an engine/game bump that adds an
+            // entry does not make every replay unreadable. Unreal readers
+            // conventionally iterate the list and pick out the GUIDs they care
+            // about.
+            if version != LOCAL_REPLAY_VERSION {
+                return Err(ContainerError::UnsupportedLocalReplayVersion { actual: version });
+            }
+            found_local_replay = true;
         }
-
-        if version != LOCAL_REPLAY_VERSION {
-            return Err(ContainerError::UnsupportedLocalReplayVersion { actual: version });
-        }
-
-        found_local_replay = true;
     }
 
     if !found_local_replay {

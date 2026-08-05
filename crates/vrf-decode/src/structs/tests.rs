@@ -297,6 +297,70 @@ fn round_infos_row2_another_player() {
     assert_eq!(results[0].end_of_round_loadout_value, Some(600));
 }
 
+// -- TooManyFields boundary (B12) -----------------------------------------
+
+/// `MAX_FIELDS_PER_ELEMENT` from the framing module, repeated here so the
+/// boundary tests name a concrete number rather than a magic literal.
+const MAX_FIELDS_PER_ELEMENT: u32 = 8;
+
+/// Build a `RoundInfos` blob whose single element carries `n` fields, each at
+/// handle 40 (`RoundNumber`, an Int32) with a zero payload.
+///
+/// IntPacked in this codebase encodes 7 value bits per byte in bits 1..=7 with
+/// the continuation in bit 0 (`value = (byte >> 1) << shift`), so a one-byte
+/// value `v` (v < 128) is written as `v << 1`. Every length and handle here is
+/// one byte; each field is `handle(1) bitcount(1) payload(4)`. The element is
+/// terminated correctly so a blob that parses does so without tripping
+/// `ensure_consumed`. Used to probe the `TooManyFields` boundary, which must
+/// allow exactly `MAX_FIELDS_PER_ELEMENT` fields and reject the `MAX + 1`-th.
+fn round_infos_with_n_fields(n: u32) -> (Vec<u8>, u64) {
+    /// One-byte IntPacked for values that fit in 7 bits (no continuation).
+    const fn ip1(v: u8) -> u8 {
+        v << 1
+    }
+    let mut bytes = Vec::new();
+    bytes.push(ip1(1)); // array count = 1
+    bytes.push(ip1(1)); // element encoded_index = 1 (index 0)
+    for _ in 0..n {
+        bytes.push(ip1(41)); // encoded_handle = 41 (handle 40 = "RoundNumber")
+        bytes.push(ip1(32)); // bit_count = 32
+        bytes.extend_from_slice(&[0u8; 4]); // 32-bit zero payload
+    }
+    bytes.push(0); // field terminator (encoded_handle = 0)
+    bytes.push(0); // element terminator (encoded_index = 0)
+    let bits = u64::try_from(bytes.len() * 8).unwrap();
+    (bytes, bits)
+}
+
+/// MAX fields in one element must parse: the guard rejects only the MAX+1-th.
+/// (Before the fix the guard rejected the MAX-th, allowing only MAX-1.)
+#[test]
+fn round_infos_accepts_max_fields_per_element() {
+    let (bytes, bits) = round_infos_with_n_fields(MAX_FIELDS_PER_ELEMENT);
+    let mut r = BitReader::with_bit_len(&bytes, bits);
+    let results = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].round_number, Some(0));
+}
+
+/// The MAX+1-th field is rejected as `TooManyFields`. Proves the guard still
+/// exists and now sits one field further out than it did before the fix.
+#[test]
+fn round_infos_rejects_one_more_than_max_fields() {
+    let (bytes, bits) = round_infos_with_n_fields(MAX_FIELDS_PER_ELEMENT + 1);
+    let mut r = BitReader::with_bit_len(&bytes, bits);
+    let err = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            StructBlobError::TooManyFields {
+                context: "RoundInfos"
+            }
+        ),
+        "expected TooManyFields, got {err:?}"
+    );
+}
+
 // -- Helpers --------------------------------------------------------------
 
 fn hex_to_bytes(s: &str) -> Vec<u8> {

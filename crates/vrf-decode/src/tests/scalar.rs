@@ -1,7 +1,7 @@
 //! Scalar primitive decoders, ported from the C# reference's
 //! `PrimitiveDecodersScalarTests.cs`.
 
-use crate::decode::{DecodedValue, FieldType, decode_field};
+use crate::decode::{DecodeError, DecodedValue, FieldType, decode_field};
 
 #[test]
 fn double_reads_eight_byte_float() {
@@ -102,6 +102,25 @@ fn uint64_reads_eight_byte_unsigned() {
     let data = 0x0102030405060708u64.to_le_bytes();
     let result = decode_field(FieldType::UInt64, &data, 64).unwrap();
     assert_eq!(result, DecodedValue::I64(0x0102030405060708i64));
+}
+
+/// A `UInt64` with its sign bit set cannot fit in the `i64` the overlay stores
+/// without a silent wrap to a negative number. It must be rejected loudly
+/// instead. Values at or below `i64::MAX` decode exactly as before.
+#[test]
+fn uint64_above_i64_max_is_rejected_not_wrapped() {
+    // High bit set: i64::MAX + 1 = 0x8000_0000_0000_0000.
+    let over = i64::MAX as u64 + 1;
+    let data = over.to_le_bytes();
+    let result = decode_field(FieldType::UInt64, &data, 64);
+    assert!(matches!(
+        result,
+        Err(DecodeError::UnsignedOverflow { value }) if value == over
+    ));
+    // Boundary: i64::MAX itself still decodes to the positive I64.
+    let data = (i64::MAX as u64).to_le_bytes();
+    let result = decode_field(FieldType::UInt64, &data, 64).unwrap();
+    assert_eq!(result, DecodedValue::I64(i64::MAX));
 }
 
 #[test]

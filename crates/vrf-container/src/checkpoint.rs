@@ -149,12 +149,18 @@ pub fn decompress_checkpoint(
         // guess at a framing nothing can be checked against.
         return Ok(archive.to_vec());
     }
-    crate::oodle::decompress_oodle_archive(
-        archive,
-        archive.len() as i32,
-        None,
-        "checkpoint archive",
-    )
+    // `decompress_oodle_archive` takes the declared size as an i32. Real
+    // callers pass a checkpoint archive whose size is already validated as an
+    // i32, so this never fires on supported input; the checked conversion is
+    // here so a >2 GiB slice is rejected loudly rather than silently truncated
+    // by `as i32`. `Truncated` is the one variant that takes `usize` fields,
+    // so it can carry the real length without itself losing precision.
+    let declared_size = i32::try_from(archive.len()).map_err(|_| ContainerError::Truncated {
+        context: "checkpoint archive length",
+        needed: archive.len(),
+        available: i32::MAX as usize,
+    })?;
+    crate::oodle::decompress_oodle_archive(archive, declared_size, None, "checkpoint archive")
 }
 
 // --- Helpers ------------------------------------------------------------------

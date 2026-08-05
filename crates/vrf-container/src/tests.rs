@@ -320,6 +320,43 @@ fn info_older_custom_version_rejected() {
     ));
 }
 
+/// A custom-version list carrying a GUID the parser does not recognise must
+/// not make the replay unreadable. Unreal readers iterate the list and pick out
+/// the GUIDs they care about, ignoring the rest; a future engine bump that adds
+/// an engine/game custom-version entry would otherwise break every replay.
+///
+/// This builds a list with an unknown GUID (carrying a version the parser must
+/// NOT validate) followed by the required `LocalFileReplay` GUID at version 7,
+/// and asserts the info still parses.
+#[test]
+fn info_accepts_unknown_custom_version_guids() {
+    let mut buf = Vec::new();
+    helpers::add_u32(&mut buf, 0x43F4_EFDD); // magic
+    helpers::add_u32(&mut buf, 7); // file version
+    // Two custom versions: an unknown one, then LOCAL_REPLAY.
+    helpers::add_i32(&mut buf, 2);
+    // Unknown GUID with an arbitrary version that must be ignored.
+    helpers::add_guid(&mut buf, 0x1111_1111, 0x2222_2222, 0x3333_3333, 0x4444_4444);
+    helpers::add_i32(&mut buf, 999);
+    // The required LocalFileReplay GUID at its required version.
+    helpers::add_guid(&mut buf, 0x95A4_F03E, 0x7E0B_49E4, 0xBA43_D356, 0x94FF_87D9);
+    helpers::add_i32(&mut buf, 7);
+    // Summary fields.
+    helpers::add_i32(&mut buf, 60000); // length_in_ms
+    helpers::add_u32(&mut buf, 19); // network version
+    helpers::add_u32(&mut buf, 1234); // changelist
+    helpers::add_fstring(&mut buf, "Match");
+    helpers::add_u32(&mut buf, 0); // is_live
+    helpers::add_i64(&mut buf, 42); // timestamp
+    helpers::add_u32(&mut buf, 0); // compressed
+    helpers::add_u32(&mut buf, 0); // encrypted
+    helpers::add_byte_array(&mut buf, &[]); // encryption key
+
+    let (info, _offset) = info::parse_replay_info(&buf).unwrap();
+    assert_eq!(info.length_in_ms, 60000);
+    assert_eq!(info.friendly_name, "Match");
+}
+
 #[test]
 fn info_valid_parses_summary() {
     let data = helpers::build_replay_info(

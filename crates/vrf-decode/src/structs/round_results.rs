@@ -145,11 +145,11 @@ pub fn decode_round_results(
         let mut winning_team_role: Option<AresTeamRole> = Option::None;
         let mut round_result: Option<AresRoundOutcome> = Option::None;
 
-        for field_idx in 0..MAX_FIELDS_PER_ELEMENT {
+        for field_idx in 0..=MAX_FIELDS_PER_ELEMENT {
             let Some((handle, bit_count)) = read_field_header(reader)? else {
                 break;
             };
-            if field_idx == MAX_FIELDS_PER_ELEMENT - 1 {
+            if field_idx == MAX_FIELDS_PER_ELEMENT {
                 return Err(StructBlobError::TooManyFields { context: CONTEXT });
             }
 

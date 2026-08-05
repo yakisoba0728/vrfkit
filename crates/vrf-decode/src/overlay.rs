@@ -498,6 +498,10 @@ fn apply_overlay_inner(
                 DecodeError::BitIo(_) => DecodeErrorKind::Eof,
                 DecodeError::NotFullyConsumed { .. } => DecodeErrorKind::Residual,
                 DecodeError::RawOrSkip => DecodeErrorKind::ZeroBits, // unreachable here
+                // A UInt64 that overflows i64 is a value-range rejection, not a
+                // bit-level failure; no dedicated kind exists, so it is bucketed
+                // with Residual. Defensive: does not fire on supported replays.
+                DecodeError::UnsignedOverflow { .. } => DecodeErrorKind::Residual,
             };
             stats
                 .error_report
