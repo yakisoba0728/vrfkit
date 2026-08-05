@@ -59,6 +59,20 @@ static TABLE: OverlayTable = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY
 /// How many stream-failure lines to retain. See [`ChannelState::stream_failures`].
 const MAX_STREAM_FAILURE_RECORDS: usize = 32;
 
+/// One BombPlayerState actor's identity, accumulated from its `Subject` and
+/// `SpawnedCharacter` fields for the manifest `players` array.
+///
+/// `Subject` is the account UUID (a `String`); `SpawnedCharacter` is the
+/// character actor NetGUID, which equals `movement.character_net_guid`. Together
+/// they let every actor-keyed table join to a stable account identity -- the
+/// one piece `playerLoadouts`' `characterId` cannot give when two players pick
+/// the same agent.
+#[derive(Debug, Clone, Default)]
+pub struct PlayerIdentity {
+    pub subject: Option<String>,
+    pub character_net_guid: Option<u32>,
+}
+
 /// Persistent per-channel state that must survive across packets and chunks.
 ///
 /// The replay pipeline creates a fresh `ExportSink` for every packet (to
@@ -92,6 +106,10 @@ pub struct ChannelState {
     /// whose transform is wrong would fail on essentially every block, and the
     /// first few dozen say everything the later million would.
     stream_failures: Vec<String>,
+    /// BombPlayerState identity capture for the manifest `players` array. Keyed
+    /// by the PlayerState actor's NetGUID; filled in `on_field` as `Subject`
+    /// and `SpawnedCharacter` arrive, drained once at the end of the replay.
+    players: HashMap<u32, PlayerIdentity>,
 }
 
 impl ChannelState {
@@ -112,6 +130,13 @@ impl ChannelState {
     #[must_use]
     pub fn stream_failures(&self) -> &[String] {
         &self.stream_failures
+    }
+
+    /// Captured player identities (PlayerState actor NetGUID -> identity), for
+    /// the manifest `players` array.
+    #[must_use]
+    pub fn players(&self) -> &HashMap<u32, PlayerIdentity> {
+        &self.players
     }
 
     /// Declare that something group-path resolution reads has changed.

@@ -285,6 +285,15 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     // Before the summary so the path the summary prints names a file that
     // exists by the time it is read.
     let manifest_path = out_path.join("manifest.json");
+    // Drain per-PlayerState identity (Subject + SpawnedCharacter) captured
+    // during the walk into a sorted players list for the manifest.
+    let mut players: Vec<(u32, Option<String>, Option<u32>)> = channel_state
+        .players()
+        .iter()
+        .filter(|(_, id)| id.subject.is_some())
+        .map(|(&g, id)| (g, id.subject.clone(), id.character_net_guid))
+        .collect();
+    players.sort_unstable_by_key(|(g, _, _)| *g);
     manifest::write_manifest(
         &manifest_path,
         vrf_path,
@@ -294,6 +303,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
         net_stats,
         total_packets,
         elapsed,
+        &players,
     )?;
 
     summary::print(

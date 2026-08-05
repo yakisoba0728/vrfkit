@@ -87,6 +87,8 @@ impl FieldSink for ExportSink<'_> {
             None => (None, None, None, None),
         };
 
+        self.record_player_identity(field_name.as_deref(), value_str.as_deref(), value_i64);
+
         self.push_field(FieldValues {
             handle,
             field_name,
@@ -145,6 +147,11 @@ impl FieldSink for ExportSink<'_> {
     }
 }
 
+/// Bomb-mode PlayerState. Its `Subject` (account UUID, FString) and
+/// `SpawnedCharacter` (character actor NetGUID == movement.character_net_guid)
+/// are captured per actor into the manifest `players` array.
+const BOMB_PLAYER_STATE: &str = "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C";
+
 impl ExportSink<'_> {
     /// Decode a movement RPC payload into `movement.parquet` rows.
     fn decode_movement_rpc(&mut self, reader: BitReader<'_>) {
@@ -187,6 +194,44 @@ impl ExportSink<'_> {
         let arch_path = self.cache.get_path_by_guid(archetype.0).map(str::to_owned);
         let combined = self.create_combined_candidate(outer.as_deref(), arch_path.as_deref());
         combined.or(outer)
+    }
+
+    /// Capture BombPlayerState identity for the manifest `players` array.
+    /// `Subject` is the account UUID; `SpawnedCharacter` is the character actor
+    /// NetGUID, equal to `movement.character_net_guid`. Together they let any
+    /// actor-keyed table join to a stable account identity -- the link
+    /// `playerLoadouts`' `characterId` cannot provide when two players share an
+    /// agent.
+    fn record_player_identity(
+        &mut self,
+        field_name: Option<&str>,
+        subject: Option<&str>,
+        character: Option<i64>,
+    ) {
+        if self.current_group_path.as_ref() != BOMB_PLAYER_STATE {
+            return;
+        }
+        let Some(name) = field_name else {
+            return;
+        };
+        let entry = self
+            .channel_state
+            .players
+            .entry(self.current_actor_guid)
+            .or_default();
+        match name {
+            "Subject" => {
+                if let Some(s) = subject {
+                    entry.subject = Some(s.to_owned());
+                }
+            }
+            "SpawnedCharacter" => {
+                if let Some(c) = character {
+                    entry.character_net_guid = Some(c as u32);
+                }
+            }
+            _ => {}
+        }
     }
 }
 

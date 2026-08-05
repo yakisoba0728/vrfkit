@@ -192,8 +192,13 @@ ReplayInfo 전체 + 헤더 + 통계 + **리플레이가 선언한 export 그룹 
 (`net_field_export_groups`, 02d4d478 기준 475개). 핸들→이름 매핑이 여기 다 있습니다.
 
 `game_specific_data`에는 `playerLoadouts` JSON이 들어 있습니다 — subject UUID별
-`characterId`(요원), 스킨, 스프레이. **같은 요원을 두 명이 골랐을 때 누가 누군지
-가리는 유일한 근거**입니다.
+`characterId`(요원), 스킨, 스프레이.
+
+`players` 배열은 각 BombPlayerState 액터의 `(actor_net_guid, subject, character_net_guid)`를
+냅니다. `subject`는 계정 UUID이고 `character_net_guid`는 `SpawnedCharacter`로
+`movement.parquet`의 `character_net_guid`와 정확히 일치합니다. 그래서 movement·fields·actors
+같은 액터 단위 테이블을 안정적인 계정 식별자로 조인할 수 있습니다. **같은 요원을 두 명이
+골랐을 때** `playerLoadouts`의 `characterId`만으로는 구분이 안 되지만 `subject`는 구분합니다.
 
 `timestamp_ticks`는 UE `FDateTime`(0001-01-01 기준 100ns)입니다. Windows FILETIME이
 아닙니다 — 그렇게 읽으면 3626년이 나옵니다.

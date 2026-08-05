@@ -35,6 +35,7 @@ pub fn write_manifest(
     stats: &NetStats,
     total_packets: u32,
     elapsed: Duration,
+    players: &[(u32, Option<String>, Option<u32>)],
 ) -> Result<(), CliError> {
     let header = &preamble.header;
     let ver = &header.replay_version;
@@ -252,6 +253,35 @@ pub fn write_manifest(
         2,
     );
     out.push_str("  },\n");
+
+    // Player identity: each BombPlayerState actor's account `subject` UUID and
+    // `SpawnedCharacter` (== movement.character_net_guid). Bridges the wire
+    // actor GUIDs to the account identities in game_specific_data's
+    // playerLoadouts, so every actor-keyed table can join to a stable player
+    // identity even when two players share an agent.
+    out.push_str("  \"players\": [");
+    if players.is_empty() {
+        out.push_str("],\n");
+    } else {
+        out.push('\n');
+        for (i, (guid, subject, character)) in players.iter().enumerate() {
+            out.push_str("    { ");
+            out.push_str(&format!(
+                "\"actor_net_guid\": {guid}, \"subject\": {}, \"character_net_guid\": {}",
+                json_str(subject.as_deref().unwrap_or("")),
+                match character {
+                    Some(c) => c.to_string(),
+                    None => String::from("null"),
+                }
+            ));
+            out.push_str(" }");
+            if i + 1 < players.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("  ],\n");
+    }
 
     // Export groups
     out.push_str("  \"net_field_export_groups\": [\n");
