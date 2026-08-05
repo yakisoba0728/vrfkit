@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest a new typed field, output column, build, or analysis
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today, or what value is missing from the export?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: The new field/column/feature and where the data comes from on the wire.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Wire evidence
+      description: For type additions especially — what measured evidence supports the type/meaning? (See CONTRIBUTING.md on the conservative ADDITIONS gate.)

@@ -7,6 +7,7 @@ there is no `unsafe` block anywhere in the workspace. The only native FFI the
 parser depends on is Oodle decompression, and that lives entirely in the
 external `oozextract` crate. Edition 2024, MSRV 1.85, MIT.
 
+![CI](https://github.com/yakisoba0728/vrfkit/actions/workflows/ci.yml/badge.svg)
 ![license](https://img.shields.io/badge/license-MIT-blue.svg)
 ![rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)
 ![edition](https://img.shields.io/badge-edition-2024-orange.svg)

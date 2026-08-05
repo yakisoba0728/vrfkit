@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: VALORANT replay format question
+    url: https://github.com/michel-giehl/ValorantReplayParser
+    about: Questions about the .vrf wire format itself may fit the upstream C# reference parser.

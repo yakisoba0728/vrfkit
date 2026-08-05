@@ -1,0 +1,34 @@
+name: Bug report
+description: Something parses wrong, crashes, or exports the wrong value
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: The observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Replay build / branch
+      description: e.g. release-13.02 (from `vrfkit inspect`).
+      placeholder: "release-13.02"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: The exact `vrfkit` command(s) and any relevant output. If you can share the `.vrf`, note its size and SHA-256.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: vrfkit version / commit
+      placeholder: "git commit hash"
+    validations:
+      required: true
