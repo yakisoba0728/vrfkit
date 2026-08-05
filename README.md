@@ -29,8 +29,47 @@ are unknown. So vrfkit always emits the raw bits and layers typed values on top
 as an additive overlay. Nothing is dropped because its format is not yet
 understood.
 
+## Supported VALORANT builds
+
+| Build | Branch | Status | Verified by |
+|---|---|---|---|
+| **13.02** | `release-13.02` | ✅ Supported | Preserved replay + 27-file stress test |
+| **13.01** | `release-13.01` | ✅ Supported | 215-replay full corpus |
+| **13.00** | `release-13.00` | ✅ Supported | Preserved fixture + golden vectors |
+| **12.11** | `release-12.11` | ✅ Supported | Preserved fixture + golden vectors |
+| **12.10** | `release-12.10` | ✅ Supported | Preserved fixture + golden vectors |
+
+All branches are `++Ares-Core+release-<build>`. Adding a build is one
+`SeededTransform` impl (two constants + three word functions); see
+[Adding a new build](#supported-builds-and-the-cost-of-a-new-build).
+
+## Highlights
+
+- **Lossless by construction** — every field's raw bits are always exported,
+  even when the type is unknown or decoding fails. Typed values are an
+  *additive* overlay on top.
+- **Self-describing stream** — field names come from the replay itself
+  (`NetFieldExportGroup`); no hardcoded agent or map names in the parser.
+- **Six Parquet tables + manifest** — `fields`, `movement`, `actors`,
+  `net_guids`, `events`, `checkpoint_fields`, ready for polars / pandas /
+  DuckDB.
+- **Per-player economy, account identity, typed events** —
+  `MoneyManagementComponent` credits, `manifest.players` (account UUID →
+  actor → character), event `word0`/`word1` (killer/killed NetGUID, round
+  index).
+- **Cross-validated** against the C# reference parser — movement is
+  near-bit-identical, CombatReport identical, and the server-written Event
+  chunk independently confirms the kill count.
+- **Reproducible** — Parquet output is byte-for-byte identical run to run.
+- **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
+  Oodle, isolated in an external crate.
+- **355 tests** plus a layered validation suite (framing / bytes / decode
+  errors / semantics).
+
 ## Table of contents
 
+- [Supported VALORANT builds](#supported-valorant-builds)
+- [Highlights](#highlights)
 - [Quick start](#quick-start)
 - [Output](#output)
 - [Status](#status)
