@@ -46,10 +46,12 @@ struct PartialState {
 /// Stateful packet reader that tracks partial bunches and reliable sequences.
 ///
 /// One instance lives for the duration of the replay stream. It accumulates
-/// per-channel partial-bunch state and the reliable sequence counter.
+/// per-channel partial-bunch state and a per-channel reliable sequence counter
+/// -- Unreal's `ReliableSequence` is per channel, so a single global counter
+/// diverges when two channels interleave reliable bunches.
 pub struct RawPacketReader {
     partial_bunches: HashMap<u32, PartialState>,
-    in_reliable_sequence: i32,
+    in_reliable_sequence: HashMap<u32, i32>,
 }
 
 impl RawPacketReader {
@@ -58,7 +60,7 @@ impl RawPacketReader {
     pub fn new() -> Self {
         Self {
             partial_bunches: HashMap::new(),
-            in_reliable_sequence: 0,
+            in_reliable_sequence: HashMap::new(),
         }
     }
 
@@ -196,7 +198,12 @@ impl RawPacketReader {
         header.b_partial = reader.read_bit()?;
 
         if header.b_reliable {
-            header.ch_sequence = self.in_reliable_sequence + 1;
+            header.ch_sequence = self
+                .in_reliable_sequence
+                .get(&header.ch_index)
+                .copied()
+                .unwrap_or(0)
+                + 1;
         } else if header.b_partial {
             header.ch_sequence = packet_id;
         }
@@ -221,7 +228,8 @@ impl RawPacketReader {
         header.payload_bit_offset = reader.position() as i64;
 
         if header.b_reliable {
-            self.in_reliable_sequence = header.ch_sequence;
+            self.in_reliable_sequence
+                .insert(header.ch_index, header.ch_sequence);
         }
 
         Ok(header)
