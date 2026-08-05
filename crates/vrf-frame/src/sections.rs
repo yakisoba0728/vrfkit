@@ -109,6 +109,35 @@ pub(crate) fn read_game_specific_frame_data(
     if skip_offset == 0 {
         return Ok(());
     }
-    reader.skip_bits(skip_offset * 8).map_err(FrameError::bit)?;
+    // `skip_offset` is a raw u64 from the wire; `* 8` is plain wrapping
+    // multiplication, so a large value silently wraps to a small skip and
+    // desynchronises the frame. The flag is unset on every known replay, but a
+    // malformed/large offset must fail loudly rather than wrap.
+    let skip_bits = skip_offset.checked_mul(8).ok_or_else(|| {
+        FrameError::Bit(format!(
+            "game-specific skip offset overflows: {skip_offset}"
+        ))
+    })?;
+    reader.skip_bits(skip_bits).map_err(FrameError::bit)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_game_specific_frame_data;
+    use vrf_bitio::BitReader;
+
+    #[test]
+    fn a_huge_game_specific_skip_offset_errors_instead_of_wrapping() {
+        // u64 (1 << 61) + 1: `* 8` overflows u64 and wraps to 8. A trailing
+        // byte leaves 8 bits after the u64 read, so the wrapped `skip_bits(8)`
+        // would SUCCEED and the bug is a silent Ok. checked_mul must reject it.
+        let bytes: [u8; 9] = [0x01, 0, 0, 0, 0, 0, 0, 0x20, 0xFF];
+        let mut reader = BitReader::new(&bytes);
+        let result = read_game_specific_frame_data(&mut reader, true);
+        assert!(
+            result.is_err(),
+            "an overflowing skip offset must error, not wrap to 8 and succeed"
+        );
+    }
 }
