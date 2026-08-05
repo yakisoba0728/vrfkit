@@ -73,7 +73,9 @@ fn read_double_vector(r: &mut BitReader<'_>) -> Result<FVector, vrf_bitio::BitEr
 ///   bit  [6]   = extraInfo (1 = scaled integer, 0 = float/double fallback)
 ///
 /// if componentBitCount > 0:
-///   3 x componentBitCount bits, sign-magnitude with sign at MSB
+///   3 x componentBitCount bits, two's-complement, sign-extended from
+///   componentBitCount bits (NOT sign-magnitude: e.g. all-ones reads as -1,
+///   not -(max)). See read_packed_quantized_vector below.
 ///   if extraInfo: divide by scaleFactor
 /// else:
 ///   if extraInfo == 0: 3 x f32 (float vector)
