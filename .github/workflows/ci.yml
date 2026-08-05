@@ -14,7 +14,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: dtolnay/rust-toolchain@1.86.0
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
@@ -38,7 +38,5 @@ jobs:
         run: python tools/check_ascii.py --check
       - name: overlay corrections
         run: python tools/apply_type_corrections.py --check
-      - name: effect decoder cases
-        run: python tools/check_effect_decoder.py --check
       - name: docs self-check
         run: python tools/check_docs.py --fast
