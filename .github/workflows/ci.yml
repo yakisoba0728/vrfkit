@@ -26,6 +26,13 @@ jobs:
         run: cargo test --workspace
       - name: build with export
         run: cargo build -p vrfkit --features export
+      # The export-less build is a supported configuration but nothing else
+      # compiles it, so code that only the export path uses went dead there
+      # unnoticed. `-D warnings` makes the next one fail here instead.
+      - name: build without export
+        run: cargo build -p vrfkit --no-default-features
+        env:
+          RUSTFLAGS: -D warnings
 
   python-checks:
     runs-on: ubuntu-latest

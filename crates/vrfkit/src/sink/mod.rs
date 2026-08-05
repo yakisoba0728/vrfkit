@@ -135,6 +135,11 @@ impl ChannelState {
 
     /// Captured player identities (PlayerState actor NetGUID -> identity), for
     /// the manifest `players` array.
+    ///
+    /// Gated with its only caller: the manifest is written by `driver`, which
+    /// is itself `export`-only, so without the feature this is dead code and
+    /// the build says so.
+    #[cfg(feature = "export")]
     #[must_use]
     pub fn players(&self) -> &FxHashMap<u32, PlayerIdentity> {
         &self.players
