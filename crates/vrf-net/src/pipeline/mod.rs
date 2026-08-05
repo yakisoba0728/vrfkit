@@ -307,10 +307,12 @@ impl ReplicationReader {
         // Interleaving is safe because the two phases touch disjoint state:
         // header parsing mutates only `packet_reader` (partial tracking and the
         // reliable sequence), while payload processing mutates only the fields
-        // below. The counters that were bumped between the phases --
-        // `malformed_packets` and the packet reader's `partial_error_count` --
-        // are now bumped after the loop instead of before it; they are u64 sums
-        // nothing reads mid-stream, so the totals are unchanged.
+        // below. `malformed_packets` is bumped between the phases but summed
+        // after the loop -- a u64 nothing reads mid-stream, so its total is
+        // unchanged. (`partial_errors` is owned by the reassembly accumulator's
+        // `validate_sequence` in `process_bunch`; the reader's parallel partial
+        // tracker no longer adds its count here -- doing both counted every
+        // error twice.)
         let Self {
             packet_reader,
             accumulator,
@@ -361,7 +363,9 @@ impl ReplicationReader {
         if result.is_malformed {
             stage.stats.malformed_packets += 1;
         }
-        stage.stats.partial_errors += u64::from(result.partial_error_count);
+        // `partial_errors` is counted by `validate_sequence` in `process_bunch`
+        // (the reassembly authority). The reader's own `partial_error_count` is
+        // NOT summed here -- doing both counted every partial error twice.
     }
 
     /// Route one bunch: reassemble it if partial, otherwise frame it directly.
@@ -722,6 +726,47 @@ mod tests {
         assert_eq!(stats.rep_layout_blocks, 1);
         assert_eq!(stats.skipped_bits, 0, "nothing may be abandoned");
         assert_eq!(sink.opens, vec![2]);
+    }
+
+    /// A partial final with no preceding initial is one error, counted once.
+    /// It used to be counted twice: once by the packet reader's parallel
+    /// partial-state tracker (summed into `partial_errors` at packet end) and
+    /// again by the reassembly accumulator's `validate_sequence`. The
+    /// accumulator is the reassembly authority, so it owns the count.
+    #[test]
+    fn a_partial_final_without_an_initial_is_counted_once() {
+        // One partial-final bunch on channel 2, reliable, with no initial
+        // fragment anywhere. Both the reader and the accumulator detect the
+        // missing initial; only the accumulator should count it.
+        let mut bits = vec![
+            false, // bControl
+            false, // bIsReplicationPaused
+            true,  // bReliable
+        ];
+        write_int_packed(&mut bits, 2); // ChIndex
+        bits.extend_from_slice(&[
+            false, // bHasPackageMapExports
+            false, // bHasMustBeMappedGUIDs
+            true,  // bPartial
+            false, // bPartialInitial (no initial -> MissingInitial)
+            true,  // bPartialFinal
+            false, // VALORANT bit
+            true,  // FName isHardcoded
+        ]);
+        write_int_packed(&mut bits, 1); // FName index
+        write_serialized_int(&mut bits, 8, crate::types::MAX_PACKET_SIZE_BITS);
+        write_int_packed(&mut bits, 3); // payload: actor GUID 3 (never reached)
+
+        let packet = build_packet(&bits);
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        assert_eq!(
+            reader.stats().partial_errors,
+            1,
+            "one missing-initial error, counted once (not twice)"
+        );
     }
 
     /// An unaligned window is realigned to bit zero of the staging buffer --
