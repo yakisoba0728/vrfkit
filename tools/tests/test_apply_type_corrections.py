@@ -103,7 +103,7 @@ class AdditionsTests(unittest.TestCase):
         commit. The prior `<= 8` ceiling silently went stale at 13; an exact
         count cannot.
         """
-        self.assertEqual(len(atc.ADDITIONS), 22, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 24, atc.ADDITIONS)
 
     def test_every_addition_is_also_verified(self):
         """An addition absent from EXPECTED would apply once and never be checked."""

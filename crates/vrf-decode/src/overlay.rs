@@ -452,7 +452,7 @@ fn resolve_entry<'a>(
 ///
 /// Narrow by construction: it only fires when the direct lookup already missed,
 /// and it can only hit an entry that the C# author spelled with the Unreal
-/// boolean prefix. Re-measured against the current 1,207-entry table by joining
+/// boolean prefix. Re-measured against the current 1,209-entry table by joining
 /// every distinct `(group, name)` 02d4d478 exports against it, RPC parameters
 /// under the group `sink/rpc.rs` actually asks with: 632 rows resolve this way
 /// and no others. They are ONE property name, arriving on two RPC groups --

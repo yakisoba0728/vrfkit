@@ -17,10 +17,10 @@
   "movement_rows": 1839607,
   "net_guid_rows": 16167,
   "event_rows": 195,
-  "overlay_decoded_ok": 403728,
+  "overlay_decoded_ok": 413659,
   "overlay_decode_errors": 0,
   "overlay_raw_skip": 73984,
-  "overlay_not_in_table": 477931,
+  "overlay_not_in_table": 468000,
   "overlay_no_field_name": 33340,
   "overlay_rows_offered": 988983,
   "effect_blobs_decoded": 53908,
@@ -38,8 +38,8 @@
  },
  "parquet": {
   "fields": {
-   "rows": 1265286,
-   "bytes": 14021379
+   "rows": 1255920,
+   "bytes": 14069346
   },
   "movement": {
    "rows": 1839607,
@@ -59,7 +59,7 @@
   },
   "checkpoint_fields": {
    "rows": 78829,
-   "bytes": 193180
+   "bytes": 193218
   }
  }
 }

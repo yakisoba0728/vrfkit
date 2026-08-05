@@ -278,6 +278,13 @@ ADDITIONS = [
      "TargetFov1P", "FieldType::Float"),
     ("/Script/ShooterGame.ZoomMultiplierComponent",
      "TotalTransitionTimeDuration", "FieldType::Float"),
+    # UsableComponent drives every hold-to-interact object: spike plant/defuse,
+    # ultimate-orb pickup, doors. HighestProgress is a 0..1 float that advances
+    # 1/128 per tick (a u32 read is non-monotonic; only f32 ramps linearly);
+    # bIsActive is the 1-bit "someone is interacting" flag. No C# descriptor --
+    # typed from wire evidence, same bar as Ping/Money.
+    ("/Script/ShooterGame.UsableComponent", "HighestProgress", "FieldType::Float"),
+    ("/Script/ShooterGame.UsableComponent", "bIsActive", "FieldType::Bool"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 

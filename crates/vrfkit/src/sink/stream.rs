@@ -10,7 +10,7 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 use vrf_bitio::BitReader;
 use vrf_decode::apply_overlay_with_handle;
-use vrf_decode::cnc::{decode_abilities_and_buffs_inner, decode_cnc_payload};
+use vrf_decode::cnc::decode_cnc_payload;
 use vrf_export::{ActorRecord, MovementRecord, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME};
 use vrf_net::content::ContentBlockHeader;
 use vrf_net::field::FieldSink;
@@ -264,12 +264,11 @@ impl ExportSink<'_> {
     /// determined empirically by brute-forcing fc 2-256 across 9,274 payloads
     /// from a reference replay: fc=34 is the minimum that walks **every**
     /// payload cleanly, and each payload contains exactly one RPC at handle 1.
-    /// The inner payload is not standard RepLayout `FunctionParameters`, but it
-    /// is not opaque either: it is a deterministic flag bit followed by a
-    /// little-endian `u32` stream (see `decode_abilities_and_buffs_inner`).
-    /// The RPC's raw bits are preserved as a row, and its first two words --
-    /// the activation key pair -- are emitted as typed sibling rows so ability
-    /// activations can be grouped without re-parsing the raw bits.
+    /// The inner payload is not standard RepLayout `FunctionParameters`, but
+    /// it is not opaque either: it is a deterministic flag bit followed by a
+    /// little-endian `u32` stream (see `decode_abilities_and_buffs_inner`). It
+    /// is the GAS state-sync stream, not one row per ability cast, so the RPC's
+    /// raw bits are preserved as a row without further typed extraction.
     ///
     /// A per-payload brute-force (trying each fc independently) was rejected
     /// because simple payloads can walk cleanly under smaller fc values,
@@ -312,14 +311,6 @@ impl ExportSink<'_> {
                 Some(buf)
             })();
 
-            // Decompose the inner payload (flag + LE u32 stream) to recover the
-            // activation key pair. Done before `raw_bits` is moved into the
-            // preservation row below, so no clone is needed.
-            let key_pair = raw_bits
-                .as_ref()
-                .and_then(|raw| decode_abilities_and_buffs_inner(raw.as_ref(), rpc.payload_bits))
-                .and_then(|d| d.key_pair());
-
             let field_name = self.channel_state.names.intern_fmt(|out| {
                 put(out, format_args!("_cnc_h{}", rpc.handle));
             });
@@ -333,23 +324,6 @@ impl ExportSink<'_> {
             });
             self.stats.fields_emitted += 1;
             self.stats.cnc_rpcs_emitted += 1;
-
-            // Emit the activation key pair as typed rows. Grouped per actor, the
-            // pair recovers individual ability activations.
-            if let Some((word0, word1)) = key_pair {
-                let handle = rpc.handle;
-                self.emit_struct_sub_field(
-                    |out| put(out, format_args!("_cnc_h{handle}_word0")),
-                    Some(i64::from(word0)),
-                    None,
-                );
-                self.emit_struct_sub_field(
-                    |out| put(out, format_args!("_cnc_h{handle}_word1")),
-                    Some(i64::from(word1)),
-                    None,
-                );
-                self.stats.cnc_activation_keys_emitted += 1;
-            }
         }
     }
 }
@@ -846,86 +820,6 @@ mod tests {
         );
         assert!(rpc.raw_bits.is_some(), "raw bits should be extracted");
         assert_eq!(sink.stats.cnc_rpcs_emitted, 1);
-    }
-
-    /// An `AbilitiesAndBuffsComponent` RPC whose inner payload carries at least
-    /// two words emits the activation key pair as typed `_cnc_h1_word0` /
-    /// `_cnc_h1_word1` rows alongside the raw RPC row.
-    #[test]
-    fn unresolved_abilities_and_buffs_emits_activation_key_pair() {
-        // Inner payload: flag(1) + word0=5 + word1=3 = 65 bits.
-        let mut payload_bits: Vec<bool> = Vec::new();
-        payload_bits.push(true); // flag, always 1
-        for k in 0..32 {
-            payload_bits.push((5u32 >> k) & 1 != 0);
-        }
-        for k in 0..32 {
-            payload_bits.push((3u32 >> k) & 1 != 0);
-        }
-
-        // CNC stream: handle=1 (fc=34, 6 bits), payload_bits=65, then payload.
-        let mut bits = Vec::new();
-        write_serialized_int(&mut bits, 1, 34);
-        write_int_packed(&mut bits, 65);
-        bits.extend(payload_bits.iter().copied());
-
-        let data = bits_to_bytes(&bits);
-        let bit_count = bits.len() as u32;
-
-        let mut cache = NetGuidCache::new();
-        cache.set_net_guid_path(144, "AbilitiesAndBuffsComponent".to_owned(), None);
-        let mut channel_state = ChannelState::new();
-        let mut records = RecordBuffers::default();
-        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
-        sink.time_ms = 100;
-        sink.packet_id = 7;
-
-        let header = ContentBlockHeader {
-            has_rep_layout: false,
-            is_actor: false,
-            object_net_guid: NetworkGuid(144),
-            is_stably_named: true,
-            ..ContentBlockHeader::default()
-        };
-        sink.on_content_block(3, NetworkGuid(89), &header);
-
-        let failure = StreamFailure {
-            kind: vrf_net::pipeline::StreamKind::Rpc,
-            actor_net_guid: NetworkGuid(89),
-            bit_count,
-            function_count: 0,
-            consumed_bits: 0,
-            remaining_bits: u64::from(bit_count),
-        };
-        sink.on_unresolved_class_net_cache_payload(failure, &data);
-
-        // Four rows: preservation + raw RPC + word0 + word1.
-        assert_eq!(sink.records.fields.len(), 4);
-        assert_eq!(sink.stats.cnc_activation_keys_emitted, 1);
-
-        let names: Vec<&str> = sink
-            .records
-            .fields
-            .iter()
-            .filter_map(|r| r.field_name.as_deref())
-            .collect();
-        assert!(names.contains(&"_cnc_h1_word0"), "names were: {names:?}");
-        assert!(names.contains(&"_cnc_h1_word1"), "names were: {names:?}");
-
-        let word0 = sink
-            .records
-            .fields
-            .iter()
-            .find(|r| r.field_name.as_deref() == Some("_cnc_h1_word0"))
-            .expect("word0 row");
-        assert_eq!(word0.value_i64, Some(5));
-        let word1 = sink
-            .records
-            .fields
-            .iter()
-            .find(|r| r.field_name.as_deref() == Some("_cnc_h1_word1"))
-            .expect("word1 row");
-        assert_eq!(word1.value_i64, Some(3));
     }
 
     /// An unresolved payload for a group OTHER than AbilitiesAndBuffsComponent

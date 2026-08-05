@@ -698,6 +698,24 @@ fn zoom_multiplier_fov_fields_are_typed() {
     );
 }
 
+/// `UsableComponent` drives every hold-to-interact object: spike plant/defuse,
+/// ultimate-orb pickup, doors. No C# descriptor declares the group. On a bomb
+/// replay `HighestProgress` is 32 bits on ~12k rows and reads as Float a clean
+/// 0..1 ramp advancing 1/128 per tick (a u32 read is non-monotonic; only the
+/// float read is linear), and `bIsActive` is a single 0x01 bit on ~150 rows --
+/// the "someone is interacting" flag. ADDITIONS, same wire-evidence class as
+/// `Money`.
+#[test]
+fn usable_component_interaction_is_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    let group = "/Script/ShooterGame.UsableComponent";
+    assert_eq!(
+        table.lookup(group, "HighestProgress"),
+        Some(FieldType::Float)
+    );
+    assert_eq!(table.lookup(group, "bIsActive"), Some(FieldType::Bool));
+}
+
 /// `FiniteSpeedMovementComponent` drives projectile travel. No C# descriptor
 /// declares the group. `MaximumRange` is the projectile's max travel distance
 /// in Unreal units: 32 bits on all 11699 rows on 98605b1b, reads as Float a

@@ -74,7 +74,12 @@ purchase; all ten players' purchases are replicated.
 |---|---|---|
 | Ultimate cast | `events.characterUltimateUsed` (word0 = character) | ✅ |
 | Cooldown / start time | `Comp_Ability_CooldownComponent` | ✅ Double |
-| Ability buff/debuff detail | `AbilitiesAndBuffsComponent` | ❌ the replay never declares this group (97.3% of unattributed bits) |
+| Ability cast count | ability-actor spawns (over-counts) / `characterUltimateUsed` (ultimates exact) | ◐ no exact per-cast count on the wire |
+| Ability state stream | `AbilitiesAndBuffsComponent` (`_cnc_h1`) | ◐ fc=34 brute-forced, inner decomposed (flag + u32 stream); semantics need game assets |
+| Persistent effect position (smoke/wall/molly/slow/trap) | `actors.parquet` class_path + spawn xyz | ✅ every spawned effect actor |
+| Persistent effect lifetime | `actors.open_ms`/`close_ms` (non-fuel); `CurrentFuelLevel`+`WallActivated` (Viper) | ✅ |
+| Smoke live position | `ReplicatedMovement` (x100) / `MulticastAddSmokeScreenPoint.Translation` | ✅ |
+| Interaction progress (plant/defuse/orb pickup) | `UsableComponent.HighestProgress` (Float 0..1) / `bIsActive` | ✅ |
 
 ## Movement & position
 
@@ -114,6 +119,7 @@ purchase; all ten players' purchases are replicated.
 | Planter / defuser | `BombPlantedRPC.BombPlanter` / `BombDefusedRPC.DefusingCharacter` | ✅ |
 | Bomb-carrier kill | `BombCarrierKilledRPC.OldCarrier` | ✅ |
 | Spike timer | `TimedBomb.TimeRemainingToExplode` / `DefuseProgress` | ✅ Double |
+| Plant site (A/B) | `TimedBomb.PlantedAtSite` (EnumByte) + position derivation | ✅ absent handle = default site (UE default-value skip); 100% via spawn position |
 | Detonation source | `events.spikeExploded` is canonical (always emitted) | ✅ `RoundResults` under-counts: it logs win-reason, not detonation |
 
 ## Actor / GUID / structure
@@ -150,12 +156,13 @@ purchase; all ten players' purchases are replicated.
 - **Display names** — the replay carries no player names, only account UUIDs.
 - **ACS** — `PlayerScoreComponent` is not replicated.
 - **AbilitiesAndBuffsComponent** — the replay never declares its `_ClassNetCache`
-  group, so `function_count` is unknown and is brute-forced (fc=34). The outer
-  RPC framing is fully recovered, and the inner payload is decomposed (a flag
-  bit followed by a little-endian `u32` stream); the activation key pair
-  (`_cnc_h1_word0` / `_cnc_h1_word1`) is exported as typed rows. The semantic
-  meaning of the later words (ability-class signature, effect specs) needs game
-  assets, so they stay in `raw_bits`.
+  group, so `function_count` is brute-forced (fc=34). The outer RPC framing is
+  fully recovered, and the inner payload is decomposed (a flag bit followed by a
+  little-endian `u32` stream -- not the opaque blob it was once assumed to be).
+  The stream is the GAS state-sync feed, not one RPC per ability cast, so it
+  cannot attribute or count casts (use ability-actor spawns + `UltimateActive`
+  for that). The later words' meaning is game-asset-dependent (the authoritative
+  C# parser does not model this stream), so they stay in `raw_bits`.
 - **spikeExploded** — not a limitation: `events.spikeExploded` is the canonical
   detonation signal and is always emitted. `RoundResults` records the round
   *win reason* (elimination/detonate/defuse), not whether the spike detonated,

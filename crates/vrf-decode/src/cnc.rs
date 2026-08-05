@@ -185,16 +185,18 @@ fn walk_cnc(payload: &[u8], bit_count: u32, function_count: u32) -> Option<Vec<C
 /// optional sub-32-bit trailing residual, and `bit_count == 1 + 32 * words +
 /// trailing` holds exactly on every payload.
 ///
-/// The first two words are a pair of small, time-monotonic counters whose
-/// difference is a small constant (1 in ~83% of payloads) -- the shape of
-/// Unreal's `FPredictionKey {Current, Base}`. They are not globally unique on
-/// their own, because the component emits periodic state updates, so several
-/// payloads share a pair; grouping the pair per owning actor recovers
-/// individual ability activations. The later words carry small constant
-/// fields followed, on the larger payloads, by ability-class signature
-/// constants and a variable-length array; their exact semantics are
-/// game-asset-dependent, so they are exposed as a raw word list rather than
-/// named fields.
+/// The first two words are a prediction-key `{Current, Base}` pair: `word0`
+/// is a per-actor strictly-monotonic counter, `word1` chains the previous
+/// `word0`, and their difference is a small constant (1 in ~78% of payloads).
+/// This stream is the Gameplay Ability System's state synchronization -- it
+/// fires on every ability-system state change, not once per ability cast, so a
+/// single actor emits hundreds to thousands of payloads. Every payload is
+/// therefore unique, and the pair does **not** discriminate or count ability
+/// casts; cast attribution must come from ability-actor spawns and the
+/// `UltimateActive` flag instead. The later words carry small constant fields
+/// followed, on the larger payloads, by opaque values whose meaning is
+/// game-asset-dependent (the authoritative C# parser does not model this
+/// stream at all), so they are exposed as a raw word list.
 #[derive(Debug, Clone)]
 pub struct AbilitiesActivation {
     /// The leading flag bit. Observed to be `1` on every payload; kept as a
@@ -209,11 +211,12 @@ pub struct AbilitiesActivation {
 }
 
 impl AbilitiesActivation {
-    /// The activation key pair, when the payload carries at least two words.
+    /// The first two words -- a prediction-key `{Current, Base}` pair -- when
+    /// the payload carries at least two words.
     ///
-    /// These are the two small time-monotonic counters (a prediction-key
-    /// `{Current, Base}` pair) used to group payloads into ability activations
-    /// alongside the owning actor.
+    /// These are a per-actor monotonic state-sync counter; every payload is
+    /// unique. They do not group payloads into ability casts (see the struct
+    /// docs).
     #[must_use]
     pub fn key_pair(&self) -> Option<(u32, u32)> {
         Some((*self.words.first()?, *self.words.get(1)?))
