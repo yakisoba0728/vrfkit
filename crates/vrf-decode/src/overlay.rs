@@ -443,15 +443,17 @@ fn resolve_entry<'a>(
     if let Some(hit) = resolve_in_group(table, group_path, group_state, field_name, handle) {
         return Some(hit);
     }
-    if let Some(aliased) = alias_group(group_path)
-        && let Some(hit) = resolve_in_group(
+    // Not a `let` chain: those are stable only from 1.88 and the MSRV is 1.86.
+    let aliased_hit = alias_group(group_path).and_then(|aliased| {
+        resolve_in_group(
             table,
             aliased,
             group_hash_state(aliased),
             field_name,
             handle,
         )
-    {
+    });
+    if let Some(hit) = aliased_hit {
         return Some(hit);
     }
     let name = field_name?;
