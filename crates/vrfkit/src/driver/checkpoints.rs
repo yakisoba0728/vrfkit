@@ -60,6 +60,11 @@ pub(super) struct CheckpointStats {
     /// that broke them only here would otherwise reach no counter.
     pub struct_blobs_decoded: u64,
     pub struct_blobs_failed: u64,
+    /// MultiContents items decoded on the checkpoint path. Same reason as
+    /// `struct_blobs_decoded`: the checkpoint sink is a second decode path and
+    /// a build that broke MultiContents framing only here would otherwise reach
+    /// no counter.
+    pub multi_contents_items_emitted: u64,
 }
 
 /// Everything about the replay that the checkpoint pass needs and cannot
@@ -119,6 +124,7 @@ pub(super) fn process_chunk<W: Write + Send>(
             stats.effect_blobs += sink.stats.effect_blobs_decoded;
             stats.struct_blobs_decoded += sink.stats.struct_blobs_decoded;
             stats.struct_blobs_failed += sink.stats.struct_blobs_failed;
+            stats.multi_contents_items_emitted += sink.stats.multi_contents_items_emitted;
             error_report.merge_from(&sink.stats.overlay.error_report);
         }
         stats.field_rows += buffers.fields.len() as u64;

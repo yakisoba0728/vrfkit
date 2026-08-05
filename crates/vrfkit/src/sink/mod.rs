@@ -176,6 +176,14 @@ pub struct ExportStats {
     /// whose dedicated decoder produced elements.
     pub struct_blobs_decoded: u64,
 
+    /// Item NetGUID rows emitted by the `MultiItemSlot.MultiContents` decoder.
+    /// One per item actor reference in a multi-item slot. Surfaced separately
+    /// for the same reason [`Self::effect_blobs_decoded`] is: these rows are
+    /// already counted under `not_in_table` (the parent stays `Raw`) and under
+    /// `fields_emitted`, so this counter is the only signal that the additive
+    /// decoder produced typed leaves rather than silently no-op-ing.
+    pub multi_contents_items_emitted: u64,
+
     /// Struct-blob decodes that returned an error.
     ///
     /// These used to be `let Ok(..) else { return false }` -- discarded with no

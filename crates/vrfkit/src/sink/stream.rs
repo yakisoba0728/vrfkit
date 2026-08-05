@@ -68,6 +68,15 @@ impl FieldSink for ExportSink<'_> {
             }
         }
 
+        // Additive pass 3: `MultiItemSlot.MultiContents` -- a dynamic array of
+        // item actor references. Each decoded NetGUID is an extra row; the
+        // raw_bits parent row is still emitted below.
+        if self.is_multi_contents_field(field_name.as_deref()) {
+            if let Some(raw) = raw_bits.as_deref() {
+                self.emit_multi_contents(raw, bit_count);
+            }
+        }
+
         // Apply the type overlay: decode raw_bits into a typed value if possible.
         let (value_i64, value_f64, value_bool, value_str) = match apply_overlay_with_handle(
             &TABLE,

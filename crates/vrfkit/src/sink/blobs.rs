@@ -206,6 +206,33 @@ impl ExportSink<'_> {
         self.struct_blob_kind(field_name).is_some()
     }
 
+    /// Is this a `MultiItemSlot.MultiContents` blob the additive decoder should
+    /// flatten? The parent row stays `Raw` (the overlay does not type it), and
+    /// the items are emitted as extra `MultiContents[i]` rows.
+    pub(super) fn is_multi_contents_field(&self, field_name: Option<&str>) -> bool {
+        matches!(field_name, Some("MultiContents"))
+            && self.current_group_path.contains("MultiItemSlot")
+    }
+
+    /// Decode a `MultiContents` blob and emit one row per item NetGUID.
+    ///
+    /// The blob is a RepLayout dynamic array of object references
+    /// (`TArray<AAresItem*>`); [`vrf_decode::decode_object_ref_array`] walks the
+    /// framing and returns the item actor NetGUIDs. Each lands as a
+    /// `MultiContents[i]` row with the NetGUID in `value_i64`, the same column
+    /// a single `ItemSlot.Contents` decode populates.
+    pub(super) fn emit_multi_contents(&mut self, raw: &[u8], bit_count: u32) {
+        let guids = vrf_decode::decode_object_ref_array(raw, bit_count);
+        for (i, guid) in guids.iter().enumerate() {
+            self.emit_struct_sub_field(
+                |out| put(out, format_args!("MultiContents[{i}]")),
+                Some(i64::from(*guid)),
+                None,
+            );
+            self.stats.multi_contents_items_emitted += 1;
+        }
+    }
+
     /// Decode a struct blob and emit flattened sub-field rows.
     /// Returns true if decoding succeeded and sub-fields were emitted.
     pub(super) fn decode_struct_blob(

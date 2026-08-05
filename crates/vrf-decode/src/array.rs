@@ -159,6 +159,98 @@ pub fn decode_struct_array(
     walk.output
 }
 
+/// Decode a RepLayout dynamic array of object references (`TArray<UObject*>`)
+/// into the actor NetGUIDs it carries.
+///
+/// `MultiItemSlot.MultiContents` is this shape: a dynamic array whose every
+/// element is a single object-reference property. The framing is the same one
+/// [`decode_struct_array`] walks for struct arrays -- an `elementCount`, then a
+/// run of `(encodedIndex, handle, payloadBits, payload, element-terminator)`
+/// tuples closed by an index terminator -- confirmed on 245/245 wire payloads,
+/// where each element carries exactly one field at handle 2 whose payload is
+/// the item actor's NetGUID as one IntPacked value. The C# reference types the
+/// property as `TArray<AAresItem*>`.
+///
+/// Returns one NetGUID per populated element, in the order the stream sends
+/// them (element-index order on every payload seen). Malformed input returns
+/// whatever was decoded so far: the caller still emits the parent row from its
+/// own `raw_bits`, so a short `Vec` costs the typed leaves, not the bits.
+pub fn decode_object_ref_array(data: &[u8], bit_count: u32) -> Vec<u32> {
+    let mut reader = BitReader::with_bit_len(data, u64::from(bit_count));
+    let mut out = Vec::new();
+
+    let Ok(element_count) = reader.read_int_packed() else {
+        return out;
+    };
+    if element_count > MAX_ELEMENTS {
+        return out;
+    }
+
+    while !reader.at_end() {
+        let Ok(encoded_index) = reader.read_int_packed() else {
+            break;
+        };
+        if encoded_index == 0 {
+            // Same trailing 8-bit terminator the C# parser consumes and
+            // [`decode_array_level`] mirrors for struct arrays.
+            if reader.bits_remaining() == 8 {
+                let _ = reader.read_int_packed();
+            }
+            break;
+        }
+        let index = encoded_index - 1;
+        if index >= element_count {
+            reader.skip_remaining();
+            break;
+        }
+
+        // Each element carries one object-reference field. Walk its handle loop
+        // -- real payloads run it once -- and decode the first payload as the
+        // item's IntPacked NetGUID. The bounded loop keeps a multi-field element
+        // (none seen on the wire, but the framing permits it) from
+        // desynchronising the rest of the array.
+        let mut guid = None;
+        for _ in 0..MAX_FIELDS_PER_ELEMENT {
+            if reader.at_end() {
+                break;
+            }
+            let Ok(encoded_handle) = reader.read_int_packed() else {
+                break;
+            };
+            if encoded_handle == 0 {
+                break;
+            }
+            let Ok(payload_bits) = reader.read_int_packed() else {
+                break;
+            };
+            if payload_bits == 0 {
+                continue;
+            }
+            if u64::from(payload_bits) > reader.bits_remaining() {
+                reader.skip_remaining();
+                break;
+            }
+            // `sub_reader` carves out the field's declared window and advances
+            // the parent past it, so a NetGUID that spends fewer bits than the
+            // window still leaves the reader aligned on the next handle.
+            let Ok(mut sub) = reader.sub_reader(u64::from(payload_bits)) else {
+                break;
+            };
+            if guid.is_none() {
+                if let Ok(v) = sub.read_int_packed() {
+                    guid = Some(v);
+                }
+            }
+        }
+
+        if let Some(g) = guid {
+            out.push(g);
+        }
+    }
+
+    out
+}
+
 /// Recursively decode one array level.
 fn decode_array_level(
     reader: &mut BitReader<'_>,
@@ -708,6 +800,49 @@ mod tests {
         // No complete leaf was emitted; the caller still emits the parent row
         // from its own raw_bits, independent of this Vec.
         assert!(fields.is_empty());
+    }
+
+    /// Build the wire shape of `MultiItemSlot.MultiContents` and check the
+    /// decoded NetGUIDs. The payload of every element is a single object
+    /// reference at handle 2; IntPacked 812 occupies a 16-bit window, 25492 a
+    /// 24-bit one, mirroring the two payload widths seen on real replays.
+    #[test]
+    fn decode_object_ref_array_extracts_item_netguids() {
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 2); // elementCount
+        // Element 0: NetGUID 812 in a 16-bit payload window.
+        write_int_packed(&mut bits, 1); // encodedIndex -> index 0
+        write_int_packed(&mut bits, 3); // encodedHandle -> handle 2
+        write_int_packed(&mut bits, 16); // payloadBits
+        write_int_packed(&mut bits, 812); // ObjectNetGuid payload
+        write_int_packed(&mut bits, 0); // element terminator
+        // Element 1: NetGUID 25492 in a 24-bit payload window.
+        write_int_packed(&mut bits, 2); // encodedIndex -> index 1
+        write_int_packed(&mut bits, 3); // handle 2
+        write_int_packed(&mut bits, 24); // payloadBits
+        write_int_packed(&mut bits, 25492); // ObjectNetGuid payload
+        write_int_packed(&mut bits, 0); // element terminator
+        write_int_packed(&mut bits, 0); // array terminator
+
+        let data = bits_to_bytes(&bits);
+        let bit_count = bits.len() as u32;
+        let guids = decode_object_ref_array(&data, bit_count);
+
+        assert_eq!(guids, vec![812, 25492]);
+    }
+
+    /// An empty array (elementCount = 0, immediate terminator) decodes to nothing.
+    #[test]
+    fn decode_object_ref_array_empty() {
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 0);
+        write_int_packed(&mut bits, 0);
+
+        let data = bits_to_bytes(&bits);
+        let bit_count = bits.len() as u32;
+        let guids = decode_object_ref_array(&data, bit_count);
+
+        assert!(guids.is_empty());
     }
 
     /// A BitIo read failure (fewer than 8 bits left for an IntPacked read) must

@@ -47,6 +47,11 @@ pub(super) struct RunTotals {
     /// RPC parameter walks that broke mid-stream on a malformed read. Zero on a
     /// valid replay; printed only when non-zero, like `array_decode_errors`.
     pub truncated_rpcs: u64,
+    /// Item NetGUID rows emitted by the `MultiItemSlot.MultiContents` additive
+    /// decoder. Printed so a build that changes the array framing and silently
+    /// empties the decoder does not read as a clean run. Unpinned by the export
+    /// baseline (its regex table does not name this label).
+    pub multi_contents_items_emitted: u64,
 }
 
 /// Print the whole `=== Export complete ===` report.
@@ -104,12 +109,13 @@ pub(super) fn print(
     if totals.array_decode_errors > 0 {
         eprintln!("  Array decode err: {}", totals.array_decode_errors);
     }
-    // Same shape as Array decode err: zero on a valid replay, and a non-zero
-    // value means an RPC parameter loop kept its partial rows but broke before
-    // the terminating zero handle.
     if totals.truncated_rpcs > 0 {
         eprintln!("  Truncated RPCs:   {}", totals.truncated_rpcs);
     }
+    eprintln!(
+        "  MultiContents items: {}",
+        totals.multi_contents_items_emitted
+    );
     eprintln!("  Elapsed:          {:.2?}", totals.elapsed);
 
     if let Some(cp) = checkpoints {

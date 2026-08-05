@@ -131,6 +131,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     let mut struct_blobs_decoded: u64 = 0;
     let mut struct_blobs_failed: u64 = 0;
     let mut struct_blob_first_error: Option<String> = None;
+    let mut multi_contents_items_emitted: u64 = 0;
     let mut movement_rpc_errors: u64 = 0;
     let mut movement_first_error: Option<String> = None;
     let mut array_decode_errors: u64 = 0;
@@ -235,6 +236,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
                 effect_blobs_decoded += sink.stats.effect_blobs_decoded;
                 struct_blobs_decoded += sink.stats.struct_blobs_decoded;
                 struct_blobs_failed += sink.stats.struct_blobs_failed;
+                multi_contents_items_emitted += sink.stats.multi_contents_items_emitted;
                 if struct_blob_first_error.is_none() {
                     struct_blob_first_error = sink.stats.struct_blob_first_error.take();
                 }
@@ -344,6 +346,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             struct_blobs_decoded,
             struct_blobs_failed,
             struct_blob_first_error,
+            multi_contents_items_emitted,
             movement_rpc_errors,
             movement_first_error,
             array_decode_errors,

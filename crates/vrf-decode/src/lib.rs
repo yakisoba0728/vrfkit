@@ -108,7 +108,7 @@ pub use types::{FQuat, FRepMovement, FRotator, FTransform, FVector, RotatorQuant
 #[cfg(feature = "array")]
 pub use array::{
     ArrayDecodeStats, ArrayFieldSchema, COMBAT_ROUNDS_SCHEMA, FlattenedField, MAX_ELEMENTS,
-    MAX_FIELDS_PER_ELEMENT, MAX_RECURSION_DEPTH, decode_struct_array,
+    MAX_FIELDS_PER_ELEMENT, MAX_RECURSION_DEPTH, decode_object_ref_array, decode_struct_array,
 };
 #[cfg(feature = "effect")]
 pub use effect::{EffectArrayKind, EffectBlobError, decode_effect_blob_json};
