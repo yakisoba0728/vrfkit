@@ -172,5 +172,42 @@ class TestCountTests(unittest.TestCase):
             guard.stale_test_counts("we recover 2,387 intermediate moves", self.LIVE), [])
 
 
+class ContradictingCountTests(unittest.TestCase):
+    """The half of the count check that survives `--fast`, and so the half CI runs.
+
+    Without running the suites there is no way to know which number is right.
+    But the repo has exactly two of them, so a third distinct value is a
+    contradiction on its face -- which is precisely the shape the real bug had:
+    387 and 355 sitting in one file, both about `cargo test`.
+    """
+
+    def test_a_third_distinct_count_is_reported(self):
+        docs = {"README.md": "- **394 tests**\nverified: **355 passing**",
+                "USAGE.md": "# 133 passing"}
+        problems = guard.contradicting_test_counts(docs)
+        self.assertTrue(problems)
+        self.assertIn("355", " ".join(problems))
+
+    def test_the_two_live_suites_are_not_a_contradiction(self):
+        docs = {"README.md": "394 tests and the Python suite has 133 tests",
+                "USAGE.md": "394 passing\n133 passing"}
+        self.assertEqual(guard.contradicting_test_counts(docs), [])
+
+    def test_one_count_everywhere_is_not_a_contradiction(self):
+        docs = {"README.md": "394 tests", "USAGE.md": "394 passing"}
+        self.assertEqual(guard.contradicting_test_counts(docs), [])
+
+    def test_the_report_names_every_site_so_the_stale_one_can_be_found(self):
+        docs = {"README.md": "394 tests\n355 passing", "USAGE.md": "133 passing"}
+        joined = " ".join(guard.contradicting_test_counts(docs))
+        for expected in ("README.md:1", "README.md:2", "USAGE.md:1"):
+            self.assertIn(expected, joined)
+
+    def test_the_shipped_docs_do_not_contradict_themselves(self):
+        docs = {"README.md": guard.read(guard.README),
+                "USAGE.md": guard.read(guard.USAGE)}
+        self.assertEqual(guard.contradicting_test_counts(docs), [])
+
+
 if __name__ == "__main__":
     unittest.main()

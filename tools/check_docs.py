@@ -169,6 +169,38 @@ def stale_test_counts(text: str, live: set[str]) -> list[tuple[int, str]]:
             if quoted not in live]
 
 
+def contradicting_test_counts(docs: dict[str, str]) -> list[str]:
+    """Suite-size claims that cannot all be true at once.
+
+    `stale_test_counts` needs the real numbers, so it only runs in the full
+    mode -- which CI cannot use, because that mode shells out to `cargo test`
+    and the Python job is Ubuntu-only for the Oodle split. This is the part of
+    the same check that survives `--fast`, and therefore the part CI can run.
+
+    It cannot know which number is right. It does not have to: the repo has
+    exactly two suites, so a third distinct value is a contradiction on its
+    face. That is the shape the real bug had -- 387 and 355 in one file, both
+    about `cargo test` -- and it went twelve commits unnoticed.
+
+    Blind to a count that is wrong in the same way everywhere; only the full
+    mode catches that.
+    """
+    seen: list[tuple[str, int, str]] = [
+        (name, i, quoted)
+        for name, text in docs.items()
+        for i, line in enumerate(text.splitlines(), 1)
+        for quoted in TEST_COUNT_RE.findall(line)
+    ]
+    distinct = {quoted.replace(",", "") for _, _, quoted in seen}
+    if len(distinct) <= 2:
+        return []
+    sites = ", ".join(f"{name}:{i} says {quoted}" for name, i, quoted in seen)
+    return [
+        f"{len(distinct)} different test counts claimed but there are two "
+        f"suites, so at least one is stale -- {sites}"
+    ]
+
+
 def measure_tests() -> tuple[int, int, list[str]]:
     problems = []
     r = subprocess.run(["cargo", "test", "--quiet"], cwd=REPO, capture_output=True,
@@ -210,9 +242,10 @@ def main() -> int:
         + check_links(USAGE, usage)
         + check_table_sizes(docs)
         + check_source_table_size()
+        + contradicting_test_counts(docs)
     )
 
-    checked = 6
+    checked = 7
     if not args.fast:
         rust, tools_n, run_problems = measure_tests()
         problems += run_problems
