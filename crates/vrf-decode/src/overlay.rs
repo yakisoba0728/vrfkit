@@ -410,7 +410,25 @@ pub fn canonical_group(group_path: &str) -> &str {
     alias_group(group_path).unwrap_or(group_path)
 }
 
-/// The full order, then the same order again against the aliased class.
+/// `AActor` / `USceneComponent` object references that Unreal replicates on
+/// every actor, always as a NetGUID.
+///
+/// The C# descriptors declare these only for the classes they happen to cover.
+/// On 02d4d478 that leaves them typed on 129 group/field pairs (4,601 rows) and
+/// untyped on 203 more (6,048 rows) -- the same four names, the same encoding,
+/// simply no table entry, because the group is a Blueprint the reference never
+/// described. The type is fixed by the engine and does not vary by class, so
+/// resolving it by name is a statement about Unreal rather than a guess about
+/// any one Blueprint.
+///
+/// A fallback and not table rows: the 203 pairs are what ONE replay happened to
+/// spawn, so a table would be a snapshot of this match's agent lineup, stale for
+/// the next one. It runs last, so a class that really does declare one of these
+/// names as something else keeps its declared type.
+const ENGINE_OBJECT_REFS: [&str; 4] = ["Owner", "Instigator", "AttachParent", "Controller"];
+
+/// The full order, then the same order again against the aliased class, then
+/// the engine-level object references by name.
 ///
 /// Retrying the WHOLE order rather than just the name lookup keeps the alias
 /// from being a fourth resolution step with its own rules -- an aliased field
@@ -425,14 +443,21 @@ fn resolve_entry<'a>(
     if let Some(hit) = resolve_in_group(table, group_path, group_state, field_name, handle) {
         return Some(hit);
     }
-    let aliased = alias_group(group_path)?;
-    resolve_in_group(
-        table,
-        aliased,
-        group_hash_state(aliased),
-        field_name,
-        handle,
-    )
+    if let Some(aliased) = alias_group(group_path)
+        && let Some(hit) = resolve_in_group(
+            table,
+            aliased,
+            group_hash_state(aliased),
+            field_name,
+            handle,
+        )
+    {
+        return Some(hit);
+    }
+    let name = field_name?;
+    ENGINE_OBJECT_REFS
+        .contains(&name)
+        .then_some((FieldType::ObjectNetGuid, name))
 }
 
 /// Resolve which table entry a wire field belongs to within ONE group, and the

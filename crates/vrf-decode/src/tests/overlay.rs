@@ -762,3 +762,67 @@ fn finite_speed_movement_max_range_is_typed() {
         Some(FieldType::Float)
     );
 }
+
+/// `Owner`, `Instigator`, `AttachParent` and `Controller` are `AActor` /
+/// `USceneComponent` object references Unreal replicates on every actor, always
+/// as a NetGUID. The C# descriptors declare them only for the classes they
+/// happen to cover, so on 02d4d478 they are typed on 129 group/field pairs
+/// (4,601 rows) and untyped on 203 more (6,048 rows) -- same four names, same
+/// encoding, no table entry. The type does not vary by class, so it resolves by
+/// name once the table has missed on both the group and its alias.
+#[test]
+fn an_engine_object_ref_resolves_on_a_group_the_table_never_saw() {
+    let table = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
+    const BOMB_EQUIPPABLE: &str = "/Game/Equippables/Bomb/BombEquippable.BombEquippable_C";
+    assert_eq!(
+        table.lookup(BOMB_EQUIPPABLE, "Owner"),
+        None,
+        "not in the table"
+    );
+    assert_eq!(
+        resolve_field_type(&table, BOMB_EQUIPPABLE, Some("Owner"), None),
+        Some(FieldType::ObjectNetGuid),
+    );
+}
+
+#[test]
+fn the_engine_fallback_covers_every_one_of_the_four_names() {
+    let table = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
+    for name in ["Owner", "Instigator", "AttachParent", "Controller"] {
+        assert_eq!(
+            resolve_field_type(&table, "/Game/NeverSeen.NeverSeen_C", Some(name), None),
+            Some(FieldType::ObjectNetGuid),
+            "{name} should resolve by name",
+        );
+    }
+}
+
+/// The fallback is a fixed list, not "anything that looks like a reference".
+#[test]
+fn the_engine_fallback_does_not_invent_other_names() {
+    let table = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
+    for name in ["OwnerId", "Owner2", "MyOwner", "Parent", "Target"] {
+        assert_eq!(
+            resolve_field_type(&table, "/Game/NeverSeen.NeverSeen_C", Some(name), None),
+            None,
+            "{name} must stay unresolved",
+        );
+    }
+}
+
+/// A declared entry still wins: the fallback only runs after the table misses,
+/// so a class that really does spell one of these names differently keeps its
+/// declared type.
+#[test]
+fn a_table_entry_outranks_the_engine_fallback() {
+    let entries: &[OverlayEntry] = &[OverlayEntry {
+        group_path: "/test",
+        field_name: "Owner",
+        field_type: FieldType::Raw,
+    }];
+    let table = OverlayTable::new(entries);
+    assert_eq!(
+        resolve_field_type(&table, "/test", Some("Owner"), None),
+        Some(FieldType::Raw),
+    );
+}
