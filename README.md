@@ -54,15 +54,17 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Six Parquet tables + manifest** — `fields`, `movement`, `actors`,
   `net_guids`, `events`, `checkpoint_fields`, ready for polars / pandas /
   DuckDB.
-- **Spike state** — carrier over time (`CurrentEquippable` → bomb actor), plant
-  site A/B (`PlantedAtSite` + position), defuser (`CurrentDefuser`), timer, and
-  the canonical detonation signal.
+- **Spike state** — plant site A/B (`PlantedAtSite` + position), defuser
+  (`CurrentDefuser`), timer, and the canonical detonation signal.
 - **Combat & abilities** — per-player economy, magazine ammo and equipped
   weapon over time, ability casts, cooldowns, status effects (concussion / blind
   / ability fuel / heal / decay), and the GAS attribute/effect stream.
 - **Persistent effects** — smoke / wall / molly / slow / trap position and
   lifetime from actor lifecycles; one command via
   `tools/extract_active_effects.py`.
+- **Spike custody** — who carried the spike and when, resolved to the account
+  UUID, including Gekko's Wingman as a proxy carrier and the planter at each
+  `spikePlanted`; one command via `tools/extract_spike_carrier.py`.
 - **Account identity & typed events** — `manifest.players` (account UUID →
   actor → character), event `word0`/`word1` (killer/killed NetGUID, round
   index), ping/latency.
@@ -260,7 +262,7 @@ it as one gives the year 3626.
 
 Work in progress. Currently verified: `cargo test --workspace` **390 passing**,
 `clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 114 files. The
-Python suite in `tools/tests` has 124 tests.
+Python suite in `tools/tests` has 133 tests.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.

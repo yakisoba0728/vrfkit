@@ -120,9 +120,10 @@ purchase; all ten players' purchases are replicated.
 | Data | Source | Status |
 |---|---|---|
 | Plant / defuse / detonation | `events.spikePlanted` / `spikeDefused` / `spikeExploded` | ✅ |
-| Spike carrier (who holds it, over time) | `AresInventory.CurrentEquippable` → resolve to `BombEquippable` actor | ✅ via InventoryComponent->AresInventory remap |
+| Spike carrier (who holds it, over time) | `BombEquippable_C.Owner` on the spike's own channel → `tools/extract_spike_carrier.py` | ✅ resolved to manifest `subject`; covers backpack, not just in-hand |
+| Spike in hand (vs carried) | `AresInventory.CurrentEquippable` / `NewCurrentEquippable` == bomb GUID | ✅ the `in_hand` flag of the same view |
 | Defuser | `TimedBomb.CurrentDefuser` (ObjectNetGuid) | ✅ |
-| Planter | TimedBomb spawn position vs player position | ◐ inferred (no planter field on the wire) |
+| Planter | carrier at the `spikePlanted` timestamp (`extract_spike_carrier.py`) | ✅ from the Owner chain; the event payload itself carries no planter |
 | Spike timer | `TimedBomb.TimeRemainingToExplode` / `DefuseProgress` | ✅ Double |
 | Plant site (A/B) | `TimedBomb.PlantedAtSite` (EnumByte) + position derivation | ✅ absent handle = default site (UE default-value skip); 100% via spawn position |
 | Detonation source | `events.spikeExploded` is canonical (always emitted) | ✅ `RoundResults` under-counts: it logs win-reason, not detonation |
@@ -199,11 +200,13 @@ Roughly in value order. Each names the file to touch first.
    - **Inferred**: for each bare group, match its handle/bit-width structure
      against the manifest's declared native groups (the handles and types line
      up 1:1) -- no game files needed, but it is confirmation, not authority.
-2. **Spike carrier -> player subject** — `CurrentEquippable` already gives the
-   bomb actor; the missing step is `inventory_guid -> outer_net_guid -> player
-   subject`, an `outer_net_guid` chain join. A `tools/` script in the style of
-   `extract_active_effects.py` would do it; the raw data is already in
-   `net_guids.parquet` + `fields.parquet`.
+2. **Type `Owner` on the bare actor groups** — `tools/extract_spike_carrier.py`
+   has to unpack the NetGUID out of `raw_bits` itself, because
+   `BombEquippable_C.Owner` (95 rows) has no overlay entry and so no
+   `value_i64`, while the same property *is* typed on other groups. Adding it
+   would delete that decoder from the script and help every other consumer. Not
+   done here because it moves the export baseline, which needs the source
+   replay to regenerate. `ADDITIONS` in `tools/apply_type_corrections.py`.
 3. **`HANDLE_ADDITIONS` for the next unnamed single handle** — the mechanism
    added for `MagazineAmmo` generalizes. `ReserveAmmo` (reserve bullets) is the
    obvious next candidate once its group is resolved (it may fall out of item 1).
