@@ -150,6 +150,46 @@ EXPECTED += [
 #: full-consumption guard. This is the same wire-evidence ADDITION class as Money
 #: -- 18-D's "no descriptor declares it" objection is exactly the gate Money
 #: cleared, and the per-player latency series is now wanted.
+#:
+#: Status-effect components. `Comp_Actor_Concussable` and
+#: `Comp_AbilityFuelSystem` are GENERIC Blueprint components shipped under
+#: `/Game/Characters/Components/`, not agent-specific classes -- no C#
+#: descriptor declares either group, so without these entries the fields
+#: ship as raw bits even though they decode cleanly to real values.
+#:
+#: Concussion was surveyed for agent-commonality on the 98605b1b Demos
+#: export: the component is on 9 distinct actors spanning eight agents
+#: (Phoenix, Breach, Smonk, Clay, Guide, Wushu, Terra, Pandemic, Deadeye)
+#: plus Guide's PossessableScout pawn, with identical field names and bit
+#: widths on every actor -- typing the group once covers every agent. The
+#: widths are self-checking across all 375 rows: ConcussStartTime and
+#: ConcussEndTime are 32 bits on all 39 rows each (Float), ConcussLevel is
+#: 64 bits on all 297 rows (Double). Read as Float the start/end times are
+#: game-seconds (389.5/392.0 ... 1916.7/1919.2 -- the ~2.5 s gap is the
+#: concussion duration); read as Double ConcussLevel runs the 0..1
+#: intensity ramp.
+#:
+#: AbilityFuel is per-ability rather than per-player (on 98605b1b: Sage/
+#: Guide's heal `Ability_Guide_4_Heal` and Viper/Pandemic's smoke), but the
+#: component path is shared so one entry covers every actor that carries
+#: it. CurrentFuel is 64 bits on all 5702 rows and reads as Double a smooth
+#: 1.0 -> 0.0 drain (1.0, 0.9993, 0.9909, 0.9824, ...); IsFuelDraining is
+#: 1 bit on all 60 rows, raw 0x00/0x01 -- an unambiguous Bool. CurrentFuel
+#: was guessed Float in the task brief, but the wire is 64-bit; Double is
+#: what decodes.
+#:
+#: DELIBERATELY NOT ADDED: `Comp_AbilityStatisticsReplicator.AbilityCasts
+#: ThisRound`. It is on all ten player characters (agent-common, like
+#: Concussion), but the brief's "Int32" guess is wrong: the payload runs 16
+#: to 6712 bits across 955 rows and the bytes after the 16-bit `0000` empty
+#: case decode to ASCII GUID strings -- it is a variable-width array of
+#: struct entries, not a 32-bit integer. Forcing Int32 would decode only
+#: the smallest rows and mislabel every other row, so it stays raw until
+#: the array element type is worked out. Also deliberately not added:
+#: `FuelFull`/`FuelEmpty` (0-bit payloads, no value to decode) and
+#: `BlindManagerComponent.ActiveBlinds`/`LongestActiveBlindDuration`
+#: (ActiveBlinds is a variable-width array; the duration was outside the
+#: brief and its Float read is not yet corroborated against gameplay).
 ADDITIONS = [
     ("/Game/GameModes/Bomb/BombGameState.BombGameState_C",
      "ChosenCeremonyForRound", "FieldType::ObjectNetGuid"),
@@ -160,6 +200,16 @@ ADDITIONS = [
     ("/Script/ShooterGame.MoneyManagementComponent", "TotalMoneyGranted", "FieldType::Int32"),
     ("/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C",
      "Ping", "FieldType::SerializedInt { max: 65536 }"),
+    ("/Game/Characters/Components/Comp_Actor_Concussable.Comp_Actor_Concussable_C",
+     "ConcussStartTime", "FieldType::Float"),
+    ("/Game/Characters/Components/Comp_Actor_Concussable.Comp_Actor_Concussable_C",
+     "ConcussEndTime", "FieldType::Float"),
+    ("/Game/Characters/Components/Comp_Actor_Concussable.Comp_Actor_Concussable_C",
+     "ConcussLevel", "FieldType::Double"),
+    ("/Game/Characters/Components/Comp_AbilityFuelSystem.Comp_AbilityFuelSystem_C",
+     "CurrentFuel", "FieldType::Double"),
+    ("/Game/Characters/Components/Comp_AbilityFuelSystem.Comp_AbilityFuelSystem_C",
+     "IsFuelDraining", "FieldType::Bool"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 

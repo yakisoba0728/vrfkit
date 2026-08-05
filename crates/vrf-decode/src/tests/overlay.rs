@@ -129,6 +129,57 @@ fn money_management_economy_is_typed() {
     );
 }
 
+/// Concussion state is replicated under a SHARED component path
+/// (`/Game/Characters/Components/Comp_Actor_Concussable.Comp_Actor_Concussable_C`)
+/// that is attached to every player character -- it is NOT agent-specific.
+/// On the 98605b1b Demos export the component appears on 9 distinct actors
+/// spanning eight agents (Phoenix, Breach, Smonk, Clay, Guide, Wushu, Terra,
+/// Pandemic, Deadeye) plus Guide's PossessableScout pawn, and the field
+/// names and bit widths are identical on every one of them.
+///
+/// The widths are self-checking across all 375 rows: ConcussStartTime and
+/// ConcussEndTime are 32 bits on all 39 rows each (Float), and ConcussLevel
+/// is 64 bits on all 297 rows (Double). Read as Float, the start/end times
+/// are game-seconds (389.5/392.0 ... 1916.7/1919.2 -- the ~2.5 s gap is the
+/// concussion duration); read as Double, ConcussLevel runs the 0..1
+/// intensity ramp. No descriptor declares this group, so the entries are
+/// ADDITIONS in the same wire-evidence class as `Money` and `Ping`.
+#[test]
+fn concussion_fields_are_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    let group = "/Game/Characters/Components/Comp_Actor_Concussable\
+.Comp_Actor_Concussable_C";
+    assert_eq!(
+        table.lookup(group, "ConcussStartTime"),
+        Some(FieldType::Float)
+    );
+    assert_eq!(
+        table.lookup(group, "ConcussEndTime"),
+        Some(FieldType::Float)
+    );
+    assert_eq!(table.lookup(group, "ConcussLevel"), Some(FieldType::Double));
+}
+
+/// `Comp_AbilityFuelSystem` is a generic component attached to a handful of
+/// fuel-burning ability actors -- on 98605b1b that is Sage/Guide's heal
+/// (`Ability_Guide_4_Heal`) and Viper/Pandemic's smoke screen. It is
+/// per-ability, not per-player, but the component path is shared so a single
+/// entry covers every actor that carries it.
+///
+/// CurrentFuel is 64 bits on all 5702 rows and reads as Double a smooth
+/// 1.0 -> 0.0 drain (1.0, 0.9993, 0.9909, 0.9824, ...). IsFuelDraining is
+/// 1 bit on all 60 rows, raw 0x00/0x01 -- an unambiguous Bool. The task note
+/// guessed CurrentFuel as Float, but the wire is 64-bit; Double is what
+/// decodes. No descriptor declares this group, so these are ADDITIONS.
+#[test]
+fn ability_fuel_fields_are_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    let group = "/Game/Characters/Components/Comp_AbilityFuelSystem\
+.Comp_AbilityFuelSystem_C";
+    assert_eq!(table.lookup(group, "CurrentFuel"), Some(FieldType::Double));
+    assert_eq!(table.lookup(group, "IsFuelDraining"), Some(FieldType::Bool));
+}
+
 /// `Ping` on BombPlayerState is a 16-bit LE unsigned integer that behaves
 /// like latency in milliseconds (min ~6, p50 ~15, p90 ~19, max ~473 on
 /// 02d4d478). No descriptor declares it, but the wire evidence is
