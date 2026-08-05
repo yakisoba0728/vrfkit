@@ -122,7 +122,7 @@ handle by name.
 #### Reading the `Typed` ratio
 
 ```
-  Typed:            43.2% (properties + RPC parameters)
+  Typed:            43.8% (properties + RPC parameters)
 ```
 
 The denominator is **every row offered** to the overlay, and thanks to RPC
@@ -141,12 +141,12 @@ Measured on `02d4d478` (48,215,213 bytes):
 
 | File | Rows | Bytes | Notes |
 |---|---|---|---|
-| `fields.parquet` | 1,255,920 | 14,101,592 | |
+| `fields.parquet` | 1,255,920 | 14,107,587 | |
 | `movement.parquet` | 1,839,607 | 31,835,557 | |
 | `actors.parquet` | 3,827 | 87,281 | |
 | `net_guids.parquet` | 16,167 | 153,606 | |
 | `events.parquet` | 195 | 11,136 | |
-| `checkpoint_fields.parquet` | 78,829 | 193,470 | requires `--checkpoints` |
+| `checkpoint_fields.parquet` | 78,829 | 196,448 | requires `--checkpoints` |
 | `manifest.json` | -- | 660,032 | |
 
 `export` takes 0.85 s. String columns are dictionary-encoded + ZSTD.
@@ -464,7 +464,7 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 390 passing
+cargo test                                        # 394 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 114 files, ASCII only
@@ -559,7 +559,7 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
 
 ## 8. Known limits
 
-- **Untyped residual** -- the [`export`](#export) `Typed` is ~43% (denominator
+- **Untyped residual** -- the [`export`](#export) `Typed` is ~44% (denominator
   including RPC parameters). **Untyped != lost** (`raw_bits` preserved). Typing
   the rest needs the game binary or UE headers -- this is not a table-editing
   problem (PROJECT_STATUS section 24).

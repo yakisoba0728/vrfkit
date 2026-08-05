@@ -74,7 +74,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **390 tests** plus a layered validation suite (framing / bytes / decode
+- **394 tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -128,12 +128,12 @@ produces seven files:
 
 | File | Rows | Bytes |
 |---|---|---|
-| `fields.parquet` | 1,255,920 | 14,101,592 |
+| `fields.parquet` | 1,255,920 | 14,107,587 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
 | `events.parquet` | 195 | 11,136 |
-| `checkpoint_fields.parquet` | 78,829 | 193,470 |
+| `checkpoint_fields.parquet` | 78,829 | 196,448 |
 | `manifest.json` |  | 660,032 |
 
 `checkpoint_fields.parquet` requires `--checkpoints`; with or without it, **the
@@ -260,7 +260,7 @@ it as one gives the year 3626.
 
 ## Status
 
-Work in progress. Currently verified: `cargo test --workspace` **390 passing**,
+Work in progress. Currently verified: `cargo test --workspace` **394 passing**,
 `clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 114 files. The
 Python suite in `tools/tests` has 133 tests.
 
@@ -493,12 +493,22 @@ The overlay table is extracted mechanically from the C# descriptors
 Nothing is transcribed by hand, for the same reason S-boxes and golden vectors
 are not: it is the kind of constant where a typo is invisible in review.
 
+Four names resolve without a table entry: `Owner`, `Instigator`, `AttachParent`
+and `Controller` are `AActor` / `USceneComponent` object references Unreal
+replicates on every actor, always as a NetGUID. The descriptors declare them
+only for the classes they happen to cover, which left the same four names typed
+on 129 group/field pairs and untyped on 203 more. Since the type is fixed by the
+engine rather than by the class, they resolve by name after the table misses --
+a claim about Unreal, not a guess about any one Blueprint, and it holds for
+groups no replay has spawned yet. It types 6,048 further rows with decode errors
+still at zero across the 215-replay corpus.
+
 `02d4d478` at the current HEAD:
 
 ```
-Decoded OK:   427,517      Decode errors:      0
-Raw/Skip:      74,624      Not in table: 469,829
-No field name: 17,013      Typed:          43.2%
+Decoded OK:   433,565      Decode errors:      0
+Raw/Skip:      74,624      Not in table: 463,781
+No field name: 17,013      Typed:          43.8%
 Effect blobs:  53,908
 ```
 
@@ -511,7 +521,7 @@ prints identically. (The bucket counts themselves do move as overlay entries
 are added; the figures above are post-economy-typing.)
 
 The real coverage figure is the fraction of all 1,255,920 rows with a filled
-`value_*`. Before effect linkage 68.8% were untyped; it is now **60.1%.**
+`value_*`. Before effect linkage 68.8% were untyped; it is now **59.6%.**
 
 **These numbers change often; re-measure before quoting** -- four of the six
 were left stale at one point:
@@ -673,7 +683,7 @@ that way is a trap:
   (97.28% of the residual is `AbilitiesAndBuffsComponent`, which the replay
   never declares). `Malformed framing` and `Transform failed` are the lines
   that must be zero; the pass rate is expected to sit below 100%.
-- The **~43% `Typed`** ratio reads low because of the *RPC-parameter
+- The **~44% `Typed`** ratio reads low because of the *RPC-parameter
   denominator* -- most of `Not in table` is RPC parameters with no C#
   descriptor. A low ratio is uninterpreted, not lost: those rows still carry
   `raw_bits`, and additive decoders (effects, structs, the economy typing)

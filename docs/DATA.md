@@ -200,13 +200,14 @@ Roughly in value order. Each names the file to touch first.
    - **Inferred**: for each bare group, match its handle/bit-width structure
      against the manifest's declared native groups (the handles and types line
      up 1:1) -- no game files needed, but it is confirmation, not authority.
-2. **Type `Owner` on the bare actor groups** — `tools/extract_spike_carrier.py`
-   has to unpack the NetGUID out of `raw_bits` itself, because
-   `BombEquippable_C.Owner` (95 rows) has no overlay entry and so no
-   `value_i64`, while the same property *is* typed on other groups. Adding it
-   would delete that decoder from the script and help every other consumer. Not
-   done here because it moves the export baseline, which needs the source
-   replay to regenerate. `ADDITIONS` in `tools/apply_type_corrections.py`.
+2. **The other name-resolvable engine properties** — `Owner`, `Instigator`,
+   `AttachParent` and `Controller` now resolve by name for any group
+   (`ENGINE_OBJECT_REFS` in `crates/vrf-decode/src/overlay.rs`), which typed
+   6,048 rows the C# descriptors never covered and deleted the hand-rolled
+   NetGUID unpacker from `tools/extract_spike_carrier.py`. The same argument
+   may hold for other engine-level properties replicated on every actor, but
+   each needs the same evidence: typed on many groups, identical encoding, and
+   zero decode errors across the corpus after the change.
 3. **`HANDLE_ADDITIONS` for the next unnamed single handle** — the mechanism
    added for `MagazineAmmo` generalizes. `ReserveAmmo` (reserve bullets) is the
    obvious next candidate once its group is resolved (it may fall out of item 1).
