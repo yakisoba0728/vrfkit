@@ -63,6 +63,7 @@ pub(super) fn print(
     eprintln!("  Actor closes:     {}", net_stats.actor_closes);
     eprintln!("  Bunches:          {}", net_stats.bunches);
     eprintln!("  Malformed pkts:   {}", net_stats.malformed_packets);
+    eprintln!("  Bunch header fails: {}", net_stats.bunch_header_failures);
     eprintln!("  Skipped bits:     {}", net_stats.skipped_bits);
     eprintln!("  Movement rows:    {}", totals.movement_rows);
     eprintln!("  NetGUID rows:     {}", totals.net_guid_rows);

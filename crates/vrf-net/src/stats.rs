@@ -50,6 +50,13 @@ pub struct NetStats {
     pub partial_fragments: u64,
     /// Partial bunches that completed successfully.
     pub partial_completed: u64,
+    /// Bunch payloads whose header parse failed -- package-map exports,
+    /// must-be-mapped GUIDs, or the channel-open block. The prior code did
+    /// `let _ =` on these `Result`s, so a channel that failed to open was
+    /// invisible (every later bunch on it skipped silently at the channel
+    /// guard) and a truncated must-be-mapped list left the reader stuck and
+    /// parsed the rest of the bunch as garbage. Counted to make both loud.
+    pub bunch_header_failures: u64,
     /// Content blocks framed (actor + subobject + deleted).
     pub content_blocks: u64,
     /// Content blocks with RepLayout (property) payloads.

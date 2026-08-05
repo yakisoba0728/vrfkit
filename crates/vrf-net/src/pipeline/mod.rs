@@ -440,22 +440,35 @@ impl ReplicationReader {
     ) {
         let ch_index = header.ch_index;
 
-        // Package map exports
+        // Package map exports. Count the export only when the read succeeds --
+        // a partial failure used to inflate `package_map_exports` anyway.
         if header.b_has_package_map_exports {
-            let _ = channel::read_package_map_exports(payload, stage.stats, sink);
-            stage.stats.package_map_exports += 1;
+            if channel::read_package_map_exports(payload, stage.stats, sink).is_ok() {
+                stage.stats.package_map_exports += 1;
+            } else {
+                stage.stats.bunch_header_failures += 1;
+            }
             return;
         }
 
-        // Must-be-mapped GUIDs
-        if header.b_has_must_be_mapped_guids {
-            let _ = channel::read_must_be_mapped_guids(payload, stage.stats);
+        // Must-be-mapped GUIDs. A failure leaves the reader at an indeterminate
+        // bit, so the rest of this bunch cannot be framed safely -- count it and
+        // abandon the bunch rather than parse on as garbage.
+        if header.b_has_must_be_mapped_guids
+            && channel::read_must_be_mapped_guids(payload, stage.stats).is_err()
+        {
+            stage.stats.bunch_header_failures += 1;
+            return;
         }
 
-        // Actor channel open
-        if header.b_open {
-            let _ =
-                channel::handle_channel_open(header, payload, stage.channels, stage.stats, sink);
+        // Actor channel open. On failure the channel is never inserted, so the
+        // guard below skips the rest of the bunch; the count makes that skip
+        // visible instead of looking like a channel that was never used.
+        if header.b_open
+            && channel::handle_channel_open(header, payload, stage.channels, stage.stats, sink)
+                .is_err()
+        {
+            stage.stats.bunch_header_failures += 1;
         }
 
         // Look up channel -- if it never opened, or is not open now, skip.
@@ -766,6 +779,49 @@ mod tests {
             reader.stats().partial_errors,
             1,
             "one missing-initial error, counted once (not twice)"
+        );
+    }
+
+    /// A bunch whose header parse fails is counted and abandoned, not silently
+    /// dropped. A truncated must-be-mapped GUID list (declares one GUID, carries
+    /// none) used to be `let _ =`-ed: the reader was left stuck and the rest of
+    /// the bunch (channel open, content framing) parsed garbage, with no counter
+    /// moving.
+    #[test]
+    fn a_truncated_bunch_header_failure_is_counted_not_silent() {
+        // Non-partial reliable bunch on channel 2 with a 16-bit payload: a u16
+        // must-be-mapped count of 1 (LE) and then no GUID bits, so
+        // read_must_be_mapped_guids EOFs on the missing GUID.
+        let mut bits = vec![
+            false, // bControl
+            false, // bIsReplicationPaused
+            true,  // bReliable
+        ];
+        write_int_packed(&mut bits, 2); // ChIndex
+        bits.extend_from_slice(&[
+            false, // bHasPackageMapExports
+            true,  // bHasMustBeMappedGUIDs
+            false, // bPartial
+            false, // VALORANT bit
+            true,  // FName isHardcoded
+        ]);
+        write_int_packed(&mut bits, 1); // FName index
+        write_serialized_int(&mut bits, 16, crate::types::MAX_PACKET_SIZE_BITS); // 16 payload bits
+        // payload: u16 count = 1 little-endian, then zero GUID bits.
+        bits.extend_from_slice(&[
+            true, false, false, false, false, false, false, false, // 0x01
+            false, false, false, false, false, false, false, false, // 0x00
+        ]);
+
+        let packet = build_packet(&bits);
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        assert_eq!(
+            reader.stats().bunch_header_failures,
+            1,
+            "truncated must-be-mapped list counted, not silently dropped"
         );
     }
 
