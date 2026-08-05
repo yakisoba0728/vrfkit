@@ -1,5 +1,15 @@
 # vrfkit Project Status
 
+> **What this document is.** This is a dated chronological engineering
+> work log for vrfkit -- a record of what was investigated, measured,
+> fixed, and ruled out, in the order it happened. It is NOT a spec or a
+> user guide. For the user-facing story, see [README.md](README.md) and
+> [docs/USAGE.md](docs/USAGE.md). Its value is the historical record:
+> dated figures are snapshots at their own commits and are deliberately
+> not refreshed here -- re-measure against HEAD (section 2 explains how),
+> and treat the section numbers (7-F, 22-I, 26-I, ...) as stable
+> identifiers cited from code comments and other docs.
+
 Last updated: 2026-08-05. Includes the replay-coverage audit through 8eb5909,
 the concurrent master audit corrections through 101c33a, the code audit fixes
 in section 12, the Codex needs-work results through 45223c9 in section 14,
@@ -37,6 +47,228 @@ NEXT_STEPS_FINDINGS.md for the evidence trail.
 Section 7-H was likewise disproved by measurement on 2026-08-01 -- but unlike
 7-A it has no implementation on the other side. It is closed NOT SOLVABLE, with
 no parser change, and section 8 carries the invariant it produced.
+
+---
+
+## Table of Contents
+
+- [QUICK START FOR THE NEXT SESSION](#quick-start-for-the-next-session)
+  - [Where things are](#where-things-are)
+  - [Verify the build before touching anything](#verify-the-build-before-touching-anything)
+  - [Regression guard (run after any non-trivial change)](#regression-guard-run-after-any-non-trivial-change)
+  - [What to do next (highest impact first)](#what-to-do-next-highest-impact-first)
+  - [State of out/ directory (gitignored, safe to regenerate)](#state-of-out-directory-gitignored-safe-to-regenerate)
+  - [Key invariant (never break)](#key-invariant-never-break)
+- [1. What This Project Is](#1-what-this-project-is)
+- [2. Repository State (2026-08-04)](#2-repository-state-2026-08-04)
+  - [Commit list](#commit-list)
+- [3. Crate Structure](#3-crate-structure)
+- [4. Corpus Verification Numbers (215 replays, all ++Ares-Core+release-13.01)](#4-corpus-verification-numbers-215-replays-all-ares-corerelease-1301)
+- [5. What Was Done in This Session (chronological)](#5-what-was-done-in-this-session-chronological)
+  - [5-A. Oracle honesty fix (commits bb797d2, b531724)](#5-a-oracle-honesty-fix-commits-bb797d2-b531724)
+  - [5-B. Capacity-1 handle read fix (commit 90727ed)](#5-b-capacity-1-handle-read-fix-commit-90727ed)
+  - [5-C. Silent skip path exposed (commits 29b2936, 00dce40)](#5-c-silent-skip-path-exposed-commits-29b2936-00dce40)
+  - [5-D. Instance-name-to-ClassNetCache resolution (commit 6e6d544)](#5-d-instance-name-to-classnetcache-resolution-commit-6e6d544)
+  - [5-E. README correction (commit 7c2faa1)](#5-e-readme-correction-commit-7c2faa1)
+  - [5-F. valplay adapter (commit b6947ee)](#5-f-valplay-adapter-commit-b6947ee)
+  - [5-G. actors.parquet (commit df20d5b)](#5-g-actorsparquet-commit-df20d5b)
+  - [5-H. Struct blob decoders (commit cc5dabd)](#5-h-struct-blob-decoders-commit-cc5dabd)
+  - [5-I. EffectContainer blob decoder (commit de24d6d)](#5-i-effectcontainer-blob-decoder-commit-de24d6d)
+  - [5-J. 7-A premise disproved by measurement (commit 391ee2e)](#5-j-7-a-premise-disproved-by-measurement-commit-391ee2e)
+  - [5-K. net_guids.parquet and weapon identity (commits 47849d2, b258dfd)](#5-k-netguidsparquet-and-weapon-identity-commits-47849d2-b258dfd)
+  - [5-L. Fire mode classified from the firing-state name (commit 1f3afe4)](#5-l-fire-mode-classified-from-the-firing-state-name-commit-1f3afe4)
+  - [5-M. EquippableUsed and RegionalDamage (commits 90a50e1, e7414d9)](#5-m-equippableused-and-regionaldamage-commits-90a50e1-e7414d9)
+  - [5-N. Movement, cross-validation, and three corrected claims](#5-n-movement-cross-validation-and-three-corrected-claims)
+  - [5-O. Closing out section 7](#5-o-closing-out-section-7)
+  - [5-P. Export path optimization (commits e08665b, f70781a, 2012c51, 14a9e93)](#5-p-export-path-optimization-commits-e08665b-f70781a-2012c51-14a9e93)
+- [6. metrics.json Reproduction Status (02d4d478 vs reference)](#6-metricsjson-reproduction-status-02d4d478-vs-reference)
+  - [6-A. Cross-validation across every available reference bundle](#6-a-cross-validation-across-every-available-reference-bundle)
+- [7. What Remains and Why (named gaps, ordered by impact)](#7-what-remains-and-why-named-gaps-ordered-by-impact)
+  - [7-A. Equippable (weapon actor) identity resolution [DONE 2026-08-01]](#7-a-equippable-weapon-actor-identity-resolution-done-2026-08-01)
+  - [7-B. 1ms timing alignment [DONE 2026-08-01]](#7-b-1ms-timing-alignment-done-2026-08-01)
+  - [7-C. Unattributed ClassNetCache blocks [IMPLEMENTED AND VERIFIED; PAYLOAD PRESERVED, STILL UNPARSED]](#7-c-unattributed-classnetcache-blocks-implemented-and-verified-payload-preserved-still-unparsed)
+  - [7-D. Ability/item class display names [DONE 2026-08-01]](#7-d-abilityitem-class-display-names-done-2026-08-01)
+  - [7-E. 13.02 regression guard [DONE 2026-08-01]](#7-e-1302-regression-guard-done-2026-08-01)
+  - [7-F. Parallelization [CLOSED 2026-08-01 -- MEASURED, NOT WORTH IT]](#7-f-parallelization-closed-2026-08-01-measured-not-worth-it)
+  - [7-G. Reproduce metrics.json for other replays [DONE 2026-08-01]](#7-g-reproduce-metricsjson-for-other-replays-done-2026-08-01)
+  - [7-H. Instance-named component groups [43.9% SOLVABLE FROM REPLAY DATA -- NO METRIC IMPACT]](#7-h-instance-named-component-groups-439-solvable-from-replay-data-no-metric-impact)
+  - [7-I. Effects with no firing state [DONE 2026-08-01]](#7-i-effects-with-no-firing-state-done-2026-08-01)
+  - [7-J. EquippableUsed.NetGuid decoded wrong [DONE 2026-08-01]](#7-j-equippableusednetguid-decoded-wrong-done-2026-08-01)
+  - [7-K. Intra-packet sub-moves [DONE 2026-08-01]](#7-k-intra-packet-sub-moves-done-2026-08-01)
+- [8. Design Invariants (do not break)](#8-design-invariants-do-not-break)
+- [9. Key Technical Facts (for a new session starting from this document)](#9-key-technical-facts-for-a-new-session-starting-from-this-document)
+  - [Wire format facts](#wire-format-facts)
+  - [Transform constants](#transform-constants)
+  - [ClassNetCache handle read (critical)](#classnetcache-handle-read-critical)
+  - [Corpus baseline (regression values for 02d4d478)](#corpus-baseline-regression-values-for-02d4d478)
+  - [Tools directory](#tools-directory)
+  - [Path references](#path-references)
+- [10. Tradeoffs Made and Why](#10-tradeoffs-made-and-why)
+  - [Parquet over NDJSON](#parquet-over-ndjson)
+  - [Adapter over rewriting compute_metrics.py](#adapter-over-rewriting-computemetricspy)
+  - [No hardcoded names anywhere](#no-hardcoded-names-anywhere)
+  - [Loud failures over silent drops](#loud-failures-over-silent-drops)
+  - [No parallel DECODE within a replay (measured, closed)](#no-parallel-decode-within-a-replay-measured-closed)
+  - [Blob decoders in sink.rs vs vrf-decode](#blob-decoders-in-sinkrs-vs-vrf-decode)
+- [11. Delegate Coverage Audit (2026-08-01)](#11-delegate-coverage-audit-2026-08-01)
+  - [11-A. Non-Bomb mode coverage [SUPERSEDED BY 32-D -- the input was always there]](#11-a-non-bomb-mode-coverage-superseded-by-32-d-the-input-was-always-there)
+  - [11-B. Older supported builds [DONE]](#11-b-older-supported-builds-done)
+  - [11-C. MeleeAttackState resolver premise [WITHDRAWN; CONFIRMED FALSE]](#11-c-meleeattackstate-resolver-premise-withdrawn-confirmed-false)
+- [12. Code Audit Fixes (2026-08-02)](#12-code-audit-fixes-2026-08-02)
+  - [12-A. Non-finite frame times [FIXED, commit e83f99f]](#12-a-non-finite-frame-times-fixed-commit-e83f99f)
+  - [12-B. object_net_guid filtered to None [FIXED, commit a2b8343]](#12-b-objectnetguid-filtered-to-none-fixed-commit-a2b8343)
+  - [12-C. NetGUID row count unguarded [FIXED, commit bfd0229]](#12-c-netguid-row-count-unguarded-fixed-commit-bfd0229)
+  - [12-D. vrf-decode/src/effect.rs is dead code [KEPT WITH A NOTE, commit a28072b]](#12-d-vrf-decodesrceffectrs-is-dead-code-kept-with-a-note-commit-a28072b)
+  - [12-E. Non-ASCII in string literals [FIXED, commits e8f40cb and the cli.rs follow-up]](#12-e-non-ascii-in-string-literals-fixed-commits-e8f40cb-and-the-clirs-follow-up)
+- [13. Data-Loss Fixes (2026-08-02)](#13-data-loss-fixes-2026-08-02)
+  - [13-A. A cleared optional bit means "default", not "absent" [FIXED, 2637808]](#13-a-a-cleared-optional-bit-means-default-not-absent-fixed-2637808)
+  - [13-B. ReplicatedMovement shipped a debug string [FIXED, 2637808]](#13-b-replicatedmovement-shipped-a-debug-string-fixed-2637808)
+  - [13-C. Gekko's descriptor path had a one-character typo [FIXED, f67ea66 + 4f78f6d]](#13-c-gekkos-descriptor-path-had-a-one-character-typo-fixed-f67ea66-4f78f6d)
+  - [13-D. The extractor could not read a factored handle run [FIXED, 4f78f6d]](#13-d-the-extractor-could-not-read-a-factored-handle-run-fixed-4f78f6d)
+  - [13-E. `payload: null` meant two different things [FIXED, 2637808]](#13-e-payload-null-meant-two-different-things-fixed-2637808)
+  - [13-I. A static actor has no class path, and no archetype either [FIXED, ea08a83]](#13-i-a-static-actor-has-no-class-path-and-no-archetype-either-fixed-ea08a83)
+  - [13-F. What is still untyped, and why it is not a bug [SUPERSEDED by 13-J]](#13-f-what-is-still-untyped-and-why-it-is-not-a-bug-superseded-by-13-j)
+  - [13-G. Verification run for this session](#13-g-verification-run-for-this-session)
+  - [13-H. Stale figure corrected](#13-h-stale-figure-corrected)
+  - [13-J. The ability pawns and projectiles got descriptors [DONE 2026-08-02]](#13-j-the-ability-pawns-and-projectiles-got-descriptors-done-2026-08-02)
+- [14. Codex needs-work results (2026-08-02)](#14-codex-needs-work-results-2026-08-02)
+  - [14-A. Live effect decoder guard (fb41b96, 23fb6aa)](#14-a-live-effect-decoder-guard-fb41b96-23fb6aa)
+  - [14-B. Untyped-row investigation and descriptor extraction (e1eb220, b68baaa, b10467b, b5b74db, 519de0b, 81d4f88, 45223c9)](#14-b-untyped-row-investigation-and-descriptor-extraction-e1eb220-b68baaa-b10467b-b5b74db-519de0b-81d4f88-45223c9)
+  - [14-C. Whole-block payload preservation measurement](#14-c-whole-block-payload-preservation-measurement)
+  - [14-D. Complete Rust ASCII enforcement (a0ea2b4, 7e0051f)](#14-d-complete-rust-ascii-enforcement-a0ea2b4-7e0051f)
+  - [14-E. Explained export baseline drift](#14-e-explained-export-baseline-drift)
+  - [14-F. Final verification](#14-f-final-verification)
+- [15. The untyped tail, triaged (2026-08-02)](#15-the-untyped-tail-triaged-2026-08-02)
+  - [15-A. Bottom line: nothing in the tail is an extractor bug](#15-a-bottom-line-nothing-in-the-tail-is-an-extractor-bug)
+  - [15-B. One dead table entry, and it was a real upstream gap [FIXED, 8824794]](#15-b-one-dead-table-entry-and-it-was-a-real-upstream-gap-fixed-8824794)
+  - [15-C. Bomb_CombatReportComponent [CLOSED -- not a gap]](#15-c-bombcombatreportcomponent-closed-not-a-gap)
+  - [15-D. What this triage does NOT establish](#15-d-what-this-triage-does-not-establish)
+- [16. Falsification pass over this session's own claims (2026-08-02)](#16-falsification-pass-over-this-sessions-own-claims-2026-08-02)
+  - [16-A. REFUTED: "SpawnTransform is the only genuinely dead typed entry"](#16-a-refuted-spawntransform-is-the-only-genuinely-dead-typed-entry)
+  - [16-B. Vacuity disclosures for the parity claims](#16-b-vacuity-disclosures-for-the-parity-claims)
+  - [16-C. Two gaps nobody claimed [OPEN]](#16-c-two-gaps-nobody-claimed-open)
+- [17. The controller's property block, found (2026-08-02)](#17-the-controllers-property-block-found-2026-08-02)
+  - [17-A. vrfkit frames one bunch nine bits early [MECHANISM FOUND, FIX PENDING]](#17-a-vrfkit-frames-one-bunch-nine-bits-early-mechanism-found-fix-pending)
+  - [16-D. Corrections to this session's own supporting text](#16-d-corrections-to-this-sessions-own-supporting-text)
+  - [16-E. What the audit did not check](#16-e-what-the-audit-did-not-check)
+- [18. `Ping` -- encoding settled, deliberately not typed (2026-08-02)](#18-ping-encoding-settled-deliberately-not-typed-2026-08-02)
+  - [18-A. The encoding](#18-a-the-encoding)
+  - [18-B. It behaves like latency in milliseconds](#18-b-it-behaves-like-latency-in-milliseconds)
+  - [18-C. A reusable lever: checksums as a type-equality test](#18-c-a-reusable-lever-checksums-as-a-type-equality-test)
+  - [18-D. Not typed, and why](#18-d-not-typed-and-why)
+  - [18-E. Not checked](#18-e-not-checked)
+- [19. Generator and array-walker fixes (2026-08-02)](#19-generator-and-array-walker-fixes-2026-08-02)
+  - [19-A. The extractor never read `ExportGroupKind` [FIXED, 18dce16]](#19-a-the-extractor-never-read-exportgroupkind-fixed-18dce16)
+  - [19-B. The array walker asked a second copy for its types [FIXED, f5feb82]](#19-b-the-array-walker-asked-a-second-copy-for-its-types-fixed-f5feb82)
+- [20. Route B closed: the actor path now does the leaf lookup (2026-08-02)](#20-route-b-closed-the-actor-path-now-does-the-leaf-lookup-2026-08-02)
+  - [20-A. What moved, at row level](#20-a-what-moved-at-row-level)
+  - [20-B. Why the binding is right, and where the evidence is weaker](#20-b-why-the-binding-is-right-and-where-the-evidence-is-weaker)
+  - [20-C. The ClassNetCache path is untouched, by construction and by count](#20-c-the-classnetcache-path-is-untouched-by-construction-and-by-count)
+  - [20-D. Counters, and the arithmetic closing](#20-d-counters-and-the-arithmetic-closing)
+  - [20-E. Metrics and bundle](#20-e-metrics-and-bundle)
+  - [20-F. The 7-H safety audit does NOT transfer, and this is why](#20-f-the-7-h-safety-audit-does-not-transfer-and-this-is-why)
+  - [20-G. What this did not check](#20-g-what-this-did-not-check)
+- [21. Array leaf names now come from the replay (2026-08-02)](#21-array-leaf-names-now-come-from-the-replay-2026-08-02)
+  - [21-A. What moved, at row level](#21-a-what-moved-at-row-level)
+  - [21-B. The bundle deliberately does NOT follow, and that is the load-bearing half](#21-b-the-bundle-deliberately-does-not-follow-and-that-is-the-load-bearing-half)
+  - [21-C. Guards, each seen failing](#21-c-guards-each-seen-failing)
+  - [21-D. What this did not do, and what it corrects](#21-d-what-this-did-not-do-and-what-it-corrects)
+- [22. Five parallel agents: three new tables of data, one closed door (2026-08-04)](#22-five-parallel-agents-three-new-tables-of-data-one-closed-door-2026-08-04)
+  - [22-A. What landed](#22-a-what-landed)
+  - [22-B. Every pre-existing counter held](#22-b-every-pre-existing-counter-held)
+  - [22-C. The Event chunk corroborates the 13-kill claim from outside the parser](#22-c-the-event-chunk-corroborates-the-13-kill-claim-from-outside-the-parser)
+  - [22-D. Checkpoints do NOT unlock AbilitiesAndBuffsComponent](#22-d-checkpoints-do-not-unlock-abilitiesandbuffscomponent)
+  - [22-E. Three things the agents got right by pushing back](#22-e-three-things-the-agents-got-right-by-pushing-back)
+  - [22-F. Silent-change holes closed during integration](#22-f-silent-change-holes-closed-during-integration)
+  - [22-G. Stale comments corrected, and one latent bug recorded](#22-g-stale-comments-corrected-and-one-latent-bug-recorded)
+  - [22-H. What this did not do](#22-h-what-this-did-not-do)
+  - [22-I. Checkpoints are NOT redundant: 6-11% of their values differ (2026-08-04)](#22-i-checkpoints-are-not-redundant-6-11-of-their-values-differ-2026-08-04)
+- [23. The checkpoint parser, built (2026-08-04)](#23-the-checkpoint-parser-built-2026-08-04)
+  - [23-A. Shape](#23-a-shape)
+  - [23-B. Four checks that make a desync loud](#23-b-four-checks-that-make-a-desync-loud)
+  - [23-C. Decisions, and why](#23-c-decisions-and-why)
+  - [23-D. Verification](#23-d-verification)
+  - [23-E. What this did not do](#23-e-what-this-did-not-do)
+- [24. The untyped RPC parameters: mostly not ours to fix (2026-08-04)](#24-the-untyped-rpc-parameters-mostly-not-ours-to-fix-2026-08-04)
+  - [24-A. First, the split that section 22 stated as one number](#24-a-first-the-split-that-section-22-stated-as-one-number)
+  - [24-B. Classifying the 27.2M RPC-parameter bits against the C# reference](#24-b-classifying-the-272m-rpc-parameter-bits-against-the-c-reference)
+  - [24-C. What was NOT done, and why](#24-c-what-was-not-done-and-why)
+  - [24-D. What the hunt did find: the generator could not reproduce its own output](#24-d-what-the-hunt-did-find-the-generator-could-not-reproduce-its-own-output)
+  - [24-E. A test suite nothing told anyone to run](#24-e-a-test-suite-nothing-told-anyone-to-run)
+  - [24-F. Where the residue actually is now](#24-f-where-the-residue-actually-is-now)
+- [25. Twice as fast, half the memory, same bytes (2026-08-04)](#25-twice-as-fast-half-the-memory-same-bytes-2026-08-04)
+  - [25-A. Method: the old output is the specification](#25-a-method-the-old-output-is-the-specification)
+  - [25-B. What each agent found](#25-b-what-each-agent-found)
+  - [25-C. The measurement corrected the brief, twice](#25-c-the-measurement-corrected-the-brief-twice)
+  - [25-D. Optimizations measured and rejected](#25-d-optimizations-measured-and-rejected)
+  - [25-E. Two bounds added, both loud](#25-e-two-bounds-added-both-loud)
+  - [25-F. Feature flags, verified not decorative](#25-f-feature-flags-verified-not-decorative)
+  - [25-G. What the freeze blocked, and what unblocking it was worth [MEASURED, CLOSED]](#25-g-what-the-freeze-blocked-and-what-unblocking-it-was-worth-measured-closed)
+  - [25-H. A caveat about single-crate benchmarks here](#25-h-a-caveat-about-single-crate-benchmarks-here)
+  - [25-I. What this did not do](#25-i-what-this-did-not-do)
+- [26. A new 13.02 replay, and the silent failure it exposed (2026-08-05)](#26-a-new-1302-replay-and-the-silent-failure-it-exposed-2026-08-05)
+  - [26-A. What the parse looked like](#26-a-what-the-parse-looked-like)
+  - [26-B. Splitting "this replay" from "this build" from "this parser"](#26-b-splitting-this-replay-from-this-build-from-this-parser)
+  - [26-C. The actual defect is the discard, not the constant](#26-c-the-actual-defect-is-the-discard-not-the-constant)
+  - [26-D. The fix: members are selected by DECLARED NAME](#26-d-the-fix-members-are-selected-by-declared-name)
+  - [26-E. The counter, which is the more durable half](#26-e-the-counter-which-is-the-more-durable-half)
+  - [26-F. Verification](#26-f-verification)
+  - [26-G. What this did NOT fix, and what it says about the corpus](#26-g-what-this-did-not-fix-and-what-it-says-about-the-corpus)
+  - [26-H. Sweeping 13.02 for anything else, and correcting 26-G](#26-h-sweeping-1302-for-anything-else-and-correcting-26-g)
+  - [26-I. Typing BaseTeamState, and where the line is](#26-i-typing-baseteamstate-and-where-the-line-is)
+- [27. Validated against Riot's own API, and the ADR convention is settled (2026-08-05)](#27-validated-against-riots-own-api-and-the-adr-convention-is-settled-2026-08-05)
+  - [27-A. What agreed](#27-a-what-agreed)
+  - [27-B. ADR: OURS IS THE CANONICAL ONE. Do not "fix" it toward the tracker.](#27-b-adr-ours-is-the-canonical-one-do-not-fix-it-toward-the-tracker)
+  - [27-C. What the tracker has that we cannot](#27-c-what-the-tracker-has-that-we-cannot)
+  - [27-D. Cost of the check, and whether to keep it](#27-d-cost-of-the-check-and-whether-to-keep-it)
+- [28. A guard that can see a semantic break (2026-08-05)](#28-a-guard-that-can-see-a-semantic-break-2026-08-05)
+  - [28-A. The small fixtures turned out to be enough](#28-a-the-small-fixtures-turned-out-to-be-enough)
+  - [28-B. Invariants first, pinned values second](#28-b-invariants-first-pinned-values-second)
+  - [28-C. Proven against the actual broken binary](#28-c-proven-against-the-actual-broken-binary)
+  - [28-D. Cost, and what it does not cover](#28-d-cost-and-what-it-does-not-cover)
+- [29. A second tracker comparison, and 27-B's bound was wrong (2026-08-05)](#29-a-second-tracker-comparison-and-27-bs-bound-was-wrong-2026-08-05)
+  - [29-A. 27-B claimed a bound it did not have](#29-a-27-b-claimed-a-bound-it-did-not-have)
+  - [29-B. DD delta is not the clean corroboration 27 said it was [WRONG -- see 30-B]](#29-b-dd-delta-is-not-the-clean-corroboration-27-said-it-was-wrong-see-30-b)
+  - [29-C. What this does NOT change](#29-c-what-this-does-not-change)
+  - [29-D. One thing that passed on a tolerance](#29-d-one-thing-that-passed-on-a-tolerance)
+- [30. The tracker gap is fully explained, and section 29 was wrong twice (2026-08-05)](#30-the-tracker-gap-is-fully-explained-and-section-29-was-wrong-twice-2026-08-05)
+  - [30-A. What the two "misfits" actually were](#30-a-what-the-two-misfits-actually-were)
+  - [30-B. 29-B's argument was backwards](#30-b-29-bs-argument-was-backwards)
+  - [30-C. The decision is unchanged and better supported](#30-c-the-decision-is-unchanged-and-better-supported)
+  - [30-D. A separate finding: valplay's team_damage_dealt undercounts](#30-d-a-separate-finding-valplays-teamdamagedealt-undercounts)
+  - [30-E. Method note](#30-e-method-note)
+- [31. Four replays, four tracker scoreboards, 431 of 468 (2026-08-05)](#31-four-replays-four-tracker-scoreboards-431-of-468-2026-08-05)
+  - [31-A. A player who played 13 of 21 rounds](#31-a-a-player-who-played-13-of-21-rounds)
+  - [31-B. Deaths are ambiguous exactly when resurrection is involved](#31-b-deaths-are-ambiguous-exactly-when-resurrection-is-involved)
+  - [31-C. The other two 1-offs are the SAME EVENT as 31-B](#31-c-the-other-two-1-offs-are-the-same-event-as-31-b)
+- [32. Typing ChosenCeremonyForRound, on wire evidence alone (2026-08-05)](#32-typing-chosenceremonyforround-on-wire-evidence-alone-2026-08-05)
+  - [32-A. This clears a LOWER bar than 26-I, deliberately stated](#32-a-this-clears-a-lower-bar-than-26-i-deliberately-stated)
+  - [32-B. Byte identity could not hold, so the bar was raised instead](#32-b-byte-identity-could-not-hold-so-the-bar-was-raised-instead)
+  - [32-C. What it makes possible](#32-c-what-it-makes-possible)
+  - [32-D. The scan found something else: THE CORPUS IS NOT ALL BOMB MODE](#32-d-the-scan-found-something-else-the-corpus-is-not-all-bomb-mode)
+- [33. Swiftplay produces metrics (2026-08-05)](#33-swiftplay-produces-metrics-2026-08-05)
+  - [33-A. It was two problems, and only one of them was ours](#33-a-it-was-two-problems-and-only-one-of-them-was-ours)
+  - [33-B. An alias, not 28 duplicated entries](#33-b-an-alias-not-28-duplicated-entries)
+  - [33-C. Soundness: same names, same widths?](#33-c-soundness-same-names-same-widths)
+  - [33-D. The valplay half is a patch, not a change](#33-d-the-valplay-half-is-a-patch-not-a-change)
+  - [33-E. What the metrics document does and does not contain](#33-e-what-the-metrics-document-does-and-does-not-contain)
+- [34. All five Swiftplay replays, and why kills != deaths (2026-08-05)](#34-all-five-swiftplay-replays-and-why-kills-deaths-2026-08-05)
+  - [34-A. Two replays have one more death than kill](#34-a-two-replays-have-one-more-death-than-kill)
+  - [34-B. The guard's stated reason was wrong and is corrected](#34-b-the-guards-stated-reason-was-wrong-and-is-corrected)
+- [35. The bundle converter: 1.9x faster, 8% less memory, same bytes (2026-08-05)](#35-the-bundle-converter-19x-faster-8-less-memory-same-bytes-2026-08-05)
+  - [35-A. Profile first; the answer was not where it looked](#35-a-profile-first-the-answer-was-not-where-it-looked)
+  - [35-B. Three changes, all exact by construction](#35-b-three-changes-all-exact-by-construction)
+  - [35-C. Measured and rejected](#35-c-measured-and-rejected)
+  - [35-D. Where the time goes now](#35-d-where-the-time-goes-now)
+- [36. The audit pass: what the comments claimed vs what the code does](#36-the-audit-pass-what-the-comments-claimed-vs-what-the-code-does)
+  - [36-A. table.rs disagreed with table.rs](#36-a-tablers-disagreed-with-tablers)
+  - [36-B. Three more places said 1,185, and now something reads them](#36-b-three-more-places-said-1185-and-now-something-reads-them)
+  - [36-C. The b-prefix fallback: 632 rows, not 581, and two groups, not one](#36-c-the-b-prefix-fallback-632-rows-not-581-and-two-groups-not-one)
+  - [36-D. BaseTeamState "that no decoder here reads yet" -- retracted](#36-d-baseteamstate-that-no-decoder-here-reads-yet-retracted)
+  - [36-E. The refactor, and its bill](#36-e-the-refactor-and-its-bill)
+  - [36-F. Re-optimization: a profile, not a diff](#36-f-re-optimization-a-profile-not-a-diff)
+  - [36-G. Root tidy](#36-g-root-tidy)
+  - [36-H. Verification](#36-h-verification)
 
 ---
 
@@ -92,7 +324,7 @@ Local baselines: %LOCALAPPDATA%\vrfkit\baseline-corpora\build_*
 cd C:\Users\yakihyuk0728\Documents\GitHub\vrfkit
 $env:CARGO_TARGET_DIR = $null
 cargo test 2>&1 | Select-String "test result"
-# Expected: 338 passed, 0 failed across all targets. Sum the per-target lines;
+# Expected: 355 passed, 0 failed across all targets. Sum the per-target lines;
 # the last line is one target, not the total. No per-crate breakdown is written
 # here any more: it went stale every time, and `cargo test -p <crate>` is one
 # command. This total has been stale SIX times -- 238, 246, 249, 252, 257, 287.
@@ -102,16 +334,17 @@ cargo clippy --all-targets -- -D warnings 2>&1 | Select-String "^error"
 cargo fmt --check
 # Expected: exit 0
 python tools\apply_type_corrections.py --check
-# Expected: verified: 0 replacement(s), all 27 corrections present;
-#           1188 entries from 172 groups; Raw/Custom: 157, Skip: 164, Typed: 867
+# Expected: verified: 0 replacement(s), all 30 corrections present;
+#           1191 entries from 173 groups; Raw/Custom: 157, Skip: 164, Typed: 870
 # BOTH generated header lines are recounted and both are checked. The
 # entries/groups line was not, and sat at "1185 entries from 171 groups"
 # directly above a bucket line summing to 1188 -- see section 36.
-# 27 not 25: the ADDITIONS pass inserts three entries the C# descriptors
-# cannot declare -- two BaseTeamState (26-I) and ChosenCeremonyForRound
-# (32). Swiftplay needs no entry of its own: GROUP_ALIASES in
-# vrf-decode/src/overlay.rs maps its classes onto the Bomb ones (33).
-# Verified, not hand-edited; table.rs stays generated.
+# 30 corrections: the ADDITIONS pass inserts six entries the C# descriptors
+# cannot declare -- two BaseTeamState (26-I), ChosenCeremonyForRound (32),
+# and three MoneyManagementComponent economy fields. Swiftplay needs no
+# entry of its own: GROUP_ALIASES in vrf-decode/src/overlay.rs maps its
+# classes onto the Bomb ones (33). Verified, not hand-edited; table.rs
+# stays generated.
 python tools\check_effect_decoder.py --check
 # Expected: OK: 12 live effect decoder cases
 python tools\check_ascii.py --check
@@ -443,8 +676,8 @@ branches     : master only. No worktrees, no stashes, no remote
 commits      : run `git rev-list --count HEAD`. No number is written here
                on purpose: the two that were had both gone stale, and this
                one would be wrong the moment the line was committed
-tests        : 328 passing, 0 failed. Stale SIX times -- 238, 246, 249, 252,
-               257, 287. Re-measure with `cargo test --workspace`
+tests        : 355 passing, 0 failed. Stale SEVEN times -- 238, 246, 249, 252,
+               257, 287, 328. Re-measure with `cargo test --workspace`
 clippy       : 0 warnings (--all-targets -- -D warnings)
 fmt          : clean (--check)
 ascii        : 113 tracked Rust files, clean; --self-test passes
@@ -453,7 +686,7 @@ perf         : export 0.808 s / 109 MB peak; validate 0.685 s / 65 MB
                (was 1.64 s / 201 MB and 1.42 s / 65 MB before section 25)
 corpus       : 215/215, malformed 0, decode errors 0 across all 215
 overlay      : 369,743 decoded / 73,984 raw-skip / 511,916 not-in-table /
-               33,340 no-field-name; typed 37.4%; table 1,185 entries.
+               33,340 no-field-name; typed 37.4%; table 1,191 entries.
                UNCHANGED by the effect decoder, by construction -- see 22-F.
                Real coverage: 1,246,812 rows, 64.5% still untyped (was 68.8%)
 effect blobs : 53,908 decoded, 0 failures on 02d4d478; 0 failures corpus-wide

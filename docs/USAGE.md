@@ -1,12 +1,23 @@
 # vrfkit 사용법
 
-CLI, 출력 스키마, 크레이트별 사용, `tools/` 스크립트, 검증 스위트.
+CLI, 출력 스키마, 라이브러리 사용, `tools/` 스크립트, 검증 스위트.
 
 설계 근거와 기존 파서 대조 결과는 [`../README.md`](../README.md), 작업 이력과 측정
 기록은 [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md)에 있습니다. 체크포인트 청크의
 바이트 레벨 포맷은 [`../CHECKPOINT_SPEC.md`](../CHECKPOINT_SPEC.md), 완료된 작업
 명세는 [`archive/`](archive/README.md)에 있습니다 — 전부 기록용이고 실행 대상이
 아닙니다.
+
+## 목차
+
+1. [빌드](#1-빌드)
+2. [CLI](#2-cli) — [`inspect`](#inspect) · [`validate`](#validate) · [`export`](#export)
+3. [출력](#3-출력) — [`fields`](#fieldsparquet) · [`movement`](#movementparquet) · [`actors`](#actorsparquet) · [`net_guids`](#net_guidsparquet) · [`events`](#eventsparquet) · [`checkpoint_fields`](#checkpoint_fieldsparquet) · [`manifest.json`](#manifestjson)
+4. [라이브러리로 쓰기](#4-라이브러리로-쓰기)
+5. [`tools/` 레퍼런스](#5-tools-레퍼런스) — [생성기](#생성기) · [검증](#검증) · [다운스트림 변환](#다운스트림-변환) · [분석 보조](#분석-보조)
+6. [검증 스위트](#6-검증-스위트)
+7. [지원 빌드](#7-지원-빌드)
+8. [알려진 한계](#8-알려진-한계)
 
 ---
 
@@ -18,7 +29,7 @@ cargo build --release -p vrfkit --features export   # + export (Parquet)
 ```
 
 `export`는 기본 기능이 아닙니다. 빼고 빌드하면 arrow/parquet/zstd가 의존성 트리에
-아예 들어오지 않습니다:
+아예 들어오지 않습니다.
 
 ```bash
 cargo tree -p vrfkit --no-default-features | grep -E "arrow|parquet|zstd"   # 출력 없음
@@ -37,10 +48,10 @@ vrfkit validate <file.vrf> [--diagnostics]
 vrfkit export   <file.vrf> --out <dir> [--checkpoints]
 ```
 
-### `inspect` — 파일이 뭔지 본다
+### `inspect`
 
-ReplayInfo, 헤더, 브랜치, 청크 요약을 출력합니다. 파싱은 하지 않으므로 즉시 끝납니다.
-빌드가 지원 대상인지, 암호화됐는지 먼저 확인할 때 씁니다.
+파일이 뭔지 본다 — ReplayInfo, 헤더, 브랜치, 청크 요약. 파싱은 하지 않으므로 즉시
+끝납니다. 빌드가 지원 대상인지, 암호화됐는지 먼저 확인할 때 씁니다.
 
 ```
 === Header ===
@@ -53,10 +64,10 @@ ReplayInfo, 헤더, 브랜치, 청크 요약을 출력합니다. 파싱은 하�
   Event:           238 chunks
 ```
 
-### `validate` — 문법 오라클
+### `validate`
 
-모든 콘텐츠 블록을 RepLayout 문법으로 걸어보고 통과율을 보고합니다. 파일을 쓰지
-않습니다.
+문법 오라클. 모든 콘텐츠 블록을 RepLayout 문법으로 걸어보고 통과율을 보고합니다.
+**파일을 쓰지 않습니다.**
 
 ```
   Total content blocks: 743110
@@ -66,15 +77,18 @@ ReplayInfo, 헤더, 브랜치, 청크 요약을 출력합니다. 파싱은 하�
   ORACLE PASS RATE:     98.938381%
 ```
 
-**통과율이 100%가 아닌 것은 정상입니다.** 프레이밍 문제가 아니라 귀속 문제입니다 —
-블록은 정확히 잘라내지만 일부는 어느 `_ClassNetCache` 그룹 소속인지 확정할 수
-없습니다. 봐야 할 줄은 `Malformed framing`과 `Transform failed`이고, 둘 다 0이어야
-합니다.
+**통과율이 100%가 아닌 것은 정상입니다.** 프레이밍 문제가 아니라 귀속(attribution)
+문제입니다 — 블록은 정확히 잘라내지만 일부는 어느 `_ClassNetCache` 그룹 소속인지
+확정할 수 없습니다. 이것이 `AbilitiesAndBuffsComponent`에서 오는 `RPC stream failed`
+귀속 갭입니다. 봐야 할 줄은 `Malformed framing`과 `Transform failed`이고, **둘 다
+0이어야 합니다.**
 
 `--diagnostics`는 실패 블록 전체의 컨텍스트를 출력합니다. 기본값은 32줄까지만
 보여주고 총계/표시/생략 개수를 헤더에 찍습니다.
 
-### `export` — Parquet 내보내기
+### `export`
+
+Parquet 내보내기.
 
 ```bash
 vrfkit export replay.vrf --out out/
@@ -82,8 +96,8 @@ vrfkit export replay.vrf --out out/ --checkpoints
 ```
 
 `--checkpoints`는 Checkpoint 청크까지 읽어 `checkpoint_fields.parquet`를 **추가로**
-씁니다. 기본 off인 이유는 파일의 약 10%를 더 읽는 별도 패스이기 때문이고,
-**켜든 끄든 나머지 다섯 테이블은 바이트 단위로 동일합니다.**
+씁니다. 기본 off인 이유는 파일의 약 10%를 더 읽는 별도 패스이기 때문이고, **켜든
+끄든 나머지 다섯 테이블은 바이트 단위로 동일합니다.**
 
 #### 요약에서 실제로 봐야 할 줄
 
@@ -99,6 +113,18 @@ vrfkit export replay.vrf --out out/ --checkpoints
 있습니다(PROJECT_STATUS 26절). **`0 decoded`는 `failed`가 0이어도 경보입니다.**
 실패 시 `Struct blob err:` 줄에 멤버와 핸들이 이름으로 찍힙니다.
 
+#### `Typed` 비율 읽기
+
+```
+  Typed:            36.6% (properties + RPC parameters)
+```
+
+분모는 오버레이에 제공된(offer) **모든 행**이고, RPC 파라미터 전개 덕분에 복제
+프로퍼티와 RPC 파라미터를 모두 포함합니다. 두 집단의 타입 커버리지는 매우 다릅니다
+— 디스크립터 집합은 프로퍼티 위주로 자라왔으므로 — 분모를 명시하지 않고 "전체 필드
+대비"라고 쓰면 파라미터가 추가될 때 회귀처럼 보입니다. **미타입(untyped) ≠ 손실.**
+타입을 몰라도 `raw_bits`는 항상 남습니다( [`fields.parquet`](#fieldsparquet) 참고).
+
 ---
 
 ## 3. 출력
@@ -113,11 +139,13 @@ vrfkit export replay.vrf --out out/ --checkpoints
 | `net_guids.parquet` | 16,167 | 153,606 |
 | `events.parquet` | 195 | 10,201 |
 | `checkpoint_fields.parquet` | 78,748 | 191,324 | `--checkpoints` 필요 |
-| `manifest.json` | | 658,918 |
+| `manifest.json` | — | 658,918 |
 
 export 0.85초. 문자열 컬럼은 딕셔너리 인코딩 + ZSTD입니다.
 
-### `fields.parquet` — 리플리케이션된 프로퍼티와 RPC 파라미터
+### `fields.parquet`
+
+리플리케이션된 프로퍼티와 RPC 파라미터.
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
@@ -138,18 +166,36 @@ export 0.85초. 문자열 컬럼은 딕셔너리 인코딩 + ZSTD입니다.
 없습니다.
 
 예외 하나: 그룹을 특정 못 해 내부 스트림 자체를 못 걷는 ClassNetCache 블록은 전체
-페이로드를 한 보존 행(`field_name` =
-`__vrfkit_unresolved_class_net_cache_payload__`, `handle` = `u32::MAX`, `raw_bits`에
-전체 페이로드)으로만 내보내고 필드로는 풀지 못합니다. 그건 `validate`의 `RPC stream
-failed`로 카운트되고, 필드로 재해석하려면 원본 `.vrf`에서 다시 export해야 합니다.
+페이로드를 한 **보존 행**으로만 내보내고 필드로는 풀지 못합니다.
+
+| 컬럼 | 값 |
+|---|---|
+| `field_name` | `__vrfkit_unresolved_class_net_cache_payload__` |
+| `handle` | `u32::MAX` |
+| `raw_bits` | 전체 페이로드 |
+
+이 블록들은 `validate`의 `RPC stream failed`로 카운트되고, 필드로 재해석하려면
+원본 `.vrf`에서 다시 export해야 합니다.
 
 배열은 평탄화돼서 `Rounds[3].Reports[1].Interactions[0].DamageDealt` 같은 이름으로
 나옵니다. `LIKE 'Rounds[%].Reports[%].DamageDealt'`로 필터할 수 있습니다.
 
-### `movement.parquet` — 캐릭터 위치 시계열
+### `movement.parquet`
 
-14개 컬럼: `time_ms`, `packet_id`, `character_net_guid`, `pos_x/y/z`, `yaw`, `pitch`,
-`vel_x/y/z`, `timestamp`, `movement_state`, `move_type`.
+캐릭터 위치 시계열. 14개 컬럼, 모두 NOT NULL. 좌표계는 Unreal Engine 좌표계
+(왼손 Z-up)를 따릅니다 — 위치는 cm, yaw/pitch는 도(-180..180), 속도는 cm/s.
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `time_ms` | u32 | 리플레이 시작 기준 밀리초 |
+| `packet_id` | u32 | 패킷 순번 |
+| `character_net_guid` | u32 | 캐릭터 NetGUID |
+| `pos_x` / `pos_y` / `pos_z` | f32 | 위치 (cm) |
+| `yaw` / `pitch` | f32 | 회전 (도) |
+| `vel_x` / `vel_y` / `vel_z` | f32 | 속도 (cm/s) |
+| `timestamp` | u32 | 서버 틱 |
+| `movement_state` | u8 | 자세 바이트 |
+| `move_type` | u8 | 0=variant0(속도 없음) / 1=variant1(속도 있음) |
 
 **주의할 것 셋:**
 
@@ -160,32 +206,72 @@ failed`로 카운트되고, 필드로 재해석하려면 원본 `.vrf`에서 다
 - **자세 정보는 `movement_state`가 아니라 `bCrouchHeld`입니다.** 별개 필드로 이미
   `fields.parquet`에 나갑니다.
 
-### `actors.parquet` — 액터 생성/소멸
+`mode_flags`는 의도적으로 빠졌습니다 — `movement_state`와 같은 로컬에서 대입되므로
+두 값이 다른 코드 경로가 없고, ~1.8M 행 위에 바이트 동일 컬럼이 하나 더 생길 뿐입니다.
 
-`event`(`open` / `close`), `class_path`, `archetype_path`, `spawn_x/y/z`,
-`spawn_pitch/yaw/roll`. 무기·어빌리티 인스턴스의 클래스를 여기서 찾습니다.
+### `actors.parquet`
 
-### `net_guids.parquet` — GUID → 경로, 그리고 포함 관계
+채널 열림/닫힘(event) 단위 행. `event`는 `open` / `close`이지 spawn/close가 아닙니다.
+무기·어빌리티 인스턴스의 클래스를 여기서 찾습니다 — 필드 행을 하나도 안 만드는
+액터(DefuserItem, HeavyArmorItem 등)도 채널을 열면 이 테이블에 잡힙니다.
 
-`net_guid`, `path`, `outer_net_guid`. `outer_net_guid`가 포함 사슬입니다 — 예를 들어
-발사 이펙트의 `FiringState` 서브오브젝트에서 그 무기 액터로 거슬러 올라갈 때 씁니다.
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `time_ms` | u32 | 리플레이 시작 기준 밀리초 |
+| `packet_id` | u32 | 패킷 순번 |
+| `channel_index` | u32 | 액터 채널 |
+| `actor_net_guid` | u32 | 액터 NetGUID |
+| `event` | str | `open` / `close` |
+| `class_path` | str? | 액터 클래스 경로 |
+| `archetype_path` | str? | 아키타입 경로 (정적 액터는 없음) |
+| `spawn_x` / `spawn_y` / `spawn_z` | f32? | 스폰 위치 |
+| `spawn_pitch` / `spawn_yaw` / `spawn_roll` | f32? | 스폰 회전 |
 
-### `events.parquet` — 서버가 직접 기록한 타임라인
+정적 액터와 `close` 행은 공간 데이터가 없으므로 스폰 필드는 null입니다.
 
-`id`, `group`, `metadata`, `time1`, `time2`, `payload_size`, `raw_payload`, `word0`, `word1`.
+### `net_guids.parquet`
 
-`group`은 `characterDeath`, `characterUltimateUsed`, `roundStarted`, `spikePlanted`,
-`spikeDefused`, `spikeExploded`, `switchTeams` 등입니다. 페이로드는 `[u32 태그][N×u32 워드]
-[FString][f32]` 구조이고 `N`이 그룹마다 고정이라(CharacterDeath=2, CharacterUltimateUsed/
-RoundStart/SwitchTeams=1, SpikePlanted/Defused/Exploded=0 — 코퍼스에서 잔여 0으로 도출) 첫 두
-워드를 `word0`/`word1`로 내보냅니다. `characterDeath`의 (word0,word1)은 (killer, killed) NetGUID,
-`roundStarted`의 word0는 라운드 번호입니다. 원본은 `raw_payload`에 그대로 남아 재해석 가능합니다.
+GUID → 경로, 그리고 포함 관계.
 
-### `checkpoint_fields.parquet` — 스냅샷
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `net_guid` | u32 | 등록된 NetGUID |
+| `path` | str | 객체 경로 |
+| `outer_net_guid` | u32? | 포함하는 객체의 NetGUID |
+
+`outer_net_guid`가 포함 사슬입니다 — 예를 들어 발사 이펙트의 `FiringState`
+서브오브젝트에서 그 무기 액터로 거슬러 올라갈 때 씁니다. `actors.parquet`은 채널을
+연 GUID만 다루므로 서브오브젝트를 놓치는데, 이 테이블이 그 빈을 메웁니다.
+
+null 가능한 이유: GUID 0이 엔진의 "invalid" 센티널이라, "부모 없음"을 0으로
+합치면 알 수 없는 부모와 명시적 무효를 구분할 수 없습니다.
+
+### `events.parquet`
+
+서버가 직접 기록한 타임라인. Event 청크 하나당 행 하나.
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `id` | | 이벤트 식별자 |
+| `group` | str | `characterDeath`, `characterUltimateUsed`, `roundStarted`, `spikePlanted`, `spikeDefused`, `spikeExploded`, `switchTeams` … |
+| `metadata` | | 메타데이터 |
+| `time1` / `time2` | | 타임스탬프 쌍 |
+| `payload_size` | | 페이로드 크기 |
+| `raw_payload` | bytes | 페이로드 원본 |
+| `word0` / `word1` | u32 | 페이로드 첫 두 워드 |
+
+페이로드는 `[u32 태그][N×u32 워드][FString][f32]` 구조이고 `N`이 그룹마다 고정이라
+(CharacterDeath=2, CharacterUltimateUsed / RoundStart / SwitchTeams=1,
+SpikePlanted / Defused / Exploded=0 — 코퍼스에서 잔여 0으로 도출) 첫 두 워드를
+`word0`/`word1`로 내보냅니다. `characterDeath`의 (word0, word1)은 (killer, killed)
+NetGUID, `roundStarted`의 word0는 라운드 번호입니다. 원본은 `raw_payload`에 그대로
+남아 재해석 가능합니다.
+
+### `checkpoint_fields.parquet`
 
 `fields.parquet`와 동일한 스키마입니다. Checkpoint는 한 시점의 전체 상태 스냅샷인데
 **중복이 아닙니다** — 내보낸 parquet에서 같은 타임스탬프의 ReplayData 마지막 값과
-약 1.4~1.6%가 불일치하고, 약 0.4%는 ReplayData에 없는 키입니다(13.01·13.02 동일).
+약 1.4%가 불일치하고, 약 0.4%는 ReplayData에 없는 키입니다(13.01·13.02 동일).
 과거 6~11%는 raw 와이어 측정이고 export 정규화가 약 1.4%로 만듭니다(PROJECT_STATUS 22-I).
 
 ### `manifest.json`
@@ -196,11 +282,18 @@ ReplayInfo 전체 + 헤더 + 통계 + **리플레이가 선언한 export 그룹 
 `game_specific_data`에는 `playerLoadouts` JSON이 들어 있습니다 — subject UUID별
 `characterId`(요원), 스킨, 스프레이.
 
-`players` 배열은 각 BombPlayerState 액터의 `(actor_net_guid, subject, character_net_guid)`를
-냅니다. `subject`는 계정 UUID이고 `character_net_guid`는 `SpawnedCharacter`로
-`movement.parquet`의 `character_net_guid`와 정확히 일치합니다. 그래서 movement·fields·actors
-같은 액터 단위 테이블을 안정적인 계정 식별자로 조인할 수 있습니다. **같은 요원을 두 명이
-골랐을 때** `playerLoadouts`의 `characterId`만으로는 구분이 안 되지만 `subject`는 구분합니다.
+`players` 배열은 각 BombPlayerState 액터의 트리플을 냅니다.
+
+| 필드 | 설명 |
+|---|---|
+| `actor_net_guid` | BombPlayerState 액터 NetGUID |
+| `subject` | 계정 UUID |
+| `character_net_guid` | `SpawnedCharacter` NetGUID |
+
+`character_net_guid`는 `movement.parquet`의 `character_net_guid`와 정확히 일치합니다.
+그래서 movement·fields·actors 같은 액터 단위 테이블을 안정적인 계정 식별자로
+조인할 수 있습니다. **같은 요원을 두 명이 골랐을 때** `playerLoadouts`의
+`characterId`만으로는 구분이 안 되지만 `subject`는 구분합니다.
 
 `timestamp_ticks`는 UE `FDateTime`(0001-01-01 기준 100ns)입니다. Windows FILETIME이
 아닙니다 — 그렇게 읽으면 3626년이 나옵니다.
@@ -209,7 +302,8 @@ ReplayInfo 전체 + 헤더 + 통계 + **리플레이가 선언한 export 그룹 
 
 ## 4. 라이브러리로 쓰기
 
-필요한 층만 가져다 쓸 수 있습니다.
+필요한 층만 가져다 쓸 수 있습니다. 전 크레이트 `#![forbid(unsafe_code)]`이고,
+`vrf-bitio`는 `no_std` + 선택적 `alloc`입니다.
 
 | 레이어 | 크레이트 | 기능 플래그 |
 |---|---|---|
@@ -224,14 +318,71 @@ ReplayInfo 전체 + 헤더 + 통계 + **리플레이가 선언한 export 그룹 
 | Parquet 라이터 | `vrf-export` | `parquet` + 테이블별 |
 | 통합 CLI | `vrfkit` | `export` |
 
-`vrf-bitio`는 `no_std` + 선택적 `alloc`입니다. 전 크레이트 `#![forbid(unsafe_code)]`.
-
 ZSTD는 일부러 플래그로 빼지 않았습니다 — 모든 라이터가 그걸 고르므로, 끄면 이 크레이트가
 설명할 수 없는 파일을 뱉는 빌드가 생깁니다.
 
 ---
 
 ## 5. `tools/` 레퍼런스
+
+### 생성기
+
+**출력물은 절대 손으로 고치지 말 것.**
+
+| 스크립트 | 생성물 |
+|---|---|
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (오버레이 테이블 1,191 + 핸들 84) |
+| `apply_type_corrections.py` | 위 파일에 검증된 정정/추가를 적용하고, 생성 헤더 두 줄을 재계산 |
+| `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
+| `extract_golden.py` | `crates/vrf-transform/tests/data/golden_vectors.rs` |
+| `extract_equippables.py` | `tools/equippable_table.py` |
+
+**순서가 중요합니다:** `extract_descriptors.py` → `apply_type_corrections.py` →
+`cargo fmt`. 정정 스크립트는 생성 직후의 한 줄 형식과 rustfmt 형식 양쪽에서 동작하지만,
+`cargo fmt` 뒤에 돌리면 일부 패턴이 안 맞습니다. 그래서 이 스크립트는 자기 적용
+횟수를 믿지 않고 **적용 후 최종 상태를 재검증**하고 어긋나면 실패합니다.
+
+```bash
+python tools/apply_type_corrections.py           # 적용 후 검증 (30 정정)
+python tools/apply_type_corrections.py --check   # 검증만
+```
+
+`ADDITIONS` 패스는 C# 디스크립터가 **침묵하는** 항목을 넣습니다. 현재 셋뿐입니다 —
+`BaseTeamState.LoadoutValue` / `AverageLoadoutValue`(26-I, 레퍼런스가 같은
+프로퍼티의 타입을 선언하고 그룹만 옮겨감)와 `BombGameState.ChosenCeremonyForRound`
+(32절, 와이어 증거만). 근거 없이 넓히면 이 추가가 허용된 이유 자체가 없어집니다 —
+PROJECT_STATUS 26-I와 32를 먼저 읽으세요.
+
+### 검증
+
+| 스크립트 | 보는 것 |
+|---|---|
+| `validate_corpus.py` | 프레이밍 (보존 코퍼스 전수) |
+| `validate_metrics_corpus.py` | 지표 파이프라인 통과 |
+| `check_corpus_baseline.py` | 빌드별 코퍼스 베이스라인 |
+| `check_export_baseline.py` | export 카운터 + 파일별 행·바이트 |
+| `check_decode_errors_corpus.py` | 오버레이 타입 오류 + struct blob 실패 |
+| `check_metrics_baseline.py` | **의미** — 라운드, 점수, K/D/A |
+| `compare_combat_report.py` | 지표 입력값 다중집합 |
+| `compare_rpc_params.py` | RPC 파라미터 비교 |
+| `compare_with_csharp.py` | C# 파서 대조 |
+| `check_effect_decoder.py` | 이펙트 디코더 (12 케이스) |
+| `check_ascii.py` | Rust 소스 ASCII 전수 (113 파일) |
+| `check_docs.py` | 이 문서 자신 (아래) |
+
+`check_docs.py`는 이 문서를 검사합니다 — 모든 `tools/` 스크립트가 언급돼 있는지,
+모든 크레이트가 표에 있는지, 링크가 살아 있는지, 인용된 테이블 크기와 테스트 개수가
+현재 값인지. **Rust 문서 주석과 `Cargo.toml`이 인용한 테이블 크기까지** 봅니다 —
+36절에서 `vrf-decode`의 크레이트 문서·기능 표·`Cargo.toml` 세 군데가 모두 1,185에
+멈춰 있는 걸 이 검사가 잡았습니다. 이 저장소에서 문서 숫자는 반복적으로 낡았습니다
+(테스트 개수만 6번, 오버레이 테이블 크기가 1,185 → 1,187 → 1,188로 두 번 낡았고,
+게임이 지운 리플레이 4개가 몇 주간 남아 있었습니다). 낡은 문장은 컴파일도 되고
+테스트도 통과하므로 다른 어떤 검사도 못 잡습니다.
+
+```bash
+python tools/check_docs.py           # 테스트 스위트까지 돌려 개수 대조
+python tools/check_docs.py --fast    # 개수 대조 생략
+```
 
 ### 다운스트림 변환
 
@@ -263,56 +414,12 @@ python "<valplay>/pipeline/metrics/compute_metrics.py" <bundle_dir> -o metrics.j
 > 기계 상태입니다. **여기 숫자가 조금 크게 나온다고 회귀를 찾아 나서지 마세요.**
 > 회귀인지 아닌지는 A/B로만 답이 나옵니다.
 
-### 검증 (자세한 건 6절)
-
-`validate_corpus.py`, `validate_metrics_corpus.py`, `check_corpus_baseline.py`,
-`check_export_baseline.py`, `check_decode_errors_corpus.py`,
-`check_metrics_baseline.py`, `check_effect_decoder.py`, `check_ascii.py`,
-`compare_combat_report.py`, `compare_rpc_params.py`, `compare_with_csharp.py`
-
-`check_docs.py`는 이 문서 자신을 검사합니다 — 모든 `tools/` 스크립트가 여기 언급돼
-있는지, 모든 크레이트가 표에 있는지, 링크가 살아 있는지, 인용된 테이블 크기와 테스트
-개수가 현재 값인지. **Rust 문서 주석과 `Cargo.toml`이 인용한 테이블 크기까지** 봅니다 —
-36절에서 `vrf-decode`의 크레이트 문서·기능 표·`Cargo.toml` 세 군데가 모두 1,185에
-멈춰 있는 걸 이 검사가 잡았습니다. 이 저장소에서 문서 숫자는 반복적으로 낡았습니다(테스트 개수만 6번,
-오버레이 테이블 크기가 1,185 → 1,187 → 1,188로 두 번 낡았고, 게임이 지운
-리플레이 4개가 몇 주간 남아
-있었습니다). 낡은 문장은 컴파일도 되고 테스트도 통과하므로 다른 어떤 검사도 못 잡습니다.
-
-```bash
-python tools/check_docs.py           # 테스트 스위트까지 돌려 개수 대조
-python tools/check_docs.py --fast    # 개수 대조 생략
-```
-
-### 생성기 — 출력물은 절대 손으로 고치지 말 것
-
-| 스크립트 | 생성물 |
-|---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (오버레이 테이블 1,191 + 핸들 84) |
-| `apply_type_corrections.py` | 위 파일에 검증된 정정/추가를 적용하고, 생성 헤더 두 줄을 재계산 |
-| `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
-| `extract_golden.py` | `crates/vrf-transform/tests/data/golden_vectors.rs` |
-| `extract_equippables.py` | `tools/equippable_table.py` |
-
-**순서가 중요합니다:** `extract_descriptors.py` → `apply_type_corrections.py` →
-`cargo fmt`. 정정 스크립트는 생성 직후의 한 줄 형식과 rustfmt 형식 양쪽에서 동작하지만,
-`cargo fmt` 뒤에 돌리면 일부 패턴이 안 맞습니다. 그래서 이 스크립트는 자기 적용
-횟수를 믿지 않고 **적용 후 최종 상태를 재검증**하고 어긋나면 실패합니다.
-
-```bash
-python tools/apply_type_corrections.py           # 적용 후 검증
-python tools/apply_type_corrections.py --check   # 검증만
-```
-
-`ADDITIONS` 패스는 C# 디스크립터가 **침묵하는** 항목을 넣습니다. 현재 셋뿐입니다 —
-`BaseTeamState.LoadoutValue` / `AverageLoadoutValue`(26-I, 레퍼런스가 같은
-프로퍼티의 타입을 선언하고 그룹만 옮겨감)와 `BombGameState.ChosenCeremonyForRound`
-(32절, 와이어 증거만). 근거 없이 넓히면 이 추가가 허용된 이유 자체가 없어집니다 —
-PROJECT_STATUS 26-I와 32를 먼저 읽으세요.
-
 ### 분석 보조
 
-`analyze_coverage.py`, `find_skips.py`
+| 스크립트 | 하는 일 |
+|---|---|
+| `analyze_coverage.py` | 커버리지 분석 |
+| `find_skips.py` | 건너뛴 비트 탐색 |
 
 ---
 
@@ -321,14 +428,14 @@ PROJECT_STATUS 26-I와 32를 먼저 읽으세요.
 ### 빠른 스윕 — 어떤 변경 후에도
 
 ```bash
-cargo test                                        # 338 통과
+cargo test                                        # 355 통과
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 113 파일, ASCII only
 python tools/check_effect_decoder.py --check      # 12 케이스
 python -m unittest discover -s tools/tests -p "test_*.py"   # 119 통과
 python tools/check_docs.py --fast                 # 문서가 아직 이 저장소를 설명하는가
-python tools/apply_type_corrections.py --check    # 27 정정 present
+python tools/apply_type_corrections.py --check    # 30 정정 present
 ```
 
 **ASCII 규칙은 스타일이 아니라 정확성 문제입니다.** Windows 콘솔이 cp949라서 포맷
@@ -379,8 +486,8 @@ R5  kills > 0 이면 damage > 0
 
 ### 베이스라인 갱신
 
-전부 `--update`를 받습니다. **DRIFT가 뜨면 각 줄을 설명한 뒤에** 쓰세요. 숫자가 신성한
-게 아니라, 조용한 변경이 불가능해야 하는 게 요점입니다.
+모든 베이스라인 검사는 `--update`를 받습니다. **DRIFT가 뜨면 각 줄을 설명한 뒤에**
+쓰세요. 숫자가 신성한 게 아니라, 조용한 변경이 불가능해야 하는 게 요점입니다.
 
 ---
 
@@ -411,10 +518,13 @@ R5  kills > 0 이면 damage > 0
 
 ## 8. 알려진 한계
 
-- **미타입 잔여분 ~86%** — 게임 바이너리나 UE 헤더가 필요합니다. 테이블 편집으로
-  풀 수 있는 문제가 아닙니다(PROJECT_STATUS 24절).
+- **미타입 잔여분** — [`export`](#export)의 `Typed`는 약 37%입니다(RPC 파라미터
+  포함 분모 기준). **미타입 ≠ 손실**(`raw_bits` 보존). 나머지에 타입을 입히려면 게임
+  바이너리나 UE 헤더가 필요합니다 — 테이블 편집으로 푸는 문제가 아닙니다
+  (PROJECT_STATUS 24절).
 - **`AbilitiesAndBuffsComponent`** — 리플레이가 그 클래스의 ClassNetCache 그룹을 아예
-  선언하지 않습니다. 체크포인트 4,024개 전수로 확인했습니다.
+  선언하지 않습니다. 체크포인트 4,024개 전수로 확인했습니다. 이것이 `validate` 통과율을
+  100% 미만으로 만드는 귀속 갭입니다.
 - **ACS** — `PlayerScoreComponent`가 복제되지 않습니다. 계산할 근거가 없습니다.
 - **`economy.per_round` (13.02)** — 팀 이코노미가 `BaseTeamState`로 옮겨갔고 값은
   디코드됩니다만, valplay의 `compute_economy`가 옛 경로를 봅니다. valplay는 수정

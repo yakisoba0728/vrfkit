@@ -1,23 +1,81 @@
 # vrfkit
 
-VALORANT 리플레이(`.vrf`) 파서 및 분석 툴킷. Rust.
+A Rust toolkit that parses VALORANT replay files (`.vrf`, Unreal Engine network
+replay format) and exports them to Parquet. A workspace of 10 crates plus a
+Python `tools/` validation suite. `#![forbid(unsafe_code)]` is in every crate;
+there is no `unsafe` block anywhere in the workspace. The only native FFI the
+parser depends on is Oodle decompression, and that lives entirely in the
+external `oozextract` crate. Edition 2024, MSRV 1.85, MIT.
 
-기존 파서들과의 차이는 목표에 있다. **리플레이에 담긴 모든 값을 내보내는 것**이
-설계 전제이고, 타입을 아는 필드만 내보내는 게 아니다.
+![license](https://img.shields.io/badge/license-MIT-blue.svg)
+![rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)
+![edition](https://img.shields.io/badge-edition-2024-orange.svg)
+![builds](https://img.shields.io/badge/builds-12.10--13.02-green.svg)
+![unsafe](https://img.shields.io/badge/unsafe-none-success.svg)
 
-## 빠른 시작
+Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantReplayParser)
+by Michel Giehl; see [`NOTICE.md`](NOTICE.md). Not affiliated with, endorsed
+by, or approved by Riot Games.
+
+## Why this exists
+
+Most replay parsers export only the fields whose type they know. vrfkit's
+design premise is the opposite: **export every value the replay carries.** This
+is possible because Unreal's property stream is self-describing -- each field
+carries a handle and a bit-length *before* its value, so field boundaries are
+walkable without knowing the type, and the handle-to-name map ships inside the
+replay itself (`NetFieldExportGroup`). The names come for free; only the types
+are unknown. So vrfkit always emits the raw bits and layers typed values on top
+as an additive overlay. Nothing is dropped because its format is not yet
+understood.
+
+## Table of contents
+
+- [Quick start](#quick-start)
+- [Output](#output)
+- [Status](#status)
+- [Performance](#performance)
+- [Comparison with the C# reference parser](#comparison-with-the-c-reference-parser)
+- [The Event chunk -- the server's own timeline](#the-event-chunk----the-servers-own-timeline)
+- [Whole-corpus robustness](#whole-corpus-robustness)
+- [Type overlay](#type-overlay)
+- [Supported builds and the cost of a new build](#supported-builds-and-the-cost-of-a-new-build)
+- [Design](#design)
+- [Validation suite](#validation-suite)
+- [Generated files](#generated-files)
+- [License](#license)
+
+## Quick start
 
 ```bash
 cargo build --release -p vrfkit --features export
 
-vrfkit inspect  <file.vrf>                          # 헤더 / 브랜치 / 청크 요약
-vrfkit validate <file.vrf> [--diagnostics]          # 문법 오라클, 파일 안 씀
+vrfkit inspect  <file.vrf>                          # header / branch / chunk summary
+vrfkit validate <file.vrf> [--diagnostics]          # grammar oracle, writes nothing
 vrfkit export   <file.vrf> --out <dir> [--checkpoints]
 ```
 
-`02d4d478`(48,215,213바이트) 기준 export 0.85초, 출력 7종:
+`inspect` prints replay info, header, branch, and a chunk summary; it does no
+parsing and returns immediately. `validate` walks every content block through
+the RepLayout grammar and reports a pass rate; it writes no files. `export`
+writes the Parquet tables and manifest described under [Output](#output).
 
-| 파일 | 행 | 바이트 |
+`export` is not a default feature. Without it, `arrow`/`parquet`/`zstd` never
+enter the dependency tree:
+
+```bash
+cargo tree -p vrfkit --no-default-features | grep -E "arrow|parquet|zstd"
+# (no output)
+```
+
+A binary built without `export` **refuses the subcommand rather than failing
+silently** -- a subcommand that printed nothing and exited 0 would be
+indistinguishable from one that wrote the files.
+
+On `02d4d478` (48,215,213 bytes, build 13.01), `export` takes ~0.85 s and
+produces seven files:
+
+| File | Rows | Bytes |
 |---|---|---|
 | `fields.parquet` | 1,246,812 | 13,742,276 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
@@ -25,81 +83,205 @@ vrfkit export   <file.vrf> --out <dir> [--checkpoints]
 | `net_guids.parquet` | 16,167 | 153,606 |
 | `events.parquet` | 195 | 10,201 |
 | `checkpoint_fields.parquet` | 78,748 | 191,324 |
-| `manifest.json` | | 658,918 |
+| `manifest.json` |  | 658,918 |
 
-`checkpoint_fields.parquet` 는 `--checkpoints` 를 줘야 나오고, **켜든 끄든 나머지
-다섯 테이블은 바이트 단위로 동일**합니다.
+`checkpoint_fields.parquet` requires `--checkpoints`; with or without it, **the
+other five tables are byte-for-byte identical.**
 
-`movement.parquet` 의 `timestamp` 는 128.0 Hz 서버 틱이고 **라운드마다 리셋**됩니다 —
-전역 시간축은 `time_ms` 입니다. 자세 정보는 `movement_state` 가 아니라 `bCrouchHeld`
-입니다.
+Two things about `movement.parquet` worth knowing up front: `timestamp` is the
+128.0 Hz server tick and **resets each round** -- use `time_ms` for a global
+timeline; and posture detail lives in `bCrouchHeld`, not in `movement_state`.
 
-> **컬럼 스키마, `tools/` 스크립트, 검증 스위트, 크레이트별 사용법은
-> [`docs/USAGE.md`](docs/USAGE.md) 에 있습니다.**
-> 이 문서는 *왜 그렇게 만들었는지* 에 대한 것입니다.
+> Column schemas, the `tools/` scripts, the full validation suite, and
+> per-crate usage live in [`docs/USAGE.md`](docs/USAGE.md).
+> This document is about *why it is built this way*.
 
-## 상태
+## Output
 
-작업 중. 현재 검증된 범위 (`cargo test --workspace` 338 통과, `clippy -D warnings` 0, `fmt` 0):
+Six Parquet tables plus `manifest.json`. String columns are dictionary-encoded
+with ZSTD.
 
-크레이트별 개수는 `cargo test -p <crate>` 로 재세요. 아래 표에서 개수를 뺐습니다 -- 매번 낡았고, 재는 게 한 줄입니다.
+### `fields.parquet` -- replicated properties and RPC parameters
 
-| 레이어 | 크레이트 | 기능 플래그 |
+| Column | Type | Description |
 |---|---|---|
-| 비트 리더 / UE 와이어 포맷 | `vrf-bitio` | `no_std`, `alloc` |
-| 페이로드 변환 (5개 빌드) | `vrf-transform` | 없음 (`ALL_VERSIONS` 타입이 개수를 인코딩) |
-| 컨테이너 (info/header/chunk/event/checkpoint, Oodle) | `vrf-container` | `oodle` `event` `checkpoint` |
-| DemoFrame 순회 | `vrf-frame` | 없음 (섹션은 커서 정렬용 바이트 범위) |
-| 리플레이 동적 스키마 + GUID 캐시 + 체크포인트 테이블 | `vrf-schema` | `checkpoint` |
-| 리플리케이션 (packet/bunch/content block/field) | `vrf-net` | `diagnostics` |
-| 필드 디코더 + 중첩 배열 + 타입 오버레이 + 이펙트 | `vrf-decode` | `array` `effect` `overlay` `structs` |
-| movement 디코더 | `vrf-movement` | 없음 (단일 프로토콜) |
-| Parquet 내보내기 | `vrf-export` | `parquet` + 테이블별 |
-| 통합 CLI | `vrfkit` | `export` |
+| `time_ms` | u32 | Milliseconds since replay start |
+| `packet_id` | u32 | Packet sequence number |
+| `channel_index` | u32 | Actor channel |
+| `actor_net_guid` | u32 | Actor NetGUID |
+| `object_net_guid` | u32? | Subobject NetGUID |
+| `group_path` | str | `NetFieldExportGroup` path; RPCs use `<Class>:<Function>` |
+| `handle` | u32 | Field handle within the group |
+| `field_name` | str? | Name the replay declares for that handle |
+| `bit_count` | u32 | Payload size in bits |
+| `raw_bits` | bytes? | Raw payload |
+| `value_i64` / `value_f64` / `value_bool` / `value_str` | | Only when the type is known |
 
-필요한 것만 가져다 쓸 수 있습니다. 확인 방법:
+**`raw_bits` is always present, even when the type is unknown or decoding
+fails.** At most one `value_*` column is filled. If a field's format is worked
+out later, rows already exported never need re-parsing.
+
+On top of `raw_bits`, the overlay types per-player economy
+(`MoneyManagementComponent.{Money,StartOfRoundMoney,TotalMoneyGranted}` as
+Int32) and the nested `CombatReport` arrays, among others.
+
+Arrays are flattened, so names look like
+`Rounds[3].Reports[1].Interactions[0].DamageDealt` and can be filtered with
+`LIKE 'Rounds[%].Reports[%].DamageDealt'`.
+
+One exception: a ClassNetCache block whose group cannot be identified cannot be
+walked as an inner stream, so it is emitted only as a preservation row
+(`field_name` = `__vrfkit_unresolved_class_net_cache_payload__`,
+`handle` = `u32::MAX`, full payload in `raw_bits`). Re-interpreting it as
+fields requires re-exporting from the original `.vrf`.
+
+### `movement.parquet` -- character position time series
+
+14 columns: `time_ms`, `packet_id`, `character_net_guid`, `pos_x/y/z`, `yaw`,
+`pitch`, `vel_x/y/z`, `timestamp`, `movement_state`, `move_type`.
+
+- `timestamp` is a **128.0 Hz global server tick** and **resets at each round
+  boundary.** Use it for in-round alignment; use `time_ms` for a global
+  timeline.
+- `movement_state` and `move_type` are constant (0, 1) across the entire 13.01
+  corpus. Constant in one build is not constant in general, so they are
+  exported verbatim.
+- **Posture detail is `bCrouchHeld`, not `movement_state`.** It already ships
+  as a separate field in `fields.parquet`.
+
+### `actors.parquet` -- actor spawn/despawn
+
+`event` (`open` / `close`), `class_path`, `archetype_path`,
+`spawn_x/y/z`, `spawn_pitch/yaw/roll`. This is where weapon and ability
+instance classes are found.
+
+### `net_guids.parquet` -- GUID to path, and containment
+
+`net_guid`, `path`, `outer_net_guid`. `outer_net_guid` is the containment
+chain -- use it to walk from a firing effect's `FiringState` subobject back up
+to the weapon actor.
+
+### `events.parquet` -- the timeline the server wrote itself
+
+`id`, `group`, `metadata`, `time1`, `time2`, `payload_size`, `raw_payload`,
+`word0`, `word1`.
+
+`group` is `characterDeath`, `characterUltimateUsed`, `roundStarted`,
+`spikePlanted`, `spikeDefused`, `spikeExploded`, `switchTeams`, and so on. The
+payload is `[u32 tag][N x u32 words][FString][f32 seconds]`, and `N` is fixed
+per group (CharacterDeath = 2, CharacterUltimateUsed / RoundStart /
+SwitchTeams = 1, SpikePlanted / Defused / Exploded = 0 -- derived as the
+residual-zero count across the corpus), so the first two words are exported as
+`word0`/`word1`. For `characterDeath`, `(word0, word1)` is `(killer, killed)`
+NetGUID; for `roundStarted`, `word0` is the round number. The original bytes
+remain in `raw_payload`, so re-interpretation is possible.
+
+### `checkpoint_fields.parquet` -- snapshot
+
+Same schema as `fields.parquet`. A Checkpoint is a full-state snapshot at one
+instant and **is not redundant**: against the last ReplayData value at the same
+timestamp in the exported parquet, about 1.4-1.6% of keys disagree (of which
+~0.4% differ in value, the rest in bit-width) and about 0.4% of keys are
+absent from ReplayData entirely. Results are identical for 13.01 and 13.02.
+The earlier 6-11% figures were raw live-wire measurements; export's byte-width
+normalization collapses them to ~1.4% (see `PROJECT_STATUS.md` section 22-I;
+byte-level format in [`CHECKPOINT_SPEC.md`](CHECKPOINT_SPEC.md)).
+
+### `manifest.json`
+
+The full ReplayInfo plus the header, statistics, and **every export group the
+replay declares** (`net_field_export_groups`; 475 for `02d4d478`). The
+handle-to-name mapping lives here.
+
+The `players` array gives each `BombPlayerState` actor's `(actor_net_guid,
+subject, character_net_guid)`. `subject` is the account UUID and
+`character_net_guid` is the `SpawnedCharacter`, which exactly matches
+`movement.parquet`'s `character_net_guid`. This bridges the wire actors to
+stable account identity, so actor-level tables (movement, fields, actors) can
+be joined on it -- and it disambiguates the case where two players pick the
+same agent, where `playerLoadouts`'s `characterId` alone cannot tell them
+apart. In `02d4d478`, 10/10 players join to movement.
+
+`game_specific_data` carries the `playerLoadouts` JSON (per-subject
+`characterId`, skins, sprays). `timestamp_ticks` is a UE `FDateTime`
+(100-nanosecond ticks since 0001-01-01), **not** a Windows FILETIME -- reading
+it as one gives the year 3626.
+
+## Status
+
+Work in progress. Currently verified: `cargo test --workspace` **355 passing**,
+`clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 113 files. The
+Python suite in `tools/tests` has 119 tests.
+
+Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
+from the table below on purpose -- they go stale, and re-measuring is one line.
+
+| Layer | Crate | Feature flags |
+|---|---|---|
+| Bit reader / UE wire format | `vrf-bitio` | `no_std`, `alloc` |
+| Payload transform (5 builds) | `vrf-transform` | none (the `ALL_VERSIONS` type encodes the count) |
+| Container (info/header/chunk/event/checkpoint, Oodle) | `vrf-container` | `oodle` `event` `checkpoint` |
+| DemoFrame traversal | `vrf-frame` | none (sections are byte ranges for cursor alignment) |
+| Replay dynamic schema + GUID cache + checkpoint tables | `vrf-schema` | `checkpoint` |
+| Replication (packet/bunch/content block/field) | `vrf-net` | `diagnostics` |
+| Field decoder + nested arrays + type overlay + effects | `vrf-decode` | `array` `effect` `overlay` `structs` |
+| Movement decoder | `vrf-movement` | none (single protocol) |
+| Parquet export | `vrf-export` | `parquet` + per-table |
+| Unified CLI | `vrfkit` | `export` |
+
+Take only the layer you need:
 
 ```
 cargo tree -p vrfkit --no-default-features | grep -E "arrow|parquet|zstd"
-# 아무것도 안 나옵니다
+# (no output)
 ```
 
-ZSTD만 일부러 플래그로 빼지 않았습니다 -- 모든 라이터가 그걸 고르므로, 끄면 이
-크레이트가 설명할 수 없는 파일을 뱉는 빌드가 생깁니다.
+ZSTD is deliberately *not* feature-gated out -- every writer picks it, so
+disabling it would produce files this crate could not explain.
 
-## 성능
+## Performance
 
-`02d4d478`(48,215,213바이트) 기준:
+On `02d4d478` (48,215,213 bytes):
 
-| | 이전 | 현재 |
+| | Before | Now |
 |---|---|---|
-| `export` | 1.64초 / 201 MB | **0.85초 / 109 MB** |
-| `validate` | 1.42초 / 65 MB | **0.693초 / 65 MB** |
+| `export` | 1.64 s / 201 MB | **0.85 s / 109 MB** |
+| `validate` | 1.42 s / 65 MB | **0.693 s / 65 MB** |
 
-출력은 **바이트 단위로 동일**합니다. 자세한 내역과 측정 후 기각한 최적화들은
-`PROJECT_STATUS.md` 25절에 있습니다.
+Figures are wall-clock / peak memory. Output is **byte-for-byte identical**
+before and after. Detail and the optimizations measured and then rejected are
+in `PROJECT_STATUS.md` section 25.
 
-> 이 시간들은 같은 커밋·같은 기계에서도 측정일에 따라 ±10% 흔들립니다 —
-> 2026-08-04에 0.79/0.65였고 2026-08-05에 0.85/0.693이었습니다. 코드가 아니라
-> 기계 상태이고, 36-F에서 변경 전후 바이너리 A/B로 확인했습니다.
+> These times fluctuate by +/-10% run to run on the same commit and machine:
+> on 2026-08-04 export was 0.79 s and validate 0.65 s; on 2026-08-05 they were
+> 0.85 s and 0.693 s. This is machine state, not code -- confirmed by A/B-ing
+> before/after binaries at section 36-F.
 
-파일의 모든 청크 종류를 읽습니다 — ReplayData, Event, 그리고 Checkpoint. 미개봉 영역은 없습니다.
+Every chunk kind in the file is read -- ReplayData, Event, and Checkpoint.
+There are no unopened regions.
 
-## 기존 파서와의 대조 결과
+## Comparison with the C# reference parser
 
-같은 리플레이(`02d4d478`)를 기존 C# 파서 출력과 대조했습니다.
+The same replay (`02d4d478`) was diffed against the output of the existing C#
+parser.
 
-**구조 — 완전 일치**
+**Structure -- exact match.**
 
 | | C# | vrfkit |
 |---|---|---|
-| 패킷 / 번치 | 530,401 | 530,401 |
-| 액터 open / close | 2,028 / 1,799 | 2,028 / 1,799 |
-| export group 경로 집합 | 475 | 475 (교집합 475, 양쪽 차집합 0) |
+| Packets / bunches | 530,401 | 530,401 |
+| Actor open / close | 2,028 / 1,799 | 2,028 / 1,799 |
+| Export-group path set | 475 | 475 (intersection 475, both differences 0) |
 
-**movement — 사실상 비트 단위 일치.** 5만 행 조인(99.98% 성공) 기준 position 최대 오차 0.0005(float 반올림), yaw·pitch·velocity 오차 정확히 0. 행 수는 C# 1,837,220 대 우리 1,839,607 — C#이 "각 업데이트의 마지막 move만 방출"하는 한계 때문이며 우리는 중간 move 2,387개를 추가로 확보합니다.
+**Movement -- effectively bit-identical.** Over a 50,000-row join (99.98%
+matched), the maximum position error is 0.0005 (float rounding); yaw, pitch,
+and velocity error is exactly 0. Row counts are 1,837,220 (C#) versus 1,839,607
+(ours) -- the gap is the C# limitation of "emit only the last move of each
+update"; we additionally recover 2,387 intermediate moves.
 
-**CombatReport 중첩 배열 — 핵심 지표 입력 전부 값 일치.** 이 구조가 K/D/A·ADR·HS%·멀티킬·관통샷의 유일한 출처라, 값 다중집합으로 대조했습니다(`tools/compare_combat_report.py`).
+**CombatReport nested array -- every metric-input value matches.** This
+structure is the sole source of K/D/A, ADR, HS%, multi-kills, and wallbangs,
+so it was diffed as a multiset of values (`tools/compare_combat_report.py`).
 
 ```
 ..Interactions[].AssistType                               364    364  IDENTICAL
@@ -114,9 +296,16 @@ ZSTD만 일부러 플래그로 빼지 않았습니다 -- 모든 라이터가 그
 ..Interactions[].ReceivedInteractions[].Regions[].Damage  390    390  IDENTICAL
 ```
 
-**추출량 — 우리가 더 많습니다.** (그룹, 필드) 쌍이 vrfkit 전용 1,450개 / 양쪽 302개 / C# 전용 71개이고, C# 전용 71개 중 49개는 명명 차이입니다(C#은 `CrouchHeld`, 우리는 와이어 이름 `bCrouchHeld`). RPC도 342,735개 대 230,893개로 48% 많습니다 — C#은 디스크립터 없는 RPC를 버립니다.
+**Extraction volume -- we export more.** `(group, field)` pairs break down as
+1,450 vrfkit-only / 302 both / 71 C#-only, and 49 of the 71 C#-only are naming
+differences (C# uses `CrouchHeld`; we use the wire name `bCrouchHeld`). RPCs
+are 342,735 versus 230,893 -- 48% more -- because the C# parser drops RPCs
+without a descriptor.
 
-**RPC 파라미터 — 값 일치, 그리고 기존 파서가 놓친 킬 13개 복구.** RPC 33만 개는 파라미터 페이로드가 통째로 raw였는데, 리플레이가 선언하는 파라미터 스키마 84개 그룹(`<Class>:<Function>` 경로)을 써서 풀었습니다. `tools/compare_rpc_params.py`로 대조:
+**RPC parameters -- values match, and 13 kills the C# parser missed are
+recovered.** The ~330,000 RPCs had parameter payloads that were entirely raw;
+they were decoded using the 84 parameter-schema groups (`<Class>:<Function>`
+paths) the replay itself declares. Diffed with `tools/compare_rpc_params.py`:
 
 ```
 MulticastNotifyDamage_Point.DamageDealt          580  580  MATCH
@@ -124,43 +313,56 @@ MulticastNotifyDamage_Point.DamageTaken          580  580  MATCH
 MulticastNotifyDamage_Point.RegionalDamage       580  580  MATCH
 MulticastNotifyDamage_Point.bDamageKilledTarget  580  580  MATCH
 MulticastEndRound.NewRoundNumber                  17   17  MATCH
-MulticastNotifyKilledEnemy.KillerCharacter       119  132  우리가 +13
+MulticastNotifyKilledEnemy.KillerCharacter       119  132  ours +13
 ```
 
-마지막 줄이 흥미롭습니다. C#은 KillerCharacter 9종 119건, 우리는 10종 132건인데 **차이가 정확히 캐릭터 576의 13킬 하나**이고 나머지는 건수까지 전부 일치합니다.
+The last line is the interesting one. The C# parser sees 119 `KillerCharacter`
+events across 9 characters; we see 132 across 10. The difference is exactly
+the 13 kills by character 576; every other character matches in count.
 
-`MulticastNotifyKilledEnemy`는 킬러의 캐릭터 액터에 호스팅되는데, 이 리플레이에서 한 플레이어의 캐릭터가 그 RPC를 전혀 복제하지 않습니다. 기존 파이프라인은 이 13킬이 타임라인에서 사라지는 걸 CombatReport 크레딧으로 되메우는 우회로 처리했습니다. 우리 파서에서는 타임라인 자체가 완전합니다.
+`MulticastNotifyKilledEnemy` is hosted on the killer's character actor, and in
+this replay one player's character never replicates that RPC. The existing
+pipeline papered over the 13 missing kills by recovering them later as
+CombatReport credit, so they vanished from the timeline. In vrfkit the timeline
+itself is complete.
 
-## Event 청크 — 서버가 쓴 타임라인
+## The Event chunk -- the server's own timeline
 
-위 주장은 오랫동안 **우리 파서 자신이 유일한 증인**이었습니다. 이제 아닙니다.
+The claim above was, for a long time, witnessed only by our own parser. It no
+longer is.
 
-`.vrf`의 Event 청크는 서버가 직접 라벨링해 기록한 이벤트 목록이고, 파일의 다른 영역에
-다른 인코딩으로 들어 있으며, **기존 C# 파서는 이 청크를 열지조차 않습니다**
-(`ReplayChunkDispatcher.cs:152` — `"Skipping event chunk"`). 우리는 이제 읽습니다.
+The `.vrf` Event chunk is the event list the server labeled and wrote itself,
+stored elsewhere in the file under a different encoding, and **the existing C#
+parser does not even open this chunk** (`ReplayChunkDispatcher.cs:152` --
+`"Skipping event chunk"`). We now read it.
 
 ```
 characterDeath 132 | characterUltimateUsed 34 | roundStarted 18
-spikePlanted 9 | spikeDefused 1 | switchTeams 1          (02d4d478, 195건)
+spikePlanted 9 | spikeDefused 1 | switchTeams 1          (02d4d478, 195 events)
 ```
 
-`characterDeath` 132건은 우리가 RPC에서 뽑은 `MulticastNotifyKilledEnemy` 132건과
-정확히 같고, C#의 119건 + 캐릭터 576의 13킬입니다. 페이로드의 두 워드가 killer/killed
-NetGUID인데 **132/132가 순서까지 일치**했습니다(역순 매칭 0/132). 즉 "우리가 맞고 C#이
-놓쳤다"는 이제 우리 주장이 아니라 서버 기록과의 대조 결과입니다.
+The 132 `characterDeath` events exactly match the 132 `MulticastNotifyKilledEnemy`
+events we extracted from RPCs -- and the C# parser's 119 plus character 576's
+13. The two payload words are the killer/killed NetGUIDs, and **132/132 match
+in order** (0/132 matched reversed). "We are right and the C# parser missed
+them" is no longer our claim; it is the result of diffing against the server's
+own record.
 
-범위를 명확히: killer/killed 짝 대조는 **리플레이 1개** 기준이고, 청크 프레이밍은
-**215개 파일 43,397청크 전수**가 잔여 바이트 0으로 소비됩니다.
+Scope, to be precise: the killer/killed pair diff is for **one replay**, while
+the chunk-framing check covers **all 215 files, 43,397 chunks in total**,
+every one consumed with zero residual bytes.
 
-페이로드는 `[u32 그룹 태그][N x u32 워드][FString "EReplayEventGroup::<Name>"][f32 초]`
-구조인데, `N`이 그룹마다 다릅니다. 전 7그룹의 `N`이 코퍼스에서 잔여 0으로 도출돼
-(CharacterDeath=2, CharacterUltimateUsed/RoundStart/SwitchTeams=1, SpikePlanted/Defused/Exploded=0)
-첫 두 워드를 `word0`/`word1` 컬럼으로 내보냅니다(CharacterDeath는 killer·killed NetGUID,
-RoundStart는 라운드 번호). 원본은 `raw_payload`에 그대로 남습니다.
+The payload layout is `[u32 group tag][N x u32 words][FString
+"EReplayEventGroup::<Name>"][f32 seconds]`, and `N` differs per group. The `N`
+for all seven groups is derived from the corpus as the residual-zero count
+(CharacterDeath = 2, CharacterUltimateUsed / RoundStart / SwitchTeams = 1,
+SpikePlanted / Defused / Exploded = 0), so the first two words are exported as
+`word0`/`word1` (killer/killed NetGUID for CharacterDeath; round number for
+RoundStart). The original is left intact in `raw_payload`.
 
-## 전 코퍼스 견고성 검증
+## Whole-corpus robustness
 
-`.vrf` 215개 전수를 오라클에 통과시켰습니다 (`tools/validate_corpus.py`).
+All 215 `.vrf` files were run through the oracle (`tools/validate_corpus.py`).
 
 ```
 succeeded: 215/215        failed: 0
@@ -170,39 +372,77 @@ totals   : 136,545,822 content blocks / 98,884,839 fields / 75,571,092 RPCs
            malformed framing 0        unattributed 1,972,018,965 bits
 ```
 
-`malformed framing 0` 은 컨테이너·번치·콘텐츠 블록 프레이밍이 전 코퍼스에서 한 건도 어긋나지 않는다는 뜻입니다. 통과율이 100%가 아닌 이유는 **프레이밍이 아니라 귀속**입니다. 블록은 정확히 잘라내지만, 일부는 어느 `_ClassNetCache` 그룹의 것인지 확정할 수 없어 handle 폭을 모르고, 그래서 레코드로 풀지 못합니다.
+`malformed framing 0` means the container, bunch, and content-block framing
+does not disagree a single time across the whole corpus. The pass rate is not
+100% because the gap is **attribution, not framing.** Blocks are cut exactly,
+but some cannot be assigned to a `_ClassNetCache` group, so the handle width is
+unknown and they cannot be expanded into records.
 
-이 수치는 한때 100%로 적혀 있었습니다. 그건 더 정확해서가 아니라 **틀렸기 때문**입니다. 당시 코드는 그룹을 못 찾은 블록을 조용히 버리면서 아무 카운터도 올리지 않았고, 오라클은 자기가 버린 데이터 위에서 만점을 보고했습니다. 그 경로를 드러내니 한 리플레이에서 14,459블록 18,831,872비트, 코퍼스 전체로 2,276,559,577비트가 나타났습니다. 이후 액터 인스턴스 이름에서 클래스 캐시 그룹을 찾아내 3억 비트가량을 회수했고, 위 숫자가 남은 양입니다.
+This number was once reported as 100%. That was not more accurate -- it was
+**wrong.** The code of the day silently dropped blocks whose group it could not
+find and incremented no counter, and the oracle reported a perfect score over
+the data it had just discarded. Exposing that path surfaced 14,459 blocks /
+18,831,872 bits in one replay and 2,276,559,577 bits corpus-wide. Later, class
+-cache groups were recovered from actor-instance names, reclaiming about 300
+million bits; the figure above is what remains.
 
-남은 것의 경계는 명확합니다. 제한 없이 집계한 전체 실패 비트의 **97.283437%가 `AbilitiesAndBuffsComponent`** 이고, 리플레이가 그 클래스의 캐시 그룹을 아예 선언하지 않으므로 어떤 조회로도 닿을 수 없습니다. `MeleeAttackState1`~`4`와 `_Alt`는 기존 스키마 기반 resolver가 공유 `MeleeAttackStateComponent_ClassNetCache`로 이미 해석하며, 전 코퍼스 실패 블록과 비트가 모두 0입니다. 단, 미해결 ClassNetCache 블록은 내부 스트림을 걸을 수 없어 Parquet 행이나 `raw_bits`를 내보내지 못합니다. 재해석하려면 원본 `.vrf`를 보존해야 합니다.
+The boundary of what remains is sharp: **97.283437% of all unconsumed failure
+bits are `AbilitiesAndBuffsComponent`**, and the replay does not declare a
+cache group for that class at all, so no lookup reaches it.
+`MeleeAttackState1`-`4` and `_Alt` are already resolved by the schema-based
+resolver through the shared `MeleeAttackStateComponent_ClassNetCache`, and
+their failure blocks and bits are zero across the corpus. Unresolved
+ClassNetCache blocks cannot be walked as an inner stream, however, so they emit
+no Parquet rows and no `raw_bits`; re-interpreting them requires keeping the
+original `.vrf`.
 
-### 오래 걸린 버그 하나
+### One bug that took a while
 
-한동안 모든 리플레이가 정확히 1개 블록과 695비트를 잃었습니다. 가설 4개를 세워 고쳐봤지만 전부 실패했고, 결국 **전수 탐색**으로 잡혔습니다 — 831비트 페이로드를 모든 시작 오프셋에서 다시 프레이밍해 "페이로드 끝에 정확히 도달하는가"로 채점했더니 오프셋 108이 통과하며 순차 짝수 GUID(64, 6, 8, 10 … 22) 10개 블록이 깨끗하게 맞았습니다. 우리는 109에서 시작했으니 **1비트 과소모**였습니다.
+For a while, every replay lost exactly one block and 695 bits. Four hypotheses
+were tried and failed, and it was finally caught by **exhaustive search** --
+re-framing an 831-bit payload from every start offset and scoring each by
+"does it land exactly on the payload end?" Offset 108 passed, and ten blocks
+with sequential even GUIDs (64, 6, 8, 10 ... 22) fit cleanly. We had started at
+109, so it was a **1-bit under-consumption.**
 
-비트 단위 계측으로 지점을 특정했습니다.
+Bit-level instrumentation pinned the location:
 
-| 서브읽기 | 비트 | 위치 |
+| Sub-read | Bits | Position |
 |---|---|---|
 | actor GUID `IntPacked(2)` | 8 | 0..8 |
 | archetype `IntPacked(9)` | 8 | 8..16 |
 | level `IntPacked(3)` | 8 | 16..24 |
-| location (18비트 컴포넌트) | 63 | 24..87 |
-| rotation (플래그, pitch 없음, yaw 있음, roll 없음) | 20 | 87..107 |
-| scale, 없음 | 1 | 107..108 |
-| **velocity, 없음** | **1** | **108..109** |
+| location (18-bit components) | 63 | 24..87 |
+| rotation (flag, no pitch, yaw, no roll) | 20 | 87..107 |
+| scale, absent | 1 | 107..108 |
+| **velocity, absent** | **1** | **108..109** |
 
-`PlayerController`는 `bReplicateMovement = false`라서 서버가 velocity를 아예 직렬화하지 않습니다 — "있지만 빈 값"이 아니라 필드가 와이어에 없습니다. 첫 번치는 `bHasPackageMapExports = false`라 경로가 아직 등록되지 않아 아키타입으로 판별할 수 없고, dynamic GUID는 0이 아닌 짝수이므로 2가 최솟값이며 리플레이가 처음 여는 dynamic 액터는 항상 리플레이 컨트롤러입니다.
+`PlayerController` has `bReplicateMovement = false`, so the server never
+serializes velocity -- the field is not on the wire at all, not "present but
+empty." On the first bunch `bHasPackageMapExports = false`, so the path is not
+registered yet and the actor cannot be identified by archetype; the dynamic
+GUID is a non-zero even number, so 2 is the minimum, and the first dynamic
+actor a replay opens is always the replay controller.
 
-고친 결과: malformed 215 → 0, 그리고 리플레이당 10개씩 총 2,150개 블록이 새로 디코드됩니다. 당시 남은 미소모 비트는 3,671개까지 줄었고, 그 4건도 뒤에 나오는 handle 최소폭 문제로 밝혀져 0이 되었습니다.
+The fix took malformed 215 -> 0 and newly decoded 2,150 blocks (10 per
+replay). Residual under-consumed bits dropped to 3,671, and those last four
+cases were later explained as the handle-minimum-width problem and went to 0.
 
-## 타입 오버레이
+## Type overlay
 
-걸을 수 있는 필드의 원시 비트는 항상 내보내고, 타입을 아는 필드는 `value_*` 컬럼을 **추가로** 채웁니다. 타입을 몰라도, 디코드가 실패해도 그 행의 `raw_bits`는 남습니다. 그룹을 찾지 못해 내부 스트림 자체를 걸을 수 없는 ClassNetCache 블록은 예외입니다 — 필드로는 풀지 못하지만 전체 페이로드를 한 보존 행(`handle` = `u32::MAX`, `raw_bits`에 페이로드 전체)으로 방출하고, loud failure와 skipped bits를 남깁니다.
+For any field whose inner stream can be walked, the raw bits are always
+exported; when the type is known, the `value_*` columns are filled **as an
+overlay.** If the type is unknown, or decoding fails, the row's `raw_bits`
+remains. The only exception is the unresolved ClassNetCache block above: it
+cannot be expanded into fields, so it emits one preservation row (`handle` =
+`u32::MAX`, full payload in `raw_bits`) and a loud failure with skipped bits.
 
-오버레이 테이블은 C# 디스크립터에서 기계적으로 추출합니다(`tools/extract_descriptors.py`) — 173개 그룹 1,191개 항목. 손으로 옮기지 않는 이유는 S-box·골든 벡터와 같습니다.
+The overlay table is extracted mechanically from the C# descriptors
+(`tools/extract_descriptors.py`) -- 173 groups, 1,191 entries, 84 handles.
+Nothing is transcribed by hand, for the same reason S-boxes and golden vectors
+are not: it is the kind of constant where a typo is invisible in review.
 
-`02d4d478` 기준 (현재 HEAD 실측):
+`02d4d478` at the current HEAD:
 
 ```
 Decoded OK:   371,059      Decode errors:      0
@@ -211,132 +451,195 @@ No field name: 33,340      Typed:          37.5%
 Effect blobs:  53,908
 ```
 
-**이펙트 디코드는 additive라 이 버킷들을 움직이지 않습니다.** 오버레이 버킷은
-이펙트 패스보다 먼저 확정되므로, 이펙트로 값을 얻은 행은 여전히 `Not in table` 에
-계상돼 있습니다. `Decoded OK` 에 합치면 이중 계산이 되고 베이스라인이 다른 이유로
-핀한 숫자가 움직입니다. 그래서 `Effect blobs` 를 따로 보고합니다 — 이게 없으면
-53,908행이 값을 얻어도 요약이 완전히 동일하게 출력됩니다. (버킷 숫자 자체는 오버레이
-항목이 늘어나면 이동합니다 — 위 수치도 1인당 이코노디 타이핑이 붙은 뒤의 값입니다.)
+**Effect decoding is additive and does not move these buckets.** The overlay
+buckets are settled before the effect pass, so rows that gained a value from an
+effect are still counted under `Not in table`; merging them into `Decoded OK`
+would double-count and move the baseline for unrelated reasons. `Effect blobs`
+is reported separately -- without it, 53,908 rows gain a value yet the summary
+prints identically. (The bucket counts themselves do move as overlay entries
+are added; the figures above are post-economy-typing.)
 
-실제 커버리지는 전체 1,246,812행 중 `value_*` 가 채워진 비율로 보세요. 이펙트 연결 전
-68.8% 가 미타입이었고 지금은 **64.5%** 입니다.
+The real coverage figure is the fraction of all 1,246,812 rows with a filled
+`value_*`. Before effect linkage 68.8% were untyped; it is now **64.5%.**
 
-**이 숫자는 자주 바뀝니다. 인용하기 전에 직접 재세요** — 여섯 개 중 네 개가 낡은 채로 방치된 적이 있습니다:
+**These numbers change often; re-measure before quoting** -- four of the six
+were left stale at one point:
 
 ```
 cargo build --release
 .\target\release\vrfkit.exe export <replay.vrf> --out out\probe
 ```
 
-`Typed` 는 요약에 찍히는 비율로, 오버레이가 디코드에 성공한 행(`Decoded OK`)을 오버레이가 조사한 행(`Rows offered`)으로 나눈 값입니다. 분모에 RPC 파라미터가 전부 들어가서 낮게 나옵니다 — `Not in table` 의 대부분이 C# 디스크립터가 없는 RPC 파라미터와, 리플레이가 선언한 475개 그룹 중 테이블에 없는 나머지입니다. (`value_*` 가 채워진 행은 이펙트·struct 같은 additive 디코더 결과까지 포함하므로, 실제 값 커버리지는 이 비율보다 넓습니다 — 위 64.5% 미타입 참조.) 타입을 모르는 행도 `raw_bits` 는 그대로 실려 나가므로 손실이 아니라 **미해석**입니다.
+`Typed` is the ratio printed in the summary: rows the overlay decoded
+successfully (`Decoded OK`) over rows it examined (`Rows offered`). The
+denominator includes every RPC parameter, so it reads low -- most of `Not in
+table` is RPC parameters without a C# descriptor, plus the groups the replay
+declares (475) that are not in the table. (Rows with a filled `value_*` also
+include additive decoders like effects and structs, so real value coverage is
+wider than this ratio -- see the 64.5% untyped figure above.) A row whose type
+is unknown still ships with `raw_bits`, so it is **uninterpreted, not lost.**
 
-**디코드 에러 0**은 215개 리플레이 전부에서 유지되며, `tools/check_decode_errors_corpus.py` 가 코퍼스 단위로 검사합니다. `vrfkit validate` 는 오버레이 카운터를 출력하지 않아서 `validate_corpus.py` 로는 잘못된 타입을 볼 수 없기 때문에 만든 가드입니다. 여기까지 오는 과정에서 와이어와 C# 선언이 어긋나는 지점 세 종류를 찾아 `tools/apply_type_corrections.py`에 근거와 함께 기록했습니다.
+**Zero decode errors** holds across all 215 replays, checked corpus-wide by
+`tools/check_decode_errors_corpus.py`. It exists because `vrfkit validate`
+does not print overlay counters, so `validate_corpus.py` alone cannot see a
+wrong type. Reaching zero found three places where the wire disagreed with the
+C# declarations; they are recorded with evidence in
+`tools/apply_type_corrections.py` (30 corrections, verified with `--check`).
 
-| 증상 | 실제 | 근거 |
+| Symptom | Actual | Evidence |
 |---|---|---|
-| 시간 관련 `Float` 필드가 32비트 초과 소비 | wire는 `Double`(64비트) | 오차 전량이 "32비트 소비 후 32비트 잔여" |
-| `215`/`216` `Int32` 필드가 3비트로 도착 | 가변폭 액터 북키핑 | C# 무기 디스크립터 주석이 "빌드마다 폭이 다르다"고 명시 |
-| SmokeScreen 프로젝타일 `ReplicatedMovement` EOF | 회전이 `ByteComponents` | 같은 코드베이스의 다른 프로젝타일 4종은 전부 명시적으로 `ByteComponents` |
+| Time-related `Float` field consumes more than 32 bits | Wire is `Double` (64-bit) | Every error is "32 bits consumed, 32 bits residual" |
+| `215`/`216` `Int32` field arrives in 3 bits | Variable-width actor bookkeeping | The C# weapon descriptor comment states "width varies per build" |
+| SmokeScreen projectile `ReplicatedMovement` EOF | Rotation is `ByteComponents` | Four other projectiles in the same codebase explicitly use `ByteComponents` |
 
-`byte` 폭 처리도 정정했습니다. 배열 내부 byte 프로퍼티는 유의 비트만 기록되므로 8비트 고정 읽기가 실패합니다 — C#도 `archive.BitsRemaining`만큼 읽습니다. 이걸 고치기 전에는 `AssistType`(5비트) 364행 전부가 값 없이 남았습니다.
+Byte-width handling was also corrected. A byte property inside an array stores
+only its significant bits, so a fixed 8-bit read fails -- the C# parser also
+reads only `archive.BitsRemaining`. Before this fix, all 364 rows of
+`AssistType` (5 bits) were left without a value.
 
-Checkpoint는 한 시점의 전체 상태 스냅샷인데, 중복이 아닙니다 — 내보낸 parquet에서
-같은 타임스탬프의 ReplayData 마지막 값과 비교해 **약 1.4~1.6%가 불일치**(그중 0.4%는
-값 차이, 나머지는 비트 폭 차이)하고 **약 0.4%는 ReplayData에 아예 없는 키**입니다.
-13.01·13.02 양쪽이 같습니다. 과거의 6~11% 수치는 raw 와이어 라이브 워크 측정이라
-export의 바이트 폭 정규화가 약 1.4%로 접습니다. 자세한 측정은 `PROJECT_STATUS.md`
-22-I, 바이트 레벨 포맷은 [`CHECKPOINT_SPEC.md`](CHECKPOINT_SPEC.md) 를 보세요.
+## Supported builds and the cost of a new build
 
-## 설계
+The payload transform changes per game build, but far more is **constant**
+across releases 12.10 through 13.02: the PRNG and its multipliers, the seed-mix
+skeleton, the 64 -> 32 -> 8 -> tail staging, the tail-XOR handling, and even
+the S-box table itself. What actually changes per build:
 
-### 1. 손실이 구조적으로 불가능하게
-
-Unreal의 프로퍼티 스트림은 **자기서술적**이다. 필드마다 핸들과 비트 길이가 값보다
-먼저 나온다:
-
-```
-[1비트 체크섬] 반복 {
-    handle      = IntPacked   → 0이면 종료
-    payload_bits = IntPacked
-    (payload_bits 만큼이 값)
-}
-```
-
-타입을 몰라도 필드 경계를 정확히 걸어갈 수 있다는 뜻이다. 게다가 `handle → 이름`
-매핑은 리플레이 자체가 전달하는 동적 스키마다(`NetFieldExportGroup`). 즉 **이름은
-공짜고 타입만 모른다.**
-
-그래서 디코드를 두 층으로 나눈다:
-
-- **기본 경로** — 내부 스트림을 걸을 수 있는 모든 필드를 `{group, handle, name, bit_count, raw_bits}`로
-  방출한다. 타입을 모른다는 이유로 건너뛰는 분기가 없다.
-- **오버레이** — `(group, handle)`에 타입이 등록돼 있으면 디코드된 값을 함께 방출한다.
-
-나중에 어떤 필드의 포맷을 알아내도 이미 내보낸 행은 다시 파싱할 필요가 없다. 다만 미해결 ClassNetCache 블록은 보존 행(전체 페이로드)만 내보내고 필드로는 풀지 못하므로, 필드 단위로 재해석하려면 원본 `.vrf`에서 다시 export해야 한다.
-
-### 2. 빌드 업데이트 비용을 최소화
-
-페이로드 변환은 게임 빌드마다 바뀐다. 하지만 릴리스 12.10부터 13.02까지 **바뀌지 않은
-것**이 훨씬 많다 — PRNG와 그 승수, 시드 혼합 골격, 64→32→8→꼬리 단계 구성, 꼬리
-XOR 처리, 그리고 S-box 테이블 자체까지.
-
-빌드마다 실제로 바뀌는 것:
-
-| | seed addend | offset | 부호 | S-box |
+| | seed addend | offset | sign | S-box |
 |---|---|---|---|---|
-| release-12.10 | `0x12fd0ee5` | `0x1b` | − | 미사용 |
-| release-12.11 | `0x409d36a3` | `0x23` | **+** | 미사용 |
-| release-13.00 | `0x2949b6ef` | `0x11` | − | 사용 |
-| release-13.01 | `0xe62fcd5c` | `0x24` | − | 미사용 |
-| release-13.02 | `0x9e81a37c` | `0x04` | − | 사용 |
+| release-12.10 | `0x12fd0ee5` | `0x1b` | - | unused |
+| release-12.11 | `0x409d36a3` | `0x23` | **+** | unused |
+| release-13.00 | `0x2949b6ef` | `0x11` | - | used |
+| release-13.01 | `0xe62fcd5c` | `0x24` | - | unused |
+| release-13.02 | `0x9e81a37c` | `0x04` | - | used |
 
-다섯 빌드 모두에서 **꼬리 XOR 바이트 = seed addend의 하위 바이트**다. 파생값이므로
-독립 상수가 아니고, 이 관계는 테스트로 고정해 뒀다(`versions.rs`) — 앞으로 깨지면
-조용히 마지막 바이트가 망가지는 대신 테스트가 실패한다.
+In all five builds the **tail-XOR byte equals the low byte of the seed
+addend.** It is a derived value, not an independent constant, and the
+relationship is pinned by a test in `versions.rs` -- if a future build breaks
+the pattern, the test fails instead of the final byte silently corrupting.
 
-결과적으로 새 빌드를 붙이는 일은 `SeededTransform` 구현 하나다. 상수 2개와 워드 함수
-3개(`word64` / `word32` / `byte`)를 쓰면 끝이고, 나머지는 공용이다.
+So adding a build is one `SeededTransform` impl: two constants and three word
+functions (`word64` / `word32` / `byte`); everything else is shared.
 
-**13.02는 실측으로 확인했다.** 코퍼스 215개는 전부 13.01이라 13.02 경로는 골든 벡터로만
-검증돼 있었는데, 보존 리플레이와 데모 디렉터리 양쪽에서 실제로 통과시켰다.
+**13.02 was confirmed by live measurement.** The 215-file corpus is all 13.01,
+so the 13.02 path was golden-vector-only until it was run against both a
+preserved replay and the live demo directory:
 
 ```
 1.vrf     (62 MB)  774,299 blocks  568,557 fields  408,591 RPCs  pass 98.919512%
-                   malformed framing 0 / transform 실패 0 / decode errors 0
+                   malformed framing 0 / transform failed 0 / decode errors 0
 ```
 
-`1.vrf` 는 `%LOCALAPPDATA%\vrfkit\baseline-corpora` 보존본이라 재현 가능하다. 13.01과 같은
-수준이며 잔여분도 같은 귀속 문제다. 기존 파이프라인이 쓰던 C# 파서는 이 빌드를 아예
-거부한다.
+`1.vrf` is the preserved copy in `%LOCALAPPDATA%\vrfkit\baseline-corpora`, so
+this is reproducible. It is the same shape as 13.01, and the residual is the
+same attribution problem. The C# parser the existing pipeline uses rejects
+this build outright.
 
-이 자리에는 한때 `f1110ea5` (59 MB) 수치도 있었다. 더 정확해서가 아니라 **그 파일이
-보존 전에 사라져서** 빼고, 더 위쪽의 4개 파일 수치도 같은 이유로 과거에 날아갔다 —
-`%LOCALAPPDATA%\VALORANT\Saved\Demos` 는 게임이 소유하고 갈아치우는 디렉터리다.
-보존본 1개에 더해, 작성 시점 데모 디렉터리의 13.02 리플레이 27개(12–94 MB, 1.67 GB)
-전수 `validate`에서도 malformed 0 / transform 실패 0 / 통과율 98.08–99.54%(중앙값
-99.14%)로 같은 결론이 확인됐다. 단 이 디렉터리는 회전하므로 재현 근거는 보존본과
-골든 벡터다.
+This section once also quoted `f1110ea5` (59 MB). It was removed not because
+the new figure is more accurate but because **that file disappeared before it
+was preserved**, as did four others quoted higher up -- `%LOCALAPPDATA%\VALORANT\Saved\Demos`
+is game-owned and rotated. Beyond the one preserved copy, all 27 of the 13.02
+replays in the demo directory at time of writing (12-94 MB, 1.67 GB total)
+also validated with malformed 0 / transform failed 0 / pass rate
+98.08-99.54% (median 99.14%). That directory rotates, so the reproducible
+evidence is the preserved copy and the golden vectors.
 
-S-box 768바이트는 빌드 간 공유되므로 **바이너리에서 변환 함수를 찾는 시그니처**로도
-쓸 수 있다.
+The 768-byte S-box is shared across builds, which makes it usable as a
+**signature for locating the transform function in a binary.**
 
-### 3. 병렬화 지점
+## Design
 
-콘텐츠 블록 **헤더와 선언된 비트 길이는 평문**이고, 변환은 그 뒤의 페이로드에만
-걸린다. 따라서 프레이밍(순차, 리플리케이션 상태기계 때문에 불가피)과 블록 디코드(완전
-독립)를 분리할 수 있다. 변환은 `(bits, seed)`만으로 결정되므로 블록 단위로 병렬이다.
+### 1. Losslessness is structurally impossible to violate
 
-### 4. 출력은 Parquet
+Unreal's property stream is **self-describing.** Each field carries a handle
+and a bit-length before its value:
 
-컬럼너라 반복되는 경로·이름 문자열이 딕셔너리 인코딩으로 접히고, zstd가 잘 먹으며,
-`pyarrow` / `polars` / `pandas` / `duckdb`에서 바로 읽힌다. NDJSON은 읽는 쪽이
-병목이다 — 280만 행 이동 스트림에서 JSON 파싱이 처리 시간의 84%를 먹는다는 실측이
-있다.
+```
+[1-bit checksum] repeat {
+    handle       = IntPacked   -> 0 ends the list
+    payload_bits = IntPacked
+    (payload_bits of value)
+}
+```
 
-## 생성 파일 갱신
+Field boundaries can be walked exactly without knowing the type. The
+`handle -> name` map is the dynamic schema the replay itself delivers
+(`NetFieldExportGroup`). **Names are free; only types are unknown.**
 
-`crates/vrf-transform/src/sbox.rs`와 `crates/vrf-transform/tests/data/golden_vectors.rs`는
-생성 파일이다. 손으로 고치지 말 것. 갱신하려면 upstream 체크아웃이 필요하다:
+So decoding is split into two layers:
+
+- **Base path** -- every field whose inner stream can be walked is emitted as
+  `{group, handle, name, bit_count, raw_bits}`. No branch is skipped on the
+  grounds that the type is unknown.
+- **Overlay** -- if a type is registered for `(group, handle)`, the decoded
+  value is emitted alongside it.
+
+If a field's format is discovered later, rows already exported need no
+re-parsing. The unresolved-ClassNetCache caveat still applies: those blocks
+emit only a preservation row (full payload), so re-interpreting them at field
+resolution requires re-exporting from the original `.vrf`.
+
+### 2. Minimal cost per build update
+
+See [Supported builds](#supported-builds-and-the-cost-of-a-new-build). Across
+five builds the only per-build variables are two constants (seed addend,
+offset) and a sign, plus whether the S-box stage is enabled; the PRNG,
+staging, tail-XOR, and S-box table are shared. A new build is one
+`SeededTransform` impl.
+
+### 3. A clean parallelization point
+
+The content-block **header and declared bit-length are plaintext**; the
+transform only touches the payload that follows. So framing (sequential,
+unavoidable because of the replication state machine) and block decode (fully
+independent) can be separated. The transform is determined solely by
+`(bits, seed)`, so it parallelizes per block.
+
+### 4. Output is Parquet
+
+Columnar storage collapses the repeated path and name strings via dictionary
+encoding, zstd compresses it well, and it reads directly in `pyarrow` /
+`polars` / `pandas` / `duckdb`. NDJSON is reader-bound: on a 2.8-million-row
+movement stream, JSON parsing was measured at 84% of processing time.
+
+## Validation suite
+
+Full detail is in [`docs/USAGE.md`](docs/USAGE.md) section 6. The checks are
+layered, and the layers catch different things:
+
+- **Framing** (`validate_corpus.py`, all 215 files) -- content-block framing.
+- **Bytes** (`check_export_baseline.py`, per-file row and byte counts) --
+  regression in any of the 23 export counters.
+- **Decode** (`check_decode_errors_corpus.py`, all 215 files) -- overlay type
+  errors and struct-blob failures.
+- **Semantics** (`check_metrics_baseline.py`, five builds) -- round count,
+  score, K/D/A invariants that need no baseline.
+
+Two of the headline metrics are **not** "100% / high is good" and reading them
+that way is a trap:
+
+- The **pass rate** is not 100% because of the *attribution gap* -- blocks are
+  framed correctly but cannot always be assigned to a ClassNetCache group
+  (97.28% of the residual is `AbilitiesAndBuffsComponent`, which the replay
+  never declares). `Malformed framing` and `Transform failed` are the lines
+  that must be zero; the pass rate is expected to sit below 100%.
+- The **~37% `Typed`** ratio reads low because of the *RPC-parameter
+  denominator* -- most of `Not in table` is RPC parameters with no C#
+  descriptor. A low ratio is uninterpreted, not lost: those rows still carry
+  `raw_bits`, and additive decoders (effects, structs, the economy typing)
+  fill `value_*` without moving the bucket.
+
+## Generated files
+
+Four files in the tree are generated and must never be edited by hand:
+
+| Generated file | Generator | Notes |
+|---|---|---|
+| `crates/vrf-decode/src/table.rs` | `tools/extract_descriptors.py` then `tools/apply_type_corrections.py` | The overlay table (1,191 entries, 173 groups, 84 handles) and handle table |
+| `crates/vrf-transform/src/sbox.rs` | `tools/extract_sboxes.py` | 768-byte S-box, shared across builds |
+| `crates/vrf-transform/tests/data/golden_vectors.rs` | `tools/extract_golden.py` | Per-build golden test vectors |
+| `tools/equippable_table.py` | `tools/extract_equippables.py` | Weapon class path to display name |
+
+The S-box and golden-vector generators require an upstream checkout:
 
 ```bash
 python tools/extract_sboxes.py <path>/ValorantSeededTransformHelpers.cs \
@@ -345,11 +648,26 @@ python tools/extract_golden.py <path>/ValorantSeededTransformTests.cs \
     crates/vrf-transform/tests/data/golden_vectors.rs
 ```
 
-두 생성기 모두 무결성 검사를 내장한다 — S-box는 0..255 순열인지, 골든 벡터는 hex 길이가
-비트 수와 맞는지 확인하고 아니면 생성을 거부한다.
+Both embed an integrity check -- the S-box must be a permutation of 0..255 and
+the golden-vector hex length must match the bit count, or generation is
+refused.
 
-## 라이선스
+**Order matters** for the overlay table:
+`extract_descriptors.py` -> `apply_type_corrections.py` -> `cargo fmt`. The
+corrections script works on both the just-generated single-line form and the
+rustfmt form, but some patterns stop matching after `cargo fmt`, so the script
+does not trust its own apply count -- it **re-verifies the final state after
+applying** and fails if it disagrees:
 
-MIT. 파생 관계와 원저작자 표시는 [`NOTICE.md`](NOTICE.md) 참고.
+```bash
+python tools/apply_type_corrections.py           # apply, then verify
+python tools/apply_type_corrections.py --check   # verify only
+```
 
-Riot Games와 무관한 커뮤니티 도구다.
+## License
+
+MIT. Derivation and original authorship are in [`NOTICE.md`](NOTICE.md).
+
+This is an independent, community-developed tool. It is not affiliated with,
+endorsed by, sponsored by, or approved by Riot Games. VALORANT, Riot Games,
+and all related trademarks are the property of Riot Games, Inc.
