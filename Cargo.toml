@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
-repository = "https://github.com/yakihyuk0728/vrfkit"
+repository = "https://github.com/yakisoba0728/vrfkit"
 description = "VALORANT replay (.vrf) parser and analysis toolkit"
 
 [workspace.dependencies]
