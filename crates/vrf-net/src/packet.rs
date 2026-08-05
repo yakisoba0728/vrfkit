@@ -418,6 +418,20 @@ mod tests {
         write_payload_size(bits, payload_bits);
     }
 
+    /// Build a reliable, non-partial bunch header on `ch_index`.
+    fn write_reliable_header(bits: &mut Vec<bool>, ch_index: u32, payload_bits: u32) {
+        write_bit(bits, false); // bControl = false
+        write_bit(bits, false); // bIsReplicationPaused = false
+        write_bit(bits, true); // bReliable = true
+        write_int_packed(bits, ch_index);
+        write_bit(bits, false); // bHasPackageMapExports
+        write_bit(bits, false); // bHasMustBeMappedGUIDs
+        write_bit(bits, false); // bPartial
+        write_bit(bits, false); // VALORANT bit
+        write_fname(bits, 1); // channel name: read whenever reliable
+        write_payload_size(bits, payload_bits);
+    }
+
     #[test]
     fn last_byte_zero_returns_malformed() {
         let mut reader = RawPacketReader::new();
@@ -603,6 +617,26 @@ mod tests {
         let result = reader.read_packet(&packet, 2, |h, _| headers.push(h.clone()));
         assert_eq!(result.partial_error_count, 1);
         assert!(headers[1].has_partial_error);
+    }
+
+    #[test]
+    fn reliable_sequence_advances_per_channel_not_globally() {
+        // Two channels interleaving reliable bunches. Unreal's ReliableSequence
+        // is per channel, so each channel numbers its own bunches 1 then 2. A
+        // single global counter hands out 1, 2, 3, 4 instead, and a later
+        // continuation check would reject the valid bunch as a mismatch.
+        let mut bits = Vec::new();
+        write_reliable_header(&mut bits, 2, 0);
+        write_reliable_header(&mut bits, 5, 0);
+        write_reliable_header(&mut bits, 2, 0);
+        write_reliable_header(&mut bits, 5, 0);
+        let packet = build_packet(&bits);
+
+        let mut reader = RawPacketReader::new();
+        let mut seen = Vec::new();
+        reader.read_packet(&packet, 0, |h, _| seen.push((h.ch_index, h.ch_sequence)));
+
+        assert_eq!(seen, vec![(2, 1), (5, 1), (2, 2), (5, 2)]);
     }
 
     #[test]
