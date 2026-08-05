@@ -139,6 +139,17 @@ EXPECTED += [
 #: `TotalMoneyGranted` rest on wire evidence alone, like ChosenCeremonyForRound.
 #: No other MoneyManagementComponent field exists on the wire, so this does not
 #: widen by eye -- the DELIBERATELY NOT ADDED line above stays intact.
+#:
+#: `BombPlayerState.Ping` is the largest untyped wire-declared field (20193 rows
+#: on 02d4d478, 222855 across the 11-replay bundle). No descriptor declares it.
+#: The encoding was settled in PROJECT_STATUS 18: bit_count is always 16, and the
+#: value is a 16-bit little-endian unsigned integer that behaves like latency in
+#: milliseconds -- on 02d4d478: min 6, p5 10, p50 15, p90 19, p99 25, max 473,
+#: 57 distinct values. Typed as `SerializedInt{65536}` (16 bits LSB-first), which
+#: read_serialized_int reads as exactly 16 bits and satisfies decode_field's
+#: full-consumption guard. This is the same wire-evidence ADDITION class as Money
+#: -- 18-D's "no descriptor declares it" objection is exactly the gate Money
+#: cleared, and the per-player latency series is now wanted.
 ADDITIONS = [
     ("/Game/GameModes/Bomb/BombGameState.BombGameState_C",
      "ChosenCeremonyForRound", "FieldType::ObjectNetGuid"),
@@ -147,6 +158,8 @@ ADDITIONS = [
     ("/Script/ShooterGame.MoneyManagementComponent", "Money", "FieldType::Int32"),
     ("/Script/ShooterGame.MoneyManagementComponent", "StartOfRoundMoney", "FieldType::Int32"),
     ("/Script/ShooterGame.MoneyManagementComponent", "TotalMoneyGranted", "FieldType::Int32"),
+    ("/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C",
+     "Ping", "FieldType::SerializedInt { max: 65536 }"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 

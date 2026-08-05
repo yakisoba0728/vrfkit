@@ -3997,6 +3997,11 @@ day something wants a per-player latency series -- and the thing that would
 settle the units is an external latency source to correlate against, not more
 analysis of these bits.
 
+**UPDATE 2026-08-05: typed as `SerializedInt { max: 65536 }`.** The per-player
+latency series is now exported (`value_i64`). The "no descriptor declares it"
+objection is the same wire-evidence ADDITION gate `Money` cleared, and the data
+is now wanted. See `apply_type_corrections.py` ADDITIONS.
+
 ### 18-E. Not checked
 
 The other 204 replays -- "declared nowhere else" is scoped to 5,445 export

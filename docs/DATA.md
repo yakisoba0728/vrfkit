@@ -139,7 +139,7 @@ purchase; all ten players' purchases are replicated.
 
 | Data | Source | Status |
 |---|---|---|
-| Ping / latency (ms) | `Ping` field | ◐ encoding settled, intentionally not typed |
+| Ping / latency (ms) | `BombPlayerState.Ping` (16-bit, ms) | ✅ typed (SerializedInt{65536}) |
 | Connection status | `ConnectionStatus` | ✅ |
 | Game mode (Bomb / Swiftplay) | group_path (`GROUP_ALIASES` maps Swiftplay) | ✅ parser-side |
 

@@ -353,7 +353,7 @@ disabling it would produce files this crate could not explain.
 
 | Script | Produces |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,191 + 84 handles) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,192 + 84 handles) |
 | `apply_type_corrections.py` | Applies verified corrections/additions to that file and recomputes the two-line generation header |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
 | `extract_golden.py` | `crates/vrf-transform/tests/data/golden_vectors.rs` |

@@ -129,6 +129,24 @@ fn money_management_economy_is_typed() {
     );
 }
 
+/// `Ping` on BombPlayerState is a 16-bit LE unsigned integer that behaves
+/// like latency in milliseconds (min ~6, p50 ~15, p90 ~19, max ~473 on
+/// 02d4d478). No descriptor declares it, but the wire evidence is
+/// overwhelming and the encoding was settled (PROJECT_STATUS 18). Typed as
+/// `SerializedInt{65536}` (16 bits LSB-first) -- the same wire-evidence
+/// ADDITION class as `Money`.
+#[test]
+fn ping_latency_is_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    assert_eq!(
+        table.lookup(
+            "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C",
+            "Ping"
+        ),
+        Some(FieldType::SerializedInt { max: 65536 })
+    );
+}
+
 #[test]
 fn equippable_used_is_an_object_net_guid() {
     // The C# descriptor attaches a custom decoder
