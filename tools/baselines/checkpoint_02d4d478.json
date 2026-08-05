@@ -32,14 +32,14 @@
   "cp_exported_fields": 49314,
   "cp_frames": 18,
   "cp_frame_packets": 3691,
-  "cp_field_rows": 78748,
+  "cp_field_rows": 78829,
   "cp_struct_blobs_decoded": 35,
   "cp_struct_blobs_failed": 0
  },
  "parquet": {
   "fields": {
-   "rows": 1246974,
-   "bytes": 13785038
+   "rows": 1255920,
+   "bytes": 13949033
   },
   "movement": {
    "rows": 1839607,
@@ -58,8 +58,8 @@
    "bytes": 11136
   },
   "checkpoint_fields": {
-   "rows": 78748,
-   "bytes": 192457
+   "rows": 78829,
+   "bytes": 193077
   }
  }
 }
