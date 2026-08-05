@@ -85,6 +85,9 @@
 mod decode;
 mod types;
 
+/// ClassNetCache payload brute-forcer for unresolved groups. See [`cnc`].
+pub mod cnc;
+
 #[cfg(feature = "array")]
 mod array;
 /// Effect-blob decoder for the `EffectContainer` arrays that RPCs carry as

@@ -65,6 +65,13 @@ impl ExportSink<'_> {
     pub(super) fn is_known_array_field(&self, field_name: Option<&str>) -> bool {
         match field_name {
             Some("Rounds") => self.current_group_path.contains("CombatReportComponent"),
+            // A RepLayout dynamic array of ability-cast structs. Each element
+            // carries a GUID FString (handle 3), ints, floats and vectors;
+            // `decode_struct_array` walks it with no hardcoded schema, naming
+            // leaves from the replay's own declarations or `_h{N}`.
+            Some("AbilityCastsThisRound") => self
+                .current_group_path
+                .contains("AbilityStatisticsReplicator"),
             _ => false,
         }
     }
@@ -147,7 +154,14 @@ impl ExportSink<'_> {
 
             let (vi, vf, vb, vs) = match declared_type {
                 Some(ft) => decode_leaf_with(ft, &f.raw_bits, f.bit_count),
-                None => decode_array_leaf(f.handle, &f.raw_bits, f.bit_count),
+                // The hardcoded handle->type map is CombatReport-specific:
+                // handle 3 is an Int32 there and an FString in
+                // AbilityCastsThisRound, so applying it to any other array
+                // forces the wrong type. Only Rounds falls through to it.
+                None if parent_name == "Rounds" => {
+                    decode_array_leaf(f.handle, &f.raw_bits, f.bit_count)
+                }
+                None => (None, None, None, None),
             };
 
             self.push_field(FieldValues {

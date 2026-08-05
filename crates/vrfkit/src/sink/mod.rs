@@ -185,6 +185,13 @@ pub struct ExportStats {
     /// decoder produced typed leaves rather than silently no-op-ing.
     pub multi_contents_items_emitted: u64,
 
+    /// RPC rows emitted by the ClassNetCache brute-force decoder for
+    /// unresolved groups (currently `AbilitiesAndBuffsComponent`). The
+    /// preservation row stays, and each decoded RPC is an extra row; this
+    /// counter is the only signal that the additive decoder produced RPC
+    /// structure rather than silently leaving the opaque blob.
+    pub cnc_rpcs_emitted: u64,
+
     /// Struct-blob decodes that returned an error.
     ///
     /// These used to be `let Ok(..) else { return false }` -- discarded with no

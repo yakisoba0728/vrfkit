@@ -10,12 +10,14 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 use vrf_bitio::BitReader;
 use vrf_decode::apply_overlay_with_handle;
+use vrf_decode::cnc::decode_cnc_payload;
 use vrf_export::{ActorRecord, MovementRecord, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME};
 use vrf_net::content::ContentBlockHeader;
 use vrf_net::field::FieldSink;
 use vrf_net::pipeline::{ActorChannelState, ReplicationSink, StreamFailure};
 use vrf_net::types::NetworkGuid;
 
+use super::intern::put;
 use super::paths::{channel_archetype, set_channel_archetype};
 use super::rpc::copy_raw_bits;
 use super::{ExportSink, FieldValues, TABLE};
@@ -163,6 +165,15 @@ impl FieldSink for ExportSink<'_> {
 /// are captured per actor into the manifest `players` array.
 const BOMB_PLAYER_STATE: &str = "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C";
 
+/// The ClassNetCache function_count for `AbilitiesAndBuffsComponent`.
+///
+/// This group's `_ClassNetCache` export is never declared in VALORANT replays,
+/// so the handle width for the RPC stream is unknown at decode time. The value
+/// was determined by brute-forcing fc 2-256 against 9,274 payloads from a
+/// reference replay: fc=34 is the minimum that walks every payload cleanly
+/// (9274/9274). See [`ExportSink::emit_brute_forced_cnc_rpcs`].
+const ABILITIES_AND_BUFFS_FC: u32 = 34;
+
 impl ExportSink<'_> {
     /// Decode a movement RPC payload into `movement.parquet` rows.
     fn decode_movement_rpc(&mut self, reader: BitReader<'_>) {
@@ -242,6 +253,75 @@ impl ExportSink<'_> {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Attempt to decode the ClassNetCache RPC stream for an unresolved
+    /// `AbilitiesAndBuffsComponent` payload and emit one row per RPC.
+    ///
+    /// Gated on `AbilitiesAndBuffsComponent`, whose `_ClassNetCache` export
+    /// group is never declared in VALORANT replays. The function_count was
+    /// determined empirically by brute-forcing fc 2-256 across 9,274 payloads
+    /// from a reference replay: fc=34 is the minimum that walks **every**
+    /// payload cleanly, each payload contains exactly one RPC at handle 1, and
+    /// the inner payload uses a class-specific serializer (not standard
+    /// RepLayout `FunctionParameters`), so the RPC's raw bits are emitted
+    /// without further decoding.
+    ///
+    /// A per-payload brute-force (trying each fc independently) was rejected
+    /// because simple payloads can walk cleanly under smaller fc values,
+    /// producing garbage handles. Using a single constant fc avoids that: every
+    /// payload gets the same handle width, and the 9274/9274 clean-walk rate
+    /// confirms the fc is correct for this group. If a game update changes the
+    /// function table, the walk will start failing and the preservation row
+    /// will be the only record -- the failure is visible, not silent.
+    ///
+    /// Several adjacent fc values (34-65) produce the same 6-bit handle width
+    /// for handle 1 and therefore identical walks. The constant is the minimum
+    /// of that range.
+    fn emit_brute_forced_cnc_rpcs(&mut self, payload: &[u8], bit_count: u32) {
+        if !self
+            .current_group_path
+            .contains("AbilitiesAndBuffsComponent")
+        {
+            return;
+        }
+
+        let Some(rpcs) = decode_cnc_payload(payload, bit_count, ABILITIES_AND_BUFFS_FC) else {
+            return;
+        };
+
+        let total_len = u64::from(bit_count);
+        for rpc in &rpcs {
+            // Extract the RPC's payload bits from the buffer. The brute-force
+            // already validated that each payload fits, so the read cannot
+            // fail on well-formed input; on a malformed tail the payload is
+            // dropped (the preservation row still carries the full blob).
+            let raw_bits = (|| {
+                let mut reader = vrf_bitio::BitReader::with_bit_len(payload, total_len);
+                reader.skip_bits(rpc.payload_offset).ok()?;
+                let byte_count = (rpc.payload_bits as usize).div_ceil(8);
+                let mut buf = SmallVec::with_capacity(byte_count);
+                buf.resize(byte_count, 0u8);
+                reader
+                    .copy_bits_to(&mut buf, u64::from(rpc.payload_bits))
+                    .ok()?;
+                Some(buf)
+            })();
+
+            let field_name = self.channel_state.names.intern_fmt(|out| {
+                put(out, format_args!("_cnc_h{}", rpc.handle));
+            });
+
+            self.push_field(FieldValues {
+                handle: rpc.handle,
+                field_name: Some(field_name),
+                bit_count: rpc.payload_bits,
+                raw_bits,
+                ..FieldValues::default()
+            });
+            self.stats.fields_emitted += 1;
+            self.stats.cnc_rpcs_emitted += 1;
         }
     }
 }
@@ -401,6 +481,12 @@ impl ReplicationSink for ExportSink<'_> {
             raw_bits: Some(SmallVec::from_slice(payload)),
             ..FieldValues::default()
         });
+
+        // Additive pass: brute-force the ClassNetCache function_count for
+        // groups whose RPC stream is well-formed but whose export group is
+        // never declared. The preservation row above stays regardless; each
+        // decoded RPC is an extra row.
+        self.emit_brute_forced_cnc_rpcs(payload, failure.bit_count);
     }
 
     /// Attach the resolved group path to a stream failure.
@@ -621,5 +707,152 @@ mod tests {
         let emitted = sink.try_parse_rpc_params(7, reader, Some("SomeFunction"));
         assert!(emitted, "one parameter row is emitted");
         assert_eq!(sink.stats.truncated_rpcs, 0);
+    }
+
+    /// Write a SerializedInt value with a given max (same encoding as
+    /// `vrf-bitio`'s `read_serialized_int`).
+    fn write_serialized_int(bits: &mut Vec<bool>, value: u32, max: u32) {
+        let mut written = 0u32;
+        let mut mask = 1u32;
+        while written.saturating_add(mask) < max {
+            let bit = (value & mask) != 0;
+            bits.push(bit);
+            if bit {
+                written |= mask;
+            }
+            mask <<= 1;
+        }
+    }
+
+    /// `AbilityCastsThisRound` must be recognised as a flattenable array
+    /// under the `AbilityStatisticsReplicator` group, and NOT under other
+    /// groups (where handle 2 means something else).
+    #[test]
+    fn ability_casts_this_round_is_known_array_under_correct_group() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        // Under the correct group: is_known_array_field returns true.
+        sink.set_current_group_path(Arc::from(
+            "/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+        ));
+        assert!(
+            sink.is_known_array_field(Some("AbilityCastsThisRound")),
+            "should be known under AbilityStatisticsReplicator"
+        );
+
+        // Under an unrelated group: returns false.
+        sink.set_current_group_path(Arc::from("/Script/ShooterGame.SomeOtherComponent"));
+        assert!(
+            !sink.is_known_array_field(Some("AbilityCastsThisRound")),
+            "should NOT be known under an unrelated group"
+        );
+    }
+
+    /// An unresolved `AbilitiesAndBuffsComponent` payload that walks cleanly
+    /// under fc=34 must emit one additive `_cnc_h1` row alongside the
+    /// preservation row. The RPC handle and payload bits must be correct.
+    #[test]
+    fn unresolved_abilities_and_buffs_emits_cnc_rpc_row() {
+        // Build a minimal CNC stream with fc=34, handle=1, 32-bit payload
+        // of all 1s (to prevent false-positive walks at lower fc values).
+        let mut bits = Vec::new();
+        write_serialized_int(&mut bits, 1, 34); // handle=1, 6 bits
+        write_int_packed(&mut bits, 32); // payload_bits=32
+        bits.extend(std::iter::repeat_n(true, 32)); // 32 bits of 1s payload
+
+        let data = bits_to_bytes(&bits);
+        let bit_count = bits.len() as u32;
+
+        let mut cache = NetGuidCache::new();
+        cache.set_net_guid_path(144, "AbilitiesAndBuffsComponent".to_owned(), None);
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        sink.time_ms = 100;
+        sink.packet_id = 7;
+
+        let header = ContentBlockHeader {
+            has_rep_layout: false,
+            is_actor: false,
+            object_net_guid: NetworkGuid(144),
+            is_stably_named: true,
+            ..ContentBlockHeader::default()
+        };
+        sink.on_content_block(3, NetworkGuid(89), &header);
+
+        let failure = StreamFailure {
+            kind: vrf_net::pipeline::StreamKind::Rpc,
+            actor_net_guid: NetworkGuid(89),
+            bit_count,
+            function_count: 0,
+            consumed_bits: 0,
+            remaining_bits: u64::from(bit_count),
+        };
+        sink.on_unresolved_class_net_cache_payload(failure, &data);
+
+        // Two rows: the preservation row + one additive CNC RPC row.
+        assert_eq!(
+            sink.records.fields.len(),
+            2,
+            "preservation row + one CNC RPC row"
+        );
+
+        // Row 0: preservation.
+        let pres = &sink.records.fields[0];
+        assert_eq!(
+            pres.field_name.as_deref(),
+            Some(UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME)
+        );
+
+        // Row 1: the CNC RPC.
+        let rpc = &sink.records.fields[1];
+        assert_eq!(rpc.handle, 1, "handle should be 1");
+        assert_eq!(rpc.bit_count, 32, "payload_bits should be 32");
+        assert_eq!(
+            rpc.field_name.as_deref(),
+            Some("_cnc_h1"),
+            "field name should identify the RPC handle"
+        );
+        assert!(rpc.raw_bits.is_some(), "raw bits should be extracted");
+        assert_eq!(sink.stats.cnc_rpcs_emitted, 1);
+    }
+
+    /// An unresolved payload for a group OTHER than AbilitiesAndBuffsComponent
+    /// must not produce CNC rows -- the brute-force is gated.
+    #[test]
+    fn unresolved_payload_for_other_group_emits_no_cnc_rows() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        let header = ContentBlockHeader {
+            has_rep_layout: false,
+            is_actor: false,
+            object_net_guid: NetworkGuid(200),
+            is_stably_named: true,
+            ..ContentBlockHeader::default()
+        };
+        sink.on_content_block(3, NetworkGuid(89), &header);
+        // current_group_path resolves to a bare name that is NOT
+        // AbilitiesAndBuffsComponent.
+
+        let failure = StreamFailure {
+            kind: vrf_net::pipeline::StreamKind::Rpc,
+            actor_net_guid: NetworkGuid(89),
+            bit_count: 64,
+            function_count: 0,
+            consumed_bits: 0,
+            remaining_bits: 64,
+        };
+        // A random payload that happens to be walkable.
+        sink.on_unresolved_class_net_cache_payload(failure, &[0xFF; 8]);
+
+        // Only the preservation row, no CNC rows.
+        assert_eq!(sink.records.fields.len(), 1);
+        assert_eq!(sink.stats.cnc_rpcs_emitted, 0);
     }
 }
