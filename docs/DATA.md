@@ -34,7 +34,7 @@ Legend: ✅ typed (value decoded) · ◐ raw or derivable · ❌ not in the repl
 
 | Data | Source | Status |
 |---|---|---|
-| What was bought (item) | `PurchasedItemComponent.Purchaseable` → `net_guids.path` / `equippable_table.py` | ✅ all 10 players, 56 item types |
+| What was bought (item) | `PurchasedItemComponent.Purchaseable` → `net_guids.path` / `equippable_table.py` | ✅ all 10 players; on `02d4d478` 576 purchases over 52 distinct item GUIDs, 20 of which resolve to a class path |
 | Who bought it | `PurchasedItemComponent.PurchasingPlayerState` → `manifest.players.subject` | ✅ |
 | When | `fields.time_ms` of the purchase row | ✅ |
 | Which round | `time_ms` vs `events.roundStarted` | ◐ derivable |
