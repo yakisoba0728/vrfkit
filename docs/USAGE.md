@@ -182,9 +182,9 @@ failed`로 카운트되고, 필드로 재해석하려면 원본 `.vrf`에서 다
 ### `checkpoint_fields.parquet` — 스냅샷
 
 `fields.parquet`와 동일한 스키마입니다. Checkpoint는 한 시점의 전체 상태 스냅샷인데
-**중복이 아닙니다** — 같은 타임스탬프의 ReplayData 값과 6~11%가 불일치하고, 0.5~2%는
-ReplayData가 보낸 적 없는 키입니다. 어느 쪽이 옳은지는 아직 판정 기준이 없습니다
-(PROJECT_STATUS 22-I).
+**중복이 아닙니다** — 내보낸 parquet에서 같은 타임스탬프의 ReplayData 마지막 값과
+약 1.4~1.6%가 불일치하고, 약 0.4%는 ReplayData에 없는 키입니다(13.01·13.02 동일).
+과거 6~11%는 raw 와이어 측정이고 export 정규화가 약 1.4%로 만듭니다(PROJECT_STATUS 22-I).
 
 ### `manifest.json`
 

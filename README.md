@@ -239,11 +239,12 @@ cargo build --release
 
 `byte` 폭 처리도 정정했습니다. 배열 내부 byte 프로퍼티는 유의 비트만 기록되므로 8비트 고정 읽기가 실패합니다 — C#도 `archive.BitsRemaining`만큼 읽습니다. 이걸 고치기 전에는 `AssistType`(5비트) 364행 전부가 값 없이 남았습니다.
 
-Checkpoint는 한 시점의 전체 상태 스냅샷인데, 중복이 아닙니다 — 같은 타임스탬프의
-ReplayData 값과 **6~11%가 불일치**하고 0.5~2%는 ReplayData가 보낸 적 없는 키입니다.
-차이나는 키의 마지막 ReplayData 갱신은 중앙값 77초 전이라 정렬 잔차가 아닙니다.
-자세한 측정은 `PROJECT_STATUS.md` 22-I, 바이트 레벨 포맷은
-[`CHECKPOINT_SPEC.md`](CHECKPOINT_SPEC.md) 를 보세요.
+Checkpoint는 한 시점의 전체 상태 스냅샷인데, 중복이 아닙니다 — 내보낸 parquet에서
+같은 타임스탬프의 ReplayData 마지막 값과 비교해 **약 1.4~1.6%가 불일치**(그중 0.4%는
+값 차이, 나머지는 비트 폭 차이)하고 **약 0.4%는 ReplayData에 아예 없는 키**입니다.
+13.01·13.02 양쪽이 같습니다. 과거의 6~11% 수치는 raw 와이어 라이브 워크 측정이라
+export의 바이트 폭 정규화가 약 1.4%로 접습니다. 자세한 측정은 `PROJECT_STATUS.md`
+22-I, 바이트 레벨 포맷은 [`CHECKPOINT_SPEC.md`](CHECKPOINT_SPEC.md) 를 보세요.
 
 ## 설계
 
