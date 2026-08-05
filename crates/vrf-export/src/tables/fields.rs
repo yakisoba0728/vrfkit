@@ -10,8 +10,7 @@ use std::sync::Arc;
 use arrow_array::builder::StringDictionaryBuilder;
 use arrow_array::types::Int32Type;
 use arrow_array::{
-    ArrayRef, BinaryArray, BooleanArray, Float64Array, Int64Array, RecordBatch, StringArray,
-    UInt32Array,
+    ArrayRef, BinaryArray, BooleanArray, Float64Array, Int64Array, RecordBatch, UInt32Array,
 };
 use arrow_schema::Schema;
 
@@ -36,9 +35,11 @@ impl Table for FieldsTable {
 
     const DEFAULT_ROW_GROUP_SIZE: usize = DEFAULT_ROW_GROUP_SIZE;
 
-    // The two high-cardinality-but-repetitive string columns: ~475 distinct
-    // group paths and a few thousand distinct field names over 1.2 M rows.
-    const DICTIONARY_COLUMNS: &'static [&'static str] = &["group_path", "field_name"];
+    // The repetitive string columns. group_path and field_name are the address
+    // columns (~475 distinct group paths, a few thousand field names over 1.2 M
+    // rows); value_str carries the decoded typed values -- enum strings and
+    // JSON blobs that repeat heavily across rows.
+    const DICTIONARY_COLUMNS: &'static [&'static str] = &["group_path", "field_name", "value_str"];
 
     fn schema() -> Arc<Schema> {
         fields_schema_ref()
@@ -104,9 +105,19 @@ impl Table for FieldsTable {
             Arc::new(Float64Array::from_iter(rows.iter().map(|r| r.value_f64)));
         let value_bool: ArrayRef =
             Arc::new(BooleanArray::from_iter(rows.iter().map(|r| r.value_bool)));
-        let value_str: ArrayRef = Arc::new(StringArray::from_iter(
-            rows.iter().map(|r| r.value_str.as_deref()),
-        ));
+        // Dictionary-encoded value_str (nullable). The decoded typed values are
+        // highly repetitive -- enum strings, JSON blobs, repeated struct JSON --
+        // so a dictionary shrinks the column and speeds up downstream readers.
+        // Same builder pattern as field_name above.
+        let mut value_str_builder =
+            StringDictionaryBuilder::<Int32Type>::with_capacity(len, 2048, len * 32);
+        for r in rows {
+            match &r.value_str {
+                Some(s) => value_str_builder.append_value(s),
+                None => value_str_builder.append_null(),
+            }
+        }
+        let value_str: ArrayRef = Arc::new(value_str_builder.finish());
 
         RecordBatch::try_new(
             fields_schema_ref(),

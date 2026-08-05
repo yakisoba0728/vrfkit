@@ -240,14 +240,16 @@ fn field_null_preservation() {
     assert_eq!(value_i64.value(0), 0);
     assert!(value_i64.is_null(1));
 
-    // value_str: row 0 = null, row 1 = "hello"
+    // value_str: row 0 = null, row 1 = "hello". Now dictionary-encoded like
+    // field_name, so read it back through the dictionary view rather than a
+    // bare StringArray downcast.
     let value_str = batch
         .column(batch.schema().index_of("value_str").unwrap())
-        .as_any()
-        .downcast_ref::<StringArray>()
-        .unwrap();
+        .as_dictionary::<Int32Type>();
     assert!(value_str.is_null(0));
-    assert_eq!(value_str.value(1), "hello");
+    assert!(!value_str.is_null(1));
+    let value_str_values = value_str.downcast_dict::<StringArray>().unwrap();
+    assert_eq!(value_str_values.value(1), "hello");
 }
 
 #[test]

@@ -55,7 +55,14 @@ pub fn fields_schema() -> Schema {
         Field::new("value_i64", DataType::Int64, true),
         Field::new("value_f64", DataType::Float64, true),
         Field::new("value_bool", DataType::Boolean, true),
-        Field::new("value_str", DataType::Utf8, true),
+        // Dictionary<Int32, Utf8>: the decoded values repeat heavily (enum
+        // strings, JSON blobs), so a dictionary shrinks the column even though
+        // it is the highest-cardinality of the three string columns.
+        Field::new(
+            "value_str",
+            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+            true,
+        ),
     ])
 }
 
