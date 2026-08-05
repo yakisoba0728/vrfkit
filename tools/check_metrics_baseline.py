@@ -74,10 +74,10 @@ BUNDLE_TOOL = REPO / "tools" / "to_valplay_bundle.py"
 DEFAULT_BASELINE = REPO / "tools" / "baselines" / "metrics_builds.json"
 
 #: valplay is NEVER modified; it is only ever invoked by absolute path.
+#: Set VRFKIT_VALPLAY_DIR to the valplay checkout root.
 COMPUTE_METRICS = Path(
-    r"C:\Users\yakihyuk0728\Documents\GitHub\valplay"
-    r"\pipeline\metrics\compute_metrics.py"
-)
+    os.environ.get("VRFKIT_VALPLAY_DIR", "")
+) / "pipeline" / "metrics" / "compute_metrics.py"
 
 #: One replay per build. 13.01 has no preserved fixture of its own -- it is the
 #: reference replay the whole project is developed against, and it lives in the
@@ -94,8 +94,7 @@ REPLAYS = {
              r"\5c673443-5bdc-4576-b416-aab3f62471a5.12_11.vrf",
     "13.00": r"%LOCALAPPDATA%\vrfkit\baseline-corpora\build_1300"
              r"\12974d2b-848f-490d-80ba-5f03a033c2d5.13_00.vrf",
-    "13.01": r"C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf"
-             r"\02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf",
+    "13.01": "02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf",
     "13.02": r"%LOCALAPPDATA%\vrfkit\baseline-corpora\build_1302\1.vrf",
 }
 
@@ -103,6 +102,17 @@ REPLAYS = {
 # ---------------------------------------------------------------------------
 # metric extraction
 # ---------------------------------------------------------------------------
+
+def _resolve_replay(raw: str) -> Path:
+    """Expand env vars in a REPLAYS entry; anchor a bare filename in
+    VRFKIT_CORPUS_DIR so a portable baseline still finds the replay."""
+    p = Path(os.path.expandvars(raw))
+    if not p.is_absolute():
+        corpus_dir = os.environ.get("VRFKIT_CORPUS_DIR", "")
+        if corpus_dir:
+            p = Path(corpus_dir) / p
+    return p
+
 
 def _sum(d: dict, field: str) -> int:
     return sum(p.get(field) or 0 for p in d.values())
@@ -234,7 +244,8 @@ def main() -> int:
               f"build it with: cargo build --release -p vrfkit", file=sys.stderr)
         return 2
     if not COMPUTE_METRICS.is_file():
-        print(f"valplay compute_metrics not found: {COMPUTE_METRICS}",
+        print(f"valplay compute_metrics not found: {COMPUTE_METRICS}\n"
+              f"set VRFKIT_VALPLAY_DIR to the valplay checkout root",
               file=sys.stderr)
         return 2
 
@@ -250,7 +261,7 @@ def main() -> int:
     results, failures = {}, []
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         for build, values, err in pool.map(
-            lambda kv: run_one(kv[0], Path(os.path.expandvars(kv[1])), args.exe),
+            lambda kv: run_one(kv[0], _resolve_replay(kv[1]), args.exe),
             sorted(builds.items()),
         ):
             if values is None:

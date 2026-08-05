@@ -6,7 +6,7 @@
 //! meant its whole body was an untaken branch everywhere but one
 //! workstation, and `cargo test`'s green count silently included it.
 //!
-//! Two things make it honest now. The path is read from `VRFKIT_CORPUS`
+//! Two things make it honest now. The path is read from `VRFKIT_CORPUS_DIR`
 //! rather than hardcoded to one user's home directory, and setting
 //! `VRFKIT_REQUIRE_CORPUS=1` turns the skip into a failure -- so a machine
 //! that is SUPPOSED to have the corpus can say so and be held to it. The
@@ -17,12 +17,12 @@ use std::path::{Path, PathBuf};
 
 use vrf_container::{ChunkIterator, ChunkType, decompress_replay_data, parse_preamble};
 
-/// Fallback used when `VRFKIT_CORPUS` is unset. Convenience for the machine
-/// this project is developed on, not a requirement.
-const DEFAULT_VRF_DIR: &str = r"C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf";
+/// Fallback used when `VRFKIT_CORPUS_DIR` is unset. Empty so that on a machine
+/// without the corpus `is_dir()` is false and the test skips honestly.
+const DEFAULT_VRF_DIR: &str = "";
 
 fn corpus_dir() -> PathBuf {
-    std::env::var_os("VRFKIT_CORPUS")
+    std::env::var_os("VRFKIT_CORPUS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(DEFAULT_VRF_DIR))
 }
@@ -32,7 +32,7 @@ fn parse_all_vrf_files() {
     let corpus = corpus_dir();
     if !corpus.is_dir() {
         let message = format!(
-            "corpus directory not found at {}; set VRFKIT_CORPUS to point at one",
+            "corpus directory not found at {}; set VRFKIT_CORPUS_DIR to point at one",
             corpus.display()
         );
         assert!(

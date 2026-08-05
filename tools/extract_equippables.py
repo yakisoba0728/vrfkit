@@ -26,13 +26,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
 
-DEFAULT_CSHARP_ROOT = Path(
-    r"C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser"
-)
+DEFAULT_CSHARP_ROOT = Path(os.environ.get("VRFKIT_CSHARP_DIR", ""))
 RESOLVER_RELPATH = Path("src/Replay.Valorant/Combat/ValorantEquippableResolver.cs")
 OUTPUT_PATH = Path(__file__).parent / "equippable_table.py"
 
@@ -118,7 +117,9 @@ def main() -> int:
 
     resolver = args.csharp_root / RESOLVER_RELPATH
     if not resolver.exists():
-        print(f"resolver not found: {resolver}", file=sys.stderr)
+        print(f"resolver not found: {resolver}\n"
+              f"set VRFKIT_CSHARP_DIR to the ValorantReplayParser checkout root, "
+              f"or pass --csharp-root", file=sys.stderr)
         return 2
 
     definitions = parse_definitions(resolver.read_text(encoding="utf-8"))

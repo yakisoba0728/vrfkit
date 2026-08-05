@@ -24,6 +24,7 @@ read straight from the reference's own `events.ndjson`.
 
 import collections
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -33,9 +34,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from to_valplay_bundle import _combat_report_leaf_name  # noqa: E402
 
 CS = Path(
-    r"C:\Users\yakihyuk0728\Documents\GitHub\valplay\pipeline\exports"
-    r"\02d4d478-1dfb-4412-9a77-29ca29105a9d\events.ndjson"
-)
+    os.environ.get("VRFKIT_VALPLAY_DIR", "")
+) / "pipeline" / "exports" / "02d4d478-1dfb-4412-9a77-29ca29105a9d" / "events.ndjson"
+
+if not CS.is_file():
+    print(f"set VRFKIT_VALPLAY_DIR to the valplay checkout root; "
+          f"events.ndjson not found at {CS}", file=sys.stderr)
+    raise SystemExit(1)
 
 # The leaves that drive K/D/A, ADR, HS%, multikills and wallbangs.
 INTERESTING = {

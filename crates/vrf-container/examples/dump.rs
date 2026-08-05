@@ -1,8 +1,30 @@
+use std::path::PathBuf;
+
 use vrf_bitio::BitReader;
 
+const DEFAULT_REPLAY: &str = "02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf";
+
+fn resolve_replay() -> PathBuf {
+    if let Some(arg) = std::env::args().nth(1) {
+        return PathBuf::from(arg);
+    }
+    if let Some(dir) = std::env::var_os("VRFKIT_CORPUS_DIR") {
+        return PathBuf::from(dir).join(DEFAULT_REPLAY);
+    }
+    eprintln!(
+        "usage: dump <path-to-replay.vrf>\n\
+         \x20         or set VRFKIT_CORPUS_DIR to the corpus directory\n\
+         \x20         (looks for {DEFAULT_REPLAY} inside it)"
+    );
+    std::process::exit(2);
+}
+
 fn main() {
-    let path = r"C:\Users\yakihyuk0728\Documents\GitHub\valplay\data\raw\vrf\02d4d478-1dfb-4412-9a77-29ca29105a9d.vrf";
-    let data = std::fs::read(path).unwrap();
+    let path = resolve_replay();
+    let data = std::fs::read(&path).unwrap_or_else(|e| {
+        eprintln!("cannot read {}: {e}", path.display());
+        std::process::exit(1);
+    });
 
     // Skip to the header chunk payload
     // Info ends at offset 586, chunk header is 8 bytes, payload starts at 594

@@ -8,8 +8,8 @@ Why this exists:
 
 Usage (the exact command used to produce the first report):
     python tools/compare_with_csharp.py ^
-        "C:\\Users\\yakihyuk0728\\Documents\\GitHub\\valplay\\pipeline\\exports\\02d4d478-1dfb-4412-9a77-29ca29105a9d" ^
-        "C:\\Users\\yakihyuk0728\\Documents\\GitHub\\vrfkit\\out\\02d4d478"
+        "<VRFKIT_VALPLAY_DIR>\\pipeline\\exports\\02d4d478-1dfb-4412-9a77-29ca29105a9d" ^
+        "<repo-root>\\out\\02d4d478"
 
 Arguments:
     csharp_dir   Path to the C# bundle (manifest.json, events.ndjson, movement.ndjson)

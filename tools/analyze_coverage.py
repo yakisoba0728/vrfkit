@@ -17,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -26,8 +27,10 @@ VRFKIT_ROOT = Path(__file__).parent.parent
 MANIFEST_PATH = VRFKIT_ROOT / "out" / "nested" / "manifest.json"
 TABLE_RS_PATH = VRFKIT_ROOT / "crates" / "vrf-decode" / "src" / "table.rs"
 
-# Default C# descriptor location
-DEFAULT_CSHARP_DIR = Path(r"C:\Users\yakihyuk0728\Documents\GitHub\ValorantReplayParser\src\Replay.Valorant")
+# Default C# descriptor location. Set VRFKIT_CSHARP_DIR to the
+# ValorantReplayParser checkout root; defaults to empty so a machine without
+# it degrades to "no C# descriptors" rather than crashing.
+DEFAULT_CSHARP_DIR = Path(os.environ.get("VRFKIT_CSHARP_DIR", "")) / "src" / "Replay.Valorant"
 
 PATH_RE = re.compile(r'override\s+string\s+Path\s*=>\s*"(?P<path>[^"]+)"')
 
@@ -66,7 +69,14 @@ def main(argv: list[str]) -> int:
     groups_in_replay = manifest["net_field_export_groups"]
 
     overlay_groups = extract_overlay_groups(TABLE_RS_PATH)
-    csharp_paths = extract_csharp_paths(csharp_dir) if csharp_dir.is_dir() else set()
+    if csharp_dir.is_dir():
+        csharp_paths = extract_csharp_paths(csharp_dir)
+    else:
+        csharp_paths = set()
+        print(f"NOTE: C# descriptor dir not found ({csharp_dir}); "
+              f"set VRFKIT_CSHARP_DIR to classify extractor-missed groups. "
+              f"All uncovered groups will read as 'no descriptor'.",
+              file=sys.stderr)
 
     print(f"Replay groups: {len(groups_in_replay)}")
     print(f"Overlay groups: {len(overlay_groups)}")

@@ -18,6 +18,7 @@ at valplay/pipeline/exports/02d4d478-.../events.ndjson.
 
 import collections
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -25,9 +26,8 @@ import pyarrow.parquet as pq
 
 # Paths
 CS_PATH = Path(
-    r"C:\Users\yakihyuk0728\Documents\GitHub\valplay\pipeline\exports"
-    r"\02d4d478-1dfb-4412-9a77-29ca29105a9d\events.ndjson"
-)
+    os.environ.get("VRFKIT_VALPLAY_DIR", "")
+) / "pipeline" / "exports" / "02d4d478-1dfb-4412-9a77-29ca29105a9d" / "events.ndjson"
 
 PARQUET_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("out/nested/fields.parquet")
 
@@ -173,6 +173,10 @@ def load_rust_rpc_values():
 
 
 def main():
+    if not CS_PATH.is_file():
+        print(f"set VRFKIT_VALPLAY_DIR to the valplay checkout root; "
+              f"events.ndjson not found at {CS_PATH}", file=sys.stderr)
+        return 1
     print(f"C# source: {CS_PATH}")
     print(f"Rust source: {PARQUET_PATH}")
     print()

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -30,7 +31,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-VALPLAY = Path(r"C:\Users\yakihyuk0728\Documents\GitHub\valplay")
+VALPLAY = Path(os.environ.get("VRFKIT_VALPLAY_DIR", ""))
 EXPORTS = VALPLAY / "pipeline" / "exports"
 VRF_DIR = VALPLAY / "data" / "raw" / "vrf"
 COMPUTE = VALPLAY / "pipeline" / "metrics" / "compute_metrics.py"
@@ -44,6 +45,14 @@ NON_METRIC_KEYS = {"source"}
 
 def discover():
     """Replay ids that have both a reference metrics.json and a source .vrf."""
+    if not EXPORTS.is_dir():
+        print(f"set VRFKIT_VALPLAY_DIR to the valplay checkout root; "
+              f"exports dir not found at {EXPORTS}", file=sys.stderr)
+        return []
+    if not VRF_DIR.is_dir():
+        print(f"set VRFKIT_VALPLAY_DIR to the valplay checkout root; "
+              f"corpus dir not found at {VRF_DIR}", file=sys.stderr)
+        return []
     have_vrf = {p.stem for p in VRF_DIR.glob("*.vrf")}
     out = []
     for d in sorted(EXPORTS.iterdir()):

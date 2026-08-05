@@ -113,6 +113,12 @@ def main() -> int:
     stored = json.loads(args.baseline.read_text(encoding="utf-8")) \
         if args.baseline.exists() else {}
     corpus = args.corpus or Path(os.path.expandvars(stored.get("corpus", "")))
+    # A relative path in the baseline resolves against VRFKIT_CORPUS_DIR so the
+    # repo ships no absolute path; absolute paths and --corpus are used as-is.
+    if corpus.name and not corpus.is_absolute():
+        corpus_dir = os.environ.get("VRFKIT_CORPUS_DIR", "")
+        if corpus_dir:
+            corpus = Path(corpus_dir) / corpus
     if not corpus or not corpus.exists():
         print(f"SKIP: corpus not present ({corpus})")
         print("      these replays are machine-local; nothing to guard here.")
