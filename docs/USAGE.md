@@ -491,6 +491,12 @@ python tools/check_metrics_baseline.py
 python tools/compare_combat_report.py
 ```
 
+These read their inputs from `VRFKIT_CORPUS_DIR`, `VRFKIT_CSHARP_DIR` and
+`VRFKIT_VALPLAY_DIR` -- see
+[Environment](../CONTRIBUTING.md#environment) for what each one points at.
+**With the variable unset they print `SKIP` and exit 0**, so read the output
+rather than the exit code.
+
 ### What each check catches -- this is the point
 
 | Check | Watches | Misses | Cost |

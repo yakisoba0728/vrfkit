@@ -7,32 +7,74 @@ before opening a PR.
 ## Build
 
 ```bash
-cargo build --release -p vrfkit                     # inspect / validate
-cargo build --release -p vrfkit --features export   # + Parquet export
+cargo build --release -p vrfkit                          # inspect / validate / export
+cargo build --release -p vrfkit --no-default-features    # inspect / validate only
 ```
 
-Rust 1.85+, edition 2024. `#![forbid(unsafe_code)]` is in every crate — do not
-add `unsafe`.
+Edition 2024. `#![forbid(unsafe_code)]` is in every crate — do not add `unsafe`.
+
+**MSRV is 1.86, and CI pins exactly that.** A newer local toolchain accepts
+syntax 1.86 rejects — `let` chains are the one that has already broken a build —
+so a green `cargo test` on your machine is not evidence CI will pass. Install
+the pinned toolchain once and run the sweep through it:
+
+```bash
+rustup toolchain install 1.86.0 --component clippy,rustfmt
+cargo +1.86.0 clippy --all-targets -- -D warnings
+```
 
 ## Before you open a PR
 
 Run the full sweep. Every one of these must be green:
 
 ```bash
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test --workspace
+cargo +1.86.0 fmt --check
+cargo +1.86.0 clippy --all-targets -- -D warnings
+cargo +1.86.0 test --workspace
+RUSTFLAGS=-D warnings cargo +1.86.0 build -p vrfkit --no-default-features
 python tools/check_ascii.py --check
 python tools/apply_type_corrections.py --check
 python tools/check_effect_decoder.py --check
-python tools/check_docs.py --fast
+python tools/check_docs.py            # not --fast: that skips the count check
 python -m unittest discover -s tools/tests -p "test_*.py"
 ```
+
+`check_docs.py` without `--fast` runs the suites so it can compare the numbers
+the docs quote against the real ones. CI runs `--fast` and cannot do otherwise —
+the full mode shells out to `cargo test`, and the Python job is Ubuntu-only
+because the Rust job needs Windows for the Oodle FFI. **That check is yours to
+run, not CI's**, and it is the only thing that catches a stale count in prose.
 
 If your change affects exported output, also run the regression guards in
 [`docs/USAGE.md`](docs/USAGE.md) §6 (`check_export_baseline.py`,
 `check_decode_errors_corpus.py`, `validate_corpus.py`) against a replay, and
-update baselines with `--update` only after explaining each changed line.
+update baselines with `--update` only after explaining each changed line. Those
+need a corpus — see [Environment](#environment) below.
+
+## Environment
+
+The corpus guards read their inputs from environment variables rather than
+hardcoded paths, so nothing in the tree points at one person's disk. None of
+them are needed for the sweep above; all of them are needed for §6.
+
+| Variable | What it points at | Read by |
+|---|---|---|
+| `VRFKIT_CORPUS_DIR` | Directory of `.vrf` replays; a bare filename in a baseline resolves against it | `check_export_baseline.py`, `check_corpus_baseline.py` |
+| `VRFKIT_CSHARP_DIR` | Checkout root of the C# reference parser | `analyze_coverage.py`, `compare_*.py` |
+| `VRFKIT_VALPLAY_DIR` | valplay checkout root | `check_metrics_baseline.py` |
+| `VRFKIT_JOBS` | Worker count for the corpus sweeps; default is cores - 2, capped at 16 | `validate_corpus.py` |
+| `VRFKIT_REQUIRE_CORPUS` | Set to anything to turn "corpus absent, skipping" into a failure | `crates/vrf-container/tests/corpus.rs` |
+
+```bash
+export VRFKIT_CORPUS_DIR=/path/to/replays
+python tools/check_decode_errors_corpus.py ./target/release/vrfkit "$VRFKIT_CORPUS_DIR"
+```
+
+**Without `VRFKIT_CORPUS_DIR` the guards skip and exit 0**, printing `SKIP:
+replay not present`. That is deliberate — the corpus lives outside the repo, so
+a contributor without one is not blocked — but it means an unset variable reads
+as a pass at a glance. If you meant to run them, read the output and check it
+says how many replays it walked.
 
 ## The load-bearing invariants (do not break)
 
