@@ -210,6 +210,8 @@ ADDITIONS = [
      "CurrentFuel", "FieldType::Double"),
     ("/Game/Characters/Components/Comp_AbilityFuelSystem.Comp_AbilityFuelSystem_C",
      "IsFuelDraining", "FieldType::Bool"),
+    ("/Script/ShooterGame.BlindManagerComponent",
+     "LongestActiveBlindDuration", "FieldType::Float"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 

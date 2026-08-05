@@ -603,3 +603,18 @@ fn the_handle_index_answers_exactly_what_the_binary_search_answered() {
         );
     }
 }
+
+/// `BlindManagerComponent.LongestActiveBlindDuration` is a 32-bit float giving
+/// the longest active flash-blind duration in seconds (0.0..2.1 on observed
+/// data). Common to all player characters. Typed as Float.
+#[test]
+fn blind_duration_is_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    assert_eq!(
+        table.lookup(
+            "/Script/ShooterGame.BlindManagerComponent",
+            "LongestActiveBlindDuration"
+        ),
+        Some(FieldType::Float)
+    );
+}
