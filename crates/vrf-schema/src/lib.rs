@@ -59,7 +59,7 @@ mod cache;
 mod error;
 mod export;
 mod guid;
-mod hash;
+pub mod hash;
 mod path;
 mod reader;
 mod resolve;
@@ -71,6 +71,7 @@ pub use cache::NetGuidCache;
 pub use error::SchemaError;
 pub use export::{NetFieldExport, NetFieldExportGroup};
 pub use guid::{ExportFlags, NetGuidEntry, NetworkGuid};
+pub use hash::{FxHashMap, FxHashSet};
 pub use path::{find_class_net_cache_key, find_replay_path_key, for_each_replay_path_key};
 pub use reader::{read_export_guids, read_net_field_exports};
 

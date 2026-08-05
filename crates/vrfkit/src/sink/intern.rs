@@ -18,9 +18,10 @@
 //! before, so the value sequence per row group, the dictionary and the encoded
 //! bytes are unchanged.
 
-use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
+
+use vrf_schema::FxHashSet;
 
 /// Ceiling on pooled names.
 ///
@@ -44,7 +45,7 @@ const MAX_POOLED_NAMES: usize = 65_536;
 /// allocating a `String` that is thrown away one line later.
 #[derive(Debug, Clone, Default)]
 pub struct NameInterner {
-    pool: HashSet<Arc<str>>,
+    pool: FxHashSet<Arc<str>>,
     scratch: String,
 }
 

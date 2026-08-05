@@ -4,7 +4,7 @@
 use crate::decode::FieldType;
 use crate::overlay::{
     OverlayEntry, OverlayHandleEntry, OverlayStats, OverlayTable, apply_overlay,
-    apply_overlay_with_handle, canonical_group, resolve_field_type,
+    apply_overlay_with_handle, canonical_group, group_hash_state, resolve_field_type,
 };
 use crate::{OVERLAY_HANDLE_TABLE, OVERLAY_TABLE};
 
@@ -235,6 +235,7 @@ fn overlay_falls_back_to_the_b_prefixed_boolean_name() {
     let result = apply_overlay(
         &table,
         "/test",
+        group_hash_state("/test"),
         Some("IsQueued"),
         Some(&data),
         1,
@@ -268,8 +269,16 @@ fn overlay_falls_back_to_an_explicit_property_handle_when_the_wire_name_differs(
     data.extend_from_slice(&3.75f64.to_le_bytes());
     let mut stats = OverlayStats::default();
 
-    let result =
-        apply_overlay_with_handle(&table, GROUP, Some("248"), 26, Some(&data), 192, &mut stats);
+    let result = apply_overlay_with_handle(
+        &table,
+        GROUP,
+        group_hash_state(GROUP),
+        Some("248"),
+        26,
+        Some(&data),
+        192,
+        &mut stats,
+    );
 
     assert_eq!(
         result.and_then(|value| value.value_str),
@@ -295,7 +304,16 @@ fn overlay_uses_an_explicit_property_handle_when_the_wire_name_is_missing() {
     let mut stats = OverlayStats::default();
     let data = 100i32.to_le_bytes();
 
-    let result = apply_overlay_with_handle(&table, "/test", None, 9, Some(&data), 32, &mut stats);
+    let result = apply_overlay_with_handle(
+        &table,
+        "/test",
+        group_hash_state("/test"),
+        None,
+        9,
+        Some(&data),
+        32,
+        &mut stats,
+    );
 
     assert_eq!(result.and_then(|value| value.value_i64), Some(100));
     assert_eq!(stats.decoded_ok, 1);
@@ -328,6 +346,7 @@ fn overlay_keeps_direct_name_lookup_ahead_of_the_handle_fallback() {
     let result = apply_overlay_with_handle(
         &table,
         "/test",
+        group_hash_state("/test"),
         Some("RuntimeName"),
         9,
         Some(&[1]),
@@ -356,7 +375,15 @@ fn apply_overlay_decodes_int32() {
     let table = OverlayTable::new(entries);
     let mut stats = OverlayStats::default();
     let data = 100i32.to_le_bytes();
-    let result = apply_overlay(&table, "/test", Some("Health"), Some(&data), 32, &mut stats);
+    let result = apply_overlay(
+        &table,
+        "/test",
+        group_hash_state("/test"),
+        Some("Health"),
+        Some(&data),
+        32,
+        &mut stats,
+    );
     assert!(result.is_some());
     let r = result.unwrap();
     assert_eq!(r.value_i64, Some(100));
@@ -372,7 +399,15 @@ fn apply_overlay_returns_none_for_no_field_name() {
     }];
     let table = OverlayTable::new(entries);
     let mut stats = OverlayStats::default();
-    let result = apply_overlay(&table, "/test", None, Some(&[0; 4]), 32, &mut stats);
+    let result = apply_overlay(
+        &table,
+        "/test",
+        group_hash_state("/test"),
+        None,
+        Some(&[0; 4]),
+        32,
+        &mut stats,
+    );
     assert!(result.is_none());
     assert_eq!(stats.no_field_name, 1);
 }
@@ -387,7 +422,15 @@ fn apply_overlay_graceful_on_decode_failure() {
     let table = OverlayTable::new(entries);
     let mut stats = OverlayStats::default();
     let data = [0x01u8]; // only 1 bit -- FString needs at least 32 bits for length
-    let result = apply_overlay(&table, "/test", Some("Broken"), Some(&data), 1, &mut stats);
+    let result = apply_overlay(
+        &table,
+        "/test",
+        group_hash_state("/test"),
+        Some("Broken"),
+        Some(&data),
+        1,
+        &mut stats,
+    );
     // Should return Some but with all values None (decode failure)
     assert!(result.is_some());
     let r = result.unwrap();

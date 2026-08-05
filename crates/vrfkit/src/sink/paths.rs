@@ -41,12 +41,11 @@
 //! table is discarded long before it can grow. The memo costs kilobytes and
 //! removes four fifths of the work.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use vrf_net::content::ContentBlockHeader;
 use vrf_net::types::NetworkGuid;
-use vrf_schema::{NetFieldExportGroup, find_class_net_cache_key, find_replay_path_key};
+use vrf_schema::{FxHashMap, NetFieldExportGroup, find_class_net_cache_key, find_replay_path_key};
 
 use super::{ChannelState, ExportSink};
 
@@ -96,7 +95,7 @@ pub(super) struct BlockPathMemo {
     schema_generation: u64,
     /// `ChannelState::resolution_generation` when `entries` was last valid.
     resolution_generation: u64,
-    entries: HashMap<BlockKey, (Arc<str>, u32)>,
+    entries: FxHashMap<BlockKey, (Arc<str>, u32)>,
 }
 
 impl BlockPathMemo {
@@ -143,12 +142,13 @@ impl ExportSink<'_> {
         let schema = self.cache.schema_generation();
         let resolution = self.channel_state.resolution_generation;
         if let Some((path, count)) = self.channel_state.block_paths.get(&key, schema, resolution) {
-            self.current_group_path = path;
+            self.set_current_group_path(path);
             return count;
         }
 
         let path = self.resolve_group_path(channel_index, actor_net_guid.0, header);
-        self.current_group_path = self.channel_state.names.intern(&path);
+        let interned = self.channel_state.names.intern(&path);
+        self.set_current_group_path(interned);
         // A RepLayout block reads its handles against the group directly and
         // needs no function table, so the capacity question does not arise.
         let count = if header.has_rep_layout {
@@ -466,18 +466,16 @@ impl ExportSink<'_> {
         // The C# reference parser also fails on these same blocks. This lookup
         // goes beyond C# by leveraging the replay's own declared schema.
         if is_bare_instance_name(&self.current_group_path) {
-            let Self {
-                cache,
-                channel_state,
-                current_group_path,
-                ..
-            } = self;
-            if let Some(group) = cache.resolve_cnc_for_instance_name(current_group_path) {
+            if let Some(group) = self
+                .cache
+                .resolve_cnc_for_instance_name(&self.current_group_path)
+            {
                 let len = group.len();
                 // Update current_group_path so downstream field/RPC handle
                 // lookups use the correct group. Without this, resolved RPCs
                 // would emit handle-indexed names instead of proper field names.
-                *current_group_path = channel_state.names.intern(&group.path);
+                let resolved = self.channel_state.names.intern(&group.path);
+                self.set_current_group_path(resolved);
                 return len;
             }
         }

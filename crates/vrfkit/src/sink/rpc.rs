@@ -5,15 +5,14 @@
 //! grammar, and walking it turns one opaque blob into one row per named
 //! parameter -- 559,346 of the reference replay's 1,246,812 field rows.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use vrf_bitio::BitReader;
 use vrf_decode::{
     DecodeErrorKind, EffectArrayKind, EffectBlobError, FieldType, apply_overlay_with_handle,
-    decode_effect_blob_json,
+    decode_effect_blob_json, group_hash_state,
 };
-use vrf_schema::NetGuidCache;
+use vrf_schema::{FxHashMap, NetGuidCache};
 
 use super::intern::put;
 use super::{ExportSink, FieldValues, TABLE};
@@ -35,7 +34,7 @@ use super::{ExportSink, FieldValues, TABLE};
 #[derive(Debug, Clone, Default)]
 pub(super) struct RpcParamGroupMemo {
     generation: u64,
-    by_group: HashMap<Arc<str>, HashMap<String, Option<Arc<str>>>>,
+    by_group: FxHashMap<Arc<str>, FxHashMap<String, Option<Arc<str>>>>,
 }
 
 impl ExportSink<'_> {
@@ -159,11 +158,19 @@ impl ExportSink<'_> {
             let raw_bits = copy_raw_bits(sub, payload_bits);
 
             // Apply type overlay using the parameter group path as group_path.
+            // The group hash is cached for the current_group_path fallback; a
+            // resolved parameter group is a different path, so its hash is
+            // computed fresh.
             let overlay_group = param_group_path_ref.unwrap_or(&self.current_group_path);
+            let group_state = match param_group_path_ref {
+                Some(gp) => group_hash_state(gp),
+                None => self.current_group_hash,
+            };
             let overlay_field = param_name.unwrap_or(&full_field_name);
             let (value_i64, value_f64, value_bool, mut value_str) = match apply_overlay_with_handle(
                 &TABLE,
                 overlay_group,
+                group_state,
                 Some(overlay_field),
                 param_handle,
                 raw_bits.as_deref(),

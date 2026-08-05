@@ -159,17 +159,67 @@ fn finish(mut state: u64) -> u64 {
 /// zero-padded tail in [`mix_bytes`] from equating keys of different length.
 #[inline]
 pub(super) fn name_hash(group_path: &str, field_name: &str) -> u64 {
-    let state = mix_bytes(HASH_SEED, group_path.as_bytes());
-    let state = mix_bytes(state, field_name.as_bytes());
-    finish(state ^ ((group_path.len() as u64) << 32) ^ (field_name.len() as u64))
+    name_hash_from_group(group_hash_state(group_path), field_name)
 }
 
 /// Hash a `(group_path, handle)` key. Lives in its own table, so it only has to
 /// separate handles from each other within a group.
 #[inline]
 pub(super) fn handle_hash(group_path: &str, handle: u32) -> u64 {
-    let state = mix_bytes(HASH_SEED, group_path.as_bytes());
-    finish(state ^ ((group_path.len() as u64) << 32) ^ u64::from(handle))
+    handle_hash_from_group(group_hash_state(group_path), handle)
+}
+
+/// The fold state after mixing only the group path, plus its length.
+///
+/// A content block probes the overlay with the same `group_path` for every field
+/// in it (~2M probes/replay), and 80% of blocks hit the group-path memo so the
+/// path changes rarely. This struct is what the export sink caches: the
+/// half-finished hash with the expensive -- long, prefix-sharing -- group path
+/// already folded in, so each per-field probe only pays for the field name plus
+/// the final avalanche.
+///
+/// Published because the sink lives in another crate; opaque because its fields
+/// are an internal detail of the mix. A stale state turns overlay hits into
+/// misses (fields degrade to `raw_bits`), never a wrong value -- the slot tag and
+/// the full string equality check in [`OverlayIndex::find_name`] still guard
+/// every hit.
+#[derive(Debug, Clone, Copy)]
+pub struct GroupHashState {
+    /// State after [`mix_bytes`] on the group path, seeded with [`HASH_SEED`].
+    state: u64,
+    /// The group path's byte length, folded in at the finish step.
+    group_len: u64,
+}
+
+/// Compute the cacheable half of a `(group_path, ...)` key hash.
+///
+/// This is the part the export sink amasses once per content block. Pair it with
+/// [`name_hash_from_group`] or [`handle_hash_from_group`] to finish the key for a
+/// single probe.
+#[inline]
+#[must_use]
+pub fn group_hash_state(group_path: &str) -> GroupHashState {
+    GroupHashState {
+        state: mix_bytes(HASH_SEED, group_path.as_bytes()),
+        group_len: group_path.len() as u64,
+    }
+}
+
+/// Finish a `(group_path, field_name)` key hash from a cached group state.
+///
+/// Equivalent to [`name_hash`] when the group state was computed from the same
+/// `group_path`. Both lengths are still folded in at the end -- the group length
+/// lives in the cached state, the field length is mixed here.
+#[inline]
+pub(super) fn name_hash_from_group(group: GroupHashState, field_name: &str) -> u64 {
+    let state = mix_bytes(group.state, field_name.as_bytes());
+    finish(state ^ (group.group_len << 32) ^ (field_name.len() as u64))
+}
+
+/// Finish a `(group_path, handle)` key hash from a cached group state.
+#[inline]
+pub(super) fn handle_hash_from_group(group: GroupHashState, handle: u32) -> u64 {
+    finish(group.state ^ (group.group_len << 32) ^ u64::from(handle))
 }
 
 /// The three probe tables an [`OverlayTable`](super::OverlayTable) needs.

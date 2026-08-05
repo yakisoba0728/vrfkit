@@ -29,8 +29,10 @@
 //!   from an untrusted peer.
 //!
 //! If this ever moves behind a network boundary, revert these maps to
-//! `std::collections::HashMap`'s default hasher -- the types are private, so
-//! that change is confined to `cache.rs`.
+//! `std::collections::HashMap`'s default hasher. The map types inside `cache.rs`
+//! are private, so that change stays confined there; the hasher itself is
+//! published (`pub mod hash`) because `vrfkit`'s sink makes the same trade for
+//! its own locally-sourced, bounded-key maps.
 //!
 //! # Provenance
 //!
@@ -43,6 +45,9 @@ use std::hash::{BuildHasherDefault, Hasher};
 
 /// A `HashMap` using [`FxHasher`].
 pub type FxHashMap<K, V> = std::collections::HashMap<K, V, BuildHasherDefault<FxHasher>>;
+
+/// A `HashSet` using [`FxHasher`].
+pub type FxHashSet<T> = std::collections::HashSet<T, BuildHasherDefault<FxHasher>>;
 
 /// The multiplier: the fractional bits of the golden ratio scaled to 64 bits.
 /// Taken verbatim from `rustc_hash` so the mixing quality is the one that has

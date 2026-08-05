@@ -38,16 +38,16 @@ mod paths;
 mod rpc;
 mod stream;
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use vrf_decode::{
-    ArrayDecodeStats, OVERLAY_HANDLE_TABLE, OVERLAY_TABLE, OverlayStats, OverlayTable,
+    ArrayDecodeStats, GroupHashState, OVERLAY_HANDLE_TABLE, OVERLAY_TABLE, OverlayStats,
+    OverlayTable, group_hash_state,
 };
 use vrf_export::{ActorRecord, FieldRecord, MovementRecord};
 use vrf_net::net_guid::GuidPathSink;
 use vrf_net::types::NetworkGuid;
-use vrf_schema::NetGuidCache;
+use vrf_schema::{FxHashMap, NetGuidCache};
 
 use intern::NameInterner;
 use paths::BlockPathMemo;
@@ -85,7 +85,7 @@ pub struct PlayerIdentity {
 #[derive(Debug, Clone, Default)]
 pub struct ChannelState {
     /// channel_index -> archetype NetworkGuid.
-    archetypes: HashMap<u32, NetworkGuid>,
+    archetypes: FxHashMap<u32, NetworkGuid>,
     /// See [`RpcParamGroupMemo`].
     rpc_param_groups: RpcParamGroupMemo,
     /// See [`BlockPathMemo`].
@@ -109,7 +109,7 @@ pub struct ChannelState {
     /// BombPlayerState identity capture for the manifest `players` array. Keyed
     /// by the PlayerState actor's NetGUID; filled in `on_field` as `Subject`
     /// and `SpawnedCharacter` arrive, drained once at the end of the replay.
-    players: HashMap<u32, PlayerIdentity>,
+    players: FxHashMap<u32, PlayerIdentity>,
 }
 
 impl ChannelState {
@@ -135,7 +135,7 @@ impl ChannelState {
     /// Captured player identities (PlayerState actor NetGUID -> identity), for
     /// the manifest `players` array.
     #[must_use]
-    pub fn players(&self) -> &HashMap<u32, PlayerIdentity> {
+    pub fn players(&self) -> &FxHashMap<u32, PlayerIdentity> {
         &self.players
     }
 
@@ -331,6 +331,19 @@ pub struct ExportSink<'a> {
     /// Interned, so a block's rows share one allocation instead of each
     /// carrying its own copy of the path. See [`intern`].
     current_group_path: Arc<str>,
+    /// The half-finished overlay key hash for [`current_group_path`](Self::current_group_path).
+    ///
+    /// A content block probes the overlay ~2M times per replay with the same
+    /// group path for every field in it, and the group path is long
+    /// (`/Game/Characters/.../AggroBot_PC.AggroBot_PC_C`) while the field names
+    /// are short. Caching the group-path fold and finishing only the field-name
+    /// half per probe is the saving. Refreshed by [`set_current_group_path`].
+    ///
+    /// A stale value is a performance and typing regression, not a wrong-value
+    /// bug: the slot tag and the full string equality check still reject a
+    /// mismatching key, so the field degrades to `raw_bits` instead of decoding
+    /// to a wrong type.
+    current_group_hash: GroupHashState,
 }
 
 impl<'a> ExportSink<'a> {
@@ -347,6 +360,8 @@ impl<'a> ExportSink<'a> {
         records.fields.clear();
         records.movement.clear();
         records.actors.clear();
+        let current_group_path = empty_group_path();
+        let current_group_hash = group_hash_state(&current_group_path);
         Self {
             cache,
             channel_state,
@@ -357,8 +372,23 @@ impl<'a> ExportSink<'a> {
             current_channel: 0,
             current_actor_guid: 0,
             current_object_guid: None,
-            current_group_path: empty_group_path(),
+            current_group_path,
+            current_group_hash,
         }
+    }
+
+    /// Set `current_group_path` and refresh its cached overlay hash in one step.
+    ///
+    /// Every assignment to [`current_group_path`](Self::current_group_path) must
+    /// go through here, or the cached [`current_group_hash`](Self::current_group_hash)
+    /// goes stale. The three sites are all in [`paths`]: the memo-hit return, the
+    /// fresh resolution, and the bare-instance-name ClassNetCache replacement.
+    /// The hash is a common-subexpression optimisation: a stale value turns
+    /// overlay hits into misses (fields degrade to `raw_bits`), never a wrong
+    /// value -- the slot tag plus full string equality still guard every hit.
+    fn set_current_group_path(&mut self, path: Arc<str>) {
+        self.current_group_hash = group_hash_state(&path);
+        self.current_group_path = path;
     }
 
     /// Push one field row, stamped with the current block context.

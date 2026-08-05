@@ -19,8 +19,9 @@ mod stats;
 use std::sync::OnceLock;
 
 use crate::decode::{DecodeError, DecodedValue, FieldType, decode_field};
-use index::{OverlayIndex, handle_hash, name_hash};
+use index::{OverlayIndex, handle_hash, handle_hash_from_group, name_hash, name_hash_from_group};
 
+pub use index::{GroupHashState, group_hash_state};
 pub use stats::{DecodeErrorKind, OverlayErrorReport, OverlayErrorRow, OverlayStats};
 
 /// A single entry in the overlay table.
@@ -140,13 +141,24 @@ impl OverlayTable {
     /// Look up the descriptor field name for an explicit property handle.
     #[must_use]
     pub fn lookup_handle(&self, group_path: &str, handle: u32) -> Option<&'static str> {
+        self.lookup_handle_hashed(handle_hash(group_path, handle), group_path, handle)
+    }
+
+    /// [`Self::lookup_handle`] with the key hash already computed.
+    ///
+    /// The export path always has the group hash state in hand, so this form
+    /// avoids re-hashing the (long) group path on the handle fallback too.
+    #[inline]
+    fn lookup_handle_hashed(
+        &self,
+        hash: u64,
+        group_path: &str,
+        handle: u32,
+    ) -> Option<&'static str> {
         let handle_entries = self.handle_entries;
-        let position = self.index().find_handle(
-            handle_entries,
-            handle_hash(group_path, handle),
-            group_path,
-            handle,
-        )?;
+        let position = self
+            .index()
+            .find_handle(handle_entries, hash, group_path, handle)?;
         Some(handle_entries[position].field_name)
     }
 
@@ -257,29 +269,44 @@ impl OverlayResult {
 
 /// Apply the type overlay to a single field.
 ///
+/// `group_state` is the cacheable half of the key hash -- see [`group_hash_state`].
+/// A caller probing many fields against the same group path computes it once and
+/// reuses it; a one-off caller passes [`group_hash_state`]`(group_path)`.
+///
 /// Returns `None` if the field has no type mapping or is Raw/Skip.
 /// Returns `Some(OverlayResult)` on success (values filled) or on decode
 /// failure (all None -- the raw_bits remain).
 pub fn apply_overlay(
     table: &OverlayTable,
     group_path: &str,
+    group_state: GroupHashState,
     field_name: Option<&str>,
     raw_bits: Option<&[u8]>,
     bit_count: u32,
     stats: &mut OverlayStats,
 ) -> Option<OverlayResult> {
     apply_overlay_inner(
-        table, group_path, field_name, None, raw_bits, bit_count, stats,
+        table,
+        group_path,
+        group_state,
+        field_name,
+        None,
+        raw_bits,
+        bit_count,
+        stats,
     )
 }
 
 /// Apply the overlay with the replay field's handle available as a fallback.
 ///
+/// `group_state` is the cacheable half of the key hash -- see [`group_hash_state`].
 /// Direct name lookup, including the narrow Unreal `b`-prefix fallback, stays
 /// authoritative. The explicit handle is consulted only when both miss.
+#[allow(clippy::too_many_arguments)]
 pub fn apply_overlay_with_handle(
     table: &OverlayTable,
     group_path: &str,
+    group_state: GroupHashState,
     field_name: Option<&str>,
     handle: u32,
     raw_bits: Option<&[u8]>,
@@ -289,6 +316,7 @@ pub fn apply_overlay_with_handle(
     apply_overlay_inner(
         table,
         group_path,
+        group_state,
         field_name,
         Some(handle),
         raw_bits,
@@ -311,7 +339,14 @@ pub fn resolve_field_type(
     field_name: Option<&str>,
     handle: Option<u32>,
 ) -> Option<FieldType> {
-    resolve_entry(table, group_path, field_name, handle).map(|(field_type, _)| field_type)
+    resolve_entry(
+        table,
+        group_path,
+        group_hash_state(group_path),
+        field_name,
+        handle,
+    )
+    .map(|(field_type, _)| field_type)
 }
 
 /// Game-mode sibling classes that carry the SAME property set under a
@@ -383,13 +418,21 @@ pub fn canonical_group(group_path: &str) -> &str {
 fn resolve_entry<'a>(
     table: &OverlayTable,
     group_path: &str,
+    group_state: GroupHashState,
     field_name: Option<&'a str>,
     handle: Option<u32>,
 ) -> Option<(FieldType, &'a str)> {
-    if let Some(hit) = resolve_in_group(table, group_path, field_name, handle) {
+    if let Some(hit) = resolve_in_group(table, group_path, group_state, field_name, handle) {
         return Some(hit);
     }
-    resolve_in_group(table, alias_group(group_path)?, field_name, handle)
+    let aliased = alias_group(group_path)?;
+    resolve_in_group(
+        table,
+        aliased,
+        group_hash_state(aliased),
+        field_name,
+        handle,
+    )
 }
 
 /// Resolve which table entry a wire field belongs to within ONE group, and the
@@ -419,12 +462,15 @@ fn resolve_entry<'a>(
 fn resolve_in_group<'a>(
     table: &OverlayTable,
     group_path: &str,
+    group_state: GroupHashState,
     field_name: Option<&'a str>,
     handle: Option<u32>,
 ) -> Option<(FieldType, &'a str)> {
     if let Some(name) = field_name {
-        // One hash serves both probes; see the `index` module docs.
-        let hash = name_hash(group_path, name);
+        // One hash serves both probes; see the `index` module docs. The group
+        // path half is already in `group_state`, so only the field name is
+        // folded here -- that is the whole point of caching it.
+        let hash = name_hash_from_group(group_state, name);
         if let Some(field_type) = table
             .lookup_hashed(hash, group_path, name)
             .or_else(|| table.lookup_b_prefixed_hashed(hash, group_path, name))
@@ -433,31 +479,43 @@ fn resolve_in_group<'a>(
         }
     }
 
-    let descriptor_name = table.lookup_handle(group_path, handle?)?;
-    let field_type = table.lookup(group_path, descriptor_name)?;
+    let handle = handle?;
+    let descriptor_name = table.lookup_handle_hashed(
+        handle_hash_from_group(group_state, handle),
+        group_path,
+        handle,
+    )?;
+    let field_type = table.lookup_hashed(
+        name_hash_from_group(group_state, descriptor_name),
+        group_path,
+        descriptor_name,
+    )?;
     Some((field_type, field_name.unwrap_or(descriptor_name)))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_overlay_inner(
     table: &OverlayTable,
     group_path: &str,
+    group_state: GroupHashState,
     field_name: Option<&str>,
     handle: Option<u32>,
     raw_bits: Option<&[u8]>,
     bit_count: u32,
     stats: &mut OverlayStats,
 ) -> Option<OverlayResult> {
-    let (field_type, diagnostic_name) = match resolve_entry(table, group_path, field_name, handle) {
-        Some(resolved) => resolved,
-        None => {
-            if field_name.is_none() {
-                stats.no_field_name += 1;
-            } else {
-                stats.not_in_table += 1;
+    let (field_type, diagnostic_name) =
+        match resolve_entry(table, group_path, group_state, field_name, handle) {
+            Some(resolved) => resolved,
+            None => {
+                if field_name.is_none() {
+                    stats.no_field_name += 1;
+                } else {
+                    stats.not_in_table += 1;
+                }
+                return None;
             }
-            return None;
-        }
-    };
+        };
 
     if matches!(field_type, FieldType::Raw | FieldType::Skip) {
         stats.raw_or_skip += 1;
