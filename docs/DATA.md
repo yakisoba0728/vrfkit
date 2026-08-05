@@ -76,6 +76,8 @@ purchase; all ten players' purchases are replicated.
 | Cooldown / start time | `Comp_Ability_CooldownComponent` | ✅ Double |
 | Ability cast count | ability-actor spawns (over-counts) / `characterUltimateUsed` (ultimates exact) | ◐ no exact per-cast count on the wire |
 | Ability state stream | `AbilitiesAndBuffsComponent` (`_cnc_h1`) | ◐ fc=34 brute-forced, inner decomposed (flag + u32 stream); semantics need game assets |
+| GAS owner / avatar / attribute sets | `AresAbilitySystemComponent` (OwnerActor, AvatarActor, SpawnedAttributes, CachedAttributeSet) | ✅ via AbilitiesAndBuffsComponent->AresAbilitySystemComponent remap |
+| Active gameplay effects (buffs/debuffs) | `AresAbilitySystemComponent.ActiveGameplayEffects` (FastArray elements) | ◐ array framing recovered; per-effect semantics need game assets |
 | Persistent effect position (smoke/wall/molly/slow/trap) | `actors.parquet` class_path + spawn xyz | ✅ every spawned effect actor |
 | Persistent effect lifetime | `actors.open_ms`/`close_ms` (non-fuel); `CurrentFuelLevel`+`WallActivated` (Viper) | ✅ |
 | Smoke live position | `ReplicatedMovement` (x100) / `MulticastAddSmokeScreenPoint.Translation` | ✅ |
@@ -99,7 +101,8 @@ purchase; all ten players' purchases are replicated.
 | Weapon instance class | `actors.parquet` class_path + `tools/equippable_table.py` (display name) | ✅ |
 | Shot events (ammo, projectiles, vectors, seed, fire mode) | effect blobs | ✅ typed JSON |
 | Magazine ammo over time | `MagazineAmmo.AmmoCount` (Int32, per weapon) | ✅ typed via handle addition (3..25, depletion ramp) |
-| Equipped weapon | `MulticastNotifyDamage.EquippableUsed` | ✅ |
+| Equipped weapon (per player, over time) | `AresInventory.CurrentEquippable` / `NewCurrentEquippable` -> actor class | ✅ via InventoryComponent->AresInventory remap (resolve the NetGUID to its equippable actor) |
+| Equipped weapon (on damage) | `MulticastNotifyDamage.EquippableUsed` | ✅ |
 | Skin / spray / charm | `manifest` playerLoadouts (per subject) | ✅ |
 
 ## Rounds & score
@@ -117,8 +120,9 @@ purchase; all ten players' purchases are replicated.
 | Data | Source | Status |
 |---|---|---|
 | Plant / defuse / detonation | `events.spikePlanted` / `spikeDefused` / `spikeExploded` | ✅ |
-| Planter / defuser | `BombPlantedRPC.BombPlanter` / `BombDefusedRPC.DefusingCharacter` | ✅ |
-| Bomb-carrier kill | `BombCarrierKilledRPC.OldCarrier` | ✅ |
+| Spike carrier (who holds it, over time) | `AresInventory.CurrentEquippable` → resolve to `BombEquippable` actor | ✅ via InventoryComponent->AresInventory remap |
+| Defuser | `TimedBomb.CurrentDefuser` (ObjectNetGuid) | ✅ |
+| Planter | TimedBomb spawn position vs player position | ◐ inferred (no planter field on the wire) |
 | Spike timer | `TimedBomb.TimeRemainingToExplode` / `DefuseProgress` | ✅ Double |
 | Plant site (A/B) | `TimedBomb.PlantedAtSite` (EnumByte) + position derivation | ✅ absent handle = default site (UE default-value skip); 100% via spawn position |
 | Detonation source | `events.spikeExploded` is canonical (always emitted) | ✅ `RoundResults` under-counts: it logs win-reason, not detonation |
@@ -156,13 +160,15 @@ purchase; all ten players' purchases are replicated.
 
 - **Display names** — the replay carries no player names, only account UUIDs.
 - **ACS** — `PlayerScoreComponent` is not replicated.
-- **InventoryComponent slots** — the replay declares `InventoryComponent` (a
-  bare group) with handles 1-31 but no field names, and the authoritative C#
-  models it under a different path (`AresInventory`) without handle numbers, so
-  the overlay handle table has no entries to name them. Typing it would mean
-  guessing which handle is which slot, so it stays raw until per-handle evidence
-  is found. (`MagazineAmmo`, by contrast, is a single confident handle and is
-  typed as `AmmoCount` Int32.)
+- **InventoryComponent** — RESOLVED: it replicates under its Blueprint class
+  name, but the replay declares the property layout under the native parent
+  `AresInventory`. The `KNOWN_SUBOBJECT_CLASS_PATHS` remap (InventoryComponent
+  -> AresInventory, AbilitiesAndBuffsComponent -> AresAbilitySystemComponent)
+  connects them, so the handles pick up names and types -- `CurrentEquippable`
+  (equipped weapon / spike carrier) included. Remaining bare component groups
+  (ZoomStateMachine, ReserveAmmo, CalloutRegionTracker, ...) need the same kind
+  of Blueprint->native-parent map; their parents are not name-derivable and
+  require the game's class hierarchy.
 - **AbilitiesAndBuffsComponent** — the replay never declares its `_ClassNetCache`
   group, so `function_count` is brute-forced (fc=34). The outer RPC framing is
   fully recovered, and the inner payload is decomposed (a flag bit followed by a

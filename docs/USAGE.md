@@ -456,7 +456,7 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 385 passing
+cargo test                                        # 386 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 113 files, ASCII only

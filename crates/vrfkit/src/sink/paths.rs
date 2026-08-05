@@ -49,24 +49,54 @@ use vrf_schema::{FxHashMap, NetFieldExportGroup, find_class_net_cache_key, find_
 
 use super::{ChannelState, ExportSink};
 
-/// Well-known subobject leaf names that map to a fixed class path.
+/// Well-known subobject leaf names that map to a fixed class path, tagged with
+/// the block kind they apply to.
 ///
 /// The replay uses short "stably named" identifiers for certain built-in
 /// components. When no `class_net_guid` is present we fall back to this table,
 /// exactly as the C# reference parser does in `ContentBlockPathResolver`.
-const KNOWN_SUBOBJECT_CLASS_PATHS: &[(&str, &str)] = &[
-    ("ReplayEffect", "/Script/ShooterGame.ReplayEffectComponent"),
+///
+/// The effect entries mirror the C# reference and apply to ClassNetCache blocks.
+/// The last two pairs go beyond the C# reference: VALORANT replicates the
+/// inventory and Gameplay Ability System components under their Blueprint class
+/// names, but the replay declares their property layouts under the native parent
+/// class, so a block whose object path is the bare Blueprint name never matches a
+/// declared group and every handle it carries stays unnamed. Remapping the
+/// Blueprint leaf to the native RepLayout class lets the handles pick up names
+/// and types -- `CurrentEquippable` (the spike carrier) included. They are
+/// tagged RepLayout-only on purpose: the AbilitySystem `_ClassNetCache` group is
+/// declared with an incomplete function table, so remapping its RPC stream to it
+/// would mis-parse it. That stream stays unresolved and is brute-forced (fc=34).
+const KNOWN_SUBOBJECT_CLASS_PATHS: &[(&str, &str, GroupKind)] = &[
+    (
+        "ReplayEffect",
+        "/Script/ShooterGame.ReplayEffectComponent",
+        GroupKind::ClassNetCache,
+    ),
     (
         "EffectManager",
         "/Script/ShooterGame.EffectManagerComponent",
+        GroupKind::ClassNetCache,
     ),
     (
         "LocationalEffectManager",
         "/Script/ShooterGame.LocationalEffectManagerComponent",
+        GroupKind::ClassNetCache,
     ),
     (
         "DamageHandlerComponent",
         "/Script/ShooterGame.DamageableComponent",
+        GroupKind::ClassNetCache,
+    ),
+    (
+        "InventoryComponent",
+        "/Script/ShooterGame.AresInventory",
+        GroupKind::RepLayout,
+    ),
+    (
+        "AbilitiesAndBuffsComponent",
+        "/Script/ShooterGame.AresAbilitySystemComponent",
+        GroupKind::RepLayout,
     ),
 ];
 
@@ -263,6 +293,15 @@ impl ExportSink<'_> {
                     return g.path.clone();
                 }
             }
+            // Blueprint component name -> native parent class (see
+            // KNOWN_SUBOBJECT_CLASS_PATHS). A bare name like "InventoryComponent"
+            // never leaf-matches its native group "AresInventory", so this remap
+            // is the only way those property handles get names.
+            if let Some(known) = resolve_known_subobject_class_path(actor_path, want) {
+                if let Some(hit) = self.match_group(Some(known), want) {
+                    return hit;
+                }
+            }
             return actor_path.to_owned();
         }
 
@@ -292,6 +331,11 @@ impl ExportSink<'_> {
                         return g.path.clone();
                     }
                 }
+                if let Some(known) = resolve_known_subobject_class_path(class_path, want) {
+                    if let Some(hit) = self.match_group(Some(known), want) {
+                        return hit;
+                    }
+                }
                 return class_path.to_owned();
             }
         }
@@ -313,13 +357,13 @@ impl ExportSink<'_> {
                         return g.path.clone();
                     }
                 }
-                // Fallback: known subobject class path table.
-                if want == GroupKind::ClassNetCache {
-                    if let Some(known) = resolve_known_subobject_class_path(obj_path) {
-                        if let Some(hit) = self.match_group(Some(known), want) {
-                            return hit;
-                        }
-                        return known.to_owned();
+                // Fallback: known subobject class path table. Blueprint component
+                // leaf -> native parent class; applies to RepLayout blocks too,
+                // not only ClassNetCache, so e.g. InventoryComponent property
+                // blocks resolve to AresInventory.
+                if let Some(known) = resolve_known_subobject_class_path(obj_path, want) {
+                    if let Some(hit) = self.match_group(Some(known), want) {
+                        return hit;
                     }
                 }
                 return obj_path.to_owned();
@@ -580,13 +624,13 @@ fn is_class_default_object_path(path: &str) -> bool {
 ///
 /// Some subobjects use "stably named" identifiers (no class_net_guid). The
 /// replay only tells us the object name; this table provides the class path.
-fn resolve_known_subobject_class_path(object_path: &str) -> Option<&'static str> {
+fn resolve_known_subobject_class_path(object_path: &str, want: GroupKind) -> Option<&'static str> {
     let leaf_start = object_path.rfind(['/', '.', ':']).map_or(0, |i| i + 1);
     let leaf = &object_path[leaf_start..];
     KNOWN_SUBOBJECT_CLASS_PATHS
         .iter()
-        .find(|(name, _)| *name == leaf)
-        .map(|(_, class_path)| *class_path)
+        .find(|(name, _, kind)| *name == leaf && *kind == want)
+        .map(|(_, class_path, _)| *class_path)
 }
 
 /// Register an archetype for a channel and, if that changed anything, tell the
@@ -668,6 +712,25 @@ mod tests {
                 true,
             ),
             "/Script/ShooterGame.AresWorldSettings",
+        );
+    }
+
+    /// A Blueprint component whose bare class name differs from its native
+    /// replicated group ("InventoryComponent" vs "/Script/ShooterGame.AresInventory")
+    /// must still reach the native group via KNOWN_SUBOBJECT_CLASS_PATHS, so its
+    /// RepLayout property handles -- `CurrentEquippable` (the spike carrier)
+    /// included -- pick up names. Leaf matching cannot do this: the bare
+    /// Blueprint leaf is not the native group's leaf.
+    #[test]
+    fn a_blueprint_component_name_reaches_its_native_parent_group() {
+        assert_eq!(
+            actor_group_path_for(
+                &["/Script/ShooterGame.AresInventory"],
+                100,
+                "InventoryComponent",
+                true,
+            ),
+            "/Script/ShooterGame.AresInventory",
         );
     }
 
