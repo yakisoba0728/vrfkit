@@ -10,7 +10,7 @@ external `oozextract` crate. Edition 2024, MSRV 1.86, MIT.
 ![CI](https://github.com/yakisoba0728/vrfkit/actions/workflows/ci.yml/badge.svg)
 ![license](https://img.shields.io/badge/license-MIT-blue.svg)
 ![rust](https://img.shields.io/badge/rust-1.86%2B-orange.svg)
-![edition](https://img.shields.io/badge-edition-2024-orange.svg)
+![edition](https://img.shields.io/badge/edition-2024-orange.svg)
 ![builds](https://img.shields.io/badge/builds-12.10--13.02-green.svg)
 ![unsafe](https://img.shields.io/badge/unsafe-none-success.svg)
 
@@ -72,7 +72,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **386 tests** plus a layered validation suite (framing / bytes / decode
+- **387 tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -109,8 +109,8 @@ parsing and returns immediately. `validate` walks every content block through
 the RepLayout grammar and reports a pass rate; it writes no files. `export`
 writes the Parquet tables and manifest described under [Output](#output).
 
-`export` is not a default feature. Without it, `arrow`/`parquet`/`zstd` never
-enter the dependency tree:
+`export` is a default feature. Drop it with `--no-default-features` and
+`arrow`/`parquet`/`zstd` never enter the dependency tree:
 
 ```bash
 cargo tree -p vrfkit --no-default-features | grep -E "arrow|parquet|zstd"
@@ -126,13 +126,13 @@ produces seven files:
 
 | File | Rows | Bytes |
 |---|---|---|
-| `fields.parquet` | 1,246,812 | 13,742,276 |
+| `fields.parquet` | 1,255,920 | 14,101,592 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
-| `events.parquet` | 195 | 10,201 |
-| `checkpoint_fields.parquet` | 78,748 | 191,324 |
-| `manifest.json` |  | 658,918 |
+| `events.parquet` | 195 | 11,136 |
+| `checkpoint_fields.parquet` | 78,829 | 193,470 |
+| `manifest.json` |  | 660,032 |
 
 `checkpoint_fields.parquet` requires `--checkpoints`; with or without it, **the
 other five tables are byte-for-byte identical.**
@@ -258,16 +258,16 @@ it as one gives the year 3626.
 
 ## Status
 
-Work in progress. Currently verified: `cargo test --workspace` **355 passing**,
-`clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 113 files. The
-Python suite in `tools/tests` has 119 tests.
+Work in progress. Currently verified: `cargo test --workspace` **387 passing**,
+`clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 114 files. The
+Python suite in `tools/tests` has 124 tests.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.
 
 | Layer | Crate | Feature flags |
 |---|---|---|
-| Bit reader / UE wire format | `vrf-bitio` | `no_std`, `alloc` |
+| Bit reader / UE wire format | `vrf-bitio` | `alloc` (default; drop it for `no_std`) |
 | Payload transform (5 builds) | `vrf-transform` | none (the `ALL_VERSIONS` type encodes the count) |
 | Container (info/header/chunk/event/checkpoint, Oodle) | `vrf-container` | `oodle` `event` `checkpoint` |
 | DemoFrame traversal | `vrf-frame` | none (sections are byte ranges for cursor alignment) |
@@ -276,7 +276,7 @@ from the table below on purpose -- they go stale, and re-measuring is one line.
 | Field decoder + nested arrays + type overlay + effects | `vrf-decode` | `array` `effect` `overlay` `structs` |
 | Movement decoder | `vrf-movement` | none (single protocol) |
 | Parquet export | `vrf-export` | `parquet` + per-table |
-| Unified CLI | `vrfkit` | `export` |
+| Unified CLI | `vrfkit` | `export` (default) |
 
 Take only the layer you need:
 
@@ -494,9 +494,9 @@ are not: it is the kind of constant where a typo is invisible in review.
 `02d4d478` at the current HEAD:
 
 ```
-Decoded OK:   371,059      Decode errors:      0
-Raw/Skip:      73,984      Not in table: 510,600
-No field name: 33,340      Typed:          37.5%
+Decoded OK:   427,517      Decode errors:      0
+Raw/Skip:      74,624      Not in table: 469,829
+No field name: 17,013      Typed:          43.2%
 Effect blobs:  53,908
 ```
 
@@ -508,8 +508,8 @@ is reported separately -- without it, 53,908 rows gain a value yet the summary
 prints identically. (The bucket counts themselves do move as overlay entries
 are added; the figures above are post-economy-typing.)
 
-The real coverage figure is the fraction of all 1,246,812 rows with a filled
-`value_*`. Before effect linkage 68.8% were untyped; it is now **64.5%.**
+The real coverage figure is the fraction of all 1,255,920 rows with a filled
+`value_*`. Before effect linkage 68.8% were untyped; it is now **60.1%.**
 
 **These numbers change often; re-measure before quoting** -- four of the six
 were left stale at one point:
@@ -533,7 +533,7 @@ is unknown still ships with `raw_bits`, so it is **uninterpreted, not lost.**
 does not print overlay counters, so `validate_corpus.py` alone cannot see a
 wrong type. Reaching zero found three places where the wire disagreed with the
 C# declarations; they are recorded with evidence in
-`tools/apply_type_corrections.py` (30 corrections, verified with `--check`).
+`tools/apply_type_corrections.py` (49 corrections, verified with `--check`).
 
 | Symptom | Actual | Evidence |
 |---|---|---|
@@ -563,7 +563,7 @@ the S-box table itself. What actually changes per build:
 
 In all five builds the **tail-XOR byte equals the low byte of the seed
 addend.** It is a derived value, not an independent constant, and the
-relationship is pinned by a test in `versions.rs` -- if a future build breaks
+relationship is pinned by a test in `versions/mod.rs` -- if a future build breaks
 the pattern, the test fails instead of the final byte silently corrupting.
 
 So adding a build is one `SeededTransform` impl: two constants and three word
@@ -657,7 +657,7 @@ layered, and the layers catch different things:
 
 - **Framing** (`validate_corpus.py`, all 215 files) -- content-block framing.
 - **Bytes** (`check_export_baseline.py`, per-file row and byte counts) --
-  regression in any of the 23 export counters.
+  regression in any of the 25 export counters.
 - **Decode** (`check_decode_errors_corpus.py`, all 215 files) -- overlay type
   errors and struct-blob failures.
 - **Semantics** (`check_metrics_baseline.py`, five builds) -- round count,
@@ -671,7 +671,7 @@ that way is a trap:
   (97.28% of the residual is `AbilitiesAndBuffsComponent`, which the replay
   never declares). `Malformed framing` and `Transform failed` are the lines
   that must be zero; the pass rate is expected to sit below 100%.
-- The **~37% `Typed`** ratio reads low because of the *RPC-parameter
+- The **~43% `Typed`** ratio reads low because of the *RPC-parameter
   denominator* -- most of `Not in table` is RPC parameters with no C#
   descriptor. A low ratio is uninterpreted, not lost: those rows still carry
   `raw_bits`, and additive decoders (effects, structs, the economy typing)

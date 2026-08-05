@@ -25,12 +25,12 @@ for the record, not things to run.
 ## 1. Build
 
 ```bash
-cargo build --release -p vrfkit                     # inspect / validate
-cargo build --release -p vrfkit --features export   # + export (Parquet)
+cargo build --release -p vrfkit                          # inspect / validate / export
+cargo build --release -p vrfkit --no-default-features    # inspect / validate only
 ```
 
-`export` is not a default feature. Build without it and `arrow`/`parquet`/`zstd`
-never enter the dependency tree at all.
+`export` is a default feature. Drop it with `--no-default-features` and
+`arrow`/`parquet`/`zstd` never enter the dependency tree at all.
 
 ```bash
 cargo tree -p vrfkit --no-default-features | grep -E "arrow|parquet|zstd"   # no output
@@ -122,7 +122,7 @@ handle by name.
 #### Reading the `Typed` ratio
 
 ```
-  Typed:            36.6% (properties + RPC parameters)
+  Typed:            43.2% (properties + RPC parameters)
 ```
 
 The denominator is **every row offered** to the overlay, and thanks to RPC
@@ -141,13 +141,13 @@ Measured on `02d4d478` (48,215,213 bytes):
 
 | File | Rows | Bytes | Notes |
 |---|---|---|---|
-| `fields.parquet` | 1,246,812 | 13,742,276 | |
+| `fields.parquet` | 1,255,920 | 14,101,592 | |
 | `movement.parquet` | 1,839,607 | 31,835,557 | |
 | `actors.parquet` | 3,827 | 87,281 | |
 | `net_guids.parquet` | 16,167 | 153,606 | |
-| `events.parquet` | 195 | 10,201 | |
-| `checkpoint_fields.parquet` | 78,748 | 191,324 | requires `--checkpoints` |
-| `manifest.json` | -- | 658,918 | |
+| `events.parquet` | 195 | 11,136 | |
+| `checkpoint_fields.parquet` | 78,829 | 193,470 | requires `--checkpoints` |
+| `manifest.json` | -- | 660,032 | |
 
 `export` takes 0.85 s. String columns are dictionary-encoded + ZSTD.
 
@@ -329,7 +329,7 @@ Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 
 | Layer | Crate | Feature flags |
 |---|---|---|
-| Bit reader / UE wire format | `vrf-bitio` | `no_std`, `alloc` |
+| Bit reader / UE wire format | `vrf-bitio` | `alloc` (default; drop it for `no_std`) |
 | Payload transform (5 builds) | `vrf-transform` | none |
 | Container (info/header/chunk/event/checkpoint, Oodle) | `vrf-container` | `oodle` `event` `checkpoint` |
 | DemoFrame traversal | `vrf-frame` | none |
@@ -338,7 +338,7 @@ Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 | Field decoder + nested arrays + type overlay + effects | `vrf-decode` | `array` `effect` `overlay` `structs` |
 | Movement decoder | `vrf-movement` | none |
 | Parquet writer | `vrf-export` | `parquet` + per-table |
-| Unified CLI | `vrfkit` | `export` |
+| Unified CLI | `vrfkit` | `export` (default) |
 
 ZSTD is deliberately *not* feature-gated out -- every writer picks it, so
 disabling it would produce files this crate could not explain.
@@ -366,16 +366,23 @@ the script does not trust its own apply count -- it **re-verifies the final
 state after applying** and fails if it disagrees.
 
 ```bash
-python tools/apply_type_corrections.py           # apply, then verify (30 corrections)
+python tools/apply_type_corrections.py           # apply, then verify (49 corrections)
 python tools/apply_type_corrections.py --check   # verify only
 ```
 
+Those 49 are the whole `EXPECTED` set the script re-verifies; `ADDITIONS` is the
+subset of it that has no C# descriptor behind it at all.
+
 The `ADDITIONS` pass inserts items the C# descriptor is **silent on**. There are
-currently only three -- `BaseTeamState.LoadoutValue` / `AverageLoadoutValue`
-(26-I, where the reference declares the type of the same property and only moves
-the group) and `BombGameState.ChosenCeremonyForRound` (section 32, wire evidence
-only). Broadening it without evidence voids the very reason these additions are
-allowed -- read PROJECT_STATUS 26-I and 32 first.
+currently 25 of them, and every one is admitted on wire evidence written into the
+comment above the list -- bit width, value range, distribution -- and nothing else.
+The original three still show the bar: `BaseTeamState.LoadoutValue` /
+`AverageLoadoutValue` (26-I, where the reference declares the type of the same
+property and only moves the group) and `BombGameState.ChosenCeremonyForRound`
+(section 32, wire evidence only). Broadening it without evidence voids the very
+reason these additions are allowed -- read PROJECT_STATUS 26-I and 32 first, and
+read the "Deliberately NOT added" note in the same comment, which records the
+fields that failed the bar and why.
 
 ### Validation
 
@@ -391,7 +398,7 @@ allowed -- read PROJECT_STATUS 26-I and 32 first.
 | `compare_rpc_params.py` | RPC parameter comparison |
 | `compare_with_csharp.py` | Diff against the C# parser |
 | `check_effect_decoder.py` | Effect decoder (12 cases) |
-| `check_ascii.py` | Rust source ASCII sweep (113 files) |
+| `check_ascii.py` | Rust source ASCII sweep (114 files) |
 | `check_docs.py` | This document itself (below) |
 
 `check_docs.py` checks this document -- that every `tools/` script is
@@ -456,14 +463,14 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 386 passing
+cargo test                                        # 387 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
-python tools/check_ascii.py --check               # 113 files, ASCII only
+python tools/check_ascii.py --check               # 114 files, ASCII only
 python tools/check_effect_decoder.py --check      # 12 cases
-python -m unittest discover -s tools/tests -p "test_*.py"   # 120 passing
+python -m unittest discover -s tools/tests -p "test_*.py"   # 124 passing
 python tools/check_docs.py --fast                 # do the docs still describe this repo
-python tools/apply_type_corrections.py --check    # 30 corrections present
+python tools/apply_type_corrections.py --check    # 49 corrections present
 ```
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
@@ -488,7 +495,7 @@ python tools/compare_combat_report.py
 | Check | Watches | Misses | Cost |
 |---|---|---|---|
 | `validate_corpus.py` | Framing (all 215) | Type errors, broken semantics | ~30 s |
-| `check_export_baseline.py` | 23 export counters + per-file rows/bytes | Other builds | 1 s |
+| `check_export_baseline.py` | 25 export counters + per-file rows/bytes | Other builds | 1 s |
 | `check_decode_errors_corpus.py` | Overlay type errors + struct blob failures (all 215) | Broken semantics | ~50 s |
 | `check_metrics_baseline.py` | **Semantics** -- rounds, score, K/D/A (5 builds) | Errors in the metrics pipeline itself | ~46 s |
 | `compare_combat_report.py` | Metrics-input multiset | Framing | seconds |
@@ -551,7 +558,7 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
 
 ## 8. Known limits
 
-- **Untyped residual** -- the [`export`](#export) `Typed` is ~37% (denominator
+- **Untyped residual** -- the [`export`](#export) `Typed` is ~43% (denominator
   including RPC parameters). **Untyped != lost** (`raw_bits` preserved). Typing
   the rest needs the game binary or UE headers -- this is not a table-editing
   problem (PROJECT_STATUS section 24).
