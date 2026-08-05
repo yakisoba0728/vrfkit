@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Reproduce metrics.json for every replay that has a C# reference bundle.
 
-Every figure in PROJECT_STATUS section 6 rests on a single replay
-(02d4d478). This runs the whole pipeline -- vrfkit export, the valplay
+Every figure in docs/archive/PROJECT_STATUS.md section 6 rests on a single
+replay (02d4d478). This runs the whole pipeline -- vrfkit export, the valplay
 adapter, compute_metrics.py -- against each replay that has BOTH a source
 .vrf and a reference metrics.json, then diffs section by section.
 

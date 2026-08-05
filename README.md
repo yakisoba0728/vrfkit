@@ -123,7 +123,7 @@ A binary built without `export` **refuses the subcommand rather than failing
 silently** -- a subcommand that printed nothing and exited 0 would be
 indistinguishable from one that wrote the files.
 
-On `02d4d478` (48,215,213 bytes, build 13.01), `export` takes ~0.85 s and
+On `02d4d478` (48,215,213 bytes, build 13.01), `export` takes ~0.83 s and
 produces seven files:
 
 | File | Rows | Bytes |
@@ -235,8 +235,8 @@ timestamp in the exported parquet, about 1.4-1.6% of keys disagree (of which
 ~0.4% differ in value, the rest in bit-width) and about 0.4% of keys are
 absent from ReplayData entirely. Results are identical for 13.01 and 13.02.
 The earlier 6-11% figures were raw live-wire measurements; export's byte-width
-normalization collapses them to ~1.4% (see `PROJECT_STATUS.md` section 22-I;
-byte-level format in [`CHECKPOINT_SPEC.md`](CHECKPOINT_SPEC.md)).
+normalization collapses them to ~1.4% (see `docs/archive/PROJECT_STATUS.md`
+section 22-I; byte-level format in [`CHECKPOINT_SPEC.md`](CHECKPOINT_SPEC.md)).
 
 ### `manifest.json`
 
@@ -262,7 +262,7 @@ it as one gives the year 3626.
 
 Work in progress. Currently verified: `cargo test --workspace` **394 passing**,
 `clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 114 files. The
-Python suite in `tools/tests` has 138 tests.
+Python suite in `tools/tests` has 147 tests.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.
@@ -301,7 +301,7 @@ On `02d4d478` (48,215,213 bytes):
 
 Figures are wall-clock / peak memory. Output is **byte-for-byte identical**
 before and after. Detail and the optimizations measured and then rejected are
-in `PROJECT_STATUS.md` section 25.
+in `docs/archive/PROJECT_STATUS.md` section 25.
 
 > These times fluctuate by +/-10% run to run on the same commit and machine:
 > on 2026-08-04 export was 0.79 s and validate 0.65 s; on 2026-08-05 they were

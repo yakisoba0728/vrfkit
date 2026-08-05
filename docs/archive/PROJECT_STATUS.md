@@ -1,10 +1,22 @@
-# vrfkit Project Status
+# vrfkit Project Status [ARCHIVED -- HISTORICAL]
+
+**Do not read this for the current state.** The log ends at section 36, last
+edited at `29942cf`; the 27 commits since are not recorded here. No figure,
+count or open item on this page is evidence for what the repository does today
+-- several have already moved. Everything below, including the `Last updated`
+line and the summary paragraphs after it, is as of that point.
+
+For the current state read [`../../README.md`](../../README.md) (what the tool
+is and does), [`../DATA.md`](../DATA.md) (what is extractable, and what is
+next) and [`../USAGE.md`](../USAGE.md) (CLI, schemas, validation). This file is
+kept because its section numbers are cited from those docs and from code
+comments, and the reasoning they point at still stands.
 
 > **What this document is.** This is a dated chronological engineering
 > work log for vrfkit -- a record of what was investigated, measured,
 > fixed, and ruled out, in the order it happened. It is NOT a spec or a
-> user guide. For the user-facing story, see [README.md](README.md) and
-> [docs/USAGE.md](docs/USAGE.md). Its value is the historical record:
+> user guide. For the user-facing story, see [README.md](../../README.md) and
+> [docs/USAGE.md](../USAGE.md). Its value is the historical record:
 > dated figures are snapshots at their own commits and are deliberately
 > not refreshed here -- re-measure against HEAD (section 2 explains how),
 > and treat the section numbers (7-F, 22-I, 26-I, ...) as stable

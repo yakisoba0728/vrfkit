@@ -11,8 +11,8 @@
 //! already carries, and the assumption was measured and found false: 6-11% of a
 //! checkpoint's RepLayout field values disagree with what ReplayData carried at
 //! the same timestamp, and 0.5-2% are keys ReplayData never sent at all. See
-//! PROJECT_STATUS.md 22-I for the measurement and CHECKPOINT_SPEC.md for the
-//! byte-level derivation.
+//! docs/archive/PROJECT_STATUS.md 22-I for the measurement and
+//! CHECKPOINT_SPEC.md for the byte-level derivation.
 //!
 //! # Chunk layout
 //!

@@ -5,9 +5,10 @@
 *export* path, so every figure the export summary prints -- content blocks,
 fields, RPCs, movement rows, NetGUID rows, decode errors, the four Parquet
 files themselves -- was pinned only in a comment in the task brief and in
-PROJECT_STATUS prose. `NetGUID rows: 16167` is the clearest case: no harness
-read it, because `validate` never writes Parquet and `validate_corpus.py`'s
-PATTERNS has no entry for a counter the oracle does not print.
+docs/archive/PROJECT_STATUS.md prose. `NetGUID rows: 16167` is the clearest
+case: no harness read it, because `validate` never writes Parquet and
+`validate_corpus.py`'s PATTERNS has no entry for a counter the oracle does
+not print.
 
 That is the same shape as the malformed counter, which went unread for the
 project's whole history because its regex never matched. A number nobody

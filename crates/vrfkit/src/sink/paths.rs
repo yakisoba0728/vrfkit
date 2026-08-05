@@ -3,9 +3,9 @@
 //! Every content block has to be attributed to one of the replay's declared
 //! export groups before a single field in it can be named, and the rules for
 //! doing that mirror the C# `ContentBlockPathResolver`. There are 608,020
-//! blocks in the reference replay and PROJECT_STATUS 5-P measured this
-//! resolution at 371 ms -- the largest single slice of the export after the
-//! Parquet writers were moved off the packet loop.
+//! blocks in the reference replay and docs/archive/PROJECT_STATUS.md 5-P
+//! measured this resolution at 371 ms -- the largest single slice of the
+//! export after the Parquet writers were moved off the packet loop.
 //!
 //! # The memo
 //!

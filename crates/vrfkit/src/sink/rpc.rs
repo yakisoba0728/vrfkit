@@ -226,8 +226,8 @@ impl ExportSink<'_> {
                 ) {
                     // `payload_bits`, not `raw.len() * 8`: the last byte is
                     // padded, and handing the padding to the decoder as data is
-                    // the latent bug PROJECT_STATUS.md 12-D pins on the Python
-                    // side of this same format.
+                    // the latent bug docs/archive/PROJECT_STATUS.md 12-D pins
+                    // on the Python side of this same format.
                     match decode_effect_blob_json(kind, raw, payload_bits) {
                         Ok(json) => {
                             value_str = Some(json);

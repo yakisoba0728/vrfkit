@@ -41,7 +41,7 @@ Exit code is 0 only when every replay reported "Decode errors: 0" and
 "Struct blobs: ... / 0 failed", AND every replay reported both counters at
 all. A counter that stops being printed must not read as zero; that is how the
 corpus malformed figure stayed a vacuous 0 for the project's whole history
-(see PROJECT_STATUS 5-O).
+(see docs/archive/PROJECT_STATUS.md 5-O).
 """
 from __future__ import annotations
 

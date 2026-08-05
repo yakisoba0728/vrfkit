@@ -11,29 +11,31 @@ spray_control is now EXACT; posture's by_weapon is exact for all 10 players.
 Verifying the unblocked sections turned up a second bug this document did not
 anticipate: fire_mode was inferred from BurstShotNumber, mislabelling 1,462 of
 2,475 shots as alternate fire, which spray_control silently discards. The same
-net_guids.parquet chain fixed it. Tracked as 5-L in PROJECT_STATUS.
+net_guids.parquet chain fixed it. Tracked as 5-L in
+docs/archive/PROJECT_STATUS.md.
 
-Two follow-on items are tracked in PROJECT_STATUS as 7-J (EquippableUsed
-.NetGuid decodes wrong, blocking weapon_stats) and 7-I (172 events the
-reference emits and we do not -- classified as server-world effects with no
-firing state, so not a defect).
+Two follow-on items are tracked in docs/archive/PROJECT_STATUS.md as 7-J
+(EquippableUsed .NetGuid decodes wrong, blocking weapon_stats) and 7-I (172
+events the reference emits and we do not -- classified as server-world effects
+with no firing state, so not a defect).
 
 This document is kept as the evidence trail for why the original 7-A was
 wrong and how the replacement was proved before any code was written.
 
 ---
 
-Written 2026-08-01. Supersedes PROJECT_STATUS.md section 7-A.
+Written 2026-08-01. Supersedes docs/archive/PROJECT_STATUS.md section 7-A.
 Every number below comes from a direct tool run against real data, not an estimate.
 
 Build state: `cargo test` = 228 passed, 0 failed. Tree clean.
-26 commits (PROJECT_STATUS header said 25, section 2 said 24 -- both were stale).
+26 commits (docs/archive/PROJECT_STATUS.md header said 25, section 2 said 24
+-- both were stale).
 
 ---
 
 ## Headline
 
-PROJECT_STATUS section 7-A said:
+docs/archive/PROJECT_STATUS.md section 7-A said:
 
 > The shot EffectContainer carries a net GUID that refers to the equippable
 > actor. [...] Estimated effort: 1-2 hours. No Rust change required.
@@ -140,7 +142,8 @@ and "nothing is hard-coded". True **only from valplay's side** -- the hardcoding
 lives one layer down, in the C# parser.
 
 So reproducing `shot.equippable.name` requires a hardcoded table somewhere, which
-collides with PROJECT_STATUS section 8 / tradeoff 3 ("NO HARDCODED NAMES ANYWHERE").
+collides with docs/archive/PROJECT_STATUS.md section 8 / tradeoff 3
+("NO HARDCODED NAMES ANYWHERE").
 
 Recommended: keep the Rust parser pure -- it emits `class_path`, which is
 self-describing (`AssaultRifle_AK`) -- and confine display-name mapping to the
@@ -186,7 +189,8 @@ which is why avoiding it for 7-A matters.
 The reference resolves `equippable` on exactly 2,475 of its 2,647 shots -- the
 same number of shots our adapter emits. Our adapter filters on
 `FiringState.FiringPlayerState` being present. If that filter is what produces
-both numbers, then PROJECT_STATUS's "ray_count 2475/2475 exact" is a
+both numbers, then docs/archive/PROJECT_STATUS.md's
+"ray_count 2475/2475 exact" is a
 self-selecting comparison and reads stronger than it is. Classify the 172:
 pull their `source_id` / `fire_mode_evidence` from the reference file and
 determine whether they are gun shots we drop or ability/melee effects that were

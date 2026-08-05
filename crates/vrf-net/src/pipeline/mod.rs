@@ -1073,7 +1073,8 @@ mod tests {
         }
     }
 
-    // --- controller property-block regression tests (PROJECT_STATUS 17-A) ---
+    // --- controller property-block regression tests
+    // (docs/archive/PROJECT_STATUS.md 17-A) ---
 
     /// Build a non-partial open bunch around `payload_bits` and return the
     /// full packet bytes, ready for `process_packet`.
@@ -1122,8 +1123,8 @@ mod tests {
     /// because `is_player_controller_channel` resolves the archetype through
     /// the path cache). Without either one, the first header misframes and
     /// the controller's own RepLayout property block -- `PlayerState` and
-    /// `SpawnLocation` -- is never walked. PROJECT_STATUS 17-A found the
-    /// mechanism; this pins the fix.
+    /// `SpawnLocation` -- is never walked. docs/archive/PROJECT_STATUS.md
+    /// 17-A found the mechanism; this pins the fix.
     ///
     /// Applying either half alone is the one-bit-off failure that destroyed
     /// seven real subobject rows in the earlier experiment. This test fires

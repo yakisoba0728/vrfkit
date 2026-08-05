@@ -87,7 +87,8 @@ class ExtractDescriptorsTests(unittest.TestCase):
         calls onto decoder objects. The generator keyed only on the method name,
         so every one of them became Raw -- and the committed table.rs carries
         them typed, meaning a regeneration would have silently downgraded eight
-        entries. That is the hazard PROJECT_STATUS section 8 describes.
+        entries. That is the hazard docs/archive/PROJECT_STATUS.md section 8
+        describes.
 
         RawPayload stays Raw in the same descriptor, because a decoder whose
         name does not state a type is unknown, not raw.

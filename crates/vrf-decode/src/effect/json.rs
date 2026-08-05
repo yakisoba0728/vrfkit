@@ -20,7 +20,7 @@ use super::{EffectArrayKind, EffectBlobError, EffectHandles, Result};
 /// - `bit_count`: the payload's exact bit length. This is the RPC parameter's
 ///   declared `payload_bits`, **not** `raw.len() * 8` -- the last byte is
 ///   padded, and feeding the padding in as data is a latent bug the audit in
-///   `PROJECT_STATUS.md` 12-D calls out on the Python side.
+///   `docs/archive/PROJECT_STATUS.md` 12-D calls out on the Python side.
 ///
 /// # Errors
 /// Returns [`EffectBlobError`] if the payload is not a well-formed array of

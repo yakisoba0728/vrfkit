@@ -271,8 +271,9 @@ DECODE_RE = re.compile(
 # Why this exists: the C# reference moved these fields from a direct
 # `.FVectorNetQuantize100()` call to a decoder object, and this extractor keyed
 # only on the method name. Everything routed through `.Decode(` therefore
-# collapsed to Raw. That is exactly the hazard PROJECT_STATUS section 8 names
-# under "A CUSTOM C# DECODER MEANS THE TYPE IS UNKNOWN, NOT RAW" -- and it had
+# collapsed to Raw. That is exactly the hazard docs/archive/PROJECT_STATUS.md
+# section 8 names under "A CUSTOM C# DECODER MEANS THE TYPE IS UNKNOWN, NOT RAW"
+# -- and it had
 # already fired: the committed table.rs carries these eight entries typed, and
 # regenerating without this map silently downgrades all eight.
 #

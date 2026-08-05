@@ -7,7 +7,7 @@ VALORANT `.vrf` 리플레이의 Checkpoint 청크 포맷을 바이트 단위로 
 > **상태: 구현 완료.** 이 문서는 읽기 전용 조사로 시작했으나 현재는 출하된 코드의 기준
 > 문서다. 파서는 `vrf-container`의 `checkpoint` 모듈(청크 헤더, 감압)과 `vrf-schema`의 두
 > 테이블에 있으며, `vrfkit export --checkpoints` 뒤에서 실행된다. 무엇이 구현되었는지는
-> PROJECT_STATUS.md 23절, 구현을 정당화한 측정은 22-I에 있다.
+> docs/archive/PROJECT_STATUS.md 23절, 구현을 정당화한 측정은 22-I에 있다.
 >
 > 코드가 이미 존재하는 지금도 읽을 가치가 있는 부분이 둘 있다. 9절은 기각된 가설들을,
 > 10절은 여전히 미지수인 항목들을 기록하며, 둘 다 코드에는 반영되지 않았다.

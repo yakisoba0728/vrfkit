@@ -4,10 +4,10 @@ The CLI, output schemas, library use, `tools/` scripts, and validation suite.
 
 Design rationale and the comparison against the existing parser are in
 [`../README.md`](../README.md); work history and measurement records are in
-[`../PROJECT_STATUS.md`](../PROJECT_STATUS.md). The byte-level format of the
-checkpoint chunks is in [`../CHECKPOINT_SPEC.md`](../CHECKPOINT_SPEC.md), and
-finished task specs are in [`archive/`](archive/README.md) -- all of these are
-for the record, not things to run.
+[`archive/PROJECT_STATUS.md`](archive/PROJECT_STATUS.md). The byte-level format
+of the checkpoint chunks is in [`../CHECKPOINT_SPEC.md`](../CHECKPOINT_SPEC.md),
+and finished task specs are in [`archive/`](archive/README.md) -- all of these
+are for the record, not things to run.
 
 ## Table of contents
 
@@ -115,9 +115,9 @@ five tables are byte-for-byte identical.**
 `TeamEconomy` / `RoundInfos`. These decoders are **additive**, so failing
 completely does not move a single other counter -- when build 13.02 shifted a
 handle, the entire summary looked healthy while the match score simply
-disappeared (PROJECT_STATUS section 26). **`0 decoded` is an alarm even if
-`failed` is 0.** On failure, the `Struct blob err:` line prints the member and
-handle by name.
+disappeared (archive/PROJECT_STATUS.md section 26). **`0 decoded` is an alarm
+even if `failed` is 0.** On failure, the `Struct blob err:` line prints the
+member and handle by name.
 
 #### Reading the `Typed` ratio
 
@@ -149,7 +149,9 @@ Measured on `02d4d478` (48,215,213 bytes):
 | `checkpoint_fields.parquet` | 78,829 | 196,448 | requires `--checkpoints` |
 | `manifest.json` | -- | 660,032 | |
 
-`export` takes 0.85 s. String columns are dictionary-encoded + ZSTD.
+`export` takes 0.83 s (median of 5; re-measure with
+[`bench_export.py`](#analysis-helpers)). String columns are dictionary-encoded
++ ZSTD.
 
 ### `fields.parquet`
 
@@ -292,7 +294,7 @@ instant and **is not redundant** -- against the last ReplayData value at the sam
 timestamp in the exported parquet, about 1.4% disagree and about 0.4% are keys
 absent from ReplayData entirely (identical for 13.01 and 13.02). The earlier
 6-11% figures were raw live-wire measurements, and export's byte-width
-normalization collapses them to ~1.4% (PROJECT_STATUS 22-I).
+normalization collapses them to ~1.4% (archive/PROJECT_STATUS.md 22-I).
 
 ### `manifest.json`
 
@@ -380,9 +382,9 @@ The original three still show the bar: `BaseTeamState.LoadoutValue` /
 `AverageLoadoutValue` (26-I, where the reference declares the type of the same
 property and only moves the group) and `BombGameState.ChosenCeremonyForRound`
 (section 32, wire evidence only). Broadening it without evidence voids the very
-reason these additions are allowed -- read PROJECT_STATUS 26-I and 32 first, and
-read the "Deliberately NOT added" note in the same comment, which records the
-fields that failed the bar and why.
+reason these additions are allowed -- read archive/PROJECT_STATUS.md 26-I and 32
+first, and read the "Deliberately NOT added" note in the same comment, which
+records the fields that failed the bar and why.
 
 ### Validation
 
@@ -454,6 +456,7 @@ deliberately sequential for accuracy.
 |---|---|
 | `analyze_coverage.py` | Coverage analysis |
 | `find_skips.py` | Finds skipped bits |
+| `bench_export.py` | Times a full `export` against `tools/baselines/bench.json`. A smoke detector, not a profiler -- wall clock is noisy, so the default tolerance is 25% and it answers "did something get twice as slow", nothing finer. Reports a run *faster* than the baseline too: that means the recorded number no longer describes the code. |
 | `extract_active_effects.py` | Derives an `active_effects.parquet` view from an export -- one row per persistent ability instance (smoke/wall/molly/slow/trap/recon/orb) with class, spawn position, and open/close lifetime. The data already lives in `actors.parquet`; this filters and pairs it. |
 | `extract_spike_carrier.py` | Derives a `spike_carrier.parquet` view -- one row per spike custody interval, resolved through to the manifest `subject`. Reads `BombEquippable_C.Owner` on the spike's own channel rather than the inventory side, so it covers carrying-in-the-backpack and not just in-hand, and it follows proxy carriers (Gekko's Wingman) back through `Instigator`. |
 
@@ -469,7 +472,7 @@ cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 114 files, ASCII only
 python tools/check_effect_decoder.py --check      # 12 cases
-python -m unittest discover -s tools/tests -p "test_*.py"   # 138 passing
+python -m unittest discover -s tools/tests -p "test_*.py"   # 147 passing
 python tools/check_docs.py --fast                 # do the docs still describe this repo
 python tools/apply_type_corrections.py --check    # 49 corrections present
 ```
@@ -568,7 +571,7 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
 - **Untyped residual** -- the [`export`](#export) `Typed` is ~44% (denominator
   including RPC parameters). **Untyped != lost** (`raw_bits` preserved). Typing
   the rest needs the game binary or UE headers -- this is not a table-editing
-  problem (PROJECT_STATUS section 24).
+  problem (archive/PROJECT_STATUS.md section 24).
 - **`AbilitiesAndBuffsComponent`** -- the replay declares no ClassNetCache group
   for that class at all. Confirmed across all 4,024 checkpoints. This is the
   attribution gap that keeps the `validate` pass rate below 100%.
@@ -585,4 +588,4 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
   scope, so applying it is their call.
 - **ADR is 0.1-0.2 higher than the tracker.** This is not a bug -- wire damage
   is fractional, while the Riot API reports integers. **Do not "fix" it by
-  adding truncation** (PROJECT_STATUS 27-B).
+  adding truncation** (archive/PROJECT_STATUS.md 27-B).

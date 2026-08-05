@@ -72,7 +72,7 @@ pub(super) fn is_player_controller_path(path: &str) -> bool {
 /// bits where the real header consumes 2, so the content-bit count was read at
 /// the same offset and every later block framed identically. The controller's
 /// own property block was simply routed to the ClassNetCache path and never
-/// walked. See PROJECT_STATUS 17-A.
+/// walked. See docs/archive/PROJECT_STATUS.md 17-A.
 pub(super) fn is_player_controller_channel(
     actor_net_guid: NetworkGuid,
     archetype_net_guid: NetworkGuid,

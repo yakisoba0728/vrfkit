@@ -4,8 +4,8 @@
 validate_corpus.py prints what a corpus currently does. That answers "is it
 working today" but not "did my change move it", which is the question a
 regression guard has to answer. The 13.01 numbers are pinned by hand in
-PROJECT_STATUS; the 13.02 build had nothing pinned at all, so a transform
-change could have broken it silently -- that gap is item 7-E.
+docs/archive/PROJECT_STATUS.md; the 13.02 build had nothing pinned at all, so
+a transform change could have broken it silently -- that gap is item 7-E.
 
 This stores per-file and total figures in a JSON baseline and compares
 against it, exiting non-zero on any difference.

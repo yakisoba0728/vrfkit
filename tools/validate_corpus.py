@@ -9,7 +9,7 @@ Replays are independent, so they run one subprocess each, several at a time.
 Set VRFKIT_JOBS to override the worker count (default: cores - 2, capped at
 16). This changes no number -- each subprocess owns its own output and shares
 nothing. Parallelising *inside* a replay is a different question, measured
-and closed in PROJECT_STATUS 7-F.
+and closed in docs/archive/PROJECT_STATUS.md 7-F.
 
 Usage:
     python tools/validate_corpus.py <vrfkit.exe> <dir-with-vrf-files> [limit]

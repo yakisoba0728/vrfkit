@@ -61,8 +61,8 @@ pub(super) fn read_dynamic_spawn_data(
     // velocity rather than none.
     //
     // Skipping it cost one bit at the head of the controller's opening bunch.
-    // See PROJECT_STATUS 17-A for why one bit was invisible and why this must
-    // be fixed together with the net-player-index byte.
+    // See docs/archive/PROJECT_STATUS.md 17-A for why one bit was invisible
+    // and why this must be fixed together with the net-player-index byte.
     state.spawn_velocity = read_optional_quantized_vector(payload, SPAWN_SCALE_FACTOR, ORIGIN)?;
     Ok(())
 }

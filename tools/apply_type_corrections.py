@@ -115,7 +115,7 @@ EXPECTED += [
 #:
 #: This is a WEAKER justification than the BaseTeamState pair above, where the
 #: reference declares the property's type and only its group moved. Recorded as
-#: such deliberately -- see PROJECT_STATUS 31-C and 32.
+#: such deliberately -- see docs/archive/PROJECT_STATUS.md 31-C and 32.
 #: Swiftplay's copy of this field is NOT listed here. It was, briefly, and the
 #: entry was removed when `GROUP_ALIASES` landed in `vrf-decode/src/overlay.rs`
 #: -- Swiftplay's game state now falls back to the Bomb class for every field,
@@ -142,8 +142,9 @@ EXPECTED += [
 #:
 #: `BombPlayerState.Ping` is the largest untyped wire-declared field (20193 rows
 #: on 02d4d478, 222855 across the 11-replay bundle). No descriptor declares it.
-#: The encoding was settled in PROJECT_STATUS 18: bit_count is always 16, and the
-#: value is a 16-bit little-endian unsigned integer that behaves like latency in
+#: The encoding was settled in docs/archive/PROJECT_STATUS.md 18: bit_count is
+#: always 16, and the value is a 16-bit little-endian unsigned integer that
+#: behaves like latency in
 #: milliseconds -- on 02d4d478: min 6, p5 10, p50 15, p90 19, p99 25, max 473,
 #: 57 distinct values. Typed as `SerializedInt{65536}` (16 bits LSB-first), which
 #: read_serialized_int reads as exactly 16 bits and satisfies decode_field's
