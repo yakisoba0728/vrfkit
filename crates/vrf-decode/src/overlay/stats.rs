@@ -141,3 +141,83 @@ pub struct OverlayStats {
     /// Detailed per-field error breakdown (populated only when reporting is on).
     pub error_report: OverlayErrorReport,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Eight buckets that all carry the same count, so every pair is a tie and
+    /// only the tiebreak decides the order. Named out of alphabetical order so
+    /// a report that echoes insertion order cannot pass by accident.
+    const TIED: [(&str, &str); 8] = [
+        ("GroupD", "delta"),
+        ("GroupA", "beta"),
+        ("GroupC", "gamma"),
+        ("GroupA", "alpha"),
+        ("GroupB", "epsilon"),
+        ("GroupD", "alpha"),
+        ("GroupB", "beta"),
+        ("GroupC", "alpha"),
+    ];
+
+    fn tied_report() -> OverlayErrorReport {
+        let mut report = OverlayErrorReport::default();
+        for (group, field) in TIED {
+            report.record(group, field, FieldType::Int32, 32, DecodeErrorKind::Eof);
+        }
+        report
+    }
+
+    #[test]
+    fn top_n_breaks_count_ties_by_group_then_field() {
+        let rows = tied_report().top_n(TIED.len());
+        let order: Vec<(&str, &str)> = rows
+            .iter()
+            .map(|r| (r.group_path.as_str(), r.field_name.as_str()))
+            .collect();
+        assert_eq!(
+            order,
+            vec![
+                ("GroupA", "alpha"),
+                ("GroupA", "beta"),
+                ("GroupB", "beta"),
+                ("GroupB", "epsilon"),
+                ("GroupC", "alpha"),
+                ("GroupC", "gamma"),
+                ("GroupD", "alpha"),
+                ("GroupD", "delta"),
+            ]
+        );
+    }
+
+    #[test]
+    fn top_n_is_identical_across_independently_built_reports() {
+        // Each report owns a HashMap with its own RandomState, so tied buckets
+        // iterate in a different order per instance. Sorting on count alone let
+        // that leak into the printed report; two runs disagreed.
+        let first = tied_report().top_n(TIED.len());
+        let second = tied_report().top_n(TIED.len());
+        let key = |rows: &[OverlayErrorRow]| -> Vec<(String, String)> {
+            rows.iter()
+                .map(|r| (r.group_path.clone(), r.field_name.clone()))
+                .collect()
+        };
+        assert_eq!(key(&first), key(&second));
+    }
+
+    #[test]
+    fn top_n_still_puts_the_biggest_count_first() {
+        let mut report = tied_report();
+        report.record(
+            "GroupD",
+            "delta",
+            FieldType::Int32,
+            32,
+            DecodeErrorKind::Eof,
+        );
+        let rows = report.top_n(1);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].count, 2);
+        assert_eq!(rows[0].group_path, "GroupD");
+    }
+}
