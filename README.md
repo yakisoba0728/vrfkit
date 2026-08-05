@@ -71,6 +71,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 
 - [Supported VALORANT builds](#supported-valorant-builds)
 - [Highlights](#highlights)
+- [Extractable data](docs/DATA.md) — the full inventory of what each table carries
 - [Quick start](#quick-start)
 - [Output](#output)
 - [Status](#status)
