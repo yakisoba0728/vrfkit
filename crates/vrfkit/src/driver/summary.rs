@@ -33,6 +33,10 @@ pub(super) struct RunTotals {
     /// First struct-blob failure verbatim. Printed so a build that reshuffles
     /// handles names itself on the summary instead of being invisible.
     pub struct_blob_first_error: Option<String>,
+    /// Movement-decode problems (soft `error_count` + hard failures). Printed
+    /// unconditionally so "0" is distinguishable from "decoder not reached".
+    pub movement_rpc_errors: u64,
+    pub movement_first_error: Option<String>,
 }
 
 /// Print the whole `=== Export complete ===` report.
@@ -78,6 +82,10 @@ pub(super) fn print(
     );
     if let Some(err) = &totals.struct_blob_first_error {
         eprintln!("  Struct blob err:  {err}");
+    }
+    eprintln!("  Movement errors:  {}", totals.movement_rpc_errors);
+    if let Some(err) = &totals.movement_first_error {
+        eprintln!("  Movement err:     {err}");
     }
     eprintln!("  Elapsed:          {:.2?}", totals.elapsed);
 

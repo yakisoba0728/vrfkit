@@ -165,6 +165,94 @@ pub struct ExportStats {
     /// The first failure verbatim, so the summary can name the member and the
     /// handle instead of only admitting that something went wrong.
     pub struct_blob_first_error: Option<String>,
+
+    /// Movement-decode problems: per-update soft errors
+    /// (`RpcDecodeResult.error_count`) plus hard `Err` failures, summed.
+    /// `decode_movement_rpc` used to drop its `Result` wholesale, so a build
+    /// that changed the movement section format would silently shorten
+    /// `movement.parquet` with every other counter reading clean.
+    pub movement_rpc_errors: u64,
+
+    /// The first movement-decode problem verbatim, for the summary to name.
+    pub movement_first_error: Option<String>,
+}
+
+impl ExportStats {
+    /// Record a movement-RPC decode outcome so a silent failure cannot read
+    /// as success. Soft per-update errors (caught and counted by the decoder
+    /// in `RpcDecodeResult.error_count`) and hard `Err`s both land here; the
+    /// first is kept verbatim for the summary.
+    pub fn record_movement_decode(
+        &mut self,
+        result: Result<&vrf_movement::RpcDecodeResult, &vrf_movement::MovementError>,
+    ) {
+        match result {
+            Ok(r) if r.error_count > 0 => {
+                self.movement_rpc_errors = self
+                    .movement_rpc_errors
+                    .saturating_add(u64::from(r.error_count));
+                self.movement_first_error.get_or_insert(format!(
+                    "{} movement update(s) skipped mid-decode",
+                    r.error_count
+                ));
+            }
+            Ok(_) => {}
+            Err(e) => {
+                self.movement_rpc_errors = self.movement_rpc_errors.saturating_add(1);
+                self.movement_first_error
+                    .get_or_insert_with(|| e.to_string());
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod movement_stats_tests {
+    use super::ExportStats;
+    use vrf_movement::{MovementError, RpcDecodeResult};
+
+    fn ok(
+        total_moves: u32,
+        update_count: u32,
+        error_count: u32,
+    ) -> Result<RpcDecodeResult, MovementError> {
+        Ok(RpcDecodeResult {
+            total_moves,
+            update_count,
+            error_count,
+        })
+    }
+
+    #[test]
+    fn a_clean_decode_records_nothing() {
+        let mut s = ExportStats::default();
+        s.record_movement_decode(ok(5, 1, 0).as_ref());
+        assert_eq!(s.movement_rpc_errors, 0);
+        assert!(s.movement_first_error.is_none());
+    }
+
+    #[test]
+    fn soft_errors_are_counted_and_first_error_is_kept() {
+        let mut s = ExportStats::default();
+        s.record_movement_decode(ok(2, 5, 3).as_ref());
+        assert_eq!(s.movement_rpc_errors, 3);
+        assert!(s.movement_first_error.is_some());
+        // A later hard failure adds to the count but must not overwrite the
+        // first error.
+        let first = s.movement_first_error.clone();
+        s.record_movement_decode(Err(MovementError::InvalidMagic(0x00)).as_ref());
+        assert_eq!(s.movement_rpc_errors, 4);
+        assert_eq!(s.movement_first_error, first);
+    }
+
+    #[test]
+    fn a_hard_error_records_its_display() {
+        let mut s = ExportStats::default();
+        s.record_movement_decode(Err(MovementError::ErrorSentinel).as_ref());
+        assert_eq!(s.movement_rpc_errors, 1);
+        let msg = s.movement_first_error.expect("first error recorded");
+        assert!(msg.contains("sentinel"), "got: {msg}");
+    }
 }
 
 /// The record buffers a sink fills for one packet.

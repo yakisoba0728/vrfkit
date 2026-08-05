@@ -131,6 +131,8 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     let mut struct_blobs_decoded: u64 = 0;
     let mut struct_blobs_failed: u64 = 0;
     let mut struct_blob_first_error: Option<String> = None;
+    let mut movement_rpc_errors: u64 = 0;
+    let mut movement_first_error: Option<String> = None;
     let mut cp_stats = CheckpointStats::default();
 
     while let Some(chunk) = chunk_iter.next_chunk()? {
@@ -213,6 +215,10 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
                 struct_blobs_failed += sink.stats.struct_blobs_failed;
                 if struct_blob_first_error.is_none() {
                     struct_blob_first_error = sink.stats.struct_blob_first_error.take();
+                }
+                movement_rpc_errors += sink.stats.movement_rpc_errors;
+                if movement_first_error.is_none() {
+                    movement_first_error = sink.stats.movement_first_error.take();
                 }
                 error_report.merge_from(&sink.stats.overlay.error_report);
             }
@@ -304,6 +310,8 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             struct_blobs_decoded,
             struct_blobs_failed,
             struct_blob_first_error,
+            movement_rpc_errors,
+            movement_first_error,
         },
         &overlay_stats,
         &error_report,

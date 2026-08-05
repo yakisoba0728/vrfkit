@@ -152,7 +152,7 @@ impl ExportSink<'_> {
         let time_ms = self.time_ms;
         let packet_id = self.packet_id;
         let movement = &mut self.records.movement;
-        let _ = vrf_movement::decode_movement_rpc(&mut rpc_reader, |mv| {
+        let result = vrf_movement::decode_movement_rpc(&mut rpc_reader, |mv| {
             movement.push(MovementRecord {
                 time_ms,
                 packet_id,
@@ -173,6 +173,7 @@ impl ExportSink<'_> {
                 move_type: mv.move_type,
             });
         });
+        self.stats.record_movement_decode(result.as_ref());
     }
 
     /// Resolve the class path an actor channel should be labelled with.
