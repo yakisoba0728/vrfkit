@@ -37,12 +37,11 @@ Rather than allowlisting proxy classes, an owner that is not a manifest
 character is asked for its own `Instigator` -- Wingman's is the Gekko player --
 and that is reported as `carrier_pawn_guid` with `via_proxy_class` set.
 
-NetGUID note: `Owner` on `BombEquippable_C` has no entry in vrfkit's overlay
-type table, so `value_i64` is null and only `raw_bits` survives; the group is
-one of the bare ones the table does not reach. `unpack_netguid` below reads the
-UE `SerializeIntPacked` encoding those bits carry. Typing the field in the
-overlay table would make this function unnecessary and is the better fix, but
-it moves the export baseline, so it is left as follow-up work.
+NetGUID note: `Owner` used to arrive untyped on this group, so an earlier
+version of this script unpacked `SerializeIntPacked` out of `raw_bits` by hand.
+The overlay now resolves `Owner`/`Instigator`/`AttachParent`/`Controller` by
+name for any group, so `value_i64` is populated and that decoder is gone. An
+export written before that change will not work here.
 
 Usage:
     python tools/extract_spike_carrier.py --export <out_dir> --out spike_carrier.parquet
@@ -67,35 +66,30 @@ BOMB_CLASS = "BombEquippable.BombEquippable_C"
 LOOSE_CLASSES = ("EquippableGroundPickup_C", "EquippablePickupProjectile_C")
 
 
-def unpack_netguid(raw: bytes) -> int | None:
-    """Decode UE's `SerializeIntPacked`, which is how a NetGUID reaches the wire.
-
-    Each byte carries 7 payload bits in its high bits and a "more follows" flag
-    in bit 0; groups are little-endian. Returns None for an empty payload.
-
-    Verified against 4,601 `Owner`/`Instigator`/`Controller`/`AttachParent`
-    rows on groups where vrfkit does populate `value_i64` -- zero mismatches.
-    """
-    if not raw:
-        return None
-    value = 0
-    shift = 0
-    for byte in raw:
-        value |= (byte >> 1) << shift
-        shift += 7
-        if not byte & 1:
-            break
-    return value
-
-
 def leaf(class_path: str | None) -> str:
     """Last path segment of a class path, or "" when the class is unknown."""
     return class_path.rsplit("/", 1)[-1] if class_path else ""
 
 
-def netguid_at(values: list, raws: list, i: int) -> int | None:
-    """The NetGUID at row `i`, from the typed column when present."""
-    return values[i] if values[i] is not None else unpack_netguid(raws[i] or b"")
+def classify_owner(owner: int, owner_class: str | None,
+                   pawn_subject: dict, instigator: dict):
+    """Who, if anyone, is carrying the spike for this `Owner` value.
+
+    Returns `(kind, carrier_pawn_guid, via_proxy_class)`. A manifest character
+    is the carrier itself; a ground pickup or drop projectile means nobody has
+    it; anything else is asked for its own `Instigator`, which walks a proxy
+    such as Gekko's Wingman back to the player that spawned it. An owner that
+    is none of those stays `unknown` rather than being guessed at.
+    """
+    if owner in pawn_subject:
+        return "player", owner, ""
+    name = leaf(owner_class)
+    if any(k in name for k in LOOSE_CLASSES):
+        return "loose", None, ""
+    source = instigator.get(owner)
+    if source in pawn_subject:
+        return "proxy", source, name
+    return "unknown", None, ""
 
 
 def load(out_dir: Path):
@@ -166,23 +160,19 @@ def build(out_dir: Path):
         return round_starts[i][1] if i >= 0 else None
 
     # An actor's own Instigator, used to walk a proxy carrier (Wingman) back to
-    # the player that spawned it. Typed on pawn groups, so value_i64 is usually
-    # populated; fall back to the packed bits otherwise.
+    # the player that spawned it.
     instigator: dict[int, int] = {}
     for i, name in enumerate(f["field_name"]):
-        if name == "Instigator":
-            g = netguid_at(f["value_i64"], f["raw_bits"], i)
-            if g:
-                instigator.setdefault(f["actor_net_guid"][i], g)
+        if name == "Instigator" and f["value_i64"][i]:
+            instigator.setdefault(f["actor_net_guid"][i], f["value_i64"][i])
 
     # Every Owner write on a bomb channel, in time order: the custody log.
     owner_log: dict[int, list[tuple[int, int]]] = {}
     for i, grp in enumerate(f["group_path"]):
-        if BOMB_CLASS in grp and f["field_name"][i] == "Owner":
-            g = netguid_at(f["value_i64"], f["raw_bits"], i)
-            if g is not None:
-                owner_log.setdefault(f["actor_net_guid"][i], []).append(
-                    (f["time_ms"][i], g))
+        if (BOMB_CLASS in grp and f["field_name"][i] == "Owner"
+                and f["value_i64"][i] is not None):
+            owner_log.setdefault(f["actor_net_guid"][i], []).append(
+                (f["time_ms"][i], f["value_i64"][i]))
 
     # AresInventory side: (pawn, bomb) pairs seen in hand, with timestamps.
     in_hand: dict[tuple[int, int], list[int]] = {}
@@ -201,16 +191,8 @@ def build(out_dir: Path):
         for n, (t, owner) in enumerate(log):
             end = log[n + 1][0] if n + 1 < len(log) else bomb_close.get(bomb)
             cls = guid_class.get(owner)
-            kind, carrier, proxy = "unknown", None, ""
-            if owner in pawn_subject:
-                kind, carrier = "player", owner
-            elif any(k in leaf(cls) for k in LOOSE_CLASSES):
-                kind = "loose"
-            else:
-                src = instigator.get(owner)
-                if src in pawn_subject:
-                    kind, carrier, proxy = "proxy", src, leaf(cls)
-
+            kind, carrier, proxy = classify_owner(
+                owner, cls, pawn_subject, instigator)
             held = in_hand.get((owner, bomb), [])
             rows.append({
                 "round_number": round_of(t),

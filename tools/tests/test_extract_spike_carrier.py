@@ -1,14 +1,14 @@
 """Guards for the spike-custody derived view.
 
-The script reads a NetGUID out of `raw_bits` by hand, because
-`BombEquippable_C.Owner` has no overlay type entry and so no `value_i64`. That
-decoder is the one place here that reimplements wire semantics rather than
-joining columns, so it is the part that has to be pinned.
+The join itself is checked by running the script against a real export. What is
+pinned here is the owner classification, which is the one place the script makes
+a judgement rather than reading a column: an `Owner` NetGUID has to come out as
+the player carrying the spike, nobody at all, or a proxy carrier walked back
+through its `Instigator`.
 
-The vectors below are not this decoder's own output. Each is a real
-`(raw_bits, value_i64)` pair from `Owner`/`Instigator`/`Controller`/
-`AttachParent` rows on groups that vrfkit *does* type, so the expected value
-comes from the Rust decoder, independently of the Python one.
+An earlier version also unpacked `SerializeIntPacked` out of `raw_bits`, because
+`Owner` arrived untyped on this group. The overlay now resolves it by name, so
+that decoder and its vectors are gone.
 """
 import sys
 import unittest
@@ -19,61 +19,58 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import extract_spike_carrier as spike  # noqa: E402
 
 
-#: (packed bytes, NetGUID) taken from fields.parquet, expected value supplied
-#: by vrfkit's own value_i64 column. One- and two-byte groups both appear.
-VECTORS = [
-    ("00", 0),
-    ("04", 2),
-    ("d4", 106),
-    ("0102", 128),
-    ("1902", 140),
-    ("3102", 152),
-    ("4902", 164),
-]
+PAWNS = {576: "gekko-uuid", 870: "other-uuid"}
+GROUND = "/Game/Equippables/EquippableGroundPickup.EquippableGroundPickup_C"
+PROJECTILE = "/Game/Equippables/EquippablePickupProjectile.EquippablePickupProjectile_C"
+WINGMAN = "/Game/Characters/AggroBot/Pawn_Aggrobot_SeekerNade.Pawn_Aggrobot_SeekerNade_C"
 
 
-class UnpackNetGuidTests(unittest.TestCase):
-    def test_the_real_wire_vectors_decode_to_the_rust_values(self):
-        for packed, expected in VECTORS:
-            with self.subTest(packed=packed):
-                self.assertEqual(
-                    spike.unpack_netguid(bytes.fromhex(packed)), expected)
+class ClassifyOwnerTests(unittest.TestCase):
+    def test_a_manifest_character_carries_it_itself(self):
+        self.assertEqual(
+            spike.classify_owner(576, "/Game/Whatever.Pawn_C", PAWNS, {}),
+            ("player", 576, ""))
 
-    def test_an_empty_payload_is_none_not_zero(self):
-        """A missing value must not be confused with NetGUID 0."""
-        self.assertIsNone(spike.unpack_netguid(b""))
+    def test_a_ground_pickup_means_nobody_has_it(self):
+        self.assertEqual(
+            spike.classify_owner(999, GROUND, PAWNS, {}), ("loose", None, ""))
 
-    def test_the_continuation_bit_stops_the_walk(self):
-        """Bit 0 clear ends the value; trailing bytes belong to another field."""
-        self.assertEqual(spike.unpack_netguid(bytes.fromhex("04ff")), 2)
+    def test_a_drop_projectile_also_means_nobody_has_it(self):
+        self.assertEqual(
+            spike.classify_owner(999, PROJECTILE, PAWNS, {}),
+            ("loose", None, ""))
 
-    def test_groups_are_little_endian(self):
-        """0x1902 is 12 + (1 << 7); big-endian would give 1 + (12 << 7)."""
-        self.assertEqual(spike.unpack_netguid(bytes.fromhex("1902")), 140)
-        self.assertNotEqual(spike.unpack_netguid(bytes.fromhex("1902")), 1537)
+    def test_a_proxy_resolves_through_its_own_instigator(self):
+        """Gekko's Wingman really does carry and plant the spike."""
+        kind, carrier, proxy = spike.classify_owner(
+            5924, WINGMAN, PAWNS, {5924: 576})
+        self.assertEqual((kind, carrier), ("proxy", 576))
+        self.assertIn("Pawn_Aggrobot_SeekerNade", proxy)
+
+    def test_a_proxy_whose_instigator_is_not_a_player_stays_unknown(self):
+        """No guessing: an unrecognised chain is reported, not attributed."""
+        self.assertEqual(
+            spike.classify_owner(5924, WINGMAN, PAWNS, {5924: 4242}),
+            ("unknown", None, ""))
+
+    def test_an_owner_with_no_class_and_no_instigator_stays_unknown(self):
+        self.assertEqual(
+            spike.classify_owner(999, None, PAWNS, {}), ("unknown", None, ""))
+
+    def test_the_player_check_wins_over_a_loose_looking_class(self):
+        """A pawn in the manifest is the carrier whatever its class path says."""
+        self.assertEqual(
+            spike.classify_owner(576, GROUND, PAWNS, {}), ("player", 576, ""))
 
 
 class LeafTests(unittest.TestCase):
     def test_a_class_path_reduces_to_its_last_segment(self):
         self.assertEqual(
-            spike.leaf("/Game/GameModes/Bomb/BombEquippable.BombEquippable_C"),
+            spike.leaf("/Game/Equippables/Bomb/BombEquippable.BombEquippable_C"),
             "BombEquippable.BombEquippable_C")
 
     def test_an_absent_class_is_the_empty_string(self):
         self.assertEqual(spike.leaf(None), "")
-
-
-class NetGuidAtTests(unittest.TestCase):
-    def test_the_typed_column_wins_when_it_is_populated(self):
-        self.assertEqual(
-            spike.netguid_at([4242], [bytes.fromhex("04")], 0), 4242)
-
-    def test_the_packed_bits_are_read_when_the_column_is_null(self):
-        self.assertEqual(
-            spike.netguid_at([None], [bytes.fromhex("1902")], 0), 140)
-
-    def test_a_null_column_with_no_bits_is_none(self):
-        self.assertIsNone(spike.netguid_at([None], [None], 0))
 
 
 if __name__ == "__main__":
