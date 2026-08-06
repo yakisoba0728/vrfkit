@@ -14,10 +14,18 @@ Legend: ✅ typed (value decoded) · ◐ raw or derivable · ❌ not in the repl
 | Data | Source | Status |
 |---|---|---|
 | Account UUID (subject) | `manifest.players.subject` / `BombPlayerState.Subject` | ✅ |
-| Character NetGUID | `manifest.players.character_net_guid` / `SpawnedCharacter` | ✅ joins movement 10/10 |
+| Character NetGUID | `manifest.players.character_net_guid` / `SpawnedCharacter` | ✅ joins movement 10/10 on 71 of 71 replays |
 | Agent (characterId) | `manifest` game_specific_data.playerLoadouts | ✅ |
 | Two players on the same agent | disambiguated by `subject` (characterId alone can't) | ✅ |
 | Display name | — | ❌ replays carry no display names, only the subject UUID |
+
+That 10/10 was not free, and it is worth knowing why it can break.
+`SpawnedCharacter` is replicated a second time as 0 when a player disconnects,
+so a plain last-write-wins capture throws the real GUID away. It did: 9 players
+across 5 replays came out with `character_net_guid == 0` while still appearing
+in the manifest, so nothing looked wrong until the join was counted. The rule is
+**last non-zero write wins** -- 0 is not a NetGUID. Before the fix 64 of 69
+replays joined all ten and the worst managed 7; after it, 71 of 71 do.
 
 ## Economy
 
@@ -127,6 +135,36 @@ Phoenix -- Run It Back, not a decode fault. On the reset broadcast
 | Smoke live position | `ReplicatedMovement` (x100) / `MulticastAddSmokeScreenPoint.Translation` | ✅ |
 | Interaction progress (plant/defuse/orb pickup) | `UsableComponent.HighestProgress` (Float 0..1) / `bIsActive` | ✅ |
 
+### `CastTime` is not measured from `roundStarted`
+
+Its zero is the barrier drop -- the *end* of the buy phase -- while
+`events.roundStarted` fires when the round begins, at the buy phase's start.
+Joining a cast on `roundStarted + CastTime` therefore lands 30 seconds **early**,
+or 45 on the first round of each half.
+
+Measured on 10,460 casts over 20 replays, the residual
+`(cast row's time_ms - roundStarted) / 1000 - CastTime` is, for the first
+fourteen rounds:
+
+| round | n | median residual |
+|---|---|---|
+| 1 | 394 | **44.99 s** |
+| 2-12 | 6,247 | **29.88-29.91 s** |
+| 13 | 347 | **44.89 s** |
+| 14 | 364 | **29.89 s** |
+
+Those are the buy-phase lengths the game uses -- 45 s on the first round of each
+half, 30 s otherwise -- so this is confirmed against a constant the replay does
+not carry, not fitted to the data. The correct absolute time is
+
+    roundStarted + buyPhaseLength(round) + CastTime
+
+The median is the statistic to use here, not the mean. `AbilityCastsThisRound`
+is a replicated array that accumulates over the round, so a cast is re-sent on
+every later replication and its `time_ms` drifts upward; the residual is exact
+only on the first send. 60.1% of rows land within 29-31 s and the tail is all
+re-replication.
+
 ### Status effects, and where they actually live
 
 A debuff shows up as a continuous effect played **on the affected player's own
@@ -149,6 +187,31 @@ The names say what the effect is and the measured durations match the game:
 
 An AoE applies to several victims in the same tick, each as its own row, so
 "who was affected" comes out per player rather than per cast.
+
+Over 71 demo replays the same pairing gives a much larger sample. These are not
+corrections to the table above -- that one is honest about being a single
+replay -- but they are the numbers to quote:
+
+| effect container | n | median |
+|---|---|---|
+| `FXC_Vampire_4_NearsightAOE_Nearsight_C` (Leer) | 823 | 0.43 s |
+| `FXC_Wushu_4_SmokeNearsight_C` | 645 | 0.84 s |
+| `FXC_Grenadier_Player_Suppressed_C` (suppress) | 369 | 8.00 s |
+| `FXC_Deadeye_4_Trap_Slowed_C` (trap slow) | 299 | 2.23 s |
+| `FXC_Global_ConcussedWavy_Prototype_C` | 273 | 2.60 s |
+| `FXC_Wraith_Q_NearsightMissile_Nearsight_C` (Paranoia) | 216 | 2.32 s |
+| `FXC_Thorne_4_PlayerMovingInSlowField_Production_C` | 170 | 4.89 s |
+
+Suppress lands on 8.00 s, which is the figure the 215-replay pass below reached
+by a different route -- two independent measurements agreeing is what makes the
+rest of the column trustworthy.
+
+**Exclude the caster-side containers.** `_Equip_C` and `_Cast_C` play on the
+*caster's* actor and are the cast animation, not an application: counting them
+inflates Leer by 1,365 and Paranoia by 390 over these replays, and would make a
+one-sided cast look like a debuff on the caster. Filter by suffix; the three
+seen are `FXC_Vampire_4_NearsightAOE_Equip_C`,
+`FXC_Wraith_Q_NearsightMissile_Equip_C` and `FXC_Sequoia_Q_FragileMissile_Cast_C`.
 
 Two caveats. The container names are cosmetic-effect assets, so the same
 gameplay state can arrive under more than one name and a pure-audio variant sits
@@ -230,9 +293,57 @@ corpus. Crouch is `bCrouchHeld` on the character actor, or a ~19 cm drop in
 | Position (cm) | `movement.parquet` pos_x/y/z | ✅ ≤0.0005 vs C# |
 | Rotation (yaw/pitch) | movement | ✅ exact |
 | Velocity | movement vel_x/y/z | ✅ exact |
-| Time (128 Hz tick, resets per round) / global | movement `timestamp` / `time_ms` | ✅ |
+| Time (128 Hz tick, resets per round) / global | movement `timestamp` / `time_ms` | ✅ — `timestamp` is a **tick counter**, not milliseconds |
 | Posture (crouch) | `fields.bCrouchHeld` (not movement_state) | ✅ |
 | Trajectory | movement time series per character | ✅ |
+
+### The tick is 128 Hz by a 3:13 pattern, not by alternating
+
+Consecutive per-character steps are 7 ms on 18.72% and 8 ms on 81.28% -- that is
+3:13, or 3/16 and 13/16. The mean is 7.8128 ms, **127.995 Hz**, and sixteen
+ticks come to 3x7 + 13x8 = **exactly 125 ms**. It is not a 1:1 alternation, so
+do not assume 7,8,7,8 when reconstructing a clock; count ticks and multiply by
+125/16. Measured over 37,775,664 steps on 20 replays.
+
+`timestamp` increments by 1 per tick (Δ=1 on 37,938,231 steps, against 34 steps
+of 3 or 4) and resets each round, which is why the round cut is found at the
+point it drops rather than from a timer.
+
+`time_ms` is the global scrub axis and is non-decreasing on all 71 replays --
+though not strictly increasing, since many rows share a `time_ms`.
+`duration_ms - max(time_ms)` lands within -1..8 ms.
+
+### Minimap projection
+
+The transform is not in the replay. It comes from **valorant-api.com**, which
+publishes `xMultiplier`, `yMultiplier`, `xScalarToAdd` and `yScalarToAdd` per
+map; join on `manifest.level_names_and_times[0].name`, which is that API's
+`mapUrl`. Those constants are an external source and are not reproduced here.
+
+**The axes cross.** What works is
+
+    u = pos_y * xMultiplier + xScalarToAdd
+    v = pos_x * yMultiplier + yScalarToAdd
+
+`pos_y` drives the horizontal axis and `pos_x` the vertical. Of the four
+sign/order variants only this one holds up: it puts 100.0000% of live positions
+inside [0,1]² on eleven of twelve maps, while feeding `pos_x` to `u` collapses
+to 0.9% on Haven and 3.1% on Fracture. Containment alone would not prove it --
+a small enough scale contains everything -- so note also that the bounding
+boxes fill roughly [0.01, 0.99], which a wrong scale would not.
+
+Two things to handle first:
+
+- **Park slot.** Hidden actors are parked at `pos_x ≈ -50000, pos_z ≈ -49900`.
+  Filter on **both** x and z. Filtering on z alone misclassifies real falls.
+- **Abyss is the exception, and not a decode fault.** It reaches 99.8416%: of
+  2,482 out-of-range rows, 2,132 are already below z = -3000, and all 350 of the
+  near-floor rows have negative `vel_z` (median -1693 cm/s, against 0 for
+  in-range rows). The map has no floor, so players leave the minimap while
+  falling. Nothing to fix -- clamp or drop by `vel_z`.
+
+Containment was measured over 12 maps on 69 replays, 121,672,885 live movement
+rows, on build 13.02.
 
 ## Weapons & loadout
 
@@ -241,10 +352,19 @@ corpus. Crouch is `bCrouchHeld` on the character actor, or a ~19 cm drop in
 | Weapon instance class | `actors.parquet` class_path + `tools/equippable_table.py` (display name) | ✅ |
 | Shot events (ammo, projectiles, vectors, seed, fire mode) | effect blobs | ✅ typed JSON |
 | Magazine ammo over time | `AmmoComponent.AuthResourceAmount` (Int32) | ✅ via the `MagazineAmmo` remap; reads 0..100 |
-| Reserve ammo over time | `AmmoComponent.AuthResourceAmount` (Int32) | ✅ via the `ReserveAmmo` remap -- same native component, second instance; reads 0..200 |
+| Reserve ammo over time | `AmmoComponent.AuthResourceAmount` (Int32) | ✅ via the `ReserveAmmo` remap -- same native component, second instance; reads 0..200, plus a 999 sentinel (below) |
 | Equipped weapon (per player, over time) | `AresInventory.CurrentEquippable` / `NewCurrentEquippable` -> actor class | ✅ via InventoryComponent->AresInventory remap (resolve the NetGUID to its equippable actor) |
 | Equipped weapon (on damage) | `MulticastNotifyDamage.EquippableUsed` | ✅ |
 | Skin / spray / charm | `manifest` playerLoadouts (per subject) | ✅ |
+
+**999 means infinite reserve, not infinite ammo.** It appears on 53 rows over
+71 replays, always on `ReserveAmmo` and never on `MagazineAmmo`, and it belongs
+to `Gun_Sprinter_X_HeavyLightningGun_Production_C` -- Neon's ultimate. The
+correspondence is exact: 22 replays carry a 999 and 22 replays carry that gun,
+with no replay on either side of the pair alone. It is written once per gun
+instance and never moves, while the same gun's magazine counts down and reloads
+normally. Treat it as a sentinel, not a count -- a max() over the column
+otherwise reports a 999-round reserve.
 
 ## Rounds & score
 
@@ -268,6 +388,22 @@ corpus. Crouch is `bCrouchHeld` on the character actor, or a ~19 cm drop in
 | Spike timer | `TimedBomb.TimeRemainingToExplode` / `DefuseProgress` | ✅ Double |
 | Plant site (A/B) | `TimedBomb.PlantedAtSite` (EnumByte) + position derivation | ✅ absent handle = default site (UE default-value skip); 100% via spawn position |
 | Detonation source | `events.spikeExploded` is canonical (always emitted) | ✅ `RoundResults` under-counts: it logs win-reason, not detonation |
+
+The gap between 776 plants, 248 defuses and 59 detonations looks like loss and
+is not. Checked against independent RPCs over 71 replays, `spikeExploded`
+matches `ClientBombExplode` 59 to 59 and `spikeDefused` matches
+`BombHasBeenDefused` 248 to 248, with no replay disagreeing;
+`TimeRemainingToExplode` agrees too, reaching 0.00 exactly on the detonations
+and stopping mid-count otherwise. The remaining 469 are rounds that ended in a
+team wipe after the plant, so the fuse never ran out. `BombEquippable` actors
+open 1,317 times against 1,317 `roundStarted` events -- one bomb per round,
+exactly.
+
+Carrier resolution now misses no plant at all: `extract_spike_carrier.py`
+reports `NO CARRIER` 0 times across the 71 exports, against 2 before the
+disconnect fix above. Both of those were pawns whose `Owner` pointed at a
+character the manifest had lost, and the tool said `NO CARRIER` rather than
+guessing -- which is the only reason the failure was findable.
 
 ## Actor / GUID / structure
 
@@ -348,6 +484,18 @@ the three are limits rather than tasks.
    out of one build; a later one can rename a component and nothing here would
    notice on its own. Run `tools/check_component_remaps.py --export <dir>`
    against a replay from a new build. It needs no game install and no baseline.
+4. **An `FText` decoder.** `FieldType` has none, which is why
+   `Comp_AbilityStatisticsReplicator`'s `LocalizedStat` is deliberately
+   untyped. Shifted one bit off the byte grid the payload reads `uint32 Flags=0,
+   uint8 HistoryType=5` (`ETextHistoryType::StringTableEntry`), then a
+   string-table asset path and a key, and the key is the statistic name. Nothing
+   depends on it -- `Statistic` already carries the same fact as an enum -- so
+   this is worth doing only when a second `FText` field turns up.
+
+**Type nothing you have not seen decode.** `LocalizedStat` was typed `FString`
+on the strength of the name and produced null on 3,011 of 3,011 rows while
+`Decode errors: 0` held the whole time. A wrong type is not loud. After adding
+one, count non-null values on the column before believing it.
 
 ### Done, and where the reasoning lives
 
