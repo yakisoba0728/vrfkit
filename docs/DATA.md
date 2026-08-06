@@ -200,14 +200,27 @@ Roughly in value order. Each names the file to touch first.
    - **Inferred**: for each bare group, match its handle/bit-width structure
      against the manifest's declared native groups (the handles and types line
      up 1:1) -- no game files needed, but it is confirmation, not authority.
-2. **RPC signature aliasing** — untested lead, and the largest untyped
-   population left: 386,005 of the 469,624 unresolved rows are RPC parameters.
-   `MulticastPlayContinuousEffectFromClient` carries the same 15 parameters
-   across 19 groups with no table entry, and shares 11 parameter names with
-   `EffectManagerComponent:MulticastPlayContinuousEffect`, which *is* declared.
-   The parameter sets are not identical, so this is a lead and not a plan. The
-   shape to reach for is `GROUP_ALIASES` in `crates/vrf-decode/src/overlay.rs`,
-   not a name rule -- see the closed question below for why.
+2. **Checksum propagation** — the largest typed-rows-per-unit-of-work left:
+   about 192,800 rows over 38 `(group, parameter)` pairs, all of them RPC
+   parameters. Every `NetFieldExport` carries a `compatible_checksum`, and
+   Unreal hashes the property's *type* into it alongside its name: across the
+   84 RPC groups here, exactly one pair of distinct names shares a checksum
+   (`AKSwitchArray`/`AkSwitchArray`), while 38 of 211 parameter names carry more
+   than one. So a checksum identifies a property in a way a name cannot, and a
+   parameter the descriptors never declared can take its type from a declared
+   field with the same checksum.
+
+   Spot-checked at the value level, not just the bit width: `PlayerID` (53,605
+   rows) read as `Int32` yields exactly {256..265}, the same ten values as the
+   already-typed `BombPlayerState_C.PlayerId` rows in the same export;
+   `StartMovementTime` (17,818) is exactly -1.0 throughout.
+
+   Not built here because it is a different shape from everything the overlay
+   does today: the map is derived from the replay at run time rather than
+   generated into `table.rs`, and net field export groups arrive during the
+   stream, so a parameter seen before its donor group is registered would stay
+   raw. That ordering question wants deciding before the code is written. It
+   would also need the same corpus proof the additions above got.
 3. **`HANDLE_ADDITIONS` for the next unnamed single handle** — the mechanism
    added for `MagazineAmmo` generalizes. `ReserveAmmo` (reserve bullets) is the
    obvious next candidate once its group is resolved (it may fall out of item 1).
@@ -220,6 +233,28 @@ Roughly in value order. Each names the file to touch first.
 5. **Exact ability cast count** — confirmed wire-limit: the GAS stream is
    state-sync, not one RPC per cast. No on-wire work helps; the approximation is
    ability-actor spawns + `characterUltimateUsed`/`UltimateActive`.
+
+### Closed: RPC signature aliasing
+
+Aliasing an undeclared RPC group to a declared sibling -- the `GROUP_ALIASES`
+shape -- was measured across all 67 undeclared RPC groups and is **not worth
+doing**. The 17 workable pairs would type 165,374 rows, but 139,222 of those are
+already reachable by checksum, and the remaining 26,152 rest on nothing but a
+shared parameter name, which is the rule this project has already rejected.
+`Scale3D` is the example: its alias source is a group the replay's manifest does
+not contain at all, so the type would come from an unrelated Blueprint's
+same-named property.
+
+Aliasing an RPC group also opens a hazard the class-level aliases do not, since
+`resolve_entry` retries the *whole* order against the alias, handle fallback
+included, and parameter handles do not correspond between two signatures.
+Measured: aliasing `MulticastNotifyHeal` to `MulticastNotifyDamage_Base` reads
+`LifeChangeBySection` through the other function's handle table as
+`DamageDealt: Float`, on 1,918 rows, every one leaving 145 residual bits.
+
+Bit-width agreement is not evidence here. Every candidate pair consumed its bits
+exactly, including the wrong one above; a 1-bit `Bool` read as `EnumByte` also
+passes. Width is a necessary condition and nothing more.
 
 ### Closed: more name-resolved properties
 
