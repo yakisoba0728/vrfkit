@@ -94,14 +94,20 @@ accumulated. The array is still `raw_bits` -- typing it is listed under What's
 next -- but it walks with the ordinary RepLayout dynamic-array framing, and the
 decoded handles are the manifest handles with no offset.
 
-**Nothing shipped here reproduces the figures below.** The array is `raw_bits`,
-so these came from an ad-hoc walker written to check the semantics, and that
-script is not in the repo -- `vrfkit export` emits no `LifeResult`,
-`DeltaLife`, `bAliveAfterChange` or `ChangedComponent` column, and no tool
-reads them. Treat the numbers as provenance-tagged evidence for the
-*semantics*, not as something a reader can re-run. Typing the four members is
-item 4 under What's next, and doing it is what would make this section
-checkable.
+**The four members are now typed, so this section is checkable.** `vrfkit
+export` emits one row per member beside the parent blob row, named
+`<Function>.LifeChangeEvents[i].LifeResult` and so on. The figures below were
+originally taken with an ad-hoc walker that is not in the repo, so they carry
+their own provenance -- but the same joins now run against the exported
+columns, and they reproduce: on one replay `sum(DeltaLife)` equals the RPC's
+own scalar total on 3,389 of 3,389 calls and `ChangedComponent` resolves
+through `net_guids` on 6,232 of 6,232.
+
+Two things to know before joining on them. The local handles differ per RPC --
+the same four members sit at 10-13, 1-4 or 2-5 depending on which function
+carries them -- and `MulticastNotifyHeal` and `MulticastNotifyOverhealDecay`
+name their array `LifeChangeBySection`, not `LifeChangeEvents`. A filter on the
+array's name alone silently drops more than half the calls.
 
 Verified over 69 replays on build 13.02: 377,487 elements, zero parse errors,
 zero residual bits, and every element carrying exactly four members (these RPC
@@ -533,17 +539,6 @@ are in `docs/USAGE.md` under the fields schema.
    out of one build; a later one can rename a component and nothing here would
    notice on its own. Run `tools/check_component_remaps.py --export <dir>`
    against a replay from a new build. It needs no game install and no baseline.
-4. **Type the `LifeChangeEvents[]` members.** Optional -- the array already
-   parses and `docs/DATA.md`'s health section is built on it -- but the members
-   arrive untyped: `ChangedComponent` wants `ObjectNetGuid`, `LifeResult` and
-   `DeltaLife` want `Float`, `bAliveAfterChange` wants `Bool`. `LifeResult` is
-   currently `Raw` on `Damage_Base`/`Damage_Point`, and all four are absent from
-   `MulticastSectionLifeChange`, `MulticastNotifyHeal` and
-   `MulticastNotifyOverhealDecay`. **The hook is the additive pass in
-   `crates/vrfkit/src/sink/rpc.rs` (the "Second, additive pass" branch), not
-   `is_known_array_field`** -- that one is reached only from `on_field`, the
-   replicated-property path, and never from `on_rpc`. Finding that out again
-   costs more than the change does.
 
 **Type nothing you have not seen decode.** `LocalizedStat` was typed `FString`
 on the strength of the name and produced null on 3,011 of 3,011 rows while

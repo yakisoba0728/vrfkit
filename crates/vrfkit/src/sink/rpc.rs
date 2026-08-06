@@ -10,8 +10,9 @@ use std::sync::Arc;
 use smallvec::{SmallVec, smallvec};
 use vrf_bitio::BitReader;
 use vrf_decode::{
-    DecodeErrorKind, EffectArrayKind, EffectBlobError, FieldType, apply_overlay_with_checksum,
-    decode_effect_blob_json, group_hash_state,
+    ArrayFieldSchema, DecodeErrorKind, EffectArrayKind, EffectBlobError, FieldType,
+    LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA, LIFE_CHANGE_SECTION_SCHEMA,
+    apply_overlay_with_checksum, decode_effect_blob_json, decode_struct_array, group_hash_state,
 };
 use vrf_schema::{FxHashMap, NetGuidCache};
 
@@ -265,6 +266,28 @@ impl ExportSink<'_> {
                 }
             }
 
+            // Third, additive pass: the life-change arrays.
+            //
+            // Outside the `value_*.is_none()` gate above, not inside it. That
+            // gate exists so a declared type outranks a name-driven decode of
+            // the same bits; this pass emits *additional rows* and takes the
+            // parent's bits away from nobody. Nesting it would mean that giving
+            // the parent a type one day silently stops the children being
+            // emitted -- the shape of failure this file has been chasing all
+            // week.
+            if let (Some(schema), Some(raw)) = (
+                life_change_schema_for_param(func_name, param_name),
+                raw_bits.as_deref(),
+            ) {
+                self.emit_life_change_array(
+                    schema,
+                    &full_field_name,
+                    rpc_handle,
+                    raw,
+                    payload_bits,
+                );
+            }
+
             self.push_field(FieldValues {
                 handle: rpc_handle,
                 field_name: Some(full_field_name),
@@ -286,6 +309,57 @@ impl ExportSink<'_> {
         }
 
         emitted_any
+    }
+
+    /// Emit one row per member of a life-change array element.
+    ///
+    /// Purely additive: the parent row keeps its `raw_bits` and is pushed by
+    /// the caller either way, so a consumer that was reading the blob still
+    /// can.
+    ///
+    /// The rows carry `rpc_handle`, not the member's handle inside the struct.
+    /// That is not cosmetic -- `tools/to_valplay_bundle.py` groups a call's
+    /// parameters by `(packet, actor, group, handle)`, so member handles would
+    /// split one RPC into as many fake calls as it has members. Measured, not
+    /// reasoned about: injecting two child rows under their struct handles
+    /// produced two bundle events where the RPC handle produced one.
+    fn emit_life_change_array(
+        &mut self,
+        schema: &'static ArrayFieldSchema,
+        prefix: &str,
+        rpc_handle: u32,
+        raw: &[u8],
+        bit_count: u32,
+    ) {
+        let flattened =
+            decode_struct_array(raw, bit_count, Some(schema), &[], &mut self.stats.array);
+        for field in &flattened {
+            let (value_i64, value_f64, value_bool, value_str) =
+                match life_change_member_type(&field.path) {
+                    Some(ft) => {
+                        super::blobs::decode_leaf_with(ft, &field.raw_bits, field.bit_count)
+                    }
+                    None => (None, None, None, None),
+                };
+            let full_name = self.channel_state.names.intern_fmt(|out| {
+                out.push_str(prefix);
+                out.push_str(&field.path);
+            });
+            self.push_field(FieldValues {
+                handle: rpc_handle,
+                field_name: Some(full_name),
+                // A member is addressed inside the array payload, so the
+                // replay declares no checksum for it. See `FieldRecord`.
+                compatible_checksum: None,
+                bit_count: field.bit_count,
+                raw_bits: Some(SmallVec::from_slice(&field.raw_bits)),
+                value_i64,
+                value_f64,
+                value_bool,
+                value_str,
+            });
+            self.stats.fields_emitted += 1;
+        }
     }
 
     /// Find the RPC parameter group path for a given function name.
@@ -408,6 +482,57 @@ const EFFECT_BLOB_RPC_LEFT_RAW_FOR_ADAPTER: &str = "ReplayPlayContinuousEffectAt
 /// `ObjectValues` or `VectorValues`, and all 61,617 of those payloads decode
 /// as this format and consume their window exactly. No other parameter name
 /// does, which is why the match is on the name and not on the function.
+/// Which life-change schema an RPC parameter takes, if any.
+///
+/// Keyed on the function as well as the parameter, because the local handles
+/// differ per function -- each struct array gets its own handle space, so the
+/// same four members sit at 10-13, 1-4 or 2-5 depending on where they arrive.
+///
+/// `MulticastNotifyHeal` and `MulticastNotifyOverhealDecay` name their
+/// parameter `LifeChangeBySection`, not `LifeChangeEvents`. Dispatching on the
+/// array's name alone would silently miss both, which between them are more
+/// than half the calls.
+///
+/// `MulticastReceivePlayerTemporaryDeathEvent_Point` and
+/// `MulticastReceivePlayerDownedEvent_Point` send the same array at handles
+/// 12-15 and are deliberately absent: 9 and 2 calls across twenty replays is
+/// not enough to check a schema against anything.
+fn life_change_schema_for_param(
+    function_name: &str,
+    param_name: Option<&str>,
+) -> Option<&'static ArrayFieldSchema> {
+    match (function_name, param_name?) {
+        ("MulticastNotifyDamage_Point" | "MulticastNotifyDamage_Base", "LifeChangeEvents") => {
+            Some(&LIFE_CHANGE_DAMAGE_SCHEMA)
+        }
+        ("MulticastSectionLifeChange", "LifeChangeEvents") => Some(&LIFE_CHANGE_SECTION_SCHEMA),
+        ("MulticastNotifyHeal" | "MulticastNotifyOverhealDecay", "LifeChangeBySection") => {
+            Some(&LIFE_CHANGE_BY_SECTION_SCHEMA)
+        }
+        _ => None,
+    }
+}
+
+/// The member type for a leaf of a life-change element.
+///
+/// Matched on the name the schema gave it rather than on its handle, because
+/// the handles move between functions and the names do not. Evidence for each:
+/// `ChangedComponent` resolves through `net_guids` to a `*DamageSection` actor
+/// on better than 99.98% of rows, `sum(DeltaLife)` matches the RPC's own
+/// scalar total on 69,818 of 69,818 calls, and `bAliveAfterChange` is one bit
+/// on every row and agrees with the sibling `bAliveAfterDamage` 17,550/17,550.
+fn life_change_member_type(path: &str) -> Option<FieldType> {
+    if path.ends_with("ChangedComponent") {
+        Some(FieldType::ObjectNetGuid)
+    } else if path.ends_with("LifeResult") || path.ends_with("DeltaLife") {
+        Some(FieldType::Float)
+    } else if path.ends_with("bAliveAfterChange") {
+        Some(FieldType::Bool)
+    } else {
+        None
+    }
+}
+
 fn effect_array_kind_for_param(
     function_name: &str,
     param_name: Option<&str>,

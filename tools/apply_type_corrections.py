@@ -475,6 +475,19 @@ ADDITIONS = [
     # `EnemiesVulnerabled` and 28 more -- where the cosmetic-effect channel is
     # only a proxy for it.
     #
+    # NOT the way `LifeChangeEvents`' members get their types.
+    #
+    # `table.rs` carries `ChangedComponent`, `LifeResult`, `DeltaLife` and
+    # `bAliveAfterChange` under the `MulticastNotifyDamage_*` groups, and those
+    # entries are unreachable: the names are members inside the array payload
+    # and never arrive as top-level RPC parameters, so the name lookup never
+    # asks for them. Changing `LifeResult` there from `Raw` to `Float` compiles,
+    # passes every test, and moves no row.
+    #
+    # The members are typed in `crates/vrfkit/src/sink/rpc.rs`, by
+    # `life_change_member_type`, on the path the array walker gives each leaf.
+    # That is where to look, and where to change it.
+
     # `LocalizedStat`: an FText, and now typed as one.
     #
     # It was `FString` once and returned null on 3,011 of 3,011 rows, which is

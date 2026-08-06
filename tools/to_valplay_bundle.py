@@ -1283,7 +1283,23 @@ def _normalize_rpc_param(rpc_name: str, param: str, value, is_raw: bool) -> dict
     WHY: vrfkit uses prefixed 'b' for booleans (e.g. 'bDamageKilledTarget')
     while C# emits 'DamageKilledTarget'. Also, RegionalDamage is stored as
     int enum in vrfkit but as string in C# output.
+
+    Members of a life-change array are dropped. vrfkit now emits one row per
+    member of `LifeChangeEvents[]`/`LifeChangeBySection[]` alongside the parent
+    blob row, and those rows arrive here spelled `LifeChangeEvents[0].LifeResult`
+    -- which no branch below matches, so they fell through to the generic
+    assignment and put flat keys like that straight into the event payload.
+    Confirmed by injecting two such rows and reading them back out of
+    `events.ndjson`, not inferred. The parent blob row still carries the same
+    information in the shape this adapter expects, so skipping the children
+    loses nothing here.
     """
+    if "[" in param and param.split("[", 1)[0] in (
+        "LifeChangeEvents",
+        "LifeChangeBySection",
+    ):
+        return None
+
     result = {}
 
     if rpc_name in ("MulticastNotifyDamage_Point", "MulticastNotifyDamage_Base"):

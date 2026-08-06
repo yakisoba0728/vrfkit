@@ -68,6 +68,7 @@ use vrf_bitio::BitReader;
 
 pub use schema::{
     ABILITY_CASTS_SCHEMA, ABILITY_EFFECTS_SCHEMA, ArrayFieldSchema, COMBAT_ROUNDS_SCHEMA,
+    LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA, LIFE_CHANGE_SECTION_SCHEMA,
 };
 
 /// Maximum number of elements per array level.

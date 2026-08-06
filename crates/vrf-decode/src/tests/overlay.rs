@@ -1238,3 +1238,86 @@ fn the_random_number_generator_seed_is_typed() {
         Some(FieldType::Int32)
     );
 }
+
+/// The life-change array walks into its four members, on real wire bytes.
+///
+/// `docs/DATA.md`'s health section rests on these and nothing shipped could
+/// read them -- the array arrived as one opaque blob, so every figure in that
+/// section came from a script outside the repository. The fixtures here are
+/// actual payloads from a 13.02 replay.
+///
+/// The local handles differ per RPC, which is the reason for three schemas.
+/// `MulticastNotifyHeal` also names its parameter `LifeChangeBySection` rather
+/// than `LifeChangeEvents`, so a dispatch keyed on the array's name alone
+/// would miss two of the five functions entirely.
+#[test]
+fn the_life_change_array_walks_into_its_members() {
+    use crate::{
+        ArrayDecodeStats, LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA,
+        LIFE_CHANGE_SECTION_SCHEMA, decode_struct_array,
+    };
+
+    // MulticastNotifyDamage_Point.LifeChangeEvents, one element.
+    let damage: Vec<u8> = vec![
+        0x02, 0x02, 0x16, 0x20, 0xE5, 0x3E, 0x18, 0x40, 0x00, 0x80, 0x0E, 0x44, 0x1A, 0x40, 0x00,
+        0x00, 0xF0, 0xC1, 0x1C, 0x02, 0x01, 0x00, 0x00,
+    ];
+    // MulticastNotifyHeal.LifeChangeBySection, one element.
+    let heal: Vec<u8> = vec![
+        0x02, 0x02, 0x06, 0x20, 0x29, 0x14, 0x08, 0x40, 0xFF, 0x0F, 0x08, 0x42, 0x0A, 0x40, 0x00,
+        0x00, 0x80, 0x3F, 0x0C, 0x02, 0x01, 0x00, 0x00,
+    ];
+
+    for (label, raw, bits, schema, want) in [
+        (
+            "damage",
+            &damage,
+            177u32,
+            &LIFE_CHANGE_DAMAGE_SCHEMA,
+            [
+                "ChangedComponent",
+                "LifeResult",
+                "DeltaLife",
+                "bAliveAfterChange",
+            ],
+        ),
+        (
+            "heal",
+            &heal,
+            177,
+            &LIFE_CHANGE_BY_SECTION_SCHEMA,
+            [
+                "ChangedComponent",
+                "LifeResult",
+                "DeltaLife",
+                "bAliveAfterChange",
+            ],
+        ),
+    ] {
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(raw, bits, Some(schema), &[], &mut stats);
+        assert_eq!(stats.errors, 0, "{label} decoded with errors");
+        assert_eq!(fields.len(), 4, "{label}: {fields:?}");
+        for (field, name) in fields.iter().zip(want) {
+            assert!(
+                field.path.ends_with(name),
+                "{label}: {} vs {name}",
+                field.path
+            );
+        }
+    }
+
+    // The section schema numbers from 1, so it must not be interchangeable.
+    let mut stats = ArrayDecodeStats::default();
+    let wrong = decode_struct_array(
+        &damage,
+        177,
+        Some(&LIFE_CHANGE_SECTION_SCHEMA),
+        &[],
+        &mut stats,
+    );
+    assert!(
+        wrong.iter().all(|f| !f.path.ends_with("LifeResult")),
+        "the wrong schema must not happen to name the members: {wrong:?}"
+    );
+}

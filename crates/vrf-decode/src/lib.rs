@@ -112,8 +112,9 @@ pub use types::{FQuat, FRepMovement, FRotator, FTransform, FVector, RotatorQuant
 #[cfg(feature = "array")]
 pub use array::{
     ABILITY_CASTS_SCHEMA, ABILITY_EFFECTS_SCHEMA, ArrayDecodeStats, ArrayFieldSchema,
-    COMBAT_ROUNDS_SCHEMA, FlattenedField, MAX_ELEMENTS, MAX_FIELDS_PER_ELEMENT,
-    MAX_RECURSION_DEPTH, decode_object_ref_array, decode_struct_array,
+    COMBAT_ROUNDS_SCHEMA, FlattenedField, LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA,
+    LIFE_CHANGE_SECTION_SCHEMA, MAX_ELEMENTS, MAX_FIELDS_PER_ELEMENT, MAX_RECURSION_DEPTH,
+    decode_object_ref_array, decode_struct_array,
 };
 #[cfg(feature = "overlay")]
 pub use checksum_table::CHECKSUM_TYPES;

@@ -460,7 +460,11 @@ impl ExportSink<'_> {
 /// Split out so the overlay-driven path and the hardcoded-handle fallback share
 /// one decode-and-widen, rather than each growing its own copy of the match on
 /// `DecodedValue`.
-fn decode_leaf_with(field_type: FieldType, raw: &[u8], bit_count: u32) -> DecodedColumns {
+pub(super) fn decode_leaf_with(
+    field_type: FieldType,
+    raw: &[u8],
+    bit_count: u32,
+) -> DecodedColumns {
     use vrf_decode::{DecodedValue, decode_field};
 
     match decode_field(field_type, raw, bit_count) {

@@ -215,3 +215,57 @@ pub static ABILITY_CASTS_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     sub_arrays: &[(13, &ABILITY_EFFECTS_SCHEMA)],
     field_names: &[(13, "Effects")],
 };
+
+// -- LifeChangeEvent schemas ---------------------------------------------
+//
+// `DamageableComponent`'s five life-change RPCs each send a struct array whose
+// elements hold the same four members: which damage section changed, the
+// absolute life after the change, the delta, and whether the target was still
+// alive. `docs/DATA.md`'s health section is built on them, and until now
+// nothing shipped could read them -- they arrived as one opaque blob.
+//
+// The local handles differ per function, which is why this is three schemas
+// and not one. Each struct array gets its own local handle space, the same
+// reason `REGION_SCHEMA` needs separate numbering for `DealtInteractions` and
+// `ReceivedInteractions`.
+//
+// Verified over 20 replays: every element carries all four members with no
+// decode errors, `sum(DeltaLife)` matches the RPC's own scalar total on
+// 69,818 of 69,818 calls, `bAliveAfterChange` agrees with the sibling
+// `bAliveAfterDamage` on 17,550 of 17,550, and `ChangedComponent` resolves
+// through `net_guids` to a `*DamageSection` actor on better than 99.98%.
+
+/// `MulticastNotifyDamage_Point` and `_Base`.
+pub static LIFE_CHANGE_DAMAGE_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[],
+    field_names: &[
+        (10, "ChangedComponent"),
+        (11, "LifeResult"),
+        (12, "DeltaLife"),
+        (13, "bAliveAfterChange"),
+    ],
+};
+
+/// `MulticastSectionLifeChange`, the round-reset broadcast.
+pub static LIFE_CHANGE_SECTION_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[],
+    field_names: &[
+        (1, "ChangedComponent"),
+        (2, "LifeResult"),
+        (3, "DeltaLife"),
+        (4, "bAliveAfterChange"),
+    ],
+};
+
+/// `MulticastNotifyHeal` and `MulticastNotifyOverhealDecay`.
+///
+/// Their parameter is named `LifeChangeBySection`, not `LifeChangeEvents`.
+pub static LIFE_CHANGE_BY_SECTION_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[],
+    field_names: &[
+        (2, "ChangedComponent"),
+        (3, "LifeResult"),
+        (4, "DeltaLife"),
+        (5, "bAliveAfterChange"),
+    ],
+};
