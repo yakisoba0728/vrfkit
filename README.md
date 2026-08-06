@@ -82,7 +82,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **415 tests** plus a layered validation suite (framing / bytes / decode
+- **416 tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -136,7 +136,7 @@ produces seven files:
 
 | File | Rows | Bytes |
 |---|---|---|
-| `fields.parquet` | 1,256,947 | 14,878,464 |
+| `fields.parquet` | 1,256,947 | 15,585,129 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
@@ -268,7 +268,7 @@ it as one gives the year 3626.
 
 ## Status
 
-Work in progress. Currently verified: `cargo test --workspace` **415 passing**,
+Work in progress. Currently verified: `cargo test --workspace` **416 passing**,
 `clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 115 files. The
 Python suite in `tools/tests` has 169 tests.
 

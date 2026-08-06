@@ -48,6 +48,12 @@ pub fn fields_schema() -> Schema {
             DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
             true,
         ),
+        // The replay's own `compatible_checksum` for this handle. Nullable, and
+        // the null is information: it means the replay declares no checksum
+        // here (array leaves and struct blobs are addressed inside a payload,
+        // not by a declared handle), not that the export failed to carry one.
+        // See `FieldRecord::compatible_checksum`.
+        Field::new("compatible_checksum", DataType::UInt32, true),
         Field::new("bit_count", DataType::UInt32, false),
         // Raw bit payload; nullable because zero-bit fields carry no data.
         Field::new("raw_bits", DataType::Binary, true),

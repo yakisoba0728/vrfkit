@@ -129,6 +129,7 @@ impl FieldSink for ExportSink<'_> {
         self.push_field(FieldValues {
             handle,
             field_name,
+            compatible_checksum: field_checksum,
             bit_count,
             raw_bits,
             value_i64,

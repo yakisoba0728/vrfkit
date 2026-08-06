@@ -268,6 +268,7 @@ impl ExportSink<'_> {
             self.push_field(FieldValues {
                 handle: rpc_handle,
                 field_name: Some(full_field_name),
+                compatible_checksum: param_checksum,
                 bit_count: payload_bits,
                 raw_bits,
                 value_i64,

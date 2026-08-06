@@ -167,9 +167,30 @@ Replicated properties and RPC parameters.
 | `group_path` | str | `NetFieldExportGroup` path; RPCs use `<Class>:<Function>` |
 | `handle` | u32 | Field handle within the group |
 | `field_name` | str? | Name the replay declares for that handle |
+| `compatible_checksum` | u32? | The replay's own checksum for that handle -- see below |
 | `bit_count` | u32 | Payload size in bits |
 | `raw_bits` | bytes? | Raw payload |
 | `value_i64` / `value_f64` / `value_bool` / `value_str` | | Only when the type is known |
+
+**`compatible_checksum` is what separates "nobody described this" from "we
+missed this".** Unreal hashes a property's type into it alongside its name, so
+it identifies the property across builds -- the overlay already uses it as a
+last-resort type lookup, and exporting it lets a reader run the same reasoning.
+Bucket the untyped rows by it and three different situations come apart:
+
+| bucket | meaning |
+|---|---|
+| checksum present, **in** `CHECKSUM_TYPES` | the type is known and was not applied -- a resolution bug |
+| checksum present, **not** in the table | a real coverage gap: a described property nothing has typed |
+| **no checksum** | addressed inside a payload (array leaves, struct blobs), so the replay declares none |
+
+`None` means the third of those, not that the export failed to carry a value.
+On one 13.02 replay the split is 0.5% / 46.9% / 52.6% of 648,315 untyped rows.
+
+Without this column those three are one undifferentiated pile. Phoenix's smoke
+wall sat in the middle bucket for the life of the project -- 2,791 rows of null
+with decode errors at 0 -- and was found only because a sibling class happened
+to share its RPC name.
 
 **`raw_bits` is always present, even when the type is unknown or decoding
 fails.** At most one `value_*` column is filled. If a field's format is worked
@@ -471,7 +492,7 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 415 passing
+cargo test                                        # 416 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 115 files, ASCII only

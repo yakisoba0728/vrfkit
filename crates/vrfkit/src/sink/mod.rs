@@ -440,6 +440,7 @@ impl<'a> ExportSink<'a> {
             group_path: Arc::clone(&self.current_group_path),
             handle: row.handle,
             field_name: row.field_name,
+            compatible_checksum: row.compatible_checksum,
             bit_count: row.bit_count,
             raw_bits: row.raw_bits,
             value_i64: row.value_i64,
@@ -456,6 +457,11 @@ impl<'a> ExportSink<'a> {
 struct FieldValues {
     handle: u32,
     field_name: Option<Arc<str>>,
+    /// The replay's declared `compatible_checksum` for this handle, when there
+    /// is one. Defaults to `None`, which is the honest answer for every path
+    /// that addresses a value inside a payload rather than by a declared
+    /// handle -- array leaves and struct blobs have no checksum to carry.
+    compatible_checksum: Option<u32>,
     bit_count: u32,
     raw_bits: Option<SmallVec<[u8; 16]>>,
     value_i64: Option<i64>,

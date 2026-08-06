@@ -61,6 +61,27 @@ pub struct FieldRecord {
     /// `None` when the field name is unknown (unmapped export index).
     /// Interned when present: see the module docs.
     pub field_name: Option<Arc<str>>,
+    /// The `compatible_checksum` the replay declares for this handle.
+    ///
+    /// Unreal hashes a property's *type* into it alongside its name, which
+    /// makes it a build-stable content address for the property -- the same
+    /// value on 12.10 through 13.02. The overlay already uses it as its
+    /// last-resort type lookup; exporting it lets a reader do the same
+    /// reasoning offline.
+    ///
+    /// That matters because "no type" has two causes an export otherwise
+    /// cannot separate: a field nothing has ever described, and a field with a
+    /// checksum the overlay never learned. The second is a real gap -- it is
+    /// what Phoenix's smoke wall was, 2,791 rows of null with decode errors at
+    /// 0 -- and it was found only because a sibling class happened to share the
+    /// RPC's name. With this column the two are one query apart.
+    ///
+    /// **`None` means the replay declares no checksum for this handle**, not
+    /// that the value was unavailable here. Rows reach this table by several
+    /// paths and only the ones resolved through a `NetFieldExportGroup` carry
+    /// one; array leaves and struct blobs are addressed inside a payload rather
+    /// than by a declared handle, so they have no checksum to carry.
+    pub compatible_checksum: Option<u32>,
     pub bit_count: u32,
     /// Raw bit payload; `None` for zero-bit fields.
     ///

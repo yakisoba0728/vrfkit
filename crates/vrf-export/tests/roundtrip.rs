@@ -75,6 +75,7 @@ fn make_field_record(i: u32) -> FieldRecord {
         } else {
             Some(format!("Field_{}", i % 10).into())
         },
+        compatible_checksum: None,
         bit_count: (i % 128) + 1,
         raw_bits: if i % 4 == 0 {
             None
@@ -179,6 +180,7 @@ fn field_null_preservation() {
                 group_path: "Test".into(),
                 handle: 0,
                 field_name: None,
+                compatible_checksum: None,
                 bit_count: 0,
                 raw_bits: None,
                 value_i64: Some(0),
@@ -198,6 +200,7 @@ fn field_null_preservation() {
                 group_path: "Test".into(),
                 handle: 1,
                 field_name: Some("Health".into()),
+                compatible_checksum: None,
                 bit_count: 8,
                 raw_bits: Some(vec![0xAB].into()),
                 value_i64: None,
@@ -270,6 +273,7 @@ fn field_binary_preservation() {
                 group_path: "Bin".into(),
                 handle: 0,
                 field_name: None,
+                compatible_checksum: None,
                 bit_count: 256 * 8,
                 raw_bits: Some(payload.clone().into()),
                 value_i64: None,
@@ -306,6 +310,7 @@ fn unresolved_class_net_cache_payload_marker_roundtrips_exact_bits() {
                 group_path: "AbilitiesAndBuffsComponent".into(),
                 handle: u32::MAX,
                 field_name: Some(UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME.into()),
+                compatible_checksum: None,
                 bit_count: 7,
                 raw_bits: Some(vec![0x66].into()),
                 value_i64: None,
@@ -1130,4 +1135,54 @@ fn event_push_finish_empty() {
     let batches = read_all_batches(&path);
     let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
     assert_eq!(total_rows, 0);
+}
+
+/// The replay's own `compatible_checksum` survives the round trip, nulls
+/// included.
+///
+/// It is what tells "this field is legitimately undescribed" apart from "this
+/// field has a checksum the overlay never learned" -- the Phoenix case, where a
+/// whole class was missing from the table and 2,791 rows read null with decode
+/// errors at 0. Without the checksum in the export those two look identical
+/// offline, and the only reason Phoenix was found at all is that a sibling
+/// class happened to share its RPC name.
+#[test]
+fn compatible_checksum_round_trips_with_its_nulls() {
+    let path = test_dir().join("checksum_roundtrip.parquet");
+    {
+        let file = fs::File::create(&path).unwrap();
+        let mut writer = FieldWriter::with_row_group_size(file, 1024).unwrap();
+        for i in 0..8u32 {
+            let mut r = make_field_record(i);
+            // Odd rows model a handle the replay declares no checksum for.
+            r.compatible_checksum = if i % 2 == 0 {
+                Some(1_000_000 + i)
+            } else {
+                None
+            };
+            writer.push(r).unwrap();
+        }
+        writer.finish().unwrap();
+    }
+
+    let file = fs::File::open(&path).unwrap();
+    let batch = ParquetRecordBatchReaderBuilder::try_new(file)
+        .unwrap()
+        .build()
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    let checksum = batch
+        .column(batch.schema().index_of("compatible_checksum").unwrap())
+        .as_any()
+        .downcast_ref::<UInt32Array>()
+        .unwrap();
+    for i in 0..8usize {
+        if i % 2 == 0 {
+            assert_eq!(checksum.value(i), 1_000_000 + i as u32, "row {i}");
+        } else {
+            assert!(checksum.is_null(i), "row {i} should be null");
+        }
+    }
 }

@@ -179,6 +179,10 @@ impl ExportSink<'_> {
             self.push_field(FieldValues {
                 handle: f.handle,
                 field_name: Some(full_name),
+                // An array leaf is addressed by its position inside the array
+                // payload, not by a handle the group declares, so there is no
+                // checksum for it to carry. The null says exactly that.
+                compatible_checksum: None,
                 bit_count: f.bit_count,
                 raw_bits: Some(SmallVec::from_slice(&f.raw_bits)),
                 value_i64: vi,

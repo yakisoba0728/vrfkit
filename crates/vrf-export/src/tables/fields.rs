@@ -92,6 +92,10 @@ impl Table for FieldsTable {
         }
         let field_name: ArrayRef = Arc::new(field_name_builder.finish());
 
+        let compatible_checksum: ArrayRef = Arc::new(UInt32Array::from_iter(
+            rows.iter().map(|r| r.compatible_checksum),
+        ));
+
         let bit_count: ArrayRef = Arc::new(UInt32Array::from_iter_values(
             rows.iter().map(|r| r.bit_count),
         ));
@@ -130,6 +134,7 @@ impl Table for FieldsTable {
                 group_path,
                 handle,
                 field_name,
+                compatible_checksum,
                 bit_count,
                 raw_bits,
                 value_i64,

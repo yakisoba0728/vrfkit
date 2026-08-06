@@ -133,6 +133,7 @@ pub trait Table {
 ///     actor_net_guid: 100, object_net_guid: None,
 ///     group_path: "PlayerState".into(),
 ///     handle: 7, field_name: Some("Health".into()),
+///     compatible_checksum: Some(2_983_776_962),
 ///     bit_count: 32, raw_bits: Some(vec![0x64, 0, 0, 0].into()),
 ///     value_i64: Some(100), value_f64: None,
 ///     value_bool: None, value_str: None,
