@@ -47,3 +47,11 @@ jobs:
         run: python tools/apply_type_corrections.py --check
       - name: docs self-check
         run: python tools/check_docs.py --fast
+      # CONTRIBUTING calls these two required before a PR and CI did not run
+      # either, so a PR could break them and still go green. Both are pure
+      # Python over committed fixtures -- no corpus, no game install, no Oodle
+      # -- which is why they belong in this job and the corpus guards do not.
+      - name: tools test suite
+        run: python -m unittest discover -s tools/tests -p "test_*.py"
+      - name: effect decoder
+        run: python tools/check_effect_decoder.py --check

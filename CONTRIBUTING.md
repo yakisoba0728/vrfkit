@@ -65,6 +65,14 @@ them are needed for the sweep above; all of them are needed for §6.
 | `VRFKIT_JOBS` | Worker count for the corpus sweeps; default is cores - 2, capped at 16 | `validate_corpus.py` |
 | `VRFKIT_REQUIRE_CORPUS` | Set to anything to turn "corpus absent, skipping" into a failure | `crates/vrf-container/tests/corpus.rs` |
 
+**`tests/corpus.rs` is a container-level smoke test, not a decode sweep.** It
+parses each replay's header and decompresses its Oodle chunks; it never reaches
+a field. A green `cargo test` with the corpus present therefore says nothing
+about decoding. The sweeps that do are `validate_corpus.py` (RepLayout framing
+on every content block) and `check_decode_errors_corpus.py` (the overlay), and
+neither runs under `cargo test` or in CI. The names do not distinguish them, so
+the distinction is written here.
+
 ```bash
 export VRFKIT_CORPUS_DIR=/path/to/replays
 python tools/check_decode_errors_corpus.py ./target/release/vrfkit "$VRFKIT_CORPUS_DIR"
