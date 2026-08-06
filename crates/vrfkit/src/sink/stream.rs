@@ -254,7 +254,12 @@ impl ExportSink<'_> {
         subject: Option<&str>,
         character: Option<i64>,
     ) {
-        if self.current_group_path.as_ref() != BOMB_PLAYER_STATE {
+        // Through `canonical_group`, not a bare comparison: Swiftplay replicates
+        // these same fields under `Swiftplay_EoRCredits_PlayerState_C`, and the
+        // overlay already treats that as the Bomb class. Comparing the raw path
+        // left `manifest.players` empty on 4 of 64 demo replays whose `Subject`
+        // was present on all ten actors.
+        if vrf_decode::canonical_group(&self.current_group_path) != BOMB_PLAYER_STATE {
             return;
         }
         let Some(name) = field_name else {
@@ -880,5 +885,35 @@ mod tests {
         // Only the preservation row, no CNC rows.
         assert_eq!(sink.records.fields.len(), 1);
         assert_eq!(sink.stats.cnc_rpcs_emitted, 0);
+    }
+    /// Player identity has to survive a game mode that is not Bomb.
+    ///
+    /// Swiftplay replicates the same fields under
+    /// `Swiftplay_EoRCredits_PlayerState_C`. The overlay already handles that
+    /// through `GROUP_ALIASES`, but this capture compared the raw path against
+    /// `BombPlayerState` and so recorded nothing -- 4 of 64 demo replays came
+    /// out with an empty `manifest.players` while their `Subject` field was
+    /// present on all ten actors.
+    #[test]
+    fn player_identity_is_captured_on_a_swiftplay_player_state() {
+        const SWIFT: &str = "/Game/GameModes/_Development/Swiftplay_EndOfRoundCredits/Swiftplay_EoRCredits_PlayerState.Swiftplay_EoRCredits_PlayerState_C";
+        for path in [BOMB_PLAYER_STATE, SWIFT] {
+            let mut cache = NetGuidCache::new();
+            let mut channel_state = ChannelState::new();
+            let mut records = RecordBuffers::default();
+            let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+            sink.current_group_path = Arc::from(path);
+            sink.current_actor_guid = 42;
+
+            sink.record_player_identity(Some("Subject"), Some("uuid-here"), None);
+            sink.record_player_identity(Some("SpawnedCharacter"), None, Some(576));
+
+            let players = sink.channel_state.players.clone();
+            let entry = players
+                .get(&42)
+                .unwrap_or_else(|| panic!("nothing for {path}"));
+            assert_eq!(entry.subject.as_deref(), Some("uuid-here"), "{path}");
+            assert_eq!(entry.character_net_guid, Some(576), "{path}");
+        }
     }
 }
