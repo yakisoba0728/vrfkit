@@ -95,6 +95,19 @@ pub struct ReplayHeader {
     pub build_config: u8,
     /// Build target type byte.
     pub build_target_type: u8,
+    /// Bytes of the Header chunk payload this layout never reached.
+    ///
+    /// The parser stops at `BuildTargetType` and used to return success without
+    /// asking whether anything followed, so a header extension -- exactly what a
+    /// new engine build appends -- was skipped permanently with no error and no
+    /// residual. The bytes are not interpreted, because nothing here knows their
+    /// layout; their existence is reported instead, the way
+    /// [`CheckpointChunk::trailing_bytes`] reports a checkpoint's.
+    ///
+    /// Expected to be zero. A non-zero value means the header grew.
+    ///
+    /// [`CheckpointChunk::trailing_bytes`]: crate::CheckpointChunk::trailing_bytes
+    pub trailing_bytes: usize,
 }
 
 /// Parse the header chunk payload.
@@ -227,6 +240,10 @@ pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, Contai
         .read_u8()
         .map_err(|e| ContainerError::BitIo(e.to_string()))?;
 
+    // Every read above is byte-granular, so the reader sits on a byte boundary
+    // and this division loses nothing.
+    let trailing_bytes = (reader.bits_remaining() / 8) as usize;
+
     Ok(ReplayHeader {
         network_version,
         network_checksum,
@@ -247,6 +264,7 @@ pub(crate) fn parse_replay_header(payload: &[u8]) -> Result<ReplayHeader, Contai
         platform,
         build_config,
         build_target_type,
+        trailing_bytes,
     })
 }
 

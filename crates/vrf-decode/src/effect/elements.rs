@@ -137,18 +137,28 @@ fn decode_elements<T: EffectElement>(
 ) -> Result<Vec<T>> {
     let count = read_array_count(reader)?;
     let mut elements = vec![T::ABSENT; count as usize];
+    // An array ends on a zero index and an element on a zero handle. Running
+    // out of bits instead was accepted, and because these arrays are sparse by
+    // design the elements that never arrived rendered as `{"tag":null,...}` --
+    // exactly what a legitimately unpopulated slot looks like. Truncation was
+    // therefore indistinguishable from sparseness, so the terminators are now
+    // required rather than inferred.
+    let mut array_terminated = false;
 
     while !reader.at_end() {
         let Some(index) = read_element_index(reader, count)? else {
-            consume_trailing_terminator(reader);
+            consume_trailing_terminator(reader)?;
+            array_terminated = true;
             break;
         };
 
         let elem = &mut elements[index as usize];
         let mut field_count = 0u32;
+        let mut element_terminated = false;
 
         while !reader.at_end() {
             let Some((handle, payload_bits)) = read_field_header(reader)? else {
+                element_terminated = true;
                 break;
             };
             field_count += 1;
@@ -172,6 +182,20 @@ fn decode_elements<T: EffectElement>(
             // Ensure we consumed exactly payload_bits
             settle_field(reader, start_pos, payload_bits)?;
         }
+
+        if !element_terminated {
+            return Err(EffectBlobError::MissingTerminator {
+                context: T::CONTEXT,
+            });
+        }
+    }
+
+    // A zero-count array carries no elements and no terminator -- the count
+    // byte is the whole blob -- so only a populated array owes one.
+    if count > 0 && !array_terminated {
+        return Err(EffectBlobError::MissingTerminator {
+            context: T::CONTEXT,
+        });
     }
 
     Ok(elements)

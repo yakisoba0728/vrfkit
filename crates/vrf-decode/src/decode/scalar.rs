@@ -125,14 +125,38 @@ pub(super) fn decode_ftext(r: &mut BitReader<'_>) -> Result<DecodedValue, Decode
 /// is exactly the hardcoded shape (1 flag + one IntPacked byte). Reading them
 /// as an FString ran off the end of the payload and produced mojibake, which
 /// is why the field had to be forced to Raw in the type-correction pass.
+///
+/// # The instance number is part of the identity
+///
+/// Unreal's `FName` is a (comparison index, number) pair, and the number is
+/// stored as **the displayed suffix plus one**: 0 renders the bare name, and
+/// `N != 0` renders `Name_{N-1}`. It used to be read into `let _suffix` and
+/// dropped, so `Source_1` and `Source_2` both decoded to `Source` -- two
+/// distinct objects collapsed onto one string with nothing reporting it.
+///
+/// [`crate::structs::framing`]'s `read_fname` renders the same way, so a name
+/// means the same thing whichever decoder produced it.
 pub(super) fn decode_fname(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeError> {
     if r.read_bit()? {
         let index = r.read_int_packed()?;
         return Ok(DecodedValue::Str(index.to_string()));
     }
     let name = r.read_fstring(64 * 1024)?;
-    let _suffix = r.read_i32()?;
-    Ok(DecodedValue::Str(name))
+    let number = r.read_i32()?;
+    Ok(DecodedValue::Str(render_fname(name, number)))
+}
+
+/// Apply an `FName`'s instance number to its string, Unreal's way.
+///
+/// `number == 0` is the bare name; otherwise the displayed suffix is
+/// `number - 1`. A negative number cannot come off a well-formed wire and has
+/// no display form, so it is appended verbatim rather than wrapped into a
+/// plausible-looking positive suffix.
+pub(crate) fn render_fname(name: String, number: i32) -> String {
+    match number {
+        0 => name,
+        n => format!("{name}_{}", n.wrapping_sub(1)),
+    }
 }
 
 pub(super) fn decode_object_net_guid(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeError> {
@@ -167,6 +191,29 @@ pub(super) fn decode_serialized_int(
     Ok(DecodedValue::I64(i64::from(r.read_serialized_int(max)?)))
 }
 
+/// A byte enum that occupies whatever width the field payload carries.
+///
+/// # A zero-width payload really is zero, and is not fabricated
+///
+/// The zero-width arms return `I64(0)` without reading a bit, which looks like
+/// a value invented out of nothing. It is not, and the reason is worth writing
+/// down because the surrounding code refuses exactly this shape elsewhere
+/// (`UnsignedOverflow`, `UnsupportedTextHistory`, and the no-exemption rule in
+/// [`super::decode_field`]).
+///
+/// Unreal serialises this enum in `ceil(log2(variant_count))` bits, and the
+/// number of bits needed to distinguish ONE possible variant is zero. A
+/// zero-width payload is therefore not a truncated value: it is the complete
+/// encoding of an enum whose only variant is the first, and reading it as 0 is
+/// the encoding's own answer, not a guess at a missing one. That is different
+/// in kind from a `NaN` component or an over-wide payload, where the bits are
+/// present and say something the type cannot represent.
+///
+/// The corpus agrees: `overlay::apply_overlay_inner` already answers a zero-bit
+/// `EnumRemainingBits` with `value_i64 = 0` and counts it `decoded_ok`, and the
+/// 215-replay export reports zero decode errors under that behaviour. Turning
+/// zero-width into an error or a null would move those rows to failures for a
+/// value the format defines.
 pub(super) fn decode_enum_remaining_bits(
     r: &mut BitReader<'_>,
     bit_count: u32,

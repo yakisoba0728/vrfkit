@@ -3,8 +3,8 @@
 use vrf_bitio::BitReader;
 
 use super::framing::{
-    MAX_FIELDS_PER_ELEMENT, ensure_consumed, member_name, read_array_count, read_element_index,
-    read_field_header, read_fname, read_narrow_byte,
+    MAX_FIELDS_PER_ELEMENT, ensure_consumed, ensure_member_consumed, member_name, read_array_count,
+    read_element_index, read_field_header, read_fname, read_narrow_byte,
 };
 use super::{Result, StructBlobError};
 
@@ -156,27 +156,52 @@ pub fn decode_round_results(
             // The sub-reader consumes the bits from the parent, so a field we
             // do not interpret still advances the stream correctly.
             let mut sub = reader.sub_reader(u64::from(bit_count))?;
-            match member_name(declared, handle, CONTEXT)? {
+            let member = member_name(declared, handle, CONTEXT)?;
+            match member {
                 "WinningTeam" => winning_team = Some(read_fname(&mut sub)?),
                 // A payload of no usable width leaves the slot ALONE rather
                 // than clearing it: if a handle repeats within one element, an
                 // unreadable second copy must not erase the value the first one
                 // established. `if let` and not `= read(..).and_then(..)` for
                 // exactly that reason.
+                // A value the enum has no variant for is REPORTED, not folded
+                // back into `None`. `None` already means "this update did not
+                // send the member", so reusing it for "sent, unrecognised" made
+                // a newly added game variant indistinguishable from an absent
+                // field -- the column simply starts going null after a patch,
+                // with no counter moving.
                 "WinningTeamRole" => {
                     if let Some(v) = read_narrow_byte(&mut sub)? {
-                        winning_team_role = AresTeamRole::from_byte(v);
+                        winning_team_role = Some(AresTeamRole::from_byte(v).ok_or(
+                            StructBlobError::UnknownEnumValue {
+                                enum_name: "AresTeamRole",
+                                value: v,
+                                context: CONTEXT,
+                            },
+                        )?);
                     }
                 }
                 "RoundResult" => {
                     if let Some(v) = read_narrow_byte(&mut sub)? {
-                        round_result = AresRoundOutcome::from_byte(v);
+                        round_result = Some(AresRoundOutcome::from_byte(v).ok_or(
+                            StructBlobError::UnknownEnumValue {
+                                enum_name: "AresRoundOutcome",
+                                value: v,
+                                context: CONTEXT,
+                            },
+                        )?);
                     }
                 }
                 // Opaque nested array, skipped. Declared at two consecutive
                 // handles in both builds; one arm covers both because the
                 // match is on the name.
-                "EliminatedTeams" => {}
+                //
+                // Skipped EXPLICITLY rather than by falling out of the match:
+                // the consumption check below would otherwise read this as a
+                // member that left its window unread, which is precisely the
+                // distinction being drawn -- these bits are deliberately not
+                // interpreted, they are not accidentally dropped.
+                "EliminatedTeams" => sub.skip_remaining(),
                 name => {
                     return Err(StructBlobError::UnsupportedMember {
                         name: name.to_owned(),
@@ -185,6 +210,12 @@ pub fn decode_round_results(
                     });
                 }
             }
+            // `read_fname` is self-delimiting and `read_narrow_byte` takes the
+            // window's full width, so an interpreted member here consumes
+            // exactly. A leftover means the payload was not the shape the name
+            // promised -- an over-wide enum, say, which `read_narrow_byte`
+            // declines to read at all and used to leave as a silent absence.
+            ensure_member_consumed(&sub, member, handle, bit_count, CONTEXT)?;
         }
 
         results.push(RoundResult {

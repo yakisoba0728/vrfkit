@@ -45,6 +45,21 @@ pub enum NetError {
     #[error("unsupported replay branch: {0}")]
     UnsupportedBranch(#[from] vrf_transform::UnsupportedBranch),
 
+    /// A package-map export bunch declared an impossible GUID count.
+    ///
+    /// Negative, or above [`MAX_GUID_COUNT`](crate::types::MAX_GUID_COUNT). The
+    /// declarations after it cannot be walked, so the bunch is abandoned -- as
+    /// an error rather than a quiet `Ok`, because every path declaration in it
+    /// is lost and actors that needed those paths would otherwise fail to
+    /// resolve with nothing pointing at the cause.
+    #[error("package-map export declared {count} GUIDs (max {max})")]
+    InvalidGuidCount {
+        /// The declared count, as read from the wire.
+        count: i32,
+        /// The accepted maximum.
+        max: u32,
+    },
+
     /// A ClassNetCache block arrived for a group whose function count is unknown.
     ///
     /// Distinguished from a class that genuinely has no functions: zero means the

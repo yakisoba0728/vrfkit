@@ -128,6 +128,16 @@ impl ExportSink<'_> {
                 break;
             };
             if encoded_handle == 0 {
+                // The wire said "no more parameters". Ask what is still in the
+                // payload before believing it: one trailing alignment bit is
+                // grammar, anything more is a suffix this walk cannot explain.
+                // See `ExportStats::rpc_suffix_bits_dropped` for why it is
+                // counted rather than rejected.
+                let leftover = rpc_reader.bits_remaining();
+                if leftover > 1 {
+                    self.stats.rpc_suffix_bits_dropped =
+                        self.stats.rpc_suffix_bits_dropped.saturating_add(leftover);
+                }
                 break;
             }
 

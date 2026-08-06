@@ -1,6 +1,12 @@
 //! `validate` subcommand -- RepLayout grammar oracle.
 //!
-//! # What it proves
+//! # What it proves, and over what
+//!
+//! The scope is the **ReplayData** stream. Checkpoint chunks are counted and
+//! skipped -- a checkpoint is an independent archive with its own GUID cache
+//! and export map, and decoding one is what `export --checkpoints` is for. This
+//! used to go unsaid while the run announced it was checking "all content
+//! blocks", which is why the skip now prints its own size under `NOT COVERED`.
 //!
 //! If the payload transform is correct, every decoded RepLayout content block
 //! satisfies this grammar:
@@ -138,9 +144,75 @@ use vrf_schema::NetGuidCache;
 use crate::error::CliError;
 use crate::sink::{ChannelState, ExportSink, RecordBuffers};
 
+/// What a validation run concluded, and the exit code it earns.
+///
+/// Before this existed `run` ended in `Ok(())` on every path, so `vrfkit
+/// validate` could not report failure: a replay whose framing was wrong
+/// printed a low pass rate and exited 0, and a file with no ReplayData at all
+/// printed "cannot validate" and exited 0 too. The verdict was a sentence on a
+/// screen rather than a result.
+///
+/// The two failure outcomes stay apart. "I looked and found problems" and "I
+/// had nothing to look at" are different answers, and a corpus sweep that
+/// merged them could not tell a broken build from a file carrying no
+/// replication stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    /// Content blocks were found and every one of them framed.
+    Passed,
+    /// At least one content block was malformed. See [`Verdict::decide`].
+    MalformedFraming,
+    /// No RepLayout or ClassNetCache blocks at all -- nothing was validated.
+    NoContentBlocks,
+}
+
+impl Verdict {
+    /// Decide the verdict from the two counters that carry it.
+    ///
+    /// Only `malformed_framing` fails the run, and that is deliberate rather
+    /// than lax. The claim this oracle makes is the one its module docs state:
+    /// container, bunch and content-block **framing** does not go wrong. The
+    /// payload-stage counters (`transform_failures`, `field_stream_failures`,
+    /// `rpc_stream_failures`) measure something else -- attribution, mostly
+    /// ClassNetCache groups the replay never declares, whose payloads are
+    /// preserved whole rather than lost. They are non-zero on every replay the
+    /// project has ever measured: all four pinned baselines under
+    /// `tools/baselines/build_*.json` record `malformed 0` alongside pass rates
+    /// of 98.49%-99.21%, and with malformed at zero the entire shortfall is
+    /// payload-stage. Failing on them would mark the whole known-good corpus
+    /// broken, which is not a stricter oracle, only a useless one.
+    ///
+    /// Absence of evidence outranks: a file with no content blocks validated
+    /// nothing, whatever its other counters say.
+    #[must_use]
+    pub fn decide(total_with_content: u64, malformed_framing: u64) -> Self {
+        if total_with_content == 0 {
+            Self::NoContentBlocks
+        } else if malformed_framing > 0 {
+            Self::MalformedFraming
+        } else {
+            Self::Passed
+        }
+    }
+
+    /// The process exit code for this verdict.
+    #[must_use]
+    pub fn exit_code(self) -> u8 {
+        match self {
+            Self::Passed => 0,
+            Self::MalformedFraming => 1,
+            Self::NoContentBlocks => 2,
+        }
+    }
+}
+
 /// Run the validate oracle. If `diagnostics` is true, print full diagnostic
 /// dumps for every malformed/skipped event.
-pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
+///
+/// The `Result` is still the container/IO failure channel -- a file that cannot
+/// be read at all is an error, not a verdict. A file that *was* read reports
+/// through [`Verdict`].
+pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
     let start = Instant::now();
 
     eprintln!("reading {path}...");
@@ -152,13 +224,15 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
     let encrypted = preamble.info.encrypted;
 
     eprintln!("branch: {branch}");
-    eprintln!("validating RepLayout grammar on all content blocks...");
+    eprintln!("validating RepLayout grammar on every ReplayData content block...");
 
     let mut cache = NetGuidCache::new();
     let mut repl_reader = ReplicationReader::new(branch)
         .map_err(|e| CliError::Usage(format!("unsupported branch: {e}")))?;
 
     let mut total_packets: u32 = 0;
+    // Counted, not merely skipped: see `checkpoint_scope_note`.
+    let mut checkpoint_chunks: u64 = 0;
     let mut chunk_iter = ChunkIterator::new(&data, preamble.remaining_offset);
     let mut packet_descs: Vec<(u32, usize, usize)> = Vec::with_capacity(4096);
     let mut channel_state = ChannelState::new();
@@ -167,6 +241,10 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
     let mut buffers = RecordBuffers::default();
 
     while let Some(chunk) = chunk_iter.next_chunk()? {
+        if chunk.chunk_type == ChunkType::Checkpoint {
+            checkpoint_chunks += 1;
+            continue;
+        }
         if chunk.chunk_type != ChunkType::ReplayData {
             continue;
         }
@@ -225,12 +303,16 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
     println!("  Bunches:              {}", stats.bunches);
     println!("  Actor opens:          {}", stats.actor_opens);
     println!("  Actor closes:         {}", stats.actor_closes);
+    if let Some(note) = checkpoint_scope_note(checkpoint_chunks) {
+        println!("  NOT COVERED:          {note}");
+    }
     println!();
 
     // Oracle verdict: the fraction of content blocks (RepLayout + ClassNetCache)
     // that framed, decoded and walked cleanly. With a correct transform this
     // should be 100%; a wrong one collapses it toward zero.
     let total_with_content = rep_layout + class_net;
+    let verdict = Verdict::decide(total_with_content, malformed);
     if total_with_content == 0 {
         println!("  No content blocks found - cannot validate.");
     } else {
@@ -299,8 +381,44 @@ pub fn run(path: &str, diagnostics: bool) -> Result<(), CliError> {
 
     println!();
     println!("  Elapsed: {:.2?}", elapsed);
+    // Last line, and the only one that is a conclusion rather than a
+    // measurement. It says in words what the exit code says in a number, so a
+    // human reading a terminal and a script reading `$?` cannot disagree.
+    println!("  VERDICT: {}", verdict_line(verdict));
 
-    Ok(())
+    Ok(verdict)
+}
+
+/// The scope limit to declare when the file carried Checkpoint chunks.
+///
+/// This oracle walks the ReplayData stream. Checkpoint chunks are skipped, and
+/// that was implicit: the run announced "validating RepLayout grammar on all
+/// content blocks" and then ignored every one of them, so malformed
+/// replication framing inside a snapshot was never seen and nothing on the
+/// screen said as much.
+///
+/// The skip stays. A checkpoint is an independent archive -- its own GUID
+/// cache, its own export map, its own DemoFrame re-opening every live actor --
+/// and walking it is what `export --checkpoints` exists for; folding that pass
+/// into `validate` would change every counter this command's pinned baselines
+/// hold and add three new hard-failure paths to a command whose job is to
+/// report rather than to abort. What changes is that the gap now states its own
+/// size instead of being inferred from a sentence that overclaimed.
+fn checkpoint_scope_note(checkpoint_chunks: u64) -> Option<String> {
+    (checkpoint_chunks > 0).then(|| {
+        format!(
+            "{checkpoint_chunks} Checkpoint chunk(s) were NOT walked - this verdict covers the ReplayData stream only (use `export --checkpoints` to decode them)"
+        )
+    })
+}
+
+/// The one-line conclusion printed under `VERDICT:`.
+fn verdict_line(verdict: Verdict) -> &'static str {
+    match verdict {
+        Verdict::Passed => "PASS - every content block framed (exit 0)",
+        Verdict::MalformedFraming => "FAIL - malformed content block framing (exit 1)",
+        Verdict::NoContentBlocks => "CANNOT VALIDATE - no content blocks found (exit 2)",
+    }
 }
 
 /// Print a breakdown of where skipped bits come from.
@@ -406,4 +524,55 @@ fn print_diagnostic_event(index: usize, ev: &DiagnosticEvent) {
     println!("  | block_in_bunch:      {}", ev.block_index_in_bunch);
     println!("  | bits_skipped:        {}", ev.bits_skipped);
     println!("  +--------------------");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Verdict, checkpoint_scope_note};
+
+    /// The chunks this oracle does not walk have to say so themselves.
+    ///
+    /// `validate` announced that it was checking "all content blocks" and then
+    /// skipped every Checkpoint chunk, so malformed replication framing inside
+    /// a snapshot was never looked at and nothing on the screen admitted it.
+    /// The skip is a real scope limit -- a checkpoint is a separate archive
+    /// with its own GUID cache and export map, and walking it is an `export
+    /// --checkpoints` job -- but a limit that is not stated reads as coverage.
+    #[test]
+    fn skipped_checkpoint_chunks_are_named_rather_than_implied() {
+        assert_eq!(
+            checkpoint_scope_note(0),
+            None,
+            "a replay with no checkpoints has no gap to declare"
+        );
+        let note = checkpoint_scope_note(37).expect("37 skipped chunks must be reported");
+        assert!(note.contains("37"), "the note must carry the count: {note}");
+    }
+
+    /// `vrfkit validate` has to be able to report failure.
+    ///
+    /// It could not: `run` ended in `Ok(())` on every path, so a replay whose
+    /// framing was wrong printed a low pass rate and exited 0 exactly like a
+    /// clean one, and a file with no ReplayData at all printed "cannot
+    /// validate" and also exited 0. A verdict that cannot move is not a
+    /// verdict.
+    ///
+    /// The two failing outcomes are kept apart. "Found problems" and "had
+    /// nothing to look at" are different answers, and merging them into one
+    /// non-zero code would make a corpus sweep unable to tell a broken build
+    /// from a file that carries no replication stream.
+    #[test]
+    fn the_verdict_separates_clean_from_failed_from_unvalidatable() {
+        assert_eq!(Verdict::decide(1_000, 0), Verdict::Passed);
+        assert_eq!(Verdict::decide(1_000, 1), Verdict::MalformedFraming);
+        assert_eq!(Verdict::decide(0, 0), Verdict::NoContentBlocks);
+    }
+
+    /// The three outcomes must reach the shell as three different codes.
+    #[test]
+    fn each_verdict_earns_its_own_exit_code() {
+        assert_eq!(Verdict::Passed.exit_code(), 0);
+        assert_eq!(Verdict::MalformedFraming.exit_code(), 1);
+        assert_eq!(Verdict::NoContentBlocks.exit_code(), 2);
+    }
 }

@@ -389,6 +389,9 @@ pub fn resolve_field_type_with_checksum(
     handle: Option<u32>,
     checksum: Option<u32>,
 ) -> Option<FieldType> {
+    // This entry point answers "what type is this field", with no stats to
+    // report into; the refusal still applies, it is simply not tallied here.
+    let mut refused = false;
     resolve_entry(
         table,
         group_path,
@@ -396,6 +399,7 @@ pub fn resolve_field_type_with_checksum(
         field_name,
         handle,
         checksum,
+        &mut refused,
     )
     .map(|(field_type, _)| field_type)
 }
@@ -508,8 +512,10 @@ fn resolve_entry<'a>(
     field_name: Option<&'a str>,
     handle: Option<u32>,
     checksum: Option<u32>,
+    refused: &mut bool,
 ) -> Option<(FieldType, &'a str)> {
-    if let Some(hit) = resolve_in_group(table, group_path, group_state, field_name, handle) {
+    if let Some(hit) = resolve_in_group(table, group_path, group_state, field_name, handle, refused)
+    {
         return Some(hit);
     }
     // Not a `let` chain: those are stable only from 1.88 and the MSRV is 1.86.
@@ -520,6 +526,7 @@ fn resolve_entry<'a>(
             group_hash_state(aliased),
             field_name,
             handle,
+            refused,
         )
     });
     if let Some(hit) = aliased_hit {
@@ -565,6 +572,7 @@ fn resolve_in_group<'a>(
     group_state: GroupHashState,
     field_name: Option<&'a str>,
     handle: Option<u32>,
+    refused: &mut bool,
 ) -> Option<(FieldType, &'a str)> {
     if let Some(name) = field_name {
         // One hash serves both probes; see the `index` module docs. The group
@@ -585,12 +593,47 @@ fn resolve_in_group<'a>(
         group_path,
         handle,
     )?;
+    // Fail closed against a replay that declares something ELSE at this handle.
+    //
+    // Both name probes have already missed, so if the wire named this field at
+    // all, it named it something the table does not know for this group. Using
+    // the descriptor's handle mapping anyway reads the new property with the
+    // old property's type -- the precise failure a game patch produces, and it
+    // is silent: the width often still fits, so the bits are consumed, a value
+    // is emitted and no counter moves.
+    //
+    // A bare decimal is exempt because it is not a declaration: the replay
+    // renders an unresolved hardcoded FName as its index (`"248"`), which
+    // states nothing about the property and so cannot contradict the
+    // descriptor. That exemption is what
+    // `overlay_falls_back_to_an_explicit_property_handle_when_the_wire_name_differs`
+    // pins, and it is the only reason such fields are typed at all.
+    if let Some(name) = field_name {
+        if name != descriptor_name && !is_unresolved_fname_index(name) {
+            *refused = true;
+            return None;
+        }
+    }
     let field_type = table.lookup_hashed(
         name_hash_from_group(group_state, descriptor_name),
         group_path,
         descriptor_name,
     )?;
-    Some((field_type, field_name.unwrap_or(descriptor_name)))
+    // Report the DESCRIPTOR's name, not the wire's. The type came from the
+    // descriptor, and after the refusal above the only wire name that still
+    // reaches here is a bare FName index -- so `field_name.unwrap_or(..)` could
+    // only ever label the row `"248"` while describing `Location`'s type.
+    Some((field_type, descriptor_name))
+}
+
+/// Whether a declared field name is a bare decimal, i.e. an unresolved
+/// hardcoded Unreal FName rendered as its table index rather than as text.
+///
+/// These carry no statement about the property -- `"215"`, `"216"`, `"248"` and
+/// `"249"` are all real examples from this corpus -- so they neither identify a
+/// field nor contradict a descriptor that does.
+fn is_unresolved_fname_index(name: &str) -> bool {
+    !name.is_empty() && name.bytes().all(|b| b.is_ascii_digit())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -605,18 +648,32 @@ fn apply_overlay_inner(
     bit_count: u32,
     stats: &mut OverlayStats,
 ) -> Option<OverlayResult> {
-    let (field_type, diagnostic_name) =
-        match resolve_entry(table, group_path, group_state, field_name, handle, checksum) {
-            Some(resolved) => resolved,
-            None => {
-                if field_name.is_none() {
-                    stats.no_field_name += 1;
-                } else {
-                    stats.not_in_table += 1;
-                }
-                return None;
+    let mut refused = false;
+    let (field_type, diagnostic_name) = match resolve_entry(
+        table,
+        group_path,
+        group_state,
+        field_name,
+        handle,
+        checksum,
+        &mut refused,
+    ) {
+        Some(resolved) => resolved,
+        None => {
+            if field_name.is_none() {
+                stats.no_field_name += 1;
+            } else {
+                stats.not_in_table += 1;
             }
-        };
+            // Counted BESIDE the bucket above, not instead of it: the row is
+            // untyped either way, and this says the overlay had a candidate and
+            // declined it rather than never having one.
+            if refused {
+                stats.handle_conflicts_refused += 1;
+            }
+            return None;
+        }
+    };
 
     if matches!(field_type, FieldType::Raw | FieldType::Skip) {
         stats.raw_or_skip += 1;
@@ -627,6 +684,10 @@ fn apply_overlay_inner(
         Some(d) if bit_count > 0 => d,
         _ => {
             // Zero-bit field with a typed decoder -- unusual but not an error.
+            // Why zero is the VALUE here and not a fabrication is argued once,
+            // in `scalar::decode_enum_remaining_bits`; this arm is the same
+            // decision taken before the decoder is reached, so it must not
+            // drift from it.
             if bit_count == 0 && field_type == FieldType::EnumRemainingBits {
                 stats.decoded_ok += 1;
                 return Some(OverlayResult {
@@ -665,6 +726,10 @@ fn apply_overlay_inner(
                 // decoder has never seen laid out. Refusing beats returning a
                 // plausible wrong string.
                 DecodeError::UnsupportedTextHistory { .. } => DecodeErrorKind::Residual,
+                // The bits read fine and the layout was right; the value they
+                // spell cannot be rendered as JSON. Same bucket for the same
+                // reason -- a value-range rejection, not a framing failure.
+                DecodeError::NonFiniteComponent { .. } => DecodeErrorKind::Residual,
             };
             stats
                 .error_report

@@ -212,6 +212,168 @@ fn build_rpc_payload(shooter_guid: u32, component_stream: &BitWriter) -> BitWrit
     rpc
 }
 
+/// Wrap an already-built RemoteCharacterUpdates array in the RPC envelope.
+///
+/// `build_rpc_payload` builds the array too, which is what most tests want.
+/// The framing tests below need to deform the array itself, so the envelope is
+/// available on its own.
+fn wrap_updates_array(array: &BitWriter) -> BitWriter {
+    let mut rpc = BitWriter::new();
+    rpc.write_bit(false); // first bit, consumed and discarded
+    rpc.write_int_packed(REMOTE_CHARACTER_UPDATES_HANDLE + 1);
+    rpc.write_int_packed(array.bit_count());
+    rpc.write_other(array);
+    rpc.write_int_packed(0); // terminator
+    rpc
+}
+
+/// Decode a built payload, returning the result and the moves it emitted.
+fn decode(
+    rpc: &BitWriter,
+) -> (
+    crate::types::RpcDecodeResult,
+    Vec<crate::types::MovementMove>,
+) {
+    let bytes = rpc.to_bytes();
+    let mut reader = BitReader::with_bit_len(&bytes, u64::from(rpc.bit_count()));
+    let mut moves = Vec::new();
+    let result = decode_movement_rpc(&mut reader, |m| moves.push(m)).unwrap();
+    (result, moves)
+}
+
+#[test]
+fn an_out_of_range_update_index_is_counted_not_discarded_in_silence() {
+    // updateCount is 1, so index 2 addresses an update the array never
+    // declared. The rest of the window cannot be located from there, so
+    // skipping it stays the right move -- but it used to be invisible:
+    // `Ok(update_count: 1, total_moves: 0, error_count: 0)` is exactly what a
+    // batch of empty-but-well-formed updates returns.
+    let mut array = BitWriter::new();
+    array.write_int_packed(1); // updateCount = 1
+    array.write_int_packed(3); // encodedIndex = 3 -> index 2, out of range
+    array.write_u8(0xAA); // whatever follows is discarded
+
+    let (result, moves) = decode(&wrap_updates_array(&array));
+
+    assert_eq!(result.update_count, 1);
+    assert_eq!(result.total_moves, 0);
+    assert!(moves.is_empty());
+    assert_eq!(
+        result.error_count, 1,
+        "the discarded array tail must reach the summary"
+    );
+}
+
+#[test]
+fn a_field_longer_than_the_update_window_is_counted() {
+    // A field declaring 128 payload bits with 8 left in the array means the
+    // framing no longer describes this payload. The decoder gives up on the
+    // window -- correctly, since it cannot find the next handle -- but used to
+    // report the give-up as a successful end-of-update, losing the second
+    // declared update with it.
+    let mut array = BitWriter::new();
+    array.write_int_packed(2); // updateCount = 2
+    array.write_int_packed(1); // encodedIndex = 1 -> index 0
+    array.write_int_packed(6); // encodedHandle 6 -> handle 5, not decoded here
+    array.write_int_packed(128); // ... declaring 128 bits
+    array.write_u8(0); // ... with only 8 left
+
+    let (result, moves) = decode(&wrap_updates_array(&array));
+
+    assert_eq!(result.update_count, 2);
+    assert_eq!(result.total_moves, 0);
+    assert!(moves.is_empty());
+    assert_eq!(
+        result.error_count, 1,
+        "an over-long field declaration must reach the summary"
+    );
+}
+
+#[test]
+fn an_undersized_shooter_guid_field_and_its_orphaned_stream_are_counted() {
+    // A 31-bit GUID field is one bit short of the u32 it must carry, so the
+    // GUID stays `None` -- and the component stream that follows is then
+    // consumed without being decoded, because there is no character to
+    // attribute its moves to. Two separate losses, previously neither counted
+    // nor visible: the update returned successfully with zero moves.
+    let stream = build_component_data_stream(&[build_move(false, 7, 1.0, 2.0, 3.0)]);
+
+    let mut update = BitWriter::new();
+    update.write_int_packed(SHOOTER_CHARACTER_NET_GUID_HANDLE + 1);
+    update.write_int_packed(31); // one bit short of a u32
+    update.write_bits_u64(0, 31);
+    update.write_int_packed(COMPONENT_DATA_STREAM_HANDLE + 1);
+    update.write_int_packed(stream.bit_count());
+    update.write_other(&stream);
+    update.write_int_packed(0);
+
+    let mut array = BitWriter::new();
+    array.write_int_packed(1);
+    array.write_int_packed(1);
+    array.write_other(&update);
+    array.write_int_packed(0);
+
+    let (result, moves) = decode(&wrap_updates_array(&array));
+
+    assert_eq!(result.total_moves, 0);
+    assert!(moves.is_empty());
+    assert_eq!(
+        result.error_count, 2,
+        "the undersized GUID and the stream it orphaned are counted separately"
+    );
+}
+
+#[test]
+fn a_component_stream_ahead_of_its_guid_is_counted() {
+    // Same loss from the other ordering: handle 3 arrives before handle 2, so
+    // the stream is consumed with no GUID in hand. The decoder is single-pass
+    // and cannot rewind, so dropping the stream is the honest outcome --
+    // reporting it as a clean zero-move update was not.
+    let stream = build_component_data_stream(&[build_move(false, 7, 1.0, 2.0, 3.0)]);
+
+    let mut update = BitWriter::new();
+    update.write_int_packed(COMPONENT_DATA_STREAM_HANDLE + 1);
+    update.write_int_packed(stream.bit_count());
+    update.write_other(&stream);
+    update.write_int_packed(SHOOTER_CHARACTER_NET_GUID_HANDLE + 1);
+    update.write_int_packed(32);
+    update.write_u32(4321);
+    update.write_int_packed(0);
+
+    let mut array = BitWriter::new();
+    array.write_int_packed(1);
+    array.write_int_packed(1);
+    array.write_other(&update);
+    array.write_int_packed(0);
+
+    let (result, moves) = decode(&wrap_updates_array(&array));
+
+    assert_eq!(result.total_moves, 0);
+    assert!(moves.is_empty());
+    assert_eq!(result.error_count, 1, "the orphaned stream must be counted");
+}
+
+#[test]
+fn a_malformed_trailing_padding_byte_is_counted() {
+    // After the array terminator exactly 8 bits remain, so the decoder spends
+    // them on an IntPacked. This one's continuation bit demands a sixth byte
+    // that the window does not have. The read's error was dropped with
+    // `let _ =`, so a payload whose tail does not parse reported success.
+    let mut array = BitWriter::new();
+    array.write_int_packed(0); // updateCount = 0
+    array.write_int_packed(0); // encodedIndex = 0 -> array terminator
+    array.write_u8(0x01); // continuation set, nothing follows
+
+    let (result, moves) = decode(&wrap_updates_array(&array));
+
+    assert_eq!(result.total_moves, 0);
+    assert!(moves.is_empty());
+    assert_eq!(
+        result.error_count, 1,
+        "a trailing byte that does not parse must reach the summary"
+    );
+}
+
 #[test]
 fn decodes_single_variant0_move() {
     let mv = build_move(false, 42, 1.25, 2.5, 3.75);

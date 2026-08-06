@@ -51,7 +51,7 @@ use vrf_net::types::NetworkGuid;
 use vrf_schema::{FxHashMap, NetGuidCache};
 
 use intern::NameInterner;
-use paths::BlockPathMemo;
+use paths::{BlockPathMemo, ChannelArchetype};
 use rpc::RpcParamGroupMemo;
 
 /// Static overlay table built from C# descriptors.
@@ -85,8 +85,9 @@ pub struct PlayerIdentity {
 /// rebuilt half a million times.
 #[derive(Debug, Clone, Default)]
 pub struct ChannelState {
-    /// channel_index -> archetype NetworkGuid.
-    archetypes: FxHashMap<u32, NetworkGuid>,
+    /// channel_index -> the archetype and the actor it was read for. The actor
+    /// half is load-bearing; see [`ChannelArchetype`].
+    archetypes: FxHashMap<u32, ChannelArchetype>,
     /// See [`RpcParamGroupMemo`].
     rpc_param_groups: RpcParamGroupMemo,
     /// See [`BlockPathMemo`].
@@ -232,6 +233,23 @@ pub struct ExportStats {
     /// "completed" from "abandoned mid-stream". Zero on valid replays; a non-zero
     /// value means the wire declared more parameters than the bits could carry.
     pub truncated_rpcs: u64,
+
+    /// Bits left in an RPC payload after its zero-handle terminator, beyond the
+    /// one trailing alignment bit the `FunctionParameters` grammar permits.
+    ///
+    /// The terminator used to end the walk without asking what remained. Any
+    /// parameter already emitted set `emitted_any`, which suppresses the
+    /// caller's whole-payload fallback row, so the tail reached no row, no
+    /// [`Self::truncated_rpcs`] and not even `skipped_bits`. Every *leaf*
+    /// payload in this crate is checked for full consumption
+    /// (`decode_field` returns `NotFullyConsumed`); the *container's* was not,
+    /// which is the same omission one level up.
+    ///
+    /// Counted rather than rejected. The parameters that parsed are good, and
+    /// throwing them away to punish an unexplained tail would lose data to make
+    /// a point. Zero on every payload the project has measured; a non-zero
+    /// value means the parameter grammar no longer describes this build.
+    pub rpc_suffix_bits_dropped: u64,
 }
 
 impl ExportStats {

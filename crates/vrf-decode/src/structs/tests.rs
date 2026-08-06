@@ -408,3 +408,165 @@ fn base64_to_bytes(s: &str) -> Vec<u8> {
     }
     out
 }
+
+// -- Unknown enum values --------------------------------------------------
+
+/// Write an Unreal IntPacked value into a bit vector.
+fn push_int_packed(bits: &mut Vec<bool>, mut value: u32) {
+    loop {
+        let mut next = ((value & 0x7F) << 1) as u8;
+        value >>= 7;
+        if value != 0 {
+            next |= 1;
+        }
+        for i in 0..8 {
+            bits.push((next & (1 << i)) != 0);
+        }
+        if value == 0 {
+            break;
+        }
+    }
+}
+
+fn pack_bits(bits: &[bool]) -> (Vec<u8>, u64) {
+    let mut bytes = vec![0u8; bits.len().div_ceil(8)];
+    for (i, &b) in bits.iter().enumerate() {
+        if b {
+            bytes[i >> 3] |= 1 << (i & 7);
+        }
+    }
+    (bytes, bits.len() as u64)
+}
+
+/// One `RoundResults` element carrying a single member at `handle`, whose
+/// payload is `width` bits holding `value`.
+fn round_results_one_member(handle: u32, value: u32, width: u32) -> (Vec<u8>, u64) {
+    let mut bits = Vec::new();
+    push_int_packed(&mut bits, 1); // element count
+    push_int_packed(&mut bits, 1); // encoded index -> round 0
+    push_int_packed(&mut bits, handle + 1);
+    push_int_packed(&mut bits, width);
+    for i in 0..width {
+        bits.push((value >> i) & 1 != 0);
+    }
+    push_int_packed(&mut bits, 0); // end of element
+    push_int_packed(&mut bits, 0); // end of array
+    pack_bits(&bits)
+}
+
+/// An `AresTeamRole` value outside the declared variants must be reported, not
+/// turned into an absent field.
+///
+/// `from_byte` returned `None` for an unrecognised value, and `None` is also
+/// what these members use for "not sent in this update" -- so a newly added
+/// game enum variant would vanish into a null column with `Decode errors: 0`
+/// the whole time.
+#[test]
+fn round_results_unknown_team_role_is_an_error_not_an_absent_field() {
+    // Handle 94 is WinningTeamRole on 13.01. Role 7 is past RoleCount (5).
+    let (data, bit_len) = round_results_one_member(94, 7, 3);
+    let mut r = BitReader::with_bit_len(&data, bit_len);
+    let err = decode_round_results(&mut r, &bomb_game_state_1301())
+        .expect_err("an unknown role must not decode as an absent field");
+    assert!(
+        matches!(
+            err,
+            StructBlobError::UnknownEnumValue {
+                enum_name: "AresTeamRole",
+                value: 7,
+                ..
+            }
+        ),
+        "got {err:?}"
+    );
+}
+
+/// The same for `AresRoundOutcome`, whose declared range is 0..=7, so an
+/// unknown value needs a four-bit payload.
+#[test]
+fn round_results_unknown_outcome_is_an_error_not_an_absent_field() {
+    // Handle 95 is RoundResult on 13.01. Outcome 8 is past Invalid (7).
+    let (data, bit_len) = round_results_one_member(95, 8, 4);
+    let mut r = BitReader::with_bit_len(&data, bit_len);
+    let err = decode_round_results(&mut r, &bomb_game_state_1301())
+        .expect_err("an unknown outcome must not decode as an absent field");
+    assert!(
+        matches!(
+            err,
+            StructBlobError::UnknownEnumValue {
+                enum_name: "AresRoundOutcome",
+                value: 8,
+                ..
+            }
+        ),
+        "got {err:?}"
+    );
+}
+
+/// A value INSIDE the declared range still decodes, so the guard above cannot
+/// be satisfied by rejecting everything.
+#[test]
+fn round_results_known_enum_values_still_decode() {
+    let (data, bit_len) = round_results_one_member(94, 2, 3);
+    let mut r = BitReader::with_bit_len(&data, bit_len);
+    let results = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap();
+    assert_eq!(results[0].winning_team_role, Some(AresTeamRole::Defender));
+}
+
+// -- Field windows the member did not consume -----------------------------
+
+/// One `RoundInfos` element carrying a single member at `handle`, whose payload
+/// window is `width` bits holding `value` in its low 32.
+fn round_infos_one_member(handle: u32, value: i32, width: u32) -> (Vec<u8>, u64) {
+    let mut bits = Vec::new();
+    push_int_packed(&mut bits, 1); // element count
+    push_int_packed(&mut bits, 1); // encoded index -> element 0
+    push_int_packed(&mut bits, handle + 1);
+    push_int_packed(&mut bits, width);
+    for i in 0..width {
+        bits.push(i < 32 && (value >> i) & 1 != 0);
+    }
+    push_int_packed(&mut bits, 0); // end of element
+    push_int_packed(&mut bits, 0); // end of array
+    pack_bits(&bits)
+}
+
+/// A member that reads less than its declared window must fail, not export the
+/// part it happened to read.
+///
+/// The field's `sub_reader` advances the parent past the whole window, so the
+/// blob stays aligned and `ensure_consumed` is satisfied at the end -- the
+/// dropped bits never surface. A 64-bit `EndOfRoundMoney` whose first 32 bits
+/// say 1900 exported 1900 and discarded the rest, and the blob counted as
+/// decoded rather than failed.
+#[test]
+fn round_infos_member_that_underreads_its_window_is_an_error() {
+    // Handle 43 is EndOfRoundMoney; 64 declared bits against a 32-bit Int32.
+    let (data, bit_len) = round_infos_one_member(43, 1900, 64);
+    let mut r = BitReader::with_bit_len(&data, bit_len);
+    let err = decode_round_infos(&mut r, &owner_exclusive_player_info())
+        .expect_err("half-read money must not export as a value");
+    match &err {
+        StructBlobError::MemberNotFullyConsumed {
+            name,
+            declared,
+            remaining,
+            ..
+        } => {
+            assert_eq!(name, "EndOfRoundMoney");
+            assert_eq!(*declared, 64);
+            assert_eq!(*remaining, 32);
+        }
+        other => panic!("expected MemberNotFullyConsumed, got {other:?}"),
+    }
+}
+
+/// The exact-width case still decodes, so the guard above cannot be satisfied
+/// by rejecting every member.
+#[test]
+fn round_infos_member_with_an_exact_window_still_decodes() {
+    let (data, bit_len) = round_infos_one_member(43, 1900, 32);
+    let mut r = BitReader::with_bit_len(&data, bit_len);
+    let results = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap();
+    assert_eq!(results[0].end_of_round_money, Some(1900));
+}

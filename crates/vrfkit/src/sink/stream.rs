@@ -368,10 +368,14 @@ impl ReplicationSink for ExportSink<'_> {
         self.stats.actor_opens += 1;
         // Track archetype GUID per channel so ClassNetCache path resolution can
         // walk archetype -> outer path -> class name.
+        // Stamped with the actor it belongs to: channel numbers are recycled,
+        // and an entry left behind by the previous occupant would otherwise be
+        // read as this actor's. See `paths::ChannelArchetype`.
         if state.archetype_net_guid.is_valid() {
             set_channel_archetype(
                 self.channel_state,
                 state.channel_index,
+                state.actor_net_guid,
                 state.archetype_net_guid,
             );
         }
@@ -430,11 +434,11 @@ impl ReplicationSink for ExportSink<'_> {
         });
     }
 
-    fn on_actor_close(&mut self, channel_index: u32, actor_net_guid: NetworkGuid, _dormant: bool) {
+    fn on_actor_close(&mut self, channel_index: u32, actor_net_guid: NetworkGuid, dormant: bool) {
         self.stats.actor_closes += 1;
 
         // Resolve class_path from the channel's archetype (same logic as open).
-        let archetype = channel_archetype(self.channel_state, channel_index);
+        let archetype = channel_archetype(self.channel_state, channel_index, actor_net_guid);
         let class_path = match self.actor_class_path(archetype) {
             Some(path) => Some(path),
             // No archetype on this channel: a close still names the actor, and
@@ -450,12 +454,26 @@ impl ReplicationSink for ExportSink<'_> {
         let archetype_path =
             archetype.and_then(|g| self.cache.get_path_by_guid(g.0).map(str::to_owned));
 
+        // `ChannelCloseReason::Dormancy` means the server stopped replicating an
+        // actor that is still alive; every other reason is the actor going
+        // away. Both were written as "close", so a persistent effect settling
+        // into dormancy was exported as a despawn -- a lifetime that ends
+        // early, followed by a wake-up re-open that reads as a second spawn of
+        // the same object. The flag was already on the wire and already parsed
+        // (`packet.rs` sets `b_dormant` from the close reason); it just did not
+        // reach the row.
+        //
+        // Both events are still emitted, so no row and no timestamp is lost --
+        // only the label changes, and only for the closes that were never
+        // despawns.
+        let event = if dormant { "dormant" } else { "close" };
+
         self.records.actors.push(ActorRecord {
             time_ms: self.time_ms,
             packet_id: self.packet_id,
             channel_index,
             actor_net_guid: actor_net_guid.0,
-            event: "close",
+            event,
             class_path,
             archetype_path,
             spawn_x: None,
@@ -746,6 +764,79 @@ mod tests {
         assert_eq!(sink.stats.truncated_rpcs, 0);
     }
 
+    /// Build an RPC payload of one parameter, the zero-handle terminator, and
+    /// `suffix_bits` bits of whatever follows it.
+    fn rpc_payload_with_suffix(suffix_bits: usize) -> Vec<bool> {
+        let mut bits = Vec::new();
+        bits.push(false); // property checksum
+        write_int_packed(&mut bits, 1); // encodedHandle = 1 -> handle 0
+        write_int_packed(&mut bits, 8); // payload_bits = 8
+        bits.extend(std::iter::repeat_n(false, 8)); // payload
+        write_int_packed(&mut bits, 0); // terminator handle
+        bits.extend(std::iter::repeat_n(true, suffix_bits));
+        bits
+    }
+
+    /// Bits left over after the zero-handle terminator must be counted.
+    ///
+    /// The terminator ended the walk without asking what was still in the
+    /// payload. Because a parameter had already been emitted, the caller's
+    /// whole-payload fallback row was suppressed too -- so the suffix reached
+    /// no row, no `truncated_rpcs`, and not even `skipped_bits`. Every leaf's
+    /// payload in this crate is checked for full consumption; the container's
+    /// was not.
+    ///
+    /// This counts rather than rejects. The rows already parsed are good, and
+    /// discarding them to punish a tail nobody has yet seen would lose data to
+    /// make a point. The counter is what turns "this cannot happen" into a
+    /// measurement.
+    #[test]
+    fn bits_after_the_rpc_terminator_are_counted_not_discarded() {
+        let bits = rpc_payload_with_suffix(16);
+        let data = bits_to_bytes(&bits);
+        let reader = BitReader::with_bit_len(&data, bits.len() as u64);
+
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        let emitted = sink.try_parse_rpc_params(7, reader, Some("SomeFunction"));
+        assert!(emitted, "the parameter that did parse is still emitted");
+        assert_eq!(
+            sink.stats.rpc_suffix_bits_dropped, 16,
+            "the bits after the terminator must reach a counter"
+        );
+        // Not a truncation: the walk ended where the wire told it to.
+        assert_eq!(sink.stats.truncated_rpcs, 0);
+    }
+
+    /// The one permitted leftover stays silent.
+    ///
+    /// `FunctionParameters` grammar allows a single trailing alignment bit
+    /// (`BitsRemaining == 1 -> SkipBits(1)`). Counting that would make the new
+    /// counter fire on well-formed payloads, which is how a real signal gets
+    /// ignored.
+    #[test]
+    fn a_single_alignment_bit_after_the_rpc_terminator_is_not_a_drop() {
+        for suffix in [0, 1] {
+            let bits = rpc_payload_with_suffix(suffix);
+            let data = bits_to_bytes(&bits);
+            let reader = BitReader::with_bit_len(&data, bits.len() as u64);
+
+            let mut cache = NetGuidCache::new();
+            let mut channel_state = ChannelState::new();
+            let mut records = RecordBuffers::default();
+            let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+            sink.try_parse_rpc_params(7, reader, Some("SomeFunction"));
+            assert_eq!(
+                sink.stats.rpc_suffix_bits_dropped, 0,
+                "{suffix} trailing bit(s) is within the grammar"
+            );
+        }
+    }
+
     /// Write a SerializedInt value with a given max (same encoding as
     /// `vrf-bitio`'s `read_serialized_int`).
     fn write_serialized_int(bits: &mut Vec<bool>, value: u32, max: u32) {
@@ -892,6 +983,43 @@ mod tests {
         assert_eq!(sink.records.fields.len(), 1);
         assert_eq!(sink.stats.cnc_rpcs_emitted, 0);
     }
+    /// A dormancy close is not a despawn, and must not be exported as one.
+    ///
+    /// `vrf-net` reads the channel close reason and hands the sink a `dormant`
+    /// flag; the sink took the flag as `_dormant` and wrote `"close"` for every
+    /// close there is. Dormancy means the server stopped replicating an actor
+    /// that is still alive -- exactly what a persistent effect does when it
+    /// settles -- so `actors.parquet` reported a despawn that never happened.
+    /// A consumer pairing `open` with `close` for lifetime ends the effect
+    /// early, and the wake-up re-open then reads as a second spawn of the same
+    /// thing.
+    ///
+    /// The fix is the flag reaching the row, not a filter: both events are
+    /// still emitted, so nothing is lost and the row count is unchanged. Only
+    /// the label stops lying.
+    #[test]
+    fn a_dormancy_close_is_not_recorded_as_a_despawn() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        sink.on_actor_close(3, NetworkGuid(42), false);
+        sink.on_actor_close(4, NetworkGuid(43), true);
+
+        assert_eq!(sink.records.actors.len(), 2, "both closes are still rows");
+        assert_eq!(
+            sink.records.actors[0].event, "close",
+            "a real despawn keeps the name every consumer already reads"
+        );
+        assert_eq!(
+            sink.records.actors[1].event, "dormant",
+            "a dormancy close must be distinguishable from a despawn"
+        );
+        // Both still count as closes: the actor channel did close.
+        assert_eq!(sink.stats.actor_closes, 2);
+    }
+
     /// Player identity has to survive a game mode that is not Bomb.
     ///
     /// Swiftplay replicates the same fields under

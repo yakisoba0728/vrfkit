@@ -173,6 +173,32 @@ impl PartialBunchAccumulator {
         None
     }
 
+    /// Drop every partial bunch still awaiting fragments and report
+    /// `(count, buffered_bits)`.
+    ///
+    /// Called once at the end of a replay. Until the stream stops there is
+    /// nothing to distinguish an abandoned reassembly from one still in
+    /// progress, so this state cannot be judged any earlier -- which is exactly
+    /// why it used to go out with the accumulator unremarked: `partial_errors`
+    /// stayed zero because no sequence rule was broken, and `partial_fragments`
+    /// had already counted the fragments as received.
+    ///
+    /// A bunch already marked complete is not counted: it was handed to the
+    /// caller by [`Self::take_completed`] only if the caller asked, and a
+    /// complete-but-untaken entry is the caller's choice, not a loss here.
+    pub fn drain_unfinished(&mut self) -> (u64, u64) {
+        let mut count = 0u64;
+        let mut bits = 0u64;
+        for (_, state) in self.fragments.drain() {
+            if state.is_complete {
+                continue;
+            }
+            count += 1;
+            bits += state.bit_count as u64;
+        }
+        (count, bits)
+    }
+
     fn validate_sequence(
         &mut self,
         ch_index: u32,

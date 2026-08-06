@@ -3,8 +3,8 @@
 use vrf_bitio::BitReader;
 
 use super::framing::{
-    MAX_FIELDS_PER_ELEMENT, ensure_consumed, member_name, read_array_count, read_element_index,
-    read_field_header,
+    MAX_FIELDS_PER_ELEMENT, ensure_consumed, ensure_member_consumed, member_name, read_array_count,
+    read_element_index, read_field_header,
 };
 use super::{Result, StructBlobError};
 
@@ -68,7 +68,8 @@ pub fn decode_round_infos(
             }
 
             let mut sub = reader.sub_reader(u64::from(bit_count))?;
-            match member_name(declared, handle, CONTEXT)? {
+            let member = member_name(declared, handle, CONTEXT)?;
+            match member {
                 "RoundNumber" => round_number = Some(sub.read_i32()?),
                 "StartOfRoundMoney" => start_of_round_money = Some(sub.read_i32()?),
                 "StartOfRoundLoadoutValue" => {
@@ -84,6 +85,10 @@ pub fn decode_round_infos(
                     });
                 }
             }
+            // Every member here is a fixed 32-bit Int32, so its window is fully
+            // spoken for. A wider one means the field is not the Int32 this
+            // decoder believes it is, and the half it read is not a value.
+            ensure_member_consumed(&sub, member, handle, bit_count, CONTEXT)?;
         }
 
         results.push(PlayerRoundInfo {

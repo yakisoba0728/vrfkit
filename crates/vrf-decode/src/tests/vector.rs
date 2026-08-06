@@ -4,7 +4,7 @@
 //! The `write_*` helpers are the encoder side of each wire format, so a
 //! test here specifies the layout in both directions.
 
-use crate::decode::{DecodedValue, FieldType, decode_field};
+use crate::decode::{DecodeError, DecodedValue, FieldType, decode_field};
 use crate::types::RotatorQuantization;
 
 /// Helper: build a quantized vector bitstream.
@@ -339,4 +339,47 @@ fn rep_movement_byte_quantized_rotation() {
         }
         _ => panic!("expected Str"),
     }
+}
+
+/// A `ReplicatedMovement` whose quantized vector takes the raw-`f32` fallback
+/// (`componentBitCount == 0`, `extraInfo == 0`) can carry any bit pattern,
+/// including a NaN. `FRepMovement`'s `Display` renders a JSON object, and
+/// `NaN` is not a JSON literal -- so a payload like this used to emit
+/// `"x":NaN` into `value_str` while every decode counter reported success.
+///
+/// The doc comment at `types.rs` asserted "every component is finite by
+/// construction"; that reasoning covers only the quantized path and not this
+/// fallback.
+#[test]
+fn rep_movement_with_a_non_finite_component_is_rejected() {
+    let mut bits: Vec<bool> = Vec::new();
+    // Four leading flags, all clear: no physics, no server frame, no handle.
+    bits.extend(std::iter::repeat_n(false, 4));
+    // Location: header 0 -> componentBitCount 0, extraInfo 0 -> three raw f32.
+    write_serialized_int(&mut bits, 0, 1 << 7);
+    for word in [0x7fc0_0000u32, 1.0f32.to_bits(), 2.0f32.to_bits()] {
+        for i in 0..32 {
+            bits.push((word >> i) & 1 != 0);
+        }
+    }
+    // Rotation (byte-quantized): three cleared presence flags.
+    bits.extend(std::iter::repeat_n(false, 3));
+    // Linear velocity: componentBitCount 1, extraInfo 1, three 1-bit values.
+    write_serialized_int(&mut bits, 1 | (1 << 6), 1 << 7);
+    bits.extend(std::iter::repeat_n(false, 3));
+
+    let (data, bit_count) = bits_to_bytes(&bits);
+    let result = decode_field(
+        FieldType::RepMovement {
+            rotation: RotatorQuantization::ByteComponents,
+        },
+        &data,
+        bit_count,
+    );
+
+    let err = result.expect_err("a NaN component must not decode as success");
+    assert!(
+        matches!(err, DecodeError::NonFiniteComponent { .. }),
+        "expected NonFiniteComponent, got {err:?}"
+    );
 }

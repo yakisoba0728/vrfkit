@@ -80,11 +80,24 @@ pub(super) fn read_field_header(reader: &mut BitReader<'_>) -> Result<Option<(u3
 }
 
 /// The C# parser checks whether exactly 8 bits remain after the zero terminator
-/// and reads one more IntPacked if so. Replicate that.
-pub(super) fn consume_trailing_terminator(reader: &mut BitReader<'_>) {
-    if reader.bits_remaining() == 8 {
-        let _ = reader.read_int_packed();
+/// and reads one more IntPacked if so.
+///
+/// The framing is replicated; the reference's handling of the byte is not. It
+/// reads with the value and any error both discarded, which makes an arbitrary
+/// appended byte a valid terminator -- a payload that is not this format can
+/// end in anything and still finish "cleanly". The byte is a terminator, so it
+/// is required to be zero, and a read failure is propagated instead of dropped.
+/// Declining to copy a silently permissive reference is the same call
+/// `decode_field` documents in `decode.rs`.
+pub(super) fn consume_trailing_terminator(reader: &mut BitReader<'_>) -> Result<()> {
+    if reader.bits_remaining() != 8 {
+        return Ok(());
     }
+    let value = reader.read_int_packed()?;
+    if value != 0 {
+        return Err(EffectBlobError::NonZeroTerminator { value });
+    }
+    Ok(())
 }
 
 /// Reject a value field whose declared width its type cannot occupy.
@@ -100,12 +113,23 @@ pub(super) fn expect_width(context: &'static str, expected: u32, found: u32) -> 
     }
 }
 
-/// Advance the reader to the end of a field whose header declared
-/// `payload_bits`, having already read `reader.position() - start_pos` of them.
+/// Check that a field's type consumed exactly the width its header declared.
 ///
-/// Reading *past* the declared width is the interesting case: it means the
-/// field's type is wider than the field, so the decode has already consumed
-/// part of the next field and every value after it is suspect.
+/// Reading *past* the declared width means the field's type is wider than the
+/// field, so the decode has already eaten part of the next field and every
+/// value after it is suspect.
+///
+/// Reading *short* of it used to be absorbed by a skip, which kept the stream
+/// aligned and said nothing. Alignment is not interpretation: those bits were
+/// declared payload and nothing read them. It also made the strictness depend
+/// on the member -- the fixed-width float and vector values reject a mis-sized
+/// window up front via [`expect_width`], while the `IntPacked` tag and object
+/// GUID went through this skip and did not.
+///
+/// Both `IntPacked` members are self-delimiting: the encoding spends
+/// `ceil(bits/7)` whole bytes and the writer measures `payload_bits` from what
+/// it wrote, so an exact match is what well-formed data produces. A short read
+/// therefore means the window is not the one this decoder thinks it is.
 pub(super) fn settle_field(
     reader: &mut BitReader<'_>,
     start_pos: u64,
@@ -119,7 +143,12 @@ pub(super) fn settle_field(
             consumed,
         });
     }
-    reader.skip_bits(declared - consumed)?;
+    if consumed < declared {
+        return Err(EffectBlobError::PayloadUnderread {
+            declared: payload_bits,
+            consumed,
+        });
+    }
     Ok(())
 }
 
@@ -150,7 +179,7 @@ pub fn scan_element_handles(raw: &[u8], bit_count: u32) -> Result<Option<EffectH
 
     while !reader.at_end() {
         let Some(_index) = read_element_index(&mut reader, count)? else {
-            consume_trailing_terminator(&mut reader);
+            consume_trailing_terminator(&mut reader)?;
             break;
         };
 

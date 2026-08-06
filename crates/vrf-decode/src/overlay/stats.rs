@@ -138,6 +138,28 @@ pub struct OverlayStats {
     pub not_in_table: u64,
     /// Fields where field_name was None (unmapped handle).
     pub no_field_name: u64,
+    /// Handle fallbacks refused because the replay declared a DIFFERENT,
+    /// unresolved field name at that handle.
+    ///
+    /// The fallback exists for handles the wire does not name, and for handles
+    /// it names only as a bare decimal FName index (`"248"`), which says
+    /// nothing about the property. It used to fire for a real conflicting name
+    /// too: with the descriptor mapping handle 7 to `OldField: Int32` and the
+    /// replay declaring `NewField` there carrying a `Float`, both name probes
+    /// missed, the stale handle mapping was reused, and `1.0f32` was reported
+    /// as `value_i64 = 1065353216` with `decoded_ok` incremented and
+    /// `Decode errors` still zero. That is the exact shape of a game patch
+    /// moving a property, and resolution was documented as fail-closed.
+    ///
+    /// Such a field is now left untyped and counted here rather than typed
+    /// wrongly. Untyped is a state this export already models honestly
+    /// (`raw_bits` is always present); a confident wrong number is not.
+    ///
+    /// It is deliberately NOT routed through `decoded_err`: nothing failed to
+    /// decode, the overlay declined to claim a type. Counting it as a decode
+    /// error would move the corpus off `Decode errors: 0` for a field that was
+    /// never decoded at all.
+    pub handle_conflicts_refused: u64,
     /// Detailed per-field error breakdown (populated only when reporting is on).
     pub error_report: OverlayErrorReport,
 }

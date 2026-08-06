@@ -90,7 +90,10 @@ pub use chunk::{ChunkIterator, ChunkType, RawChunk};
 pub use error::ContainerError;
 pub use header::{ReplayHeader, ReplayVersion};
 pub use info::ReplayInfo;
-pub use oodle::{ReplayDataMeta, decompress_replay_data, parse_replay_data_meta};
+pub use oodle::{
+    ReplayDataMeta, decompress_replay_data, decompress_replay_data_with_trailing,
+    parse_replay_data_meta,
+};
 pub use preamble::{Preamble, parse_preamble};
 
 #[cfg(feature = "checkpoint")]

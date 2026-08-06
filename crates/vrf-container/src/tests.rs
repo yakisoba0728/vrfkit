@@ -461,6 +461,28 @@ fn header_valid_parses_all_fields() {
     assert_eq!(header.build_target_type, 3);
 }
 
+/// The header parser stops at `BuildTargetType` and returned success without
+/// ever asking whether the chunk had more to give. A header extension -- the
+/// exact thing a new engine build appends -- was therefore skipped permanently,
+/// with no error and no residual to notice it by. The bytes are not parsed
+/// (nothing knows their layout), but the fact that they exist is reported.
+#[test]
+fn header_trailing_bytes_are_reported_not_discarded() {
+    let mut payload = helpers::build_header_payload();
+    payload.extend_from_slice(&[0xAA; 5]);
+    let header = header::parse_replay_header(&payload).unwrap();
+    assert_eq!(header.trailing_bytes, 5);
+}
+
+/// A header that ends exactly where the layout does reports zero, so the
+/// residual cannot be mistaken for normal framing slack.
+#[test]
+fn header_exact_payload_reports_no_trailing_bytes() {
+    let payload = helpers::build_header_payload();
+    let header = header::parse_replay_header(&payload).unwrap();
+    assert_eq!(header.trailing_bytes, 0);
+}
+
 #[test]
 fn header_alternate_valorant_skip_bytes() {
     // 12.11 style: [2, 0, 0, 0, 57, 0]
@@ -730,6 +752,64 @@ fn decompress_uncompressed_size_mismatch_rejected() {
     assert!(matches!(
         result.unwrap_err(),
         ContainerError::SizeMismatch { .. }
+    ));
+}
+
+/// A ReplayData chunk payload longer than its own `SizeInBytes` accounts for
+/// carries bytes this framing never looks at. They used to be sliced away in
+/// silence: `data_bytes[..size]` on the uncompressed path and
+/// `compressed_data[..compressed_size]` on the Oodle path both cut to the
+/// declared length and dropped the rest, with no error and no residual count,
+/// so replay data could go missing while every check reported success.
+#[test]
+fn replay_data_trailing_bytes_are_reported_not_discarded() {
+    let mut payload = Vec::new();
+    helpers::add_u32(&mut payload, 100);
+    helpers::add_u32(&mut payload, 200);
+    helpers::add_i32(&mut payload, 4); // SizeInBytes
+    helpers::add_i32(&mut payload, 4); // MemorySizeInBytes
+    payload.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
+    payload.extend_from_slice(&[0x11, 0x22, 0x33]); // past the declared archive
+
+    let meta = parse_replay_data_meta(&payload).unwrap();
+    assert_eq!(meta.trailing_bytes, 3);
+
+    let (plain, trailing) = decompress_replay_data_with_trailing(&payload, false, false).unwrap();
+    assert_eq!(plain, vec![0xDE, 0xAD, 0xBE, 0xEF]);
+    assert_eq!(trailing, 3, "the excess must be counted, not discarded");
+}
+
+/// An exactly-sized payload reports zero, so the counter cannot be confused
+/// with ordinary framing.
+#[test]
+fn replay_data_exact_payload_reports_no_trailing_bytes() {
+    let mut payload = Vec::new();
+    helpers::add_u32(&mut payload, 0);
+    helpers::add_u32(&mut payload, 0);
+    helpers::add_i32(&mut payload, 4);
+    helpers::add_i32(&mut payload, 4);
+    payload.extend_from_slice(&[1, 2, 3, 4]);
+
+    assert_eq!(parse_replay_data_meta(&payload).unwrap().trailing_bytes, 0);
+    let (_, trailing) = decompress_replay_data_with_trailing(&payload, false, false).unwrap();
+    assert_eq!(trailing, 0);
+}
+
+/// A `SizeInBytes` larger than the payload is truncation, not a negative
+/// residual: the count must saturate at zero rather than wrap.
+#[test]
+fn replay_data_short_payload_reports_no_trailing_bytes() {
+    let mut payload = Vec::new();
+    helpers::add_u32(&mut payload, 0);
+    helpers::add_u32(&mut payload, 0);
+    helpers::add_i32(&mut payload, 64); // declares more than is here
+    helpers::add_i32(&mut payload, 64);
+    payload.extend_from_slice(&[1, 2, 3, 4]);
+
+    assert_eq!(parse_replay_data_meta(&payload).unwrap().trailing_bytes, 0);
+    assert!(matches!(
+        decompress_replay_data(&payload, false, false),
+        Err(ContainerError::Truncated { .. })
     ));
 }
 

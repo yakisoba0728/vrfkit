@@ -150,10 +150,24 @@ fn write_vector_json(f: &mut fmt::Formatter<'_>, v: &FVector) -> fmt::Result {
 /// human-readable string where the reference (ReplayJsonNormalizer.cs:255)
 /// emits an eight-member object, and two of those members were simply gone.
 ///
-/// Member names and order follow the reference exactly. Every component is
-/// finite by construction -- vectors are an integer quotient of an integer
-/// scale factor, rotator axes an integer multiple of 360/65536 or 360/256 --
-/// so no component can render as `NaN` or `inf` and break the JSON.
+/// Member names and order follow the reference exactly.
+///
+/// # Finiteness is enforced, not structural
+///
+/// This comment used to claim every component was finite *by construction* --
+/// "vectors are an integer quotient of an integer scale factor, rotator axes an
+/// integer multiple of 360/65536 or 360/256". That reasoning covers the
+/// **packed** quantized path and the rotators, and it silently omits the case
+/// where `componentBitCount == 0`: there the decoder falls back to three raw
+/// `f32`s (or `f64`s), which carry whatever the bits spell. A component of
+/// `0x7fc00000` is `NaN`, and this `Display` would emit `"x":NaN` -- not valid
+/// JSON -- while every decode counter reported success.
+///
+/// So the guarantee is now upheld by
+/// [`DecodeError::NonFiniteComponent`](crate::decode::DecodeError), which
+/// rejects such a payload in `geometry::read_quantized_vector` before one can
+/// reach this formatter. Anything that constructs an `FRepMovement` by another
+/// route owes the same check.
 impl fmt::Display for FRepMovement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("{\"linear_velocity\":")?;

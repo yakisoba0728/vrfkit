@@ -9,7 +9,7 @@
 use vrf_bitio::BitReader;
 
 use crate::bunch::RawBunchHeader;
-use crate::error::Result;
+use crate::error::{NetError, Result};
 use crate::net_guid;
 use crate::stats::NetStats;
 use crate::types::{MAX_GUID_COUNT, NetworkGuid};
@@ -85,6 +85,20 @@ pub(super) fn is_player_controller_channel(
 }
 
 /// Read a package-map export bunch: a run of GUID declarations with paths.
+///
+/// # Failure policy
+///
+/// The two skip paths below drop the whole bunch, and they are not the same
+/// kind of drop:
+///
+/// - a RepLayout export is a *limitation* -- this parser does not implement
+///   that variant -- so it is counted on its own line and reported as `Ok`;
+/// - an impossible GUID count is a *failure*: every path declaration that
+///   followed is lost, and returning `Ok` for it used to increment
+///   `package_map_exports` as though the bunch had been read, leaving actors
+///   that later failed to resolve their path or class with no counter pointing
+///   anywhere. It is now an error, which the caller counts and whose abandoned
+///   bits the caller tallies.
 pub(super) fn read_package_map_exports(
     payload: &mut BitReader<'_>,
     stats: &mut NetStats,
@@ -92,15 +106,18 @@ pub(super) fn read_package_map_exports(
 ) -> Result<()> {
     let has_rep_layout_export = payload.read_bit()?;
     if has_rep_layout_export {
-        // Unsupported: skip remaining
+        // Unsupported variant: skip the bunch, but say so.
+        stats.rep_layout_export_bunches += 1;
         payload.skip_remaining();
         return Ok(());
     }
 
     let num_guids = payload.read_i32()?;
     if num_guids < 0 || num_guids as u32 > MAX_GUID_COUNT {
-        payload.skip_remaining();
-        return Ok(());
+        return Err(NetError::InvalidGuidCount {
+            count: num_guids,
+            max: MAX_GUID_COUNT,
+        });
     }
 
     for _ in 0..num_guids {
@@ -149,8 +166,19 @@ pub(super) fn handle_channel_open(
         open_packet_id: header.packet_id,
     };
 
-    // Dynamic actors have spawn data
-    if actor_net_guid.is_dynamic() && !payload.at_end() {
+    // Dynamic actors have spawn data. It is mandatory, not optional: the
+    // reference (`NewActorSerializer.cs`) reads archetype, level, location,
+    // rotation, scale and velocity unconditionally. This used to be guarded by
+    // `!payload.at_end()`, which turned "the spawn block is missing" into a
+    // successful open carrying archetype and level GUID 0 and no transforms --
+    // an actor row invented from a payload that ended. A payload that stops one
+    // bit later already failed here; stopping exactly at the boundary now fails
+    // the same way, and the shape is counted so a corpus run can say whether it
+    // ever occurs.
+    if actor_net_guid.is_dynamic() {
+        if payload.at_end() {
+            stats.actor_opens_missing_spawn += 1;
+        }
         spawn::read_dynamic_spawn_data(payload, &mut state, sink)?;
     }
 
@@ -158,7 +186,18 @@ pub(super) fn handle_channel_open(
     sink.on_actor_open(&state);
     // The row already exists -- this channel's bunch counter was bumped before
     // the payload reached here -- so this must not overwrite it.
-    channels.entry(ch_index).or_default().state = Some(state);
+    let slot = channels.entry(ch_index).or_default();
+    // Replacing a channel that is still open loses the previous actor: every
+    // later block on this channel is attributed to the new one, and the old one
+    // gets no close. The wire says the new actor owns the channel, so the
+    // replacement stands, but a fabricated close for the old actor would be a
+    // row the replay never sent. Count it instead -- nothing else moves when
+    // this happens. A channel that was properly closed first is the ordinary
+    // reuse and is not counted.
+    if slot.state.as_ref().is_some_and(|s| s.is_open) {
+        stats.channel_reopens_while_open += 1;
+    }
+    slot.state = Some(state);
     Ok(())
 }
 

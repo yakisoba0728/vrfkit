@@ -18,12 +18,13 @@
 use std::io::Write;
 
 use vrf_container::{decompress_checkpoint, parse_checkpoint_chunk};
-use vrf_decode::{OverlayErrorReport, OverlayStats};
+use vrf_decode::OverlayErrorReport;
 use vrf_export::FieldWriter;
 use vrf_frame::iter_demo_frames;
 use vrf_net::pipeline::ReplicationReader;
 use vrf_schema::{NetGuidCache, read_checkpoint_tables};
 
+use super::totals::SinkTotals;
 use crate::error::CliError;
 use crate::sink::{ChannelState, ExportSink, RecordBuffers};
 
@@ -46,25 +47,22 @@ pub(super) struct CheckpointStats {
     /// replayed samples would duplicate. Reported so the drop is visible.
     pub actor_rows_dropped: u64,
     pub movement_rows_dropped: u64,
-    /// Overlay outcome for checkpoint rows.
+    /// Everything the checkpoint sinks counted.
     ///
-    /// Kept separately rather than folded into the main `overlay_stats`, which
-    /// the export baseline pins: mixing them would move a guarded figure by an
-    /// amount that depends on a flag. Kept *at all* because the checkpoint sink
-    /// is a second decode path, and a decode error on it that reached no
-    /// counter would be exactly the silent failure this project keeps finding.
-    pub overlay: OverlayStats,
-    pub effect_blobs: u64,
-    /// Same reasoning as `overlay`, for the same reason it exists: the
-    /// checkpoint sink runs the struct-blob decoders too, and a handle shift
-    /// that broke them only here would otherwise reach no counter.
-    pub struct_blobs_decoded: u64,
-    pub struct_blobs_failed: u64,
-    /// MultiContents items decoded on the checkpoint path. Same reason as
-    /// `struct_blobs_decoded`: the checkpoint sink is a second decode path and
-    /// a build that broke MultiContents framing only here would otherwise reach
-    /// no counter.
-    pub multi_contents_items_emitted: u64,
+    /// Kept separately from the ReplayData pass's totals, which the export
+    /// baseline pins: mixing them would move a guarded figure by an amount that
+    /// depends on a flag. Kept *at all* because the checkpoint sink is a second
+    /// decode path, and a failure on it that reached no counter would be
+    /// exactly the silent failure this project keeps finding.
+    ///
+    /// It used to be a hand-picked subset -- overlay, effect blobs, struct
+    /// blobs, MultiContents -- and the ones left out were precisely the failure
+    /// counters: array-decode errors, truncated RPCs and movement-decode
+    /// errors. A checkpoint array that overran mid-element therefore wrote its
+    /// parent raw row, lost its flattened children, and recorded nothing
+    /// anywhere. Sharing [`SinkTotals`] with the main pass is what stops the
+    /// two from drifting again.
+    pub sink: SinkTotals,
 }
 
 /// Everything about the replay that the checkpoint pass needs and cannot
@@ -116,16 +114,9 @@ pub(super) fn process_chunk<W: Write + Send>(
             sink.time_ms = *time_ms;
             sink.packet_id = i as u32;
             reader.process_packet(&frame[*off..*off + *len], i as i32, &mut sink);
-            stats.overlay.decoded_ok += sink.stats.overlay.decoded_ok;
-            stats.overlay.decoded_err += sink.stats.overlay.decoded_err;
-            stats.overlay.raw_or_skip += sink.stats.overlay.raw_or_skip;
-            stats.overlay.not_in_table += sink.stats.overlay.not_in_table;
-            stats.overlay.no_field_name += sink.stats.overlay.no_field_name;
-            stats.effect_blobs += sink.stats.effect_blobs_decoded;
-            stats.struct_blobs_decoded += sink.stats.struct_blobs_decoded;
-            stats.struct_blobs_failed += sink.stats.struct_blobs_failed;
-            stats.multi_contents_items_emitted += sink.stats.multi_contents_items_emitted;
-            error_report.merge_from(&sink.stats.overlay.error_report);
+            // Same aggregation the ReplayData pass uses, so the two cannot
+            // diverge on which counters they bother to read. See `totals`.
+            stats.sink.absorb(&mut sink.stats, error_report);
         }
         stats.field_rows += buffers.fields.len() as u64;
         writer.push_batch(buffers.fields.drain(..))?;

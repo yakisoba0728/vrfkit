@@ -411,6 +411,124 @@ fn overlay_keeps_direct_name_lookup_ahead_of_the_handle_fallback() {
     assert_eq!(stats.decoded_ok, 1);
 }
 
+/// A replay that declares a REAL, different name at a handle must not be typed
+/// through the descriptor's stale mapping for that handle.
+///
+/// This is how a game patch moves a property: the descriptor still maps handle
+/// 7 to `OldField: Int32`, the replay now declares `NewField` there and sends a
+/// `Float`. Both name probes miss, and the handle fallback used to reuse the
+/// stale entry -- so `1.0f32` came out as `value_i64 = 1065353216`, consuming
+/// all 32 bits, with `decoded_ok` incremented and `Decode errors` still zero.
+/// A confident wrong number, which is the one outcome this crate refuses.
+#[test]
+fn a_conflicting_declared_name_refuses_the_stale_handle_mapping() {
+    let entries: &[OverlayEntry] = &[OverlayEntry {
+        group_path: "/test",
+        field_name: "OldField",
+        field_type: FieldType::Int32,
+    }];
+    let handle_entries: &[OverlayHandleEntry] = &[OverlayHandleEntry {
+        group_path: "/test",
+        handle: 7,
+        field_name: "OldField",
+    }];
+    let table = OverlayTable::with_handles(entries, handle_entries);
+    let mut stats = OverlayStats::default();
+    let data = 1.0f32.to_le_bytes();
+
+    let result = apply_overlay_with_handle(
+        &table,
+        "/test",
+        group_hash_state("/test"),
+        Some("NewField"),
+        7,
+        Some(&data),
+        32,
+        &mut stats,
+    );
+
+    assert!(result.is_none(), "must not type a conflicting declaration");
+    assert_eq!(stats.decoded_ok, 0, "1065353216 must not be reported");
+    assert_eq!(stats.handle_conflicts_refused, 1, "{stats:?}");
+    assert_eq!(stats.not_in_table, 1, "the field is untyped, not failed");
+}
+
+/// The refusal must NOT fire on a bare decimal wire name. `"248"` is the
+/// decimal spelling of a hardcoded Unreal FName index the replay never resolves
+/// to text -- it declares nothing, so it cannot conflict, and the handle
+/// fallback is the only thing that can type such a field.
+///
+/// A guard for the case pinned by
+/// `overlay_falls_back_to_an_explicit_property_handle_when_the_wire_name_differs`.
+#[test]
+fn a_bare_fname_index_still_reaches_the_handle_fallback() {
+    let entries: &[OverlayEntry] = &[OverlayEntry {
+        group_path: "/test",
+        field_name: "Health",
+        field_type: FieldType::Int32,
+    }];
+    let handle_entries: &[OverlayHandleEntry] = &[OverlayHandleEntry {
+        group_path: "/test",
+        handle: 7,
+        field_name: "Health",
+    }];
+    let table = OverlayTable::with_handles(entries, handle_entries);
+    let data = 100i32.to_le_bytes();
+
+    for wire_name in ["248", "0"] {
+        let mut stats = OverlayStats::default();
+        let result = apply_overlay_with_handle(
+            &table,
+            "/test",
+            group_hash_state("/test"),
+            Some(wire_name),
+            7,
+            Some(&data),
+            32,
+            &mut stats,
+        );
+        assert_eq!(
+            result.and_then(|v| v.value_i64),
+            Some(100),
+            "wire name {wire_name}"
+        );
+        assert_eq!(stats.handle_conflicts_refused, 0, "wire name {wire_name}");
+    }
+}
+
+/// The `b`-prefix probe resolves before the handle fallback is consulted, so a
+/// `bFoo`/`Foo` spelling difference never reaches the new refusal. A guard:
+/// this passed before the change and must keep passing.
+#[test]
+fn a_b_prefixed_spelling_difference_is_not_treated_as_a_conflict() {
+    let entries: &[OverlayEntry] = &[OverlayEntry {
+        group_path: "/test",
+        field_name: "bIsQueued",
+        field_type: FieldType::Bool,
+    }];
+    let handle_entries: &[OverlayHandleEntry] = &[OverlayHandleEntry {
+        group_path: "/test",
+        handle: 7,
+        field_name: "bIsQueued",
+    }];
+    let table = OverlayTable::with_handles(entries, handle_entries);
+    let mut stats = OverlayStats::default();
+
+    let result = apply_overlay_with_handle(
+        &table,
+        "/test",
+        group_hash_state("/test"),
+        Some("IsQueued"),
+        7,
+        Some(&[1]),
+        1,
+        &mut stats,
+    );
+
+    assert_eq!(result.and_then(|v| v.value_bool), Some(true));
+    assert_eq!(stats.handle_conflicts_refused, 0, "{stats:?}");
+}
+
 #[test]
 fn lookup_returns_none_for_unknown() {
     let table = OverlayTable::new(&OVERLAY_TABLE);

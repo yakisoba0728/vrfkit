@@ -42,6 +42,20 @@ pub struct ReplayDataMeta {
     pub size_in_bytes: i32,
     /// Decompressed size -- allocate this many bytes for Oodle output.
     pub memory_size_in_bytes: i32,
+    /// Bytes of the chunk payload past the declared archive that this framing
+    /// does not account for: `payload.len() - 16 - SizeInBytes`, floored at
+    /// zero (a `SizeInBytes` larger than the payload is truncation, reported by
+    /// the decompressor, not a negative residual).
+    ///
+    /// Reported for the same reason [`CheckpointChunk::trailing_bytes`] is: the
+    /// data-bearing slices are cut to the declared length
+    /// (`data_bytes[..size]`, `compressed_data[..compressed_size]`), so anything
+    /// past it is replay data that would otherwise be discarded with no error
+    /// and no tally. Expected to be zero; a non-zero value means the chunk
+    /// framing has changed.
+    ///
+    /// [`CheckpointChunk::trailing_bytes`]: crate::CheckpointChunk::trailing_bytes
+    pub trailing_bytes: usize,
 }
 
 /// Bytes of ReplayData prologue ahead of the archive: two u32 then two i32.
@@ -84,11 +98,19 @@ pub fn parse_replay_data_meta(payload: &[u8]) -> Result<ReplayDataMeta, Containe
         });
     }
 
+    // What the chunk carries past the archive the prologue declares. A negative
+    // `size_in_bytes` yields zero here; it is rejected by the decompressor,
+    // and calling the whole payload "trailing" would be a second wrong answer.
+    let available = payload.len() - REPLAY_DATA_PROLOGUE_BYTES;
+    let trailing_bytes =
+        usize::try_from(size_in_bytes).map_or(0, |declared| available.saturating_sub(declared));
+
     Ok(ReplayDataMeta {
         time1,
         time2,
         size_in_bytes,
         memory_size_in_bytes,
+        trailing_bytes,
     })
 }
 
@@ -111,11 +133,38 @@ pub fn parse_replay_data_meta(payload: &[u8]) -> Result<ReplayDataMeta, Containe
 /// # Errors
 ///
 /// Returns [`ContainerError`] for size mismatches, truncation, or Oodle failures.
+///
+/// # Trailing bytes
+///
+/// This form **drops** [`ReplayDataMeta::trailing_bytes`]. Both data paths cut
+/// the payload to the declared length, so a chunk carrying more than its
+/// `SizeInBytes` accounts for loses the excess here with no error and no tally.
+/// Use [`decompress_replay_data_with_trailing`] to see it; the count is
+/// expected to be zero, and a caller that ignores it is choosing not to notice
+/// a framing change rather than being unable to.
 pub fn decompress_replay_data(
     payload: &[u8],
     compressed: bool,
     encrypted: bool,
 ) -> Result<Vec<u8>, ContainerError> {
+    decompress_replay_data_with_trailing(payload, compressed, encrypted).map(|(plain, _)| plain)
+}
+
+/// As [`decompress_replay_data`], also reporting the bytes past the declared
+/// archive that the framing does not account for.
+///
+/// The count is [`ReplayDataMeta::trailing_bytes`], computed once from the
+/// prologue. The inner `compressed_data[..compressed_size]` slice in
+/// [`decompress_oodle_archive`] discards exactly the same bytes -- for a
+/// ReplayData chunk `compressed_size` is pinned to `SizeInBytes - 8` and the
+/// archive slice runs to the end of the payload, so the two residuals are one
+/// residual -- and a checkpoint archive has none at all, because its declared
+/// size *is* its slice length. One count covers both.
+pub fn decompress_replay_data_with_trailing(
+    payload: &[u8],
+    compressed: bool,
+    encrypted: bool,
+) -> Result<(Vec<u8>, usize), ContainerError> {
     if encrypted {
         return Err(ContainerError::EncryptedNotSupported);
     }
@@ -139,15 +188,16 @@ pub fn decompress_replay_data(
                 available: data_bytes.len(),
             });
         }
-        return Ok(data_bytes[..size].to_vec());
+        return Ok((data_bytes[..size].to_vec(), meta.trailing_bytes));
     }
 
-    decompress_oodle_archive(
+    let plain = decompress_oodle_archive(
         data_bytes,
         meta.size_in_bytes,
         Some(meta.memory_size_in_bytes),
         "oodle compressed data",
-    )
+    )?;
+    Ok((plain, meta.trailing_bytes))
 }
 
 /// Decompress one Oodle archive: an 8-byte header followed by the codec stream.
@@ -215,6 +265,12 @@ pub(crate) fn decompress_oodle_archive(
         });
     }
 
+    // Anything past `compressed_size` in this slice is not counted here. It is
+    // the same excess `ReplayDataMeta::trailing_bytes` already measured -- the
+    // caller hands the whole post-prologue region as `archive`, and
+    // `compressed_size` is pinned to `declared_size - 8` just above -- and a
+    // checkpoint passes `declared_size = archive.len()`, so there is nothing
+    // left over on that path at all. Counting it again here would double it.
     let compressed_data = &archive[OODLE_HEADER_BYTES..];
     if compressed_data.len() < compressed_size as usize {
         return Err(ContainerError::Truncated {

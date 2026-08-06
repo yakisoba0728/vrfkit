@@ -71,6 +71,11 @@ pub fn parse_rep_layout(
     let mut abandoned_bits = 0u64;
 
     while !reader.at_end() {
+        // Where this record starts. The handle and length reads below are
+        // consumed before an overrun can be detected, and they die with the
+        // record they described, so they are part of what was abandoned.
+        // Counting only `bits_remaining` reported less loss than occurred.
+        let record_start = reader.position();
         let encoded_handle = reader.read_int_packed()?;
         if encoded_handle == 0 {
             break;
@@ -86,7 +91,7 @@ pub fn parse_rep_layout(
             // Malformed: declared more bits than available. Hand the abandoned
             // remainder back to the caller so it lands in `skipped_bits`
             // rather than vanishing from every counter.
-            abandoned_bits = reader.bits_remaining();
+            abandoned_bits = (reader.position() - record_start) + reader.bits_remaining();
             reader.skip_remaining();
             break;
         }
@@ -161,12 +166,19 @@ pub fn parse_class_net_cache(
     let mut abandoned_bits = 0u64;
 
     while !reader.at_end() {
+        // Where this record starts, so the abandon paths below can account the
+        // handle they have already consumed. Without it a block of exactly one
+        // bit -- the handle, and nothing after it -- returned `Ok((0, 0))`:
+        // zero RPCs, zero abandoned bits, no error, which is the same signal a
+        // perfectly parsed empty block gives.
+        let record_start = reader.position();
         let handle = reader.read_serialized_int(handle_max)?;
 
         if reader.bits_remaining() < 8 {
             // Not enough bits for a payload length -- malformed tail. Account
-            // the abandoned remainder so it is not silently dropped.
-            abandoned_bits = reader.bits_remaining();
+            // the abandoned remainder, plus the handle that came out of the
+            // same doomed record, so neither is silently dropped.
+            abandoned_bits = (reader.position() - record_start) + reader.bits_remaining();
             reader.skip_remaining();
             break;
         }
@@ -174,7 +186,7 @@ pub fn parse_class_net_cache(
         let payload_bits = reader.read_int_packed()?;
 
         if payload_bits as u64 > reader.bits_remaining() {
-            abandoned_bits = reader.bits_remaining();
+            abandoned_bits = (reader.position() - record_start) + reader.bits_remaining();
             reader.skip_remaining();
             break;
         }
@@ -408,6 +420,11 @@ mod tests {
     /// must return the abandoned bit count so the caller can account it. Before
     /// the fix these bits were skip_remaining'd with the parser returning
     /// `Ok(count)`, and the framing layer only counted skipped_bits on Err.
+    ///
+    /// The expected total was raised from 8 to 24 when the record header joined
+    /// the tally: the handle and the payload length are read out of the same
+    /// record that then overran, so all three IntPacked/payload regions are lost
+    /// together. Counting only the 8 bits left over understated it.
     #[test]
     fn rep_layout_overrun_returns_abandoned_bits() {
         let mut bits = Vec::new();
@@ -425,8 +442,8 @@ mod tests {
 
         assert_eq!(count, 0, "no complete field emitted");
         assert_eq!(
-            abandoned, 8,
-            "the 8 leftover bits must be reported abandoned"
+            abandoned, 24,
+            "8 handle bits + 8 length bits + the 8 bits left over"
         );
         assert!(sink.fields.is_empty());
     }
@@ -450,7 +467,8 @@ mod tests {
     }
 
     /// A ClassNetCache stream that EOFs before an IntPacked payload-length read
-    /// completes must return the abandoned tail bits.
+    /// completes must return the abandoned tail bits -- including the handle it
+    /// had already consumed out of the same abandoned record.
     #[test]
     fn class_net_cache_short_tail_returns_abandoned_bits() {
         // function_count = 2 -> handle reads 1 bit. After the handle bit only 3
@@ -465,6 +483,32 @@ mod tests {
         let (count, abandoned) = parse_class_net_cache(&mut reader, 2, &mut sink).unwrap();
 
         assert_eq!(count, 0);
-        assert_eq!(abandoned, 3, "the 3 stray tail bits must be reported");
+        assert_eq!(
+            abandoned, 4,
+            "1 handle bit plus 3 stray tail bits, all lost with the record"
+        );
+    }
+
+    /// A block of exactly one bit is the pure form of the omission: the handle
+    /// consumes that bit, nothing remains, and the parser used to return
+    /// `Ok((0, 0))` -- zero RPCs, zero abandoned bits, no error. Every counter
+    /// the caller maintains then reported a clean success for a block that
+    /// could not be parsed at all.
+    #[test]
+    fn class_net_cache_handle_only_block_is_not_a_clean_success() {
+        let mut bits = Vec::new();
+        write_serialized_int(&mut bits, 0, 2); // the whole block: one handle bit
+        assert_eq!(bits.len(), 1);
+
+        let data = bits_to_bytes(&bits);
+        let mut reader = BitReader::with_bit_len(&data, 1);
+        let mut sink = RecordingSink::default();
+        let (count, abandoned) = parse_class_net_cache(&mut reader, 2, &mut sink).unwrap();
+
+        assert_eq!(count, 0);
+        assert_eq!(
+            abandoned, 1,
+            "the consumed handle bit is the only thing the block had, and it is lost"
+        );
     }
 }

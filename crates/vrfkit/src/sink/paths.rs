@@ -17,7 +17,7 @@
 //! - the channel index and actor GUID,
 //! - the cache's declared group paths (`schema_generation` tracks these),
 //! - the cache's GUID -> path and GUID -> outer maps, and
-//! - this crate's channel -> archetype map.
+//! - this crate's channel -> (actor, archetype) map.
 //!
 //! The first two are the memo key. The third is `NetGuidCache::schema_generation`.
 //! The last two are what `ChannelState::resolution_generation` exists for --
@@ -300,7 +300,7 @@ impl ExportSink<'_> {
         } else {
             // May replace `current_group_path`, which is why the memo stores
             // the pair and this line comes before the insert.
-            self.resolve_function_count(header, channel_index)
+            self.resolve_function_count(header, channel_index, actor_net_guid.0)
         };
         let resolved = Arc::clone(&self.current_group_path);
         self.channel_state.block_paths.insert(key, resolved, count);
@@ -347,7 +347,7 @@ impl ExportSink<'_> {
     ) -> String {
         // Step 1: Determine the base "package or class" path.
         let (package_path, archetype_path) =
-            self.resolve_actor_package_and_archetype(channel_index);
+            self.resolve_actor_package_and_archetype(channel_index, actor_guid);
 
         // Step 2: Combine package path with class name from archetype.
         let combined =
@@ -519,11 +519,13 @@ impl ExportSink<'_> {
     pub(super) fn resolve_actor_package_and_archetype(
         &self,
         channel_index: u32,
+        actor_guid: u32,
     ) -> (Option<String>, Option<String>) {
-        let archetype_guid = match self.channel_state.archetypes.get(&channel_index) {
-            Some(g) if g.is_valid() => *g,
-            _ => return (None, None),
-        };
+        let archetype_guid =
+            match channel_archetype(self.channel_state, channel_index, NetworkGuid(actor_guid)) {
+                Some(g) if g.is_valid() => g,
+                _ => return (None, None),
+            };
 
         let archetype_path = self
             .cache
@@ -580,7 +582,12 @@ impl ExportSink<'_> {
     ///
     /// May replace `current_group_path`; see the bare-instance-name branch and
     /// the module docs on why the memo stores the pair.
-    fn resolve_function_count(&mut self, header: &ContentBlockHeader, channel_index: u32) -> u32 {
+    fn resolve_function_count(
+        &mut self,
+        header: &ContentBlockHeader,
+        channel_index: u32,
+        actor_guid: u32,
+    ) -> u32 {
         // Fast path: current_group_path was already resolved to a CNC group.
         if let Some(group) = self.cache.get_group_by_path(&self.current_group_path) {
             if is_class_net_cache(group) {
@@ -600,7 +607,7 @@ impl ExportSink<'_> {
         // For actors: try deriving from archetype.
         if header.is_actor {
             let (package_path, archetype_path) =
-                self.resolve_actor_package_and_archetype(channel_index);
+                self.resolve_actor_package_and_archetype(channel_index, actor_guid);
             if let Some(combined) =
                 self.create_combined_candidate(package_path.as_deref(), archetype_path.as_deref())
             {
@@ -747,30 +754,60 @@ fn resolve_known_subobject_class_path(object_path: &str, want: GroupKind) -> Opt
         .map(|(_, class_path, _)| *class_path)
 }
 
+/// An archetype GUID together with the actor it was read for.
+///
+/// The actor half is what stops a recycled channel number from decoding a new
+/// actor under the previous one's schema. Channel indices are reused, the
+/// archetype was recorded per channel and never removed, and a *static* actor
+/// carries no archetype of its own to displace the stale one -- so resolution
+/// read the old GUID first and bound the block to the old class. Nothing fails
+/// in that state: the fields get names, the values get types, and the rows are
+/// exported under a class the actor never had.
+///
+/// Keying on the actor is strictly narrower than clearing the entry on close.
+/// A channel that closes for dormancy and re-opens for the same actor need not
+/// repeat its archetype, and that case still resolves exactly as it did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct ChannelArchetype {
+    actor: NetworkGuid,
+    archetype: NetworkGuid,
+}
+
 /// Register an archetype for a channel and, if that changed anything, tell the
 /// memo. Called from `on_actor_open`.
 pub(super) fn set_channel_archetype(
     state: &mut ChannelState,
     channel_index: u32,
+    actor: NetworkGuid,
     archetype: NetworkGuid,
 ) {
-    if state.archetypes.get(&channel_index) == Some(&archetype) {
+    let entry = ChannelArchetype { actor, archetype };
+    if state.archetypes.get(&channel_index) == Some(&entry) {
         return;
     }
-    state.archetypes.insert(channel_index, archetype);
+    state.archetypes.insert(channel_index, entry);
     state.note_resolution_input_changed();
 }
 
-/// The archetype GUID recorded for a channel, if any.
-pub(super) fn channel_archetype(state: &ChannelState, channel_index: u32) -> Option<NetworkGuid> {
-    state.archetypes.get(&channel_index).copied()
+/// The archetype GUID recorded for `channel_index`, but only if it was read for
+/// `actor`. See [`ChannelArchetype`].
+pub(super) fn channel_archetype(
+    state: &ChannelState,
+    channel_index: u32,
+    actor: NetworkGuid,
+) -> Option<NetworkGuid> {
+    state
+        .archetypes
+        .get(&channel_index)
+        .filter(|entry| entry.actor == actor)
+        .map(|entry| entry.archetype)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sink::RecordBuffers;
-    use vrf_net::pipeline::ReplicationSink;
+    use vrf_net::pipeline::{ActorChannelState, ReplicationSink};
     use vrf_schema::NetGuidCache;
 
     /// Build a cache holding `groups` as declared export groups and mapping
@@ -960,6 +997,128 @@ mod tests {
                 false,
             ),
             "AresWorldSettings",
+        );
+    }
+
+    /// Build an `ActorChannelState` for one channel open.
+    fn channel_open(channel_index: u32, actor: u32, archetype: u32) -> ActorChannelState {
+        ActorChannelState {
+            channel_index,
+            is_open: true,
+            is_dormant: false,
+            actor_net_guid: NetworkGuid(actor),
+            archetype_net_guid: NetworkGuid(archetype),
+            level_guid: NetworkGuid(0),
+            spawn_location: None,
+            spawn_rotation: None,
+            spawn_scale: None,
+            spawn_velocity: None,
+            open_packet_id: 0,
+        }
+    }
+
+    /// A reused channel must not decode its new actor under the old one's
+    /// schema.
+    ///
+    /// Channel numbers are recycled. The archetype was recorded per channel and
+    /// never removed, so after a dynamic actor closed, the next actor to open on
+    /// that channel number inherited its archetype -- and a static actor carries
+    /// no archetype of its own to displace it. Resolution then reads the stale
+    /// GUID first and binds the block to the previous actor's class, which does
+    /// not fail: it names fields, types values and exports them under the wrong
+    /// class. That is the wrong-but-plausible output this project ranks below a
+    /// crash.
+    ///
+    /// The archetype is now stamped with the actor it was read for and only
+    /// answers for that actor, which is strictly narrower than keying on the
+    /// channel alone: the dormancy case, where the *same* actor re-opens without
+    /// re-sending its archetype, still resolves exactly as before.
+    #[test]
+    fn a_reused_channel_does_not_inherit_the_previous_actors_archetype() {
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(vrf_schema::NetFieldExportGroup::new(
+            "/Game/Effects/Smoke.Smoke_C".to_owned(),
+            1,
+            4,
+        ));
+        // GUID 8 is the dynamic actor's archetype; its outer names the class.
+        cache.set_net_guid_path(
+            8,
+            "Default__Smoke_C".to_owned(),
+            Some(vrf_schema::NetworkGuid(9)),
+        );
+        cache.set_net_guid_path(9, "/Game/Effects/Smoke".to_owned(), None);
+        // GUID 77 is a static actor that opens later on the same channel and
+        // brings no archetype with it.
+        cache.set_net_guid_path(77, "SomeStaticProp".to_owned(), None);
+
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        let header = ContentBlockHeader {
+            has_rep_layout: true,
+            is_actor: true,
+            ..ContentBlockHeader::default()
+        };
+
+        // The dynamic actor opens on channel 5 and resolves to its class.
+        sink.on_actor_open(&channel_open(5, 42, 8));
+        sink.on_content_block(5, NetworkGuid(42), &header);
+        assert_eq!(
+            &*sink.current_group_path, "/Game/Effects/Smoke.Smoke_C",
+            "the dynamic actor must reach its own class",
+        );
+
+        // It closes, and the channel number is handed to a static actor.
+        sink.on_actor_close(5, NetworkGuid(42), false);
+        sink.on_actor_open(&channel_open(5, 77, 0));
+        sink.on_content_block(5, NetworkGuid(77), &header);
+        assert_eq!(
+            &*sink.current_group_path, "SomeStaticProp",
+            "the static actor must not be decoded under the previous actor's class",
+        );
+    }
+
+    /// ...and the dormancy re-open keeps working.
+    ///
+    /// A channel that closes for dormancy and later re-opens for the *same*
+    /// actor may not repeat the archetype. Clearing the archetype on close
+    /// would lose that actor's class for the rest of the replay; stamping it
+    /// with the actor GUID does not.
+    #[test]
+    fn the_same_actor_reopening_without_an_archetype_keeps_its_class() {
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(vrf_schema::NetFieldExportGroup::new(
+            "/Game/Effects/Smoke.Smoke_C".to_owned(),
+            1,
+            4,
+        ));
+        cache.set_net_guid_path(
+            8,
+            "Default__Smoke_C".to_owned(),
+            Some(vrf_schema::NetworkGuid(9)),
+        );
+        cache.set_net_guid_path(9, "/Game/Effects/Smoke".to_owned(), None);
+
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        let header = ContentBlockHeader {
+            has_rep_layout: true,
+            is_actor: true,
+            ..ContentBlockHeader::default()
+        };
+
+        sink.on_actor_open(&channel_open(5, 42, 8));
+        sink.on_actor_close(5, NetworkGuid(42), true);
+        // Woken: same actor, same channel, no archetype on the wire.
+        sink.on_actor_open(&channel_open(5, 42, 0));
+        sink.on_content_block(5, NetworkGuid(42), &header);
+        assert_eq!(
+            &*sink.current_group_path, "/Game/Effects/Smoke.Smoke_C",
+            "a dormancy wake must not lose the actor's class",
         );
     }
 

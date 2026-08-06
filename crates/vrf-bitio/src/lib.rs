@@ -18,7 +18,10 @@
 //! * [`BitReader::read_serialized_int`] -- `floor(log2(max))` bits, plus one more
 //!   bit only when the value could still reach `max`.
 //! * [`BitReader::read_fstring`] -- a signed length that selects UTF-8 (positive)
-//!   or UTF-16 (negative), null-terminated either way.
+//!   or UTF-16 (negative). Unreal's writer includes a trailing null in that
+//!   length; this reader strips one when present rather than requiring it, so
+//!   the width consumed is always the declared width and never depends on the
+//!   bytes. See the method for why that is deliberate.
 //!
 //! Getting the consumed bit count wrong on any of these desynchronises the rest
 //! of the stream rather than failing loudly, which is why each one is pinned by
@@ -55,6 +58,14 @@ use core::fmt;
 /// full 32-bit range (35 bits) and a sixth would mean a malformed stream.
 const MAX_INT_PACKED_BYTES: u32 = 5;
 
+/// Shift applied to the final `IntPacked` chunk: `7 * (MAX_INT_PACKED_BYTES - 1)`.
+const LAST_INT_PACKED_SHIFT: u32 = 7 * (MAX_INT_PACKED_BYTES - 1);
+
+/// Largest payload the final chunk may carry. Four chunks spend 28 of a `u32`'s
+/// 32 bits, so only four remain -- an encoder writing `Value >> 28` can never
+/// exceed this, and a chunk that does is describing a number no `u32` holds.
+const LAST_INT_PACKED_MAX: u32 = u32::MAX >> LAST_INT_PACKED_SHIFT;
+
 /// Failure modes of a bit read. All of them mean "the stream is not what the
 /// caller assumed", never "the value was empty".
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +81,12 @@ pub enum BitError {
     },
     /// An `IntPacked` value did not terminate within [`MAX_INT_PACKED_BYTES`].
     MalformedIntPacked {
+        /// Bit position at which the value started.
+        position: u64,
+    },
+    /// An `IntPacked` value's final chunk carried more than the four bits a
+    /// `u32` has left at that shift, so the value is not representable.
+    IntPackedOverflow {
         /// Bit position at which the value started.
         position: u64,
     },
@@ -107,6 +124,10 @@ impl fmt::Display for BitError {
             Self::MalformedIntPacked { position } => write!(
                 f,
                 "packed integer at position {position} did not terminate within {MAX_INT_PACKED_BYTES} bytes"
+            ),
+            Self::IntPackedOverflow { position } => write!(
+                f,
+                "packed integer at position {position} does not fit in a u32"
             ),
             Self::InvalidSerializedIntMax { max } => {
                 write!(f, "serialized int maximum must be positive, got {max}")
@@ -346,12 +367,29 @@ impl<'a> BitReader<'a> {
     /// have to reproduce this loop's exact EOF report -- `requested: 8` at the
     /// position after however many chunks were consumed -- and that error
     /// decides which blocks a caller records as malformed.
+    ///
+    /// # The fifth chunk is peeled
+    ///
+    /// Only the last chunk can overrun a `u32`: it lands at shift 28, where
+    /// four payload bits fit and seven are on the wire. `16u32 << 28` is zero,
+    /// so folding it in unchecked returned `Ok(0)` for a value that is not
+    /// zero -- and zero is the terminator of every property loop above this
+    /// crate, so the wrong number ended the record rather than merely
+    /// mis-reporting one field.
+    ///
+    /// The check is *peeled out of the loop* rather than guarded inside it, so
+    /// the one-to-four byte path -- every value below 2^28, which is very
+    /// nearly all of them -- executes exactly the instructions it did before:
+    /// no added compare, no added branch, and no reliance on the optimiser
+    /// unrolling a five-trip loop to fold a constant comparison away. The
+    /// continuation bit is tested first so a runaway value still reports
+    /// [`BitError::MalformedIntPacked`] rather than the overflow.
     #[inline]
     pub fn read_int_packed(&mut self) -> Result<u32> {
         let start = self.pos;
         let mut value: u32 = 0;
         let mut shift: u32 = 0;
-        for _ in 0..MAX_INT_PACKED_BYTES {
+        for _ in 0..MAX_INT_PACKED_BYTES - 1 {
             let next = self.read_u8()?;
             value |= u32::from(next >> 1) << shift;
             if next & 1 == 0 {
@@ -359,7 +397,16 @@ impl<'a> BitReader<'a> {
             }
             shift += 7;
         }
-        Err(BitError::MalformedIntPacked { position: start })
+
+        let last = self.read_u8()?;
+        if last & 1 != 0 {
+            return Err(BitError::MalformedIntPacked { position: start });
+        }
+        let chunk = u32::from(last >> 1);
+        if chunk > LAST_INT_PACKED_MAX {
+            return Err(BitError::IntPackedOverflow { position: start });
+        }
+        Ok(value | (chunk << LAST_INT_PACKED_SHIFT))
     }
 
     /// Read Unreal's bounded integer encoding (`FBitReader::SerializeInt`).
@@ -396,8 +443,23 @@ impl<'a> BitReader<'a> {
     /// Read a length-prefixed Unreal string.
     ///
     /// A positive length counts UTF-8 bytes, a negative one counts UTF-16 code
-    /// units; both include a trailing null which is stripped. `max_bytes` caps
+    /// units; both include a trailing null, which is stripped. `max_bytes` caps
     /// the serialized size so a corrupt prefix cannot trigger a huge allocation.
+    ///
+    /// # Why a missing terminator is not rejected
+    ///
+    /// The null is stripped *when present* rather than required. A length of 3
+    /// followed by `abc` is not the encoding Unreal's writer would produce for
+    /// `"abc"` (that is 4 and `abc\0`), and it is accepted anyway, because
+    /// nothing downstream can be misled by it: the cursor advances by the
+    /// declared `32 + 8 * len` bits either way, so no later field moves, and
+    /// the returned string is exactly the bytes on the wire rather than a
+    /// different value. Requiring the terminator would buy a strictness
+    /// property that prevents no wrong number, at the cost of failing every
+    /// caller in the workspace -- schema path names, net-GUID paths, container
+    /// event metadata, decoded string fields -- on any replay whose writer ever
+    /// omitted it. That is not a trade this reader gets to make on its callers'
+    /// behalf.
     ///
     /// The only read that allocates, hence the `alloc` feature gate.
     #[cfg(feature = "alloc")]
@@ -844,6 +906,50 @@ mod tests {
         let mut r = BitReader::new(&data);
         assert_eq!(r.read_int_packed().unwrap(), 300);
         assert_eq!(r.position(), 16);
+    }
+
+    #[test]
+    fn int_packed_rejects_a_fifth_chunk_that_overflows_u32() {
+        // Four continuation bytes carrying zero payload, then a fifth chunk of
+        // 16. At shift 28 a u32 has exactly four payload bits left, so
+        // `16u32 << 28` is zero: the read returned `Ok(0)` for a value that is
+        // not zero. Zero is the TERMINATOR of every property loop in this
+        // project, so the wrong answer does not merely mis-report one field --
+        // it ends the record and drops every field after it.
+        let data = [0x01u8, 0x01, 0x01, 0x01, 0x20];
+        let mut r = BitReader::new(&data);
+        assert_eq!(
+            r.read_int_packed().unwrap_err(),
+            BitError::IntPackedOverflow { position: 0 }
+        );
+    }
+
+    #[test]
+    fn int_packed_runaway_outranks_overflow() {
+        // `[0xFF; 8]`'s fifth byte carries both a set continuation bit and a
+        // payload of 127. Which error it reports is not cosmetic: callers
+        // record malformed blocks by error shape, and this is the case
+        // `int_packed_rejects_runaway` has always pinned. Testing the
+        // continuation bit before the payload width is what keeps it.
+        let data = [0xFFu8; 8];
+        let mut r = BitReader::new(&data);
+        assert_eq!(
+            r.read_int_packed().unwrap_err(),
+            BitError::MalformedIntPacked { position: 0 }
+        );
+        assert_eq!(r.position(), 40, "all five bytes are still consumed");
+    }
+
+    #[test]
+    fn int_packed_accepts_the_largest_representable_fifth_chunk() {
+        // Regression guard on the other side of the same boundary: u32::MAX
+        // encodes as four full 0x7F chunks plus a fifth of 15, which is the
+        // widest fifth chunk a real encoder can emit. The overflow check must
+        // not touch it.
+        let data = [0xFFu8, 0xFF, 0xFF, 0xFF, 15 << 1];
+        let mut r = BitReader::new(&data);
+        assert_eq!(r.read_int_packed().unwrap(), u32::MAX);
+        assert_eq!(r.position(), 40);
     }
 
     #[test]

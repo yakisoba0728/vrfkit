@@ -76,6 +76,21 @@ pub struct BruteForceResult {
     pub function_count: u32,
     /// The RPCs decoded with that function_count.
     pub rpcs: Vec<CncRpc>,
+    /// Another `function_count` that walks the SAME bits just as cleanly but
+    /// into a DIFFERENT set of RPCs, if one exists.
+    ///
+    /// The search returns the first clean walk, and the module reasoned that
+    /// this was safe because adjacent counts inside one handle-width band
+    /// produce identical structure. True, and not the whole condition: two
+    /// counts in DIFFERENT bands can both divide the same buffer exactly. This
+    /// module's own fixtures depend on knowing it -- `build_one_rpc_stream`
+    /// fills payloads with 1-bits specifically because a zero-filled one lets
+    /// wrong counts walk cleanly.
+    ///
+    /// `None` means the search checked every candidate and found no competing
+    /// parse, which is what makes the returned count a measurement rather than
+    /// the first thing that happened to fit.
+    pub ambiguous_with: Option<u32>,
 }
 
 /// Brute-force `function_count` for a ClassNetCache payload whose group is
@@ -95,15 +110,48 @@ pub struct BruteForceResult {
 /// return `None` and the preservation row stays as the only record.
 #[must_use]
 pub fn brute_force_function_count(payload: &[u8], bit_count: u32) -> Option<BruteForceResult> {
+    // The whole range is scanned even after a hit. Returning the first clean
+    // walk was justified by adjacent counts in one handle-width band producing
+    // identical structure -- which is true, and is a narrower statement than
+    // the one being relied on. Counts in different bands can also divide the
+    // same buffer exactly, and then the first hit is a choice between parses
+    // rather than the only reading. See `ambiguous_with`.
+    let mut chosen: Option<BruteForceResult> = None;
     for fc in 2..=MAX_FC {
-        if let Some(rpcs) = walk_cnc(payload, bit_count, fc) {
-            return Some(BruteForceResult {
-                function_count: fc,
-                rpcs,
-            });
+        let Some(rpcs) = walk_cnc(payload, bit_count, fc) else {
+            continue;
+        };
+        match &mut chosen {
+            None => {
+                chosen = Some(BruteForceResult {
+                    function_count: fc,
+                    rpcs,
+                    ambiguous_with: None,
+                });
+            }
+            Some(first) => {
+                if first.ambiguous_with.is_none() && !same_structure(&first.rpcs, &rpcs) {
+                    first.ambiguous_with = Some(fc);
+                }
+            }
         }
     }
-    None
+    chosen
+}
+
+/// Whether two candidate walks recovered the same RPC framing.
+///
+/// Structure is the handle, size and position of every RPC. Two counts that
+/// agree on all three describe the same stream and the choice between them does
+/// not matter; a disagreement on any of them means the payload has more than
+/// one clean reading.
+fn same_structure(a: &[CncRpc], b: &[CncRpc]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(x, y)| {
+            x.handle == y.handle
+                && x.payload_bits == y.payload_bits
+                && x.payload_offset == y.payload_offset
+        })
 }
 
 /// Walk a ClassNetCache stream with a known `function_count` and return the
@@ -488,5 +536,45 @@ mod tests {
         let decoded = decode_abilities_and_buffs_inner(&data, bit_count).unwrap();
         assert_eq!(decoded.words, vec![42]);
         assert_eq!(decoded.key_pair(), None);
+    }
+
+    /// A zero-filled payload can walk cleanly under SEVERAL function counts
+    /// that disagree about how many RPCs it holds, and the search must say so
+    /// rather than return the first one as though it were the only one.
+    ///
+    /// This is not hypothetical, and this module already knew it: the doc on
+    /// `build_one_rpc_stream` above explains that the fixtures are filled with
+    /// 1-bits precisely because "a zero-filled payload lets wrong
+    /// `function_count` values walk cleanly ... producing many tiny garbage
+    /// RPCs that consume the buffer". The module's own claim -- that every fc
+    /// in the valid range produces identical RPC structure -- holds only
+    /// within one handle-WIDTH band; it says nothing about two bands whose
+    /// per-RPC size happens to divide the same buffer.
+    ///
+    /// 90 zero bits is exactly that: fc=2 gives a 1-bit handle and a zero
+    /// payload, so 10 RPCs of 9 bits; fc=3 gives a 2-bit handle, so 9 RPCs of
+    /// 10 bits. Both consume the buffer exactly and they are different parses.
+    #[test]
+    fn an_ambiguous_payload_reports_the_competing_function_count() {
+        let data = vec![0u8; 12]; // 96 bits of storage, 90 declared
+        let result = brute_force_function_count(&data, 90).expect("fc=2 walks cleanly");
+
+        assert_eq!(result.function_count, 2);
+        assert_eq!(result.rpcs.len(), 10, "fc=2 reads ten 9-bit RPCs");
+        assert_eq!(
+            result.ambiguous_with,
+            Some(3),
+            "fc=3 parses the same bits into nine RPCs and must be reported",
+        );
+    }
+
+    /// The one-filled fixtures are unambiguous, so the flag must stay clear on
+    /// them -- otherwise it would fire on every payload and mean nothing.
+    #[test]
+    fn an_unambiguous_payload_reports_no_competitor() {
+        let (data, bit_count) = build_one_rpc_stream(34, 100);
+        let result = brute_force_function_count(&data, bit_count).unwrap();
+        assert_eq!(result.function_count, 34);
+        assert_eq!(result.ambiguous_with, None, "{result:?}");
     }
 }

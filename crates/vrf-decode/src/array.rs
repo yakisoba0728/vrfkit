@@ -118,6 +118,36 @@ pub struct ArrayDecodeStats {
     /// flattened leaves were lost. Mirrors `struct_blobs_failed`: counted and
     /// surfaced, never silently dropped.
     pub errors: u64,
+    /// Bits left inside a nested array's window after that array stopped
+    /// decoding.
+    ///
+    /// The parent carves a sub-reader of the declared `payloadBits` and
+    /// advances past the whole window, so the parent stays aligned whatever the
+    /// child did with it -- and the leftover used to be dropped on exactly that
+    /// reasoning. But parent ALIGNMENT and child COMPLETENESS are two claims,
+    /// and the sub-reader establishes only the first. A nested array that
+    /// stopped early still hands its parent a correctly positioned reader, so
+    /// the walk continues, no counter moves, and the leaves inside those bits
+    /// are gone with nothing saying so.
+    ///
+    /// A tally rather than an error, deliberately: this is the call
+    /// [`Self::truncations`] already makes, and the bits themselves survive in
+    /// the parent row's `raw_bits`. Zero on a corpus that decodes cleanly,
+    /// which is what makes a non-zero value worth looking at.
+    pub unconsumed_nested_bits: u64,
+    /// Times an element's field loop or an array level ended because the reader
+    /// ran out, rather than because it read an explicit `0` terminator.
+    ///
+    /// The framing ends an element with a zero handle and an array with a zero
+    /// index. Accepting EOF in their place makes a payload truncated mid-stream
+    /// decode to the same shape a complete one does -- the last element simply
+    /// looks finished. Nothing else in the walk distinguishes them, so this
+    /// counter is the only signal.
+    ///
+    /// Not an error: this walker is also handed windows whose final terminator
+    /// is absorbed by byte padding, so raising it would turn well-formed data
+    /// loud.
+    pub implicit_terminations: u64,
 }
 
 /// Everything one walk carries down through the recursion.
@@ -279,8 +309,14 @@ fn decode_array_level(
         return;
     }
 
-    // Read elements.
-    while !reader.at_end() {
+    // Read elements. An explicit `0` index is what ends the array; running out
+    // of bits instead is accepted (a padded window legitimately does that) but
+    // tallied, because it is also what a truncated payload looks like.
+    loop {
+        if reader.at_end() {
+            stats.implicit_terminations += 1;
+            break;
+        }
         let Ok(encoded_index) = reader.read_int_packed() else {
             stats.errors += 1;
             break;
@@ -322,6 +358,11 @@ fn decode_struct_fields(
 ) {
     for _field_idx in 0..MAX_FIELDS_PER_ELEMENT {
         if reader.at_end() {
+            // An element ends on a zero handle. Reaching EOF instead means the
+            // element was never closed -- harmless for alignment, since there
+            // is nothing after it, but indistinguishable from a complete
+            // element without this tally.
+            stats.implicit_terminations += 1;
             return;
         }
 
@@ -354,14 +395,22 @@ fn decode_struct_fields(
             // A nested array we are still allowed to descend into.
             Some(sub) if depth + 1 < MAX_RECURSION_DEPTH => {
                 let Ok(mut sub_reader) = reader.sub_reader(u64::from(payload_bits)) else {
+                    // Unreachable: the width was bounds-checked just above.
+                    // Counted anyway, so that "unreachable" stays a claim the
+                    // stats can contradict rather than an assumption.
+                    stats.errors += 1;
                     return;
                 };
                 let prefix_len = walk.path.len();
                 walk.path.push('.');
                 push_field_label(&mut walk.path, schema, handle);
                 decode_array_level(&mut sub_reader, walk, Some(sub), depth + 1, stats);
-                // Any bits the sub-reader left are dropped on purpose: the
-                // parent's window already accounted for them.
+                // The parent's window already advanced past all of these bits,
+                // so dropping them keeps the parent ALIGNED -- but alignment is
+                // not the same claim as the child having CONSUMED them, and
+                // only the first was ever established here. Leaves inside an
+                // abandoned tail are lost silently otherwise.
+                stats.unconsumed_nested_bits += sub_reader.bits_remaining();
                 walk.path.truncate(prefix_len);
             }
             // Same, but the nesting limit stops us -- keep the bits instead.
@@ -459,6 +508,32 @@ fn emit_remaining_raw(reader: &mut BitReader<'_>, walk: &mut Walk<'_, '_>) {
 /// what decides the nesting in the first place and the declaration adds nothing
 /// there: handles 44 and 79 both declare `RegionalDamageInteractions`, so the
 /// wire cannot tell the two apart where the schema can.
+///
+/// # `declared` applies at every depth, on purpose
+///
+/// It looks wrong that ONE root-group table is consulted for a leaf at any
+/// nesting level, as if a nested element had its own handle space that could
+/// collide with the root's. It does not. Unreal flattens a `TArray` of structs
+/// onto CONSECUTIVE handles of the ENCLOSING group, so one flat handle space
+/// spans the whole tree and the group's own net field exports name every leaf
+/// in it. That is why `COMBAT_ROUNDS_SCHEMA`'s handles are disjoint by depth
+/// (3-4, then 5/10, then 11-26, then 44-50, then 79-85) rather than restarting
+/// per level -- they are all handles of one group.
+///
+/// The typo example above is itself the proof: `DamageRecieved` and
+/// `HitsRecieved` are handles 20 and 21 of `PARTICIPANT_SCHEMA`, which sits at
+/// **depth 2** (`Rounds` -> `Reports` -> `Interactions`). So declaration-beats-
+/// schema was always a statement about nested leaves, not only root ones, and
+/// restricting it to depth 0 would rename those two exported columns --
+/// `tools/to_valplay_bundle.py` maps handle 20 from the wire's `DamageRecieved`
+/// and its test pins the path `Rounds[0].Reports[0].Interactions[0].DamageRecieved`.
+///
+/// The schemas that DO use a private, restarting handle space --
+/// `LIFE_CHANGE_DAMAGE_SCHEMA` (10-13), `LIFE_CHANGE_SECTION_SCHEMA` (1-4) and
+/// `LIFE_CHANGE_BY_SECTION_SCHEMA` (2-5), whose numbering is per RPC parameter
+/// rather than per group -- cannot reach this code with a populated table:
+/// each declares `sub_arrays: &[]`, so no recursion happens, and the export
+/// path passes `declared` as `&[]` for them.
 fn push_leaf_label(
     path: &mut String,
     declared: &[Option<&str>],
@@ -873,6 +948,102 @@ mod tests {
         );
     }
 
+    /// A nested array that leaves bits inside its own window must say so.
+    ///
+    /// The parent's `sub_reader` advances past the whole declared window, so
+    /// the walk stays aligned and every later element still decodes -- which is
+    /// exactly why this was invisible. Alignment is not completeness: the
+    /// leaves inside the abandoned bits are lost either way, and without a
+    /// tally nothing distinguishes this from a nested array that consumed its
+    /// window exactly.
+    #[test]
+    fn a_nested_array_that_leaves_bits_reports_them() {
+        let mut inner = Vec::new();
+        write_int_packed(&mut inner, 1); // inner elementCount
+        write_int_packed(&mut inner, 1); // encodedIndex=1
+        write_int_packed(&mut inner, 8); // encodedHandle=8 -> handle 7
+        write_int_packed(&mut inner, 16);
+        inner.extend(std::iter::repeat_n(true, 16));
+        write_int_packed(&mut inner, 0); // end inner element
+        write_int_packed(&mut inner, 0); // inner array terminator
+        // Sixteen bits the inner array will never look at. Not 8: an 8-bit
+        // tail is the trailing terminator the framing legitimately consumes.
+        let declared_inner_bits = inner.len() as u32 + 16;
+
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 1); // outer elementCount
+        write_int_packed(&mut bits, 1); // encodedIndex=1
+        write_int_packed(&mut bits, 5); // encodedHandle=5 -> handle 4
+        write_int_packed(&mut bits, declared_inner_bits);
+        bits.extend(inner);
+        bits.extend(std::iter::repeat_n(true, 16)); // the abandoned tail
+        write_int_packed(&mut bits, 0); // end outer element
+        write_int_packed(&mut bits, 0); // outer array terminator
+
+        let data = bits_to_bytes(&bits);
+        let bit_count = bits.len() as u32;
+
+        static INNER: ArrayFieldSchema = ArrayFieldSchema {
+            sub_arrays: &[],
+            field_names: &[],
+        };
+        static OUTER: ArrayFieldSchema = ArrayFieldSchema {
+            sub_arrays: &[(4, &INNER)],
+            field_names: &[(4, "Reports")],
+        };
+
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(&data, bit_count, Some(&OUTER), &[], &mut stats);
+
+        // The walk still succeeds and stays aligned -- that is the point.
+        assert_eq!(fields.len(), 1, "{fields:?}");
+        assert_eq!(fields[0].path, "[0].Reports[0]._h7");
+        assert_eq!(stats.errors, 0, "alignment held, so this is not an error");
+        assert_eq!(
+            stats.unconsumed_nested_bits, 16,
+            "the 16 abandoned bits must be tallied"
+        );
+    }
+
+    /// An element that runs out of bits instead of reading its zero handle is
+    /// a truncated element, and must be distinguishable from a complete one.
+    #[test]
+    fn an_element_ending_at_eof_is_not_a_clean_terminator() {
+        // elementCount=1, element 0, one complete 32-bit field, then nothing:
+        // no element terminator and no array terminator.
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 1);
+        write_int_packed(&mut bits, 1);
+        write_int_packed(&mut bits, 4); // handle 3
+        write_int_packed(&mut bits, 32);
+        bits.extend(std::iter::repeat_n(true, 32));
+
+        let data = bits_to_bytes(&bits);
+        let bit_count = bits.len() as u32;
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(&data, bit_count, None, &[], &mut stats);
+
+        // The field itself is complete and is still emitted.
+        assert_eq!(fields.len(), 1);
+        assert!(
+            stats.implicit_terminations >= 1,
+            "EOF stood in for a terminator and nothing counted it: {stats:?}"
+        );
+    }
+
+    /// The counter must NOT fire on a well-formed array that closes with both
+    /// its terminators, or it would flag every clean blob in the corpus.
+    #[test]
+    fn a_cleanly_terminated_array_reports_no_implicit_termination() {
+        let (data, bit_count) = one_element_with_handles(&[(3, 32)]);
+        let mut stats = ArrayDecodeStats::default();
+        let _ = decode_struct_array(&data, bit_count, None, &[], &mut stats);
+
+        assert_eq!(stats.implicit_terminations, 0, "{stats:?}");
+        assert_eq!(stats.unconsumed_nested_bits, 0, "{stats:?}");
+        assert_eq!(stats.errors, 0, "{stats:?}");
+    }
+
     /// `AbilityCastsThisRound[].Effects[]` is a nested array, and until it had
     /// a schema the walker could not know that: a sub-array and an opaque leaf
     /// both arrive as `handle + payloadBits + bits`, so `Effects` was emitted
@@ -900,6 +1071,29 @@ mod tests {
         // seen value forward per (element index), the same as any delta stream.
         let paths: Vec<&str> = out.iter().map(|f| f.path.as_str()).collect();
         assert_eq!(paths, ["[0].AffectedTargetsArray[1].Value"], "{paths:?}");
+    }
+
+    /// What the two new tallies read on a REAL wire payload, pinned so that a
+    /// later change to either counter has to face real data and not only
+    /// hand-built fixtures.
+    ///
+    /// This is the same 128-bit `AbilityCastsThisRound[].Effects[]` blob the
+    /// test above walks. Its nested `AffectedTargetsArray` consumes its window
+    /// exactly, and the outer level closes on its own terminator with only byte
+    /// padding after it -- so both counters are zero, which is the evidence
+    /// that neither fires on well-formed data.
+    #[test]
+    fn the_real_effects_payload_leaves_no_unconsumed_bits() {
+        let raw = [
+            0x02, 0x02, 0x26, 0xa0, 0x04, 0x04, 0x2a, 0x40, 0x7e, 0x16, 0x12, 0x3f, 0x00, 0x00,
+            0x00, 0x00,
+        ];
+        let mut stats = ArrayDecodeStats::default();
+        let _ = decode_struct_array(&raw, 128, Some(&ABILITY_EFFECTS_SCHEMA), &[], &mut stats);
+
+        assert_eq!(stats.errors, 0, "{stats:?}");
+        assert_eq!(stats.unconsumed_nested_bits, 0, "{stats:?}");
+        assert_eq!(stats.implicit_terminations, 0, "{stats:?}");
     }
 
     /// The nesting the schema declares, checked against the replay's own

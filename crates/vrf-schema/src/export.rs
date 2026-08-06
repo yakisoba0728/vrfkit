@@ -8,6 +8,32 @@
 //! These are **not** hard-coded -- the replay stream declares them at runtime,
 //! and handles may shift between game builds.
 
+/// Apply an `FName`'s instance number to its string, Unreal's way.
+///
+/// An `FName` is a (string, number) pair and the number is stored as **the
+/// displayed suffix plus one**: 0 renders the bare name, and `N != 0` renders
+/// `Name_{N-1}`. Both schema readers used to read the number into `let _number`
+/// and drop it, so two handles whose base string matched arrived under one
+/// name and the manifest's handle-to-name mapping could not tell them apart --
+/// with nothing reporting the collision.
+///
+/// A negative number cannot come off a well-formed wire and has no display
+/// form, so it is appended as it is rather than wrapped into a plausible
+/// positive suffix.
+///
+/// Shared by [`crate::read_net_field_exports`]'s reader and the checkpoint
+/// one, which are deliberately separate functions (their leading bytes mean
+/// opposite things) but must render a name identically. `vrf-decode`'s
+/// `scalar::render_fname` is the same function over the same rule, so a name
+/// means the same thing whichever layer produced it; the two crates share no
+/// dependency edge, which is why it is written twice rather than imported.
+pub(crate) fn render_fname(name: String, number: i32) -> String {
+    match number {
+        0 => name,
+        n => format!("{name}_{}", n.wrapping_sub(1)),
+    }
+}
+
 /// A single replicated-field descriptor within a group.
 ///
 /// The `handle` is the key used in content blocks to identify which field is

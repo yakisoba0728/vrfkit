@@ -101,8 +101,17 @@ pub fn decode_effect_blob_json(
     // Checked after the decode, not during: the decoders stop at the array
     // terminator by design, so "did it consume the window" is only answerable
     // once they have returned.
+    //
+    // Every remaining bit counts, including a sub-byte tail. This used to
+    // tolerate 1-7 bits on the grounds that byte padding cannot carry an
+    // element -- but `bit_count` here is the RPC parameter's exact declared
+    // payload length, not `raw.len() * 8`, so the storage padding was already
+    // excluded before this function saw the blob (see this function's own
+    // `bit_count` argument note). Anything left inside the window is declared
+    // payload that nothing accounted for, which is the same evidence of a wrong
+    // read at four bits as at forty.
     let remaining = reader.bits_remaining();
-    if remaining >= 8 {
+    if remaining > 0 {
         return Err(EffectBlobError::ResidualBits { remaining });
     }
 

@@ -66,6 +66,54 @@ fn fname_reads_inline_name() {
     assert_eq!(result, DecodedValue::Str("Bomb".into()));
 }
 
+/// Build the inline (`isHardcoded = 0`) FName shape: a leading zero bit, then
+/// an FString, then the i32 instance number.
+fn inline_fname_bits(name: &str, number: i32) -> (Vec<u8>, u32) {
+    let mut payload = Vec::new();
+    let len = i32::try_from(name.len() + 1).unwrap();
+    payload.extend_from_slice(&len.to_le_bytes());
+    payload.extend_from_slice(name.as_bytes());
+    payload.push(0);
+    payload.extend_from_slice(&number.to_le_bytes());
+
+    let total_bits = 1 + payload.len() * 8;
+    let mut bits = vec![0u8; total_bits.div_ceil(8)];
+    for (i, &b) in payload.iter().enumerate() {
+        for bit_idx in 0..8 {
+            let src_bit = (b >> bit_idx) & 1;
+            let dst = 1 + i * 8 + bit_idx;
+            bits[dst / 8] |= src_bit << (dst % 8);
+        }
+    }
+    (bits, total_bits as u32)
+}
+
+/// The FName instance number is part of the name's identity, so two fields that
+/// differ only in it must not decode to the same string.
+///
+/// Unreal stores the number as `displayed suffix + 1`: 0 means the bare name,
+/// and N != 0 displays as `Name_{N-1}`. Discarding it made `Source_1` and
+/// `Source_2` both read as `Source`.
+#[test]
+fn fname_inline_number_renders_the_displayed_suffix() {
+    let (bits, total_bits) = inline_fname_bits("Source", 2);
+    let result = decode_field(FieldType::FName, &bits, total_bits).unwrap();
+    assert_eq!(result, DecodedValue::Str("Source_1".into()));
+}
+
+/// Two FNames differing only in the instance number decode to different
+/// strings. This is the property the discard destroyed.
+#[test]
+fn fname_inline_numbers_do_not_collide() {
+    let (a_bits, a_len) = inline_fname_bits("Source", 1);
+    let (b_bits, b_len) = inline_fname_bits("Source", 2);
+    let a = decode_field(FieldType::FName, &a_bits, a_len).unwrap();
+    let b = decode_field(FieldType::FName, &b_bits, b_len).unwrap();
+    assert_ne!(a, b, "Source_0 and Source_1 must not decode alike");
+    assert_eq!(a, DecodedValue::Str("Source_0".into()));
+    assert_eq!(b, DecodedValue::Str("Source_1".into()));
+}
+
 #[test]
 fn byte_array_reads_packed_count_and_bytes() {
     // IntPacked 3 = byte (3 << 1) = 0x06

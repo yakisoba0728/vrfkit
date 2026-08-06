@@ -3,8 +3,8 @@
 use vrf_bitio::BitReader;
 
 use super::framing::{
-    MAX_FIELDS_PER_ELEMENT, ensure_consumed, read_array_count, read_element_index,
-    read_field_header,
+    MAX_FIELDS_PER_ELEMENT, ensure_consumed, ensure_member_consumed, read_array_count,
+    read_element_index, read_field_header,
 };
 use super::{Result, StructBlobError};
 
@@ -67,17 +67,29 @@ pub fn decode_team_economy(reader: &mut BitReader<'_>) -> Result<Vec<TeamEconomy
             }
 
             let mut sub = reader.sub_reader(u64::from(bit_count))?;
-            match handle {
-                56 => replication_id = Some(sub.read_int_packed()?),
-                57 => loadout_value = Some(sub.read_i32()?),
-                58 => average_loadout_value = Some(sub.read_i32()?),
+            let member = match handle {
+                56 => {
+                    replication_id = Some(sub.read_int_packed()?);
+                    "ReplicationId"
+                }
+                57 => {
+                    loadout_value = Some(sub.read_i32()?);
+                    "LoadoutValue"
+                }
+                58 => {
+                    average_loadout_value = Some(sub.read_i32()?);
+                    "AverageLoadoutValue"
+                }
                 _ => {
                     return Err(StructBlobError::UnsupportedHandle {
                         handle,
                         context: "TeamEconomy",
                     });
                 }
-            }
+            };
+            // Two Int32s and one IntPacked, all self-delimiting or fixed, so
+            // each owes its whole window. See `ensure_member_consumed`.
+            ensure_member_consumed(&sub, member, handle, bit_count, "TeamEconomy")?;
         }
 
         results.push(TeamEconomyUpdate {

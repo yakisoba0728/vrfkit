@@ -39,7 +39,7 @@ use vrf_bitio::BitReader;
 
 use crate::cache::NetGuidCache;
 use crate::error::{Result, SchemaError};
-use crate::export::{NetFieldExport, NetFieldExportGroup};
+use crate::export::{NetFieldExport, NetFieldExportGroup, render_fname};
 use crate::guid::{ExportFlags, NetworkGuid};
 
 /// Maximum string size allowed when reading path names (guard against corrupt
@@ -54,7 +54,10 @@ const MAX_NET_GUID_RECURSION: u32 = 16;
 /// FName on the wire (FBinaryArchive variant):
 ///   isHardcoded: u8 (1 byte boolean)
 ///   if hardcoded: nameIndex = IntPacked -> returned as decimal string
-///   else: name = FString, number = i32 (discarded)
+///   else: name = FString, number = i32 -> rendered by [`render_fname`]
+///
+/// The number is part of the name's identity, not decoration: see
+/// [`render_fname`] for what dropping it cost.
 fn read_fname(reader: &mut BitReader<'_>) -> Result<String> {
     let is_hardcoded = reader.read_u8()? != 0;
     if is_hardcoded {
@@ -62,8 +65,8 @@ fn read_fname(reader: &mut BitReader<'_>) -> Result<String> {
         Ok(name_index.to_string())
     } else {
         let name = reader.read_fstring(MAX_FSTRING_BYTES)?;
-        let _number = reader.read_i32()?; // discarded (instance number)
-        Ok(name)
+        let number = reader.read_i32()?;
+        Ok(render_fname(name, number))
     }
 }
 
@@ -243,10 +246,15 @@ mod tests {
 
     /// Encode an FName (non-hardcoded): isHardcoded=0, FString, number=0.
     fn encode_fname(s: &str) -> Vec<u8> {
+        encode_fname_numbered(s, 0)
+    }
+
+    /// Encode an FName with an explicit instance number.
+    fn encode_fname_numbered(s: &str, number: i32) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.push(0); // isHardcoded = false
         bytes.extend(encode_fstring(s));
-        bytes.extend_from_slice(&0i32.to_le_bytes()); // instance number
+        bytes.extend_from_slice(&number.to_le_bytes());
         bytes
     }
 
@@ -434,6 +442,48 @@ mod tests {
         read_net_field_exports(&mut reader, &mut cache).unwrap();
         let group = cache.get_group_by_index(11).unwrap();
         assert!(group.get_field(0).is_none());
+    }
+
+    /// An FName is a string AND a number, and the number used to be read and
+    /// thrown away. Two handles whose base string is the same then arrived with
+    /// the same name, so the manifest's handle-to-name mapping could not tell
+    /// them apart -- and nothing said so.
+    ///
+    /// Unreal stores the number as the displayed suffix plus one, so 0 renders
+    /// bare and 1 renders `_0`.
+    #[test]
+    fn fname_numbers_disambiguate_two_fields_with_one_base_name() {
+        let mut data = Vec::new();
+        data.extend(encode_int_packed(3)); // 3 exports
+
+        // Group with three slots; handle 0 has number 0, handle 1 number 1,
+        // handle 2 number 2. All three are the base string "Value".
+        data.extend(encode_int_packed(11));
+        data.extend(encode_int_packed(1)); // isExported
+        data.extend(encode_fstring("/Game/Test.Test_C"));
+        data.extend(encode_int_packed(3)); // numExports
+        data.push(1); // isFieldExported
+        data.extend(encode_int_packed(0));
+        data.extend(encode_u32(0));
+        data.extend(encode_fname_numbered("Value", 0));
+
+        for (handle, number) in [(1u32, 1i32), (2, 2)] {
+            data.extend(encode_int_packed(11));
+            data.extend(encode_int_packed(0)); // reference the existing group
+            data.push(1); // isFieldExported
+            data.extend(encode_int_packed(handle));
+            data.extend(encode_u32(0));
+            data.extend(encode_fname_numbered("Value", number));
+        }
+
+        let mut reader = BitReader::new(&data);
+        let mut cache = NetGuidCache::new();
+        read_net_field_exports(&mut reader, &mut cache).unwrap();
+
+        let group = cache.get_group_by_index(11).unwrap();
+        assert_eq!(group.get_field(0).unwrap().name, "Value");
+        assert_eq!(group.get_field(1).unwrap().name, "Value_0");
+        assert_eq!(group.get_field(2).unwrap().name, "Value_1");
     }
 
     // -- ReadExportGuids tests (ported from ExportDataReaderTests.cs) ---------

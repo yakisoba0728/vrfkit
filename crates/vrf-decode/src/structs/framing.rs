@@ -65,6 +65,14 @@ pub(super) fn read_field_header(reader: &mut BitReader<'_>) -> Result<Option<(u3
 
 /// Read an FName from a sub-reader (1 bit hardcoded flag, then either IntPacked
 /// or FString + Int32).
+///
+/// The trailing Int32 is the FName's instance number, and it is part of the
+/// name's identity rather than padding: Unreal stores it as the displayed
+/// suffix plus one, so `Source_1` and `Source_2` differ only there. Dropping it
+/// collapsed them onto one string. Rendered by the same
+/// [`crate::decode::scalar::render_fname`] the overlay's `FName` decoder uses,
+/// so a `WinningTeam` read here and an `FName` read there spell a given name
+/// identically.
 pub(super) fn read_fname(reader: &mut BitReader<'_>) -> Result<String> {
     let is_hardcoded = reader.read_bit()?;
     if is_hardcoded {
@@ -72,8 +80,8 @@ pub(super) fn read_fname(reader: &mut BitReader<'_>) -> Result<String> {
         Ok(index.to_string())
     } else {
         let name = reader.read_fstring(1024)?;
-        let _number = reader.read_i32()?;
-        Ok(name)
+        let number = reader.read_i32()?;
+        Ok(crate::decode::scalar::render_fname(name, number))
     }
 }
 
@@ -117,6 +125,37 @@ pub(super) fn member_name<'d>(
         .copied()
         .flatten()
         .ok_or(StructBlobError::UndeclaredHandle { handle, context })
+}
+
+/// Ensure ONE field's sub-reader consumed the whole window its header declared.
+///
+/// `reader.sub_reader(bit_count)` advances the PARENT past the entire window
+/// the moment it is created, so the blob stays aligned no matter how much of it
+/// the member actually reads -- every later member decodes and the closing
+/// [`ensure_consumed`] is satisfied. That is why a member reading half its
+/// window was invisible: alignment is preserved and only interpretation is
+/// lost.
+///
+/// Called per field rather than per blob for exactly that reason: the blob-level
+/// check cannot see inside a window the parent has already skipped.
+pub(super) fn ensure_member_consumed(
+    sub: &BitReader<'_>,
+    name: &str,
+    handle: u32,
+    declared: u32,
+    context: &'static str,
+) -> Result<()> {
+    let remaining = sub.bits_remaining();
+    if remaining > 0 {
+        return Err(StructBlobError::MemberNotFullyConsumed {
+            name: name.to_owned(),
+            handle,
+            declared,
+            remaining,
+            context,
+        });
+    }
+    Ok(())
 }
 
 /// Ensure the reader is fully consumed.

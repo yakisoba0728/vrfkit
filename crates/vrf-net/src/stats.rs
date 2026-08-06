@@ -50,6 +50,20 @@ pub struct NetStats {
     pub partial_fragments: u64,
     /// Partial bunches that completed successfully.
     pub partial_completed: u64,
+    /// Partial bunches still awaiting fragments when the replay ended.
+    ///
+    /// Moved only by [`crate::ReplicationReader::finish`], which must be called
+    /// once after the last packet. Reassembly state that never completes is
+    /// indistinguishable from reassembly in progress until the stream stops, so
+    /// this is the only point at which the loss can be named. `partial_errors`
+    /// does not cover it: nothing was out of sequence, the continuation simply
+    /// never arrived.
+    pub unfinished_partials: u64,
+    /// Bits buffered by those unfinished partial bunches, and therefore lost.
+    ///
+    /// Kept out of [`Self::skipped_bits`], which is the content-block tally the
+    /// oracle divides by failed blocks; these bits never reached framing.
+    pub unfinished_partial_bits: u64,
     /// Bunch payloads whose header parse failed -- package-map exports,
     /// must-be-mapped GUIDs, or the channel-open block. The prior code did
     /// `let _ =` on these `Result`s, so a channel that failed to open was
@@ -94,8 +108,34 @@ pub struct NetStats {
     pub actor_opens: u64,
     /// Actor channels closed.
     pub actor_closes: u64,
+    /// Opens that replaced an actor still recorded as open on that channel.
+    ///
+    /// Channel 5 opens for actor A and opens again for actor B with no close in
+    /// between: A's state is overwritten and every later block on the channel is
+    /// attributed to B. Nothing misframes, so no other counter moves. The
+    /// replacement is kept -- the wire says B owns the channel now -- but A gets
+    /// no close row, and a fabricated one would be data the replay never sent.
+    /// This counts the fabrication that was NOT made.
+    pub channel_reopens_while_open: u64,
+    /// Dynamic-actor opens whose payload ended before the mandatory spawn block.
+    ///
+    /// The spawn block is not optional for a dynamic actor: the reference reads
+    /// archetype, level, transform and velocity unconditionally. A payload that
+    /// stops at the actor GUID used to be accepted as a successful open, which
+    /// emitted an actor with archetype and level GUID 0 and no transforms while
+    /// `bunch_header_failures` stayed at zero. Such an open now fails like any
+    /// other truncated read; this names the specific shape so a corpus run can
+    /// say whether it ever happens.
+    pub actor_opens_missing_spawn: u64,
     /// Package-map export bunches processed.
     pub package_map_exports: u64,
+    /// Package-map export bunches carrying a RepLayout export instead of GUIDs.
+    ///
+    /// That variant is not parsed -- the bunch is skipped whole. It is counted
+    /// separately rather than folded into [`Self::skipped_bits`] because the
+    /// oracle reads that tally as "bits lost across failed content blocks", and
+    /// no content block is involved here.
+    pub rep_layout_export_bunches: u64,
     /// Net GUIDs exported via package-map.
     pub exported_guids: u64,
     /// Must-be-mapped GUIDs consumed.

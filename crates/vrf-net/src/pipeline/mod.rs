@@ -270,6 +270,23 @@ impl ReplicationReader {
         &self.stats
     }
 
+    /// Account for reassembly state the replay ended in the middle of.
+    ///
+    /// Call this once after the last packet. A partial bunch whose continuation
+    /// never arrives sits in the accumulator until the reader is dropped, and
+    /// until the stream stops there is nothing to distinguish it from a bunch
+    /// still being reassembled -- so this is the only point at which the loss
+    /// can be named. It lands in [`NetStats::unfinished_partials`] and
+    /// [`NetStats::unfinished_partial_bits`]; `partial_errors` deliberately does
+    /// not move, because nothing was out of sequence.
+    ///
+    /// Idempotent: the accumulator is drained, so a second call counts nothing.
+    pub fn finish(&mut self) {
+        let (count, bits) = self.accumulator.drain_unfinished();
+        self.stats.unfinished_partials += count;
+        self.stats.unfinished_partial_bits += bits;
+    }
+
     /// Process one raw packet (byte slice as received from the demo frame).
     pub fn process_packet(
         &mut self,
@@ -410,6 +427,18 @@ impl ReplicationReader {
                     ids,
                 );
             }
+
+            // The close flag belongs to the FINAL fragment, not to the initial
+            // one `stored_header` came from: Unreal's `UChannel::SendBunch` puts
+            // `bOpen` on the first fragment and `bClose` on the last, and
+            // `ReceivedNextBunch` copies the last one's close flags onto the
+            // reassembled bunch. This branch used to return before ever reaching
+            // `handle_channel_close`, so a partial bunch could not close a
+            // channel at all: the actor stayed open for the rest of the replay,
+            // its close row was never emitted, and `actor_closes` never moved.
+            if header.b_close {
+                channel::handle_channel_close(header, stage.channels, stage.stats, sink);
+            }
             return;
         }
 
@@ -430,6 +459,20 @@ impl ReplicationReader {
         }
     }
 
+    /// Count a bunch-header failure and the payload bits it abandons.
+    ///
+    /// All three header stages -- package-map exports, must-be-mapped GUIDs and
+    /// the channel open -- leave the reader at an indeterminate bit when they
+    /// fail, so the rest of the bunch cannot be framed. Only
+    /// `bunch_header_failures` used to move: the abandoned bits appeared in no
+    /// tally at all, which is what let an out-of-range GUID count drop a whole
+    /// run of path declarations while every bit counter read zero.
+    fn abandon_bunch(payload: &mut BitReader<'_>, stage: &mut Stage<'_>) {
+        stage.stats.bunch_header_failures += 1;
+        stage.stats.skipped_bits += payload.bits_remaining();
+        payload.skip_remaining();
+    }
+
     /// Walk one whole (reassembled, if it was partial) bunch payload.
     fn process_complete_payload(
         header: &RawBunchHeader,
@@ -446,7 +489,7 @@ impl ReplicationReader {
             if channel::read_package_map_exports(payload, stage.stats, sink).is_ok() {
                 stage.stats.package_map_exports += 1;
             } else {
-                stage.stats.bunch_header_failures += 1;
+                Self::abandon_bunch(payload, stage);
             }
             return;
         }
@@ -457,7 +500,7 @@ impl ReplicationReader {
         if header.b_has_must_be_mapped_guids
             && channel::read_must_be_mapped_guids(payload, stage.stats).is_err()
         {
-            stage.stats.bunch_header_failures += 1;
+            Self::abandon_bunch(payload, stage);
             return;
         }
 
@@ -468,7 +511,7 @@ impl ReplicationReader {
             && channel::handle_channel_open(header, payload, stage.channels, stage.stats, sink)
                 .is_err()
         {
-            stage.stats.bunch_header_failures += 1;
+            Self::abandon_bunch(payload, stage);
         }
 
         // Look up channel -- if it never opened, or is not open now, skip.
@@ -832,6 +875,434 @@ mod tests {
             1,
             "truncated must-be-mapped list counted, not silently dropped"
         );
+    }
+
+    // --- bunch builders for the lifecycle tests below ---
+
+    /// The header flags one synthetic bunch varies. Everything not named here
+    /// is fixed: reliable, no must-be-mapped GUIDs, and the hardcoded channel
+    /// FName a reliable bunch always carries.
+    #[derive(Default)]
+    struct BunchSpec {
+        ch_index: u32,
+        b_open: bool,
+        b_close: bool,
+        b_has_package_map_exports: bool,
+        b_partial: bool,
+        b_partial_initial: bool,
+        b_partial_final: bool,
+    }
+
+    /// Append one bunch (header + payload) in `parse_bunch_header` order.
+    fn write_bunch(bits: &mut Vec<bool>, spec: &BunchSpec, payload_bits: &[bool]) {
+        let b_control = spec.b_open || spec.b_close;
+        bits.push(b_control);
+        if b_control {
+            bits.push(spec.b_open);
+            bits.push(spec.b_close);
+        }
+        if spec.b_close {
+            // Close reason Destroyed (0), read as SerializedInt(MAX).
+            write_serialized_int(bits, 0, crate::types::ChannelCloseReason::MAX);
+        }
+        bits.push(false); // bIsReplicationPaused
+        bits.push(true); // bReliable
+        write_int_packed(bits, spec.ch_index);
+        bits.push(spec.b_has_package_map_exports);
+        bits.push(false); // bHasMustBeMappedGUIDs
+        bits.push(spec.b_partial);
+        if spec.b_partial {
+            bits.push(spec.b_partial_initial);
+            bits.push(spec.b_partial_final);
+        }
+        bits.push(false); // VALORANT bit
+        bits.push(true); // channel FName: isHardcoded
+        write_int_packed(bits, 1); // FName index
+        write_serialized_int(
+            bits,
+            payload_bits.len() as u32,
+            crate::types::MAX_PACKET_SIZE_BITS,
+        );
+        bits.extend_from_slice(payload_bits);
+    }
+
+    /// One bunch, one packet.
+    fn build_bunch_packet(spec: &BunchSpec, payload_bits: &[bool]) -> Vec<u8> {
+        let mut bits = Vec::new();
+        write_bunch(&mut bits, spec, payload_bits);
+        build_packet(&bits)
+    }
+
+    /// Little-endian i32, LSB first, matching `BitReader::read_i32`.
+    fn write_i32_bits(bits: &mut Vec<bool>, value: i32) {
+        for i in 0..32 {
+            bits.push((value >> i) & 1 != 0);
+        }
+    }
+
+    /// A single actor RepLayout content block with an empty body.
+    fn write_empty_actor_block(bits: &mut Vec<bool>) {
+        bits.push(true); // hasRepLayout
+        bits.push(true); // isActor
+        write_int_packed(bits, 0); // contentBits = 0
+    }
+
+    /// An out-of-range GUID count drops every path declaration in the bunch,
+    /// and that has to be counted. It used to report the opposite:
+    /// `skip_remaining` swallowed the declarations, `package_map_exports` was
+    /// incremented as if the bunch had been read, and `bunch_header_failures`
+    /// and `skipped_bits` both stayed at zero -- so actors later missing their
+    /// path and class resolution had no counter pointing at the cause.
+    #[test]
+    fn a_package_map_export_with_an_impossible_guid_count_is_counted() {
+        let mut payload: Vec<bool> = Vec::new();
+        payload.push(false); // hasRepLayoutExport
+        write_i32_bits(&mut payload, crate::types::MAX_GUID_COUNT as i32 + 1);
+        // The declarations that get dropped.
+        payload.extend(std::iter::repeat_n(true, 24));
+
+        let packet = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_has_package_map_exports: true,
+                ..Default::default()
+            },
+            &payload,
+        );
+
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        let stats = reader.stats();
+        assert_eq!(
+            stats.package_map_exports, 0,
+            "a bunch whose declarations were all dropped is not an export processed"
+        );
+        assert_eq!(stats.bunch_header_failures, 1);
+        assert_eq!(stats.exported_guids, 0);
+        assert_eq!(
+            stats.skipped_bits, 24,
+            "the abandoned declaration bits must be tallied"
+        );
+    }
+
+    /// A negative count is the same failure with a different bit pattern: the
+    /// `as u32` cast in the range test would turn -1 into 4 294 967 295, so the
+    /// sign has to be tested on its own.
+    #[test]
+    fn a_negative_package_map_guid_count_is_counted() {
+        let mut payload: Vec<bool> = Vec::new();
+        payload.push(false); // hasRepLayoutExport
+        write_i32_bits(&mut payload, -1);
+        payload.extend(std::iter::repeat_n(true, 16));
+
+        let packet = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_has_package_map_exports: true,
+                ..Default::default()
+            },
+            &payload,
+        );
+
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        assert_eq!(reader.stats().bunch_header_failures, 1);
+        assert_eq!(reader.stats().package_map_exports, 0);
+        assert_eq!(reader.stats().skipped_bits, 16);
+    }
+
+    /// A RepLayout-export bunch is skipped whole -- that is a deliberate
+    /// limitation -- but it must not be indistinguishable from an export that
+    /// was read. It is counted on its own line rather than in `skipped_bits`,
+    /// which the oracle reads as bits lost across failed content blocks.
+    #[test]
+    fn a_rep_layout_export_bunch_is_counted_separately() {
+        let mut payload: Vec<bool> = Vec::new();
+        payload.push(true); // hasRepLayoutExport -> unsupported, skipped
+        payload.extend(std::iter::repeat_n(true, 32));
+
+        let packet = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_has_package_map_exports: true,
+                ..Default::default()
+            },
+            &payload,
+        );
+
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        let stats = reader.stats();
+        assert_eq!(stats.rep_layout_export_bunches, 1);
+        assert_eq!(
+            stats.bunch_header_failures, 0,
+            "not a failure, a limitation"
+        );
+        assert_eq!(stats.skipped_bits, 0, "no content block was involved");
+    }
+
+    /// A reassembled partial bunch must apply the close flag its final fragment
+    /// carried. Unreal writes `bOpen` on the first fragment and `bClose` on the
+    /// last, and `UChannel::ReceivedNextBunch` copies the last one's close flags
+    /// onto the reassembled bunch. This reader returned from the partial branch
+    /// before reaching `handle_channel_close`, so the actor stayed open forever,
+    /// its close row was never emitted and `actor_closes` never moved.
+    #[test]
+    fn a_reassembled_partial_bunch_applies_its_close_flag() {
+        let mut bits = Vec::new();
+
+        // Fragment 1: opens channel 2 for static actor GUID 3. Byte-aligned,
+        // as every non-final fragment must be.
+        let mut first: Vec<bool> = Vec::new();
+        write_int_packed(&mut first, 3);
+        write_bunch(
+            &mut bits,
+            &BunchSpec {
+                ch_index: 2,
+                b_open: true,
+                b_partial: true,
+                b_partial_initial: true,
+                ..Default::default()
+            },
+            &first,
+        );
+
+        // Fragment 2: the final fragment, carrying the close flag and the
+        // actor's content block.
+        let mut last: Vec<bool> = Vec::new();
+        write_empty_actor_block(&mut last);
+        write_bunch(
+            &mut bits,
+            &BunchSpec {
+                ch_index: 2,
+                b_close: true,
+                b_partial: true,
+                b_partial_final: true,
+                ..Default::default()
+            },
+            &last,
+        );
+
+        let packet = build_packet(&bits);
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        let stats = reader.stats();
+        assert_eq!(stats.partial_completed, 1);
+        assert_eq!(stats.actor_opens, 1);
+        assert_eq!(stats.content_blocks, 1, "the payload is still framed");
+        assert_eq!(
+            stats.actor_closes, 1,
+            "the final fragment closed the channel"
+        );
+        assert_eq!(sink.closes, vec![2], "the close row must be emitted");
+    }
+
+    /// Opening a channel that is already open replaces the actor silently:
+    /// every later block on the channel is attributed to the new actor and the
+    /// old one never gets a close. The replacement is what the wire says, so it
+    /// stands -- but it is counted, because nothing else moves when it happens.
+    #[test]
+    fn opening_an_already_open_channel_is_counted() {
+        let mut bits = Vec::new();
+        for actor_guid in [3u32, 5] {
+            let mut payload: Vec<bool> = Vec::new();
+            write_int_packed(&mut payload, actor_guid); // static (odd): no spawn block
+            write_empty_actor_block(&mut payload);
+            write_bunch(
+                &mut bits,
+                &BunchSpec {
+                    ch_index: 2,
+                    b_open: true,
+                    ..Default::default()
+                },
+                &payload,
+            );
+        }
+
+        let packet = build_packet(&bits);
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        let stats = reader.stats();
+        assert_eq!(stats.actor_opens, 2);
+        assert_eq!(
+            stats.actor_closes, 0,
+            "no close is fabricated for the first actor"
+        );
+        assert_eq!(
+            stats.channel_reopens_while_open, 1,
+            "the overwrite of a live channel must be counted"
+        );
+    }
+
+    /// A channel that was closed and is opened again is the ordinary case and
+    /// must NOT be counted as an overwrite.
+    #[test]
+    fn reopening_a_closed_channel_is_not_counted_as_an_overwrite() {
+        let mut bits = Vec::new();
+        let mut payload: Vec<bool> = Vec::new();
+        write_int_packed(&mut payload, 3);
+        write_empty_actor_block(&mut payload);
+        write_bunch(
+            &mut bits,
+            &BunchSpec {
+                ch_index: 2,
+                b_open: true,
+                ..Default::default()
+            },
+            &payload,
+        );
+        // Close with an empty payload.
+        write_bunch(
+            &mut bits,
+            &BunchSpec {
+                ch_index: 2,
+                b_close: true,
+                ..Default::default()
+            },
+            &[],
+        );
+        let mut payload: Vec<bool> = Vec::new();
+        write_int_packed(&mut payload, 5);
+        write_empty_actor_block(&mut payload);
+        write_bunch(
+            &mut bits,
+            &BunchSpec {
+                ch_index: 2,
+                b_open: true,
+                ..Default::default()
+            },
+            &payload,
+        );
+
+        let packet = build_packet(&bits);
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        let stats = reader.stats();
+        assert_eq!(stats.actor_opens, 2);
+        assert_eq!(stats.actor_closes, 1);
+        assert_eq!(stats.channel_reopens_while_open, 0);
+    }
+
+    /// A dynamic actor's spawn block is mandatory. A payload that ends at the
+    /// actor GUID used to be accepted as a successful open, emitting an actor
+    /// with archetype and level GUID 0 and no transforms while `actor_opens`
+    /// went up and `bunch_header_failures` stayed at zero -- a plausible actor
+    /// row invented out of nothing.
+    #[test]
+    fn a_dynamic_open_without_its_spawn_block_is_a_failure_not_an_actor() {
+        let mut payload: Vec<bool> = Vec::new();
+        write_int_packed(&mut payload, 2); // dynamic actor GUID, then nothing
+
+        let packet = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_open: true,
+                ..Default::default()
+            },
+            &payload,
+        );
+
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        let stats = reader.stats();
+        assert_eq!(stats.actor_opens, 0, "no actor may be invented");
+        assert_eq!(stats.actor_opens_missing_spawn, 1);
+        assert_eq!(stats.bunch_header_failures, 1);
+        assert!(sink.opens.is_empty(), "no open event may reach the sink");
+    }
+
+    /// A static actor has no spawn block, so its open is complete at the actor
+    /// GUID. This is the case the removed `!payload.at_end()` guard could be
+    /// mistaken for, and it must keep working.
+    #[test]
+    fn a_static_open_with_no_payload_left_is_still_an_actor() {
+        let mut payload: Vec<bool> = Vec::new();
+        write_int_packed(&mut payload, 3); // static (odd) actor GUID
+
+        let packet = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_open: true,
+                ..Default::default()
+            },
+            &payload,
+        );
+
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        assert_eq!(reader.stats().actor_opens, 1);
+        assert_eq!(reader.stats().actor_opens_missing_spawn, 0);
+        assert_eq!(reader.stats().bunch_header_failures, 0);
+        assert_eq!(sink.opens, vec![2]);
+    }
+
+    /// A partial bunch whose continuation never arrives is data loss, and at
+    /// EOF it is the only kind nothing reports: `partial_fragments` moved when
+    /// the initial fragment arrived, `partial_errors` stayed at zero because
+    /// nothing was out of sequence, and the buffered bits went out with the
+    /// accumulator. `finish` is where that becomes visible.
+    #[test]
+    fn an_unfinished_partial_bunch_is_reported_at_eof() {
+        let mut payload: Vec<bool> = Vec::new();
+        write_int_packed(&mut payload, 3); // 8 bits, byte-aligned
+
+        let packet = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_open: true,
+                b_partial: true,
+                b_partial_initial: true,
+                ..Default::default()
+            },
+            &payload,
+        );
+
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+        assert_eq!(
+            reader.stats().partial_errors,
+            0,
+            "an in-progress reassembly is not an error until the stream ends"
+        );
+
+        reader.finish();
+
+        let stats = reader.stats();
+        assert_eq!(stats.unfinished_partials, 1);
+        assert_eq!(stats.unfinished_partial_bits, 8);
+        assert_eq!(stats.partial_errors, 0, "still not a sequence error");
+    }
+
+    /// `finish` after a clean reassembly counts nothing, and a second call
+    /// counts nothing either -- the drained state must not be counted twice.
+    #[test]
+    fn finish_is_idempotent_and_silent_on_a_clean_stream() {
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&[0x01], 0, &mut sink);
+
+        reader.finish();
+        reader.finish();
+
+        assert_eq!(reader.stats().unfinished_partials, 0);
+        assert_eq!(reader.stats().unfinished_partial_bits, 0);
     }
 
     /// An unaligned window is realigned to bit zero of the staging buffer --

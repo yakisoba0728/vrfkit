@@ -24,6 +24,17 @@ pub enum FrameError {
     #[error("packet size {size} exceeds maximum {max}")]
     PacketTooLarge { size: i32, max: i32 },
 
+    /// A frame's `timeSeconds` was finite but does not scale to a millisecond
+    /// value a `u32` can hold.
+    ///
+    /// Separate from the non-finite case, which is not an error: the reference
+    /// maps NaN and both infinities to 0 and this crate matches it. A finite
+    /// value has no such mapping -- the reference keeps it in a signed `long`,
+    /// while [`crate::DemoPacket::time_ms`] is a `u32`, so there is no answer
+    /// to give that is not invented.
+    #[error("frame time {seconds} s is outside the representable millisecond range")]
+    TimeOutOfRange { seconds: f32 },
+
     /// The data was truncated mid-frame.
     #[error("{context}: needed {needed} bytes, only {available} available")]
     Truncated {

@@ -117,6 +117,11 @@ const MAX_PACKET_SIZE_BYTES: i32 = 16384 / 8; // 2048
 /// `time_ms` is derived from the frame's `timeSeconds` field: scaled by 1000
 /// in f64, rounded half away from zero, and 0 when `timeSeconds` is not
 /// finite. All three match the C# reference; see the conversion site.
+///
+/// Parity stops at the type. The reference holds the result in a signed
+/// `long`, so it can carry a negative or very large frame time; this is a
+/// `u32` and cannot, and a value that does not fit is reported as
+/// [`FrameError::TimeOutOfRange`] rather than saturated onto 0 or `u32::MAX`.
 #[derive(Debug, Clone)]
 pub struct DemoPacket<'a> {
     /// Time of the enclosing DemoFrame, in milliseconds.
@@ -169,8 +174,29 @@ pub fn iter_demo_frames(
         // the opposite end of the range from what the reference produces. That
         // is reachable: `time_seconds` is a raw read_f32 over replay bytes with
         // no validation, so any bit pattern can arrive here.
+        //
+        // Finiteness is not the whole guard, though, because `as u32` also
+        // saturates in *both* directions on finite values. A frame time of
+        // -1.0 s is finite, scales to -1000 ms, and lands on 0 -- the
+        // timestamp of the replay's own first frame -- so every packet in that
+        // frame is exported at a plausible wrong time and nothing anywhere
+        // reports it. A large finite value collapses onto u32::MAX the same
+        // way. The reference keeps a signed `long` and can carry both; a `u32`
+        // cannot, so the value is refused instead of folded onto whichever end
+        // of the range happens to be nearer.
+        //
+        // The comparison reads the *rounded* value, not the input. `-0.0004 s`
+        // rounds to `-0.0`, which is not less than `0.0`, so near-zero
+        // negatives stay a legitimate 0 ms rather than becoming the first
+        // rejection a real replay hands us.
         let time_ms = if time_seconds.is_finite() {
-            (f64::from(time_seconds) * 1000.0).round() as u32
+            let ms = (f64::from(time_seconds) * 1000.0).round();
+            if ms < 0.0 || ms > f64::from(u32::MAX) {
+                return Err(FrameError::TimeOutOfRange {
+                    seconds: time_seconds,
+                });
+            }
+            ms as u32
         } else {
             0
         };
@@ -364,6 +390,61 @@ mod tests {
         assert_eq!(time_ms_of(f32::NAN), 0, "NaN");
         assert_eq!(time_ms_of(f32::NEG_INFINITY), 0, "-inf");
         assert_eq!(time_ms_of(f32::INFINITY), 0, "+inf");
+    }
+
+    /// Run one frame and return the whole result, so a rejection is inspectable.
+    fn run_frame(time_secs: f32) -> Result<u32, FrameError> {
+        let flags = FLAG_HAS_STREAMING_FIXES | FLAG_GAME_SPECIFIC_FRAME_DATA;
+        let data = build_minimal_frame(time_secs, &[0x00], flags);
+        let mut cache = NetGuidCache::new();
+        iter_demo_frames(&data, flags, &mut cache, |_| {})
+    }
+
+    #[test]
+    fn a_negative_frame_time_is_rejected_rather_than_folded_onto_zero() {
+        // `-1.0` is finite, so the guard above lets it through; the signed
+        // millisecond value is -1000 and `as u32` saturates that to 0 -- the
+        // timestamp of the replay's own first frame. Every packet in the frame
+        // is then exported at a plausible wrong time with nothing to show for
+        // it. The reference computes a signed `long` and can carry the value;
+        // `time_ms` cannot, and refusing beats inventing.
+        let err = run_frame(-1.0).unwrap_err();
+        assert!(
+            matches!(err, FrameError::TimeOutOfRange { .. }),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn a_frame_time_past_the_u32_millisecond_range_is_rejected_rather_than_saturated() {
+        // The other end of the same cast: 5e6 s is 5e9 ms, past u32::MAX, and
+        // saturating lands every packet on 49.7 days.
+        let err = run_frame(5.0e6).unwrap_err();
+        assert!(
+            matches!(err, FrameError::TimeOutOfRange { .. }),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn a_negative_time_that_rounds_to_zero_milliseconds_is_still_accepted() {
+        // Regression guard, and the reason the check reads the *rounded* value
+        // rather than the input: `-0.0004` rounds to `-0.0`, which is not less
+        // than `0.0`, so it stays a legitimate 0 ms instead of becoming the
+        // first rejection a real replay hands us.
+        assert_eq!(time_ms_of(-0.0004), 0);
+        assert_eq!(time_ms_of(-0.0), 0);
+        assert_eq!(time_ms_of(0.0), 0);
+    }
+
+    #[test]
+    fn a_frame_time_just_inside_the_u32_range_is_accepted() {
+        // Regression guard on the boundary itself, so the check cannot become
+        // an off-by-one that rejects representable times. 4_294_967 s is exact
+        // in f32 (it needs 23 mantissa bits) and scales to 4_294_967_000 ms,
+        // just under u32::MAX. A competitive match runs to about 2,300 s, so
+        // this is already three orders of magnitude past anything real.
+        assert_eq!(time_ms_of(4_294_967.0), 4_294_967_000);
     }
 
     #[test]

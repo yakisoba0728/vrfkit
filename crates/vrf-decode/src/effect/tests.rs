@@ -430,3 +430,97 @@ fn a_value_field_of_the_wrong_width_is_rejected() {
         "expected UnexpectedPayloadWidth, got {err:?}"
     );
 }
+
+/// A tail of 1-7 bits was categorically accepted, and it should not be.
+///
+/// The nearby rationale for tolerating sub-byte leftovers is that byte padding
+/// "cannot carry an element". That reasoning does not apply here: this function
+/// is handed the RPC parameter's exact declared `payload_bits`, which already
+/// excludes the storage padding -- the doc comment on
+/// `decode_effect_blob_json` says so in as many words, and warns that feeding
+/// `raw.len() * 8` in instead is a latent bug. So every bit inside this window
+/// is declared payload, and four declared bits nobody could account for are
+/// the same evidence of a wrong read that forty would be.
+#[test]
+fn a_sub_byte_tail_inside_the_declared_window_is_an_error() {
+    // count = 0, array terminator = 0, then four declared bits left over.
+    let raw = [0u8, 0u8, 0x0Fu8];
+    let err = decode_effect_blob_json(EffectArrayKind::Float, &raw, 20)
+        .expect_err("four declared, unconsumed bits must not be accepted");
+    assert!(
+        matches!(err, EffectBlobError::ResidualBits { remaining: 4 }),
+        "expected ResidualBits {{ remaining: 4 }}, got {err:?}"
+    );
+}
+
+/// An `IntPacked` member that does not fill its declared window must be
+/// rejected, exactly as a mis-sized float already is.
+///
+/// The fixed-width members check their width up front (`UnexpectedPayloadWidth`)
+/// while the tag and object-GUID members read an `IntPacked` and let
+/// `settle_field` skip whatever was left. The skip kept the stream aligned, so
+/// the blob decoded and no counter moved -- the accounting depended on which
+/// member happened to be reading rather than on the data.
+#[test]
+fn an_int_packed_member_that_underfills_its_window_is_rejected() {
+    // The well-formed one-element blob, with the TAG field's declared width
+    // widened from 16 to 24 bits and padded. Tag 284 is a two-byte IntPacked,
+    // so 8 of the 24 declared bits go uninterpreted.
+    let raw = [
+        0x02, 0x02, 0x10, 0x30, 0x39, 0x04, 0x00, 0x12, 0x40, 0x00, 0x00, 0x80, 0x3f, 0x00, 0x00,
+    ];
+    let err = decode_effect_blob_json(EffectArrayKind::Float, &raw, 120)
+        .expect_err("an underfilled IntPacked window must not pass");
+    assert!(
+        matches!(
+            err,
+            EffectBlobError::PayloadUnderread {
+                declared: 24,
+                consumed: 16
+            }
+        ),
+        "expected PayloadUnderread, got {err:?}"
+    );
+}
+
+/// An array whose payload stops before its terminator is a truncated array,
+/// and must not read as a complete one.
+///
+/// These arrays are sparse by design, so an element that never arrived renders
+/// as `{"tag":null,"value":null}` -- which is exactly what a truncated tail
+/// also produces. The terminator is the only thing that tells them apart.
+#[test]
+fn an_array_that_ends_without_its_terminator_is_rejected() {
+    // count=2, element 0 complete and closed, then the window simply ends --
+    // element 1 and the array terminator never arrive.
+    let raw = [
+        0x04, 0x02, 0x10, 0x20, 0x39, 0x04, 0x12, 0x40, 0x00, 0x00, 0x80, 0x3f, 0x00,
+    ];
+    let err = decode_effect_blob_json(EffectArrayKind::Float, &raw, 104)
+        .expect_err("a truncated array must not decode as a complete one");
+    assert!(
+        matches!(err, EffectBlobError::MissingTerminator { .. }),
+        "expected MissingTerminator, got {err:?}"
+    );
+}
+
+/// The byte after the array terminator has to actually be a terminator.
+///
+/// It was read with `let _ = ...`, discarding both the value and any error, so
+/// an arbitrary appended byte was consumed as though it were the expected zero
+/// and the blob passed. The C# reference discards it too; mirroring a reference
+/// that is silently permissive is the thing this crate declines to do.
+#[test]
+fn a_non_zero_trailing_terminator_is_rejected() {
+    // A well-formed 1-element float array, then one spare non-zero byte that
+    // lands exactly in the 8-bit trailing-terminator slot.
+    let raw = [
+        0x02, 0x02, 0x10, 0x20, 0x39, 0x04, 0x12, 0x40, 0x00, 0x00, 0x80, 0x3f, 0x00, 0x00, 0xAA,
+    ];
+    let err = decode_effect_blob_json(EffectArrayKind::Float, &raw, 120)
+        .expect_err("a non-zero trailing byte is not a terminator");
+    assert!(
+        matches!(err, EffectBlobError::NonZeroTerminator { .. }),
+        "expected NonZeroTerminator, got {err:?}"
+    );
+}

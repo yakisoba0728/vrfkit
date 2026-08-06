@@ -95,14 +95,28 @@ fn decode_updates_array(
         let encoded_index = reader.read_int_packed()?;
         if encoded_index == 0 {
             // Trailing padding: if exactly 8 bits remain, consume IntPacked.
-            if end_bit.saturating_sub(reader.position()) == 8 {
-                let _ = reader.read_int_packed();
+            //
+            // The result used to be dropped with `let _ =`. A single `0x01`
+            // here sets the continuation bit and demands a byte the window does
+            // not have, so the read fails -- and the RPC reported success with
+            // `error_count == 0` anyway. The read is still allowed to fail
+            // (these are padding bits; nothing downstream depends on them) but
+            // a tail that does not parse is evidence the grammar has drifted,
+            // so it is counted rather than swallowed.
+            if end_bit.saturating_sub(reader.position()) == 8 && reader.read_int_packed().is_err() {
+                result.error_count += 1;
             }
             break;
         }
 
         let index = encoded_index - 1;
         if index >= update_count {
+            // The index addresses an update the array never declared, so the
+            // position of the next handle is unknown and the tail has to go.
+            // That part is unchanged; what was missing is any trace of it.
+            // `Ok(update_count: n, total_moves: 0, error_count: 0)` is
+            // indistinguishable from a batch of well-formed empty updates.
+            result.error_count += 1;
             reader.skip_remaining();
             break;
         }
@@ -137,6 +151,12 @@ fn decode_single_update(
         let payload_bits = reader.read_int_packed()?;
 
         if u64::from(payload_bits) > reader.bits_remaining() {
+            // The field claims more bits than the whole updates window still
+            // holds, so this framing no longer describes the payload and the
+            // next handle cannot be located. Abandoning the window is right;
+            // reporting it as a clean end-of-update was not -- every update
+            // still queued behind this one goes with it.
+            result.error_count += 1;
             reader.skip_remaining();
             break;
         }
@@ -146,12 +166,25 @@ fn decode_single_update(
                 let mut sub = reader.sub_reader(u64::from(payload_bits))?;
                 if payload_bits >= 32 {
                     shooter_guid = Some(sub.read_u32()?);
+                } else {
+                    // Too narrow to hold the u32 it must carry. The field is
+                    // consumed either way, so the framing survives -- but the
+                    // update now has no character to attribute moves to, which
+                    // is a loss and not a shape of "no moves present".
+                    result.error_count += 1;
                 }
             }
             COMPONENT_DATA_STREAM_HANDLE => {
                 let mut sub = reader.sub_reader(u64::from(payload_bits))?;
                 if let Some(guid) = shooter_guid {
                     decode_component_data_stream(&mut sub, guid, result, emit)?;
+                } else {
+                    // A stream with no GUID: either handle 2 was undersized
+                    // (counted just above) or it has not arrived yet. The
+                    // decoder is single-pass and cannot rewind to it, so the
+                    // moves in this stream are dropped. Counted per occurrence,
+                    // so an update that hits both paths contributes two.
+                    result.error_count += 1;
                 }
             }
             _ => {

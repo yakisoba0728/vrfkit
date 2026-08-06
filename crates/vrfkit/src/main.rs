@@ -26,7 +26,9 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     match cli::run(&args) {
-        Ok(()) => ExitCode::SUCCESS,
+        // Not always SUCCESS: `validate` is an oracle and returns its own code.
+        // See `oracle::Verdict`.
+        Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::FAILURE

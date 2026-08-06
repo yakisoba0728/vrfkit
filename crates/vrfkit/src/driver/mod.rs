@@ -18,6 +18,7 @@
 
 mod checkpoints;
 mod summary;
+mod totals;
 mod writers;
 
 use std::fs;
@@ -26,9 +27,10 @@ use std::path::Path;
 use std::time::Instant;
 
 use vrf_container::{
-    ChunkIterator, ChunkType, decompress_replay_data, parse_event_chunk, parse_preamble,
+    ChunkIterator, ChunkType, decompress_replay_data_with_trailing, parse_event_chunk,
+    parse_preamble,
 };
-use vrf_decode::{OverlayErrorReport, OverlayStats};
+use vrf_decode::OverlayErrorReport;
 use vrf_export::{
     ActorWriter, EventRecord, EventWriter, FieldRecord, FieldWriter, MovementRecord,
     MovementWriter, NetGuidRecord, NetGuidWriter,
@@ -42,6 +44,7 @@ use crate::manifest;
 use crate::sink::{ChannelState, ExportSink, RecordBuffers};
 use checkpoints::{CheckpointStats, ReplayContext};
 use summary::RunTotals;
+use totals::SinkTotals;
 use writers::WriterThread;
 
 /// A packet descriptor collected from DemoFrame iteration.
@@ -50,6 +53,64 @@ struct PacketDesc {
     time_ms: u32,
     offset: usize,
     len: usize,
+}
+
+/// The first two payload words for an Event group that declares `word_count` of
+/// them, or `None` when the payload does not fit that layout.
+///
+/// The payload is `[u32 tag][N x u32 words][FString name][f32 seconds]` and is
+/// not self-describing: no count precedes the words. `N` was therefore assumed
+/// per group and the words copied from fixed offsets with nothing checking that
+/// the rest of the payload agreed. A build that changed `N` would not fail --
+/// `characterDeath` claims two words, and on a payload carrying one the second
+/// read lands exactly on the `FString`'s length prefix, which is a small
+/// positive integer and reads in the exported column as an entirely plausible
+/// killed NetGUID.
+///
+/// `N` is not readable forward, but it *is* checkable backward: the remaining
+/// three parts have known widths, so the assumed layout must consume the
+/// payload exactly. That is what this verifies. It is the same rule
+/// `vrf_decode::decode_field` applies to every leaf -- refuse to return a
+/// plausible wrong number when bits are left over -- applied to the container
+/// the leaves sit in.
+///
+/// A group claiming no words is not checked. Those are `spikePlanted` and
+/// friends plus every group this build does not recognise; they export no words
+/// either way, and measuring them against a layout nobody established would
+/// only manufacture alarms about payload shapes the project has never claimed
+/// to know.
+fn typed_event_words(payload: &[u8], word_count: u8) -> Option<(Option<u32>, Option<u32>)> {
+    if word_count == 0 {
+        return Some((None, None));
+    }
+    let words = usize::from(word_count);
+    let word_at = |i: usize| -> Option<u32> {
+        let start = 4 + i * 4;
+        payload
+            .get(start..start + 4)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    };
+
+    // The FString sits immediately after the words: an i32 length, then that
+    // many code units. Unreal counts the null terminator in the length, and a
+    // negative length means UTF-16 (two bytes per unit).
+    let name_at = 4 + words * 4;
+    let raw = payload
+        .get(name_at..name_at + 4)
+        .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]))?;
+    let units = i64::from(raw).unsigned_abs();
+    let name_bytes = if raw < 0 {
+        units.checked_mul(2)?
+    } else {
+        units
+    };
+    // tag + words + length prefix + name + the trailing f32.
+    let expected = (4 + words as u64 * 4) + 4 + name_bytes + 4;
+    if expected != payload.len() as u64 {
+        return None;
+    }
+
+    Some((word_at(0), if words >= 2 { word_at(1) } else { None }))
 }
 
 pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), CliError> {
@@ -125,17 +186,12 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     let mut movement_rows: u64 = 0;
     let mut event_rows: u64 = 0;
     let mut event_trailing_bytes: u64 = 0;
-    let mut overlay_stats = OverlayStats::default();
+    let mut replay_data_trailing_bytes: u64 = 0;
     let mut error_report = OverlayErrorReport::default();
-    let mut effect_blobs_decoded: u64 = 0;
-    let mut struct_blobs_decoded: u64 = 0;
-    let mut struct_blobs_failed: u64 = 0;
-    let mut struct_blob_first_error: Option<String> = None;
-    let mut multi_contents_items_emitted: u64 = 0;
-    let mut movement_rpc_errors: u64 = 0;
-    let mut movement_first_error: Option<String> = None;
-    let mut array_decode_errors: u64 = 0;
-    let mut truncated_rpcs: u64 = 0;
+    // Every sink-derived counter, in one place. See `totals`.
+    let mut sink_totals = SinkTotals::default();
+    let mut event_layout_mismatches: u64 = 0;
+    let mut event_first_layout_mismatch: Option<String> = None;
     let mut cp_stats = CheckpointStats::default();
 
     while let Some(chunk) = chunk_iter.next_chunk()? {
@@ -151,10 +207,11 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             let event = parse_event_chunk(payload)?;
             event_trailing_bytes += event.trailing_bytes as u64;
             // Typed payload words for groups whose word count is structurally
-            // fixed (zero residue over the corpus). Payload layout:
-            // [u32 tag][N x u32 words][FString][f32]; word0/word1 are the words
-            // right after the tag. `raw_payload` still keeps every byte.
-            let payload = event.payload;
+            // fixed. Payload layout: [u32 tag][N x u32 words][FString][f32].
+            // `typed_event_words` checks that the assumed N consumes the
+            // payload exactly before naming anything; a payload that disagrees
+            // yields no words and is counted, never guessed at.
+            // `raw_payload` still keeps every byte either way.
             let word_count: u8 = match event.group.as_str() {
                 "characterDeath" => 2,
                 "characterUltimateUsed" | "roundStarted" | "switchTeams" => 1,
@@ -162,11 +219,19 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
                 // group claims none rather than guessing.
                 _ => 0,
             };
-            let word_at = |i: usize| -> Option<u32> {
-                let start = 4 + i * 4;
-                payload
-                    .get(start..start + 4)
-                    .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            let (word0, word1) = match typed_event_words(event.payload, word_count) {
+                Some(words) => words,
+                None => {
+                    event_layout_mismatches += 1;
+                    event_first_layout_mismatch.get_or_insert_with(|| {
+                        format!(
+                            "{} declared {word_count} word(s) but its {}-byte payload does not fit that layout",
+                            event.group,
+                            event.payload.len()
+                        )
+                    });
+                    (None, None)
+                }
             };
             event_writer.push(EventRecord {
                 id: event.id,
@@ -176,8 +241,8 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
                 time2: event.time2,
                 payload_size: event.size_in_bytes,
                 raw_payload: event.payload.to_vec(),
-                word0: if word_count >= 1 { word_at(0) } else { None },
-                word1: if word_count >= 2 { word_at(1) } else { None },
+                word0,
+                word1,
             })?;
             event_rows += 1;
             continue;
@@ -198,7 +263,14 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             continue;
         }
 
-        let decompressed = decompress_replay_data(payload, ctx.compressed, ctx.encrypted)?;
+        // `_with_trailing` rather than the plain call: the outer chunk can be
+        // larger than the inner SizeInBytes, and the plain signature drops that
+        // excess with nothing to show for it. Counted, not rejected -- no replay
+        // has ever been measured carrying any, so failing on it would be
+        // guessing at a format we have not seen.
+        let (decompressed, trailing) =
+            decompress_replay_data_with_trailing(payload, ctx.compressed, ctx.encrypted)?;
+        replay_data_trailing_bytes += trailing as u64;
 
         // Phase 1: iterate DemoFrames -- populates cache, collects packet locations.
         packet_descs.clear();
@@ -227,26 +299,10 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
 
                 repl_reader.process_packet(pkt_data, pkt_id as i32, &mut sink);
 
-                // Accumulate overlay stats.
-                overlay_stats.decoded_ok += sink.stats.overlay.decoded_ok;
-                overlay_stats.decoded_err += sink.stats.overlay.decoded_err;
-                overlay_stats.raw_or_skip += sink.stats.overlay.raw_or_skip;
-                overlay_stats.not_in_table += sink.stats.overlay.not_in_table;
-                overlay_stats.no_field_name += sink.stats.overlay.no_field_name;
-                effect_blobs_decoded += sink.stats.effect_blobs_decoded;
-                struct_blobs_decoded += sink.stats.struct_blobs_decoded;
-                struct_blobs_failed += sink.stats.struct_blobs_failed;
-                multi_contents_items_emitted += sink.stats.multi_contents_items_emitted;
-                if struct_blob_first_error.is_none() {
-                    struct_blob_first_error = sink.stats.struct_blob_first_error.take();
-                }
-                movement_rpc_errors += sink.stats.movement_rpc_errors;
-                if movement_first_error.is_none() {
-                    movement_first_error = sink.stats.movement_first_error.take();
-                }
-                array_decode_errors += sink.stats.array.errors;
-                truncated_rpcs += sink.stats.truncated_rpcs;
-                error_report.merge_from(&sink.stats.overlay.error_report);
+                // The sink is dropped at the end of this scope, so a counter
+                // not read here is a counter that never existed. All of them
+                // go through one function; see `totals`.
+                sink_totals.absorb(&mut sink.stats, &mut error_report);
             }
 
             // Hand field and movement records to their writer threads.
@@ -301,6 +357,12 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     }
     net_guid_writer.finish()?;
 
+    // Drain fragments that never got their final piece. Without this the
+    // accumulator is simply dropped and a partial bunch lost at EOF is
+    // indistinguishable from one still legitimately in flight -- the counters
+    // it feeds only exist if someone asks for them.
+    repl_reader.finish();
+
     let net_stats = repl_reader.stats();
     let elapsed = start.elapsed();
 
@@ -341,22 +403,156 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             net_guid_rows,
             event_rows,
             event_trailing_bytes,
+            replay_data_trailing_bytes,
             elapsed,
-            effect_blobs_decoded,
-            struct_blobs_decoded,
-            struct_blobs_failed,
-            struct_blob_first_error,
-            multi_contents_items_emitted,
-            movement_rpc_errors,
-            movement_first_error,
-            array_decode_errors,
-            truncated_rpcs,
+            event_layout_mismatches,
+            event_first_layout_mismatch,
+            sink: sink_totals,
         },
-        &overlay_stats,
         &error_report,
         with_checkpoints.then_some(&cp_stats),
         &manifest_path,
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SinkTotals, typed_event_words};
+    use vrf_decode::OverlayErrorReport;
+
+    /// Every counter a packet's sink produced must survive the sink.
+    ///
+    /// `ExportSink` is rebuilt for each of a replay's ~530,000 packets, so a
+    /// counter the driver does not read is dropped 530,000 times and reads as a
+    /// permanent zero. `cnc_rpcs_emitted` was exactly that: the only evidence
+    /// the AbilitiesAndBuffs brute-force produced RPC structure at all, never
+    /// aggregated, so a build that stopped reaching that decoder would leave
+    /// "Decode errors: 0" and every other line on the summary untouched.
+    ///
+    /// This is one accumulation point shared by the ReplayData pass and the
+    /// checkpoint pass, so the same omission cannot be made twice.
+    #[test]
+    fn absorbing_a_packets_stats_keeps_every_counter() {
+        let mut report = OverlayErrorReport::default();
+        let mut totals = SinkTotals::default();
+
+        for _ in 0..2 {
+            let mut stats = crate::sink::ExportStats {
+                effect_blobs_decoded: 1,
+                struct_blobs_decoded: 2,
+                struct_blobs_failed: 3,
+                struct_blob_first_error: Some("blob boom".to_owned()),
+                multi_contents_items_emitted: 4,
+                movement_rpc_errors: 5,
+                movement_first_error: Some("movement boom".to_owned()),
+                truncated_rpcs: 6,
+                rpc_suffix_bits_dropped: 7,
+                cnc_rpcs_emitted: 8,
+                ..crate::sink::ExportStats::default()
+            };
+            stats.overlay.decoded_ok = 9;
+            stats.overlay.decoded_err = 10;
+            stats.overlay.raw_or_skip = 11;
+            stats.overlay.not_in_table = 12;
+            stats.overlay.no_field_name = 13;
+            stats.array.errors = 14;
+            totals.absorb(&mut stats, &mut report);
+        }
+
+        assert_eq!(totals.effect_blobs_decoded, 2);
+        assert_eq!(totals.struct_blobs_decoded, 4);
+        assert_eq!(totals.struct_blobs_failed, 6);
+        assert_eq!(totals.multi_contents_items_emitted, 8);
+        assert_eq!(totals.movement_rpc_errors, 10);
+        assert_eq!(totals.truncated_rpcs, 12);
+        assert_eq!(totals.rpc_suffix_bits_dropped, 14);
+        assert_eq!(totals.cnc_rpcs_emitted, 16);
+        assert_eq!(totals.array_decode_errors, 28);
+        assert_eq!(totals.overlay.decoded_ok, 18);
+        assert_eq!(totals.overlay.decoded_err, 20);
+        assert_eq!(totals.overlay.raw_or_skip, 22);
+        assert_eq!(totals.overlay.not_in_table, 24);
+        assert_eq!(totals.overlay.no_field_name, 26);
+        // First error wins, so a later packet cannot overwrite the one that
+        // names the build change.
+        assert_eq!(totals.struct_blob_first_error.as_deref(), Some("blob boom"));
+        assert_eq!(
+            totals.movement_first_error.as_deref(),
+            Some("movement boom")
+        );
+    }
+
+    /// Build an Event payload: `[u32 tag][words][FString][f32 seconds]`.
+    fn payload(tag: u32, words: &[u32], name: &str) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&tag.to_le_bytes());
+        for w in words {
+            out.extend_from_slice(&w.to_le_bytes());
+        }
+        // Unreal's FString length counts the null terminator.
+        let len = i32::try_from(name.len() + 1).expect("test name fits");
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(name.as_bytes());
+        out.push(0);
+        out.extend_from_slice(&1.5f32.to_le_bytes());
+        out
+    }
+
+    /// A payload that matches the assumed word count yields its words.
+    #[test]
+    fn a_payload_matching_the_assumed_layout_yields_its_words() {
+        let p = payload(
+            3,
+            &[0x1111_1111, 0x2222_2222],
+            "EReplayEventGroup::CharacterDeath",
+        );
+        assert_eq!(
+            typed_event_words(&p, 2),
+            Some((Some(0x1111_1111), Some(0x2222_2222)))
+        );
+        let p1 = payload(3, &[0x3333_3333], "EReplayEventGroup::RoundStart");
+        assert_eq!(typed_event_words(&p1, 1), Some((Some(0x3333_3333), None)));
+    }
+
+    /// A build that changes the word count must not export a plausible NetGUID
+    /// read out of the following `FString`.
+    ///
+    /// The words were copied from fixed offsets with nothing checking that the
+    /// rest of the payload agreed. `characterDeath` claims two words; a payload
+    /// carrying one puts the FString's length prefix exactly where `word1` is
+    /// read, and a length prefix is a small positive integer -- indistinguishable
+    /// from a NetGUID in the exported column. No counter moved and no error was
+    /// raised, because nothing had asked whether the layout still held.
+    #[test]
+    fn a_payload_that_does_not_fit_the_assumed_word_count_yields_nothing() {
+        // One real word, but `characterDeath`'s assumed count is two.
+        let p = payload(3, &[0x1111_1111], "EReplayEventGroup::CharacterDeath");
+        assert_eq!(
+            typed_event_words(&p, 2),
+            None,
+            "a payload one word short must refuse to name word1"
+        );
+        // ...and the reverse: three words where two were assumed.
+        let p3 = payload(3, &[1, 2, 3], "EReplayEventGroup::CharacterDeath");
+        assert_eq!(typed_event_words(&p3, 2), None);
+    }
+
+    /// A group that claims no words is not measured against a layout nobody
+    /// established. `spikePlanted` and every unrecognised group land here, and
+    /// they already export no words; validating them would only invent alarms
+    /// about payload shapes this project has never claimed to know.
+    #[test]
+    fn a_group_claiming_no_words_is_not_checked() {
+        assert_eq!(typed_event_words(&[], 0), Some((None, None)));
+        assert_eq!(typed_event_words(&[0xAB; 3], 0), Some((None, None)));
+    }
+
+    /// A truncated payload cannot be verified, so it yields nothing rather than
+    /// whatever `get()` happens to return.
+    #[test]
+    fn a_truncated_payload_yields_nothing() {
+        assert_eq!(typed_event_words(&[0u8; 6], 1), None);
+    }
 }

@@ -32,6 +32,19 @@
 //! branch where they could differ. The two therefore coexist without a
 //! reconciliation: they are never asked about the same rows.
 //!
+//! **That measurement predates four added rejections and has not been re-run.**
+//! This module now also refuses an `IntPacked` member that underfills its
+//! declared window, an array or element that ends without its terminator, a
+//! non-zero trailing terminator byte, and a residual of 1-7 bits (previously
+//! all four were accepted). Each is a branch where this module fails and the
+//! Python port still returns elements, so the "no input reaches a branch where
+//! they could differ" half of the claim is exactly what the changes put back in
+//! question. The reasoning says these fire on nothing well-formed -- an
+//! `IntPacked` is self-delimiting, and every pinned wire vector in
+//! [`tests`] still passes -- but that is an argument and a fixture set, not the
+//! census. Re-run `tools/check_effect_decoder.py` over the corpus to restore
+//! the claim to a measurement.
+//!
 //! This module's own tests are the repo's only executable specification of this
 //! wire format: eight pinned hex vectors lifted from real packets, with values
 //! checked against the C# reference. `tools/` contains no test files, so
@@ -201,6 +214,41 @@ pub enum EffectBlobError {
     /// A field's type consumed more bits than the field declared.
     #[error("field declared {declared} bits but its type read {consumed}")]
     PayloadOverread { declared: u32, consumed: u64 },
+
+    /// A field's type consumed FEWER bits than the field declared.
+    ///
+    /// The mirror of [`Self::PayloadOverread`], and it used to be silent: the
+    /// leftover was skipped so the next field still started in the right place,
+    /// and nothing recorded that part of a field had gone uninterpreted. The
+    /// fixed-width members already refused this shape via
+    /// [`Self::UnexpectedPayloadWidth`]; the `IntPacked` ones (the gameplay tag
+    /// and the object GUID) did not, which made the accounting depend on which
+    /// member happened to be reading.
+    ///
+    /// An `IntPacked` is self-delimiting -- it spends `ceil(bits/7)` whole
+    /// bytes and a writer-measured `payload_bits` matches it exactly -- so a
+    /// short read means the window was not what this decoder thinks it was.
+    #[error("field declared {declared} bits but its type read only {consumed}")]
+    PayloadUnderread { declared: u32, consumed: u64 },
+
+    /// The array ran out of bits without reading its terminator.
+    ///
+    /// An element index of `0` ends the array and a handle of `0` ends an
+    /// element. Reaching EOF instead was accepted, which made a payload cut
+    /// short indistinguishable from a complete one: the array is sparse by
+    /// design, so the elements that never arrived simply render as absent.
+    #[error("{context} ended without its terminator")]
+    MissingTerminator { context: &'static str },
+
+    /// The trailing byte after the array terminator was not zero.
+    ///
+    /// The C# parser reads that byte and discards both its value and any error.
+    /// Copying that made any appended byte a valid "terminator", so a payload
+    /// with one spare byte of anything passed as well-formed. This crate
+    /// already declines to mirror a reference that is silently permissive; see
+    /// the note on `decode_field` in `decode.rs`.
+    #[error("trailing terminator byte is {value}, expected 0")]
+    NonZeroTerminator { value: u32 },
 }
 
 /// Convenience alias.

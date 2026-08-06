@@ -67,7 +67,7 @@ use vrf_bitio::BitReader;
 
 use crate::cache::NetGuidCache;
 use crate::error::{Result, SchemaError};
-use crate::export::{NetFieldExport, NetFieldExportGroup};
+use crate::export::{NetFieldExport, NetFieldExportGroup, render_fname};
 use crate::guid::NetworkGuid;
 
 /// Maximum string size for a checkpoint path or name.
@@ -98,6 +98,24 @@ pub struct CheckpointTables {
     /// Entries whose path arrived as a hardcoded name-table index rather than
     /// a string. 24.3% of the corpus table; see [`read_checkpoint_tables`].
     pub hardcoded_paths: u32,
+    /// Export groups that collided with one already declared in this same
+    /// checkpoint -- same `path_name_index`, or a path (or path alias) already
+    /// registered.
+    ///
+    /// A checkpoint restates the entire export map once into a fresh cache, so
+    /// this is not the incremental re-export that
+    /// [`NetGuidCache::add_export_group`] merges: it is two declarations
+    /// claiming one slot. The merge happens anyway -- it is the same cache the
+    /// ReplayData stream needs it for -- which means the second group's fields
+    /// land in the first group's vector, the second path resolves to the first
+    /// group, and `/A`'s populated slots can be overwritten by `/B`'s. All of
+    /// that used to happen behind `Ok`, `group_count = 2` and a frame offset
+    /// that checks out, because the offset check only proves the cursor stayed
+    /// aligned, not that the map means anything.
+    ///
+    /// Expected to be zero. Non-zero means the group map cannot be trusted for
+    /// that checkpoint, and the counter is the only thing that will say so.
+    pub group_collisions: u32,
 }
 
 /// Read a checkpoint archive's guid cache and export-group map into `cache`,
@@ -177,6 +195,7 @@ pub fn read_checkpoint_tables(data: &[u8], cache: &mut NetGuidCache) -> Result<C
     }
 
     let mut exported_fields = 0u32;
+    let mut group_collisions = 0u32;
     for _ in 0..group_count {
         let path = reader.read_fstring(MAX_FSTRING_BYTES)?;
         let path_name_index = reader.read_int_packed()?;
@@ -188,6 +207,18 @@ pub fn read_checkpoint_tables(data: &[u8], cache: &mut NetGuidCache) -> Result<C
                 count: declared,
                 max: MAX_FIELDS_PER_GROUP,
             });
+        }
+
+        // Tested before the add, and with exactly the two lookups
+        // `add_export_group` merges on: `by_path` (which includes the path
+        // aliases it registers) and `by_index`. The cache is fresh per
+        // checkpoint, so a hit here means this checkpoint declared the slot
+        // twice, not that a previous frame did. See
+        // [`CheckpointTables::group_collisions`] for what the merge then does.
+        if cache.get_group_by_index(path_name_index).is_some()
+            || cache.get_group_by_path(&path).is_some()
+        {
+            group_collisions += 1;
         }
 
         cache.add_export_group(NetFieldExportGroup::new(
@@ -235,6 +266,7 @@ pub fn read_checkpoint_tables(data: &[u8], cache: &mut NetGuidCache) -> Result<C
         exported_fields,
         frame_offset: map_end,
         hardcoded_paths,
+        group_collisions,
     })
 }
 
@@ -244,13 +276,18 @@ pub fn read_checkpoint_tables(data: &[u8], cache: &mut NetGuidCache) -> Result<C
 /// different fields that merely look alike: this one's leading byte is
 /// `bHardcoded`, while a guid entry's is `PathIsString` with the opposite
 /// meaning. Keeping them apart is what stops the wrong one being reused.
+///
+/// The *rendering* is shared, though -- see [`render_fname`]. The two readers
+/// may not be merged, but a name must mean the same thing whichever one
+/// produced it, and this one used to drop the instance number just as the other
+/// did.
 fn read_fname(reader: &mut BitReader<'_>) -> Result<String> {
     if reader.read_u8()? != 0 {
         Ok(reader.read_int_packed()?.to_string())
     } else {
         let name = reader.read_fstring(MAX_FSTRING_BYTES)?;
-        let _number = reader.read_i32()?;
-        Ok(name)
+        let number = reader.read_i32()?;
+        Ok(render_fname(name, number))
     }
 }
 
@@ -389,6 +426,101 @@ mod tests {
             matches!(err, SchemaError::CheckpointFrameOffsetMismatch { .. }),
             "expected a frame-offset mismatch, got {err}"
         );
+    }
+
+    /// The checkpoint reader discarded the FName number exactly as the
+    /// ReplayData reader did, so two slots whose base string matches came out
+    /// with one name. Both sites now render the same way: number 0 is the bare
+    /// name, and any other number is the base plus `_{number - 1}`, which is
+    /// how Unreal displays it.
+    #[test]
+    fn fname_numbers_survive_into_the_checkpoint_field_names() {
+        // Hand-built: the shared `build` helper always writes number 0.
+        let mut body = Vec::new();
+        body.extend_from_slice(&1u32.to_le_bytes()); // one group
+        push_fstring(&mut body, "/Script/G.Thing");
+        push_packed(&mut body, 7);
+        push_packed(&mut body, 2); // two slots
+        for (slot, number) in [(0u32, 0i32), (1, 1)] {
+            body.push(1); // exported
+            push_packed(&mut body, slot);
+            body.extend_from_slice(&0u32.to_le_bytes()); // checksum
+            body.push(0); // FName: not hardcoded
+            push_fstring(&mut body, "Value");
+            body.extend_from_slice(&number.to_le_bytes());
+        }
+
+        let mut archive = Vec::new();
+        archive.extend_from_slice(&((20 + body.len() - 8) as u32).to_le_bytes());
+        archive.extend_from_slice(&[0u8; 12]);
+        archive.extend_from_slice(&0u32.to_le_bytes()); // no guid entries
+        archive.extend_from_slice(&body);
+
+        let mut cache = NetGuidCache::new();
+        read_checkpoint_tables(&archive, &mut cache).unwrap();
+
+        let g = cache.get_group_by_path("/Script/G.Thing").unwrap();
+        assert_eq!(g.get_field(0).map(|f| f.name.as_str()), Some("Value"));
+        assert_eq!(g.get_field(1).map(|f| f.name.as_str()), Some("Value_0"));
+    }
+
+    /// A checkpoint restates the whole export map into a fresh cache, so two
+    /// groups sharing a `path_name_index` inside ONE checkpoint is not the
+    /// incremental re-export that [`NetGuidCache::add_export_group`] merges --
+    /// it is two different paths claiming one slot.
+    ///
+    /// The merge is left in place: it is correct for the ReplayData stream that
+    /// shares the cache, and changing it here would change what every corpus
+    /// checkpoint resolves to on evidence this crate cannot see. What the
+    /// collision does is pinned below, and counted, so a run says so instead of
+    /// returning `Ok` with `group_count = 2` and a frame offset that checks out.
+    #[test]
+    fn two_groups_at_one_index_are_counted_as_a_collision() {
+        // `build` writes path_name_index 7 for every group, so two groups is
+        // exactly the collision.
+        let archive = build(
+            &[],
+            &[("/Script/G.A", 0, &[]), ("/Script/G.B", 0, &[])],
+            &[0u8; 8],
+        );
+        let mut cache = NetGuidCache::new();
+        let t = read_checkpoint_tables(&archive, &mut cache).unwrap();
+
+        assert_eq!(t.group_count, 2, "the wire declared two groups");
+        assert_eq!(t.group_collisions, 1);
+        // The consequence the counter names: /B resolves to the group /A made.
+        assert_eq!(
+            cache
+                .get_group_by_path("/Script/G.B")
+                .map(|g| g.path.as_str()),
+            Some("/Script/G.A"),
+            "the second group was merged into the first, so its path is a lie"
+        );
+    }
+
+    /// Two groups at different indices are the ordinary case and must not be
+    /// counted.
+    #[test]
+    fn two_groups_at_different_indices_are_not_a_collision() {
+        let mut body = Vec::new();
+        body.extend_from_slice(&2u32.to_le_bytes()); // two groups
+        for (path, index) in [("/Script/G.A", 7u32), ("/Script/G.B", 8)] {
+            push_fstring(&mut body, path);
+            push_packed(&mut body, index);
+            push_packed(&mut body, 0); // no field slots
+        }
+
+        let mut archive = Vec::new();
+        archive.extend_from_slice(&((20 + body.len() - 8) as u32).to_le_bytes());
+        archive.extend_from_slice(&[0u8; 12]);
+        archive.extend_from_slice(&0u32.to_le_bytes()); // no guid entries
+        archive.extend_from_slice(&body);
+
+        let mut cache = NetGuidCache::new();
+        let t = read_checkpoint_tables(&archive, &mut cache).unwrap();
+        assert_eq!(t.group_count, 2);
+        assert_eq!(t.group_collisions, 0);
+        assert_eq!(cache.group_count(), 2);
     }
 
     #[test]

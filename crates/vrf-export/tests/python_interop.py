@@ -48,6 +48,41 @@ print("interop dir: %s" % INTEROP_DIR)
 FIELDS_PATH = INTEROP_DIR / "fields_interop.parquet"
 MOVEMENT_PATH = INTEROP_DIR / "movement_interop.parquet"
 
+
+class CheckFailed(Exception):
+    """A correctness gate in this script did not hold."""
+
+
+def check(condition, message):
+    """Gate that survives `python -O`.
+
+    Every gate below used to be a bare `assert`. `python -O` and
+    PYTHONOPTIMIZE=1 strip the `assert` statement at compile time, so under
+    either one this script walked the whole file, printed every "verified"
+    tick, printed ALL CHECKS PASSED and exited 0 -- against parquet files it
+    had checked nothing about. A verification script that cannot fail is not a
+    verification script, and the mode that disables it is one environment
+    variable set anywhere in a CI image.
+
+    `raise` is not compiled out, so this holds under every optimisation level.
+    """
+    if not condition:
+        raise CheckFailed(message)
+
+
+def _assert_gates_are_live():
+    """Prove `check` still fails before trusting anything it reports.
+
+    This is the guard for the regression itself: if someone reintroduces the
+    `assert` form, or wraps `check` in something that swallows, the script
+    stops rather than certifying a file it never inspected.
+    """
+    try:
+        check(False, "self-test")
+    except CheckFailed:
+        return
+    raise SystemExit("FATAL: check() did not raise -- the gates below are not enforced")
+
 def verify_fields():
     """Verify the fields parquet file."""
     print("=" * 60)
@@ -58,7 +93,7 @@ def verify_fields():
     schema = table.schema
 
     print(f"\nRow count: {table.num_rows}")
-    assert table.num_rows == 10_000, f"Expected 10000 rows, got {table.num_rows}"
+    check(table.num_rows == 10_000, f"Expected 10000 rows, got {table.num_rows}")
     print("  ✓ Row count matches (10,000)")
 
     print(f"\nColumn count: {len(schema)}")
@@ -68,11 +103,21 @@ def verify_fields():
         # since subobject blocks started carrying it, but this list was never
         # updated, so the script aborted here before reaching verify_movement().
         "object_net_guid",
-        "group_path", "handle", "field_name", "bit_count",
+        "group_path", "handle", "field_name",
+        # The same omission again, and the reason it went unnoticed for a
+        # second time: `compatible_checksum` sits between `field_name` and
+        # `bit_count` in fields_schema(), and this list was not updated with
+        # it. Under `python -O` the gate below was compiled away entirely, so
+        # the mismatch printed a tick and reached ALL CHECKS PASSED.
+        "compatible_checksum",
+        "bit_count",
         "raw_bits", "value_i64", "value_f64", "value_bool", "value_str",
     ]
     actual_cols = [f.name for f in schema]
-    assert actual_cols == expected_cols, f"Column mismatch:\n  expected: {expected_cols}\n  actual:   {actual_cols}"
+    check(
+        actual_cols == expected_cols,
+        f"Column mismatch:\n  expected: {expected_cols}\n  actual:   {actual_cols}",
+    )
     print("  ✓ Column names match")
 
     # Print schema details
@@ -82,26 +127,30 @@ def verify_fields():
 
     # Verify dictionary encoding on group_path
     gp_type = schema.field("group_path").type
-    assert "dictionary" in str(gp_type).lower() or "dict" in str(gp_type).lower(), \
-        f"group_path should be dictionary-encoded, got {gp_type}"
+    check(
+        "dictionary" in str(gp_type).lower() or "dict" in str(gp_type).lower(),
+        f"group_path should be dictionary-encoded, got {gp_type}",
+    )
     print("\n  ✓ group_path is dictionary-encoded")
 
     fn_type = schema.field("field_name").type
-    assert "dictionary" in str(fn_type).lower() or "dict" in str(fn_type).lower(), \
-        f"field_name should be dictionary-encoded, got {fn_type}"
+    check(
+        "dictionary" in str(fn_type).lower() or "dict" in str(fn_type).lower(),
+        f"field_name should be dictionary-encoded, got {fn_type}",
+    )
     print("  ✓ field_name is dictionary-encoded")
 
     # Verify nullability
-    assert schema.field("field_name").nullable, "field_name should be nullable"
-    assert schema.field("raw_bits").nullable, "raw_bits should be nullable"
-    assert schema.field("value_i64").nullable, "value_i64 should be nullable"
+    check(schema.field("field_name").nullable, "field_name should be nullable")
+    check(schema.field("raw_bits").nullable, "raw_bits should be nullable")
+    check(schema.field("value_i64").nullable, "value_i64 should be nullable")
     print("  ✓ Nullable columns are correct")
 
     # Verify some null values exist
     fn_col = table.column("field_name")
     null_count = fn_col.null_count
     print(f"\n  field_name null count: {null_count} / {table.num_rows}")
-    assert null_count > 0, "Expected some null field_names"
+    check(null_count > 0, "Expected some null field_names")
     print("  ✓ Null values present where expected")
 
     # File size
@@ -120,7 +169,7 @@ def verify_movement():
     schema = table.schema
 
     print(f"\nRow count: {table.num_rows}")
-    assert table.num_rows == 50_000, f"Expected 50000 rows, got {table.num_rows}"
+    check(table.num_rows == 50_000, f"Expected 50000 rows, got {table.num_rows}")
     print("  ✓ Row count matches (50,000)")
 
     expected_cols = [
@@ -132,7 +181,10 @@ def verify_movement():
         "timestamp", "movement_state", "move_type",
     ]
     actual_cols = [f.name for f in schema]
-    assert actual_cols == expected_cols, f"Column mismatch:\n  expected: {expected_cols}\n  actual:   {actual_cols}"
+    check(
+        actual_cols == expected_cols,
+        f"Column mismatch:\n  expected: {expected_cols}\n  actual:   {actual_cols}",
+    )
     print("  ✓ Column names match")
 
     print("\nSchema:")
@@ -141,7 +193,7 @@ def verify_movement():
 
     # No column should be nullable
     for field in schema:
-        assert not field.nullable, f"{field.name} should not be nullable"
+        check(not field.nullable, f"{field.name} should not be nullable")
     print("\n  ✓ No nullable columns (all dense)")
 
     file_size = os.path.getsize(MOVEMENT_PATH)
@@ -267,6 +319,7 @@ def benchmark_ndjson_comparison(fields_table, movement_table):
 
 
 if __name__ == "__main__":
+    _assert_gates_are_live()
     print(f"Interop dir: {INTEROP_DIR}")
     print(f"pyarrow version: {pyarrow.__version__}")
     print()

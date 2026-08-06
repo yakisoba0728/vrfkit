@@ -19,7 +19,9 @@ USAGE:
 
 SUBCOMMANDS:
     inspect   Print replay info, header, branch, and chunk summary
-    validate  Run the RepLayout grammar oracle on all content blocks
+    validate  Run the RepLayout grammar oracle on every ReplayData content
+              block. Exits 0 when all of them framed, 1 when any did not,
+              and 2 when the file carried no content blocks to check.
               --diagnostics  Print full context for every malformed/skipped event
     export    Write five Parquet tables (fields, movement, actors,
               net_guids, events) + manifest.json
@@ -30,7 +32,12 @@ SUBCOMMANDS:
                              either way.
 ";
 
-pub fn run(args: &[String]) -> Result<(), CliError> {
+/// Dispatch one command line and report the process exit code it earns.
+///
+/// `Ok(0)` for every subcommand that has nothing to conclude. `validate` is the
+/// exception: it is an oracle, so it returns its own code and `Ok` no longer
+/// means "clean". See [`oracle::Verdict`].
+pub fn run(args: &[String]) -> Result<u8, CliError> {
     // args[0] = binary name
     if args.len() < 2 {
         return Err(CliError::Usage(USAGE.to_string()));
@@ -41,19 +48,19 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             let file = args
                 .get(2)
                 .ok_or_else(|| CliError::Usage("inspect requires <file.vrf>".to_string()))?;
-            inspect::run(file)
+            inspect::run(file).map(|()| 0)
         }
         "validate" => {
             let file = args
                 .get(2)
                 .ok_or_else(|| CliError::Usage("validate requires <file.vrf>".to_string()))?;
             let diagnostics = args.iter().skip(3).any(|a| a == "--diagnostics");
-            oracle::run(file, diagnostics)
+            oracle::run(file, diagnostics).map(oracle::Verdict::exit_code)
         }
-        "export" => export(args),
+        "export" => export(args).map(|()| 0),
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
-            Ok(())
+            Ok(0)
         }
         other => Err(CliError::Usage(format!(
             "unknown subcommand: {other}\n{USAGE}"

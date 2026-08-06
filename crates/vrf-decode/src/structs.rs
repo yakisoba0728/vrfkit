@@ -133,9 +133,44 @@ pub enum StructBlobError {
     #[error("too many fields in element ({context})")]
     TooManyFields { context: &'static str },
 
+    /// A byte enum carried a value this decoder has no variant for.
+    ///
+    /// The `from_byte` conversions used to return `None` here, and `None` is
+    /// also how these members spell "the wire did not send this field" -- so an
+    /// unrecognised value became an ABSENT field with nothing counted. That is
+    /// exactly the shape a game patch adding an enum variant takes: the column
+    /// quietly starts going null on the new rows while every counter stays
+    /// clean. Reported instead, so the first one is loud.
+    #[error("{enum_name} has no variant for value {value} in {context}")]
+    UnknownEnumValue {
+        enum_name: &'static str,
+        value: u8,
+        context: &'static str,
+    },
+
     /// Bits remain after the blob should have been fully consumed.
     #[error("not fully consumed: {remaining} bits left")]
     NotFullyConsumed { remaining: u64 },
+
+    /// A member did not consume the field window the wire declared for it.
+    ///
+    /// Each field gets a `sub_reader` of its declared width, and that reader
+    /// advances the PARENT past the whole window whatever the member does with
+    /// it -- so the blob stays aligned, the remaining members decode, and
+    /// `ensure_consumed` at the end is satisfied. The leftover was invisible.
+    ///
+    /// Concretely: a 64-bit `EndOfRoundMoney` whose first 32 bits read 1900
+    /// exported 1900 and dropped the other 32, counted as decoded rather than
+    /// failed. Whether 1900 was the value or half of one, nothing could say --
+    /// which is the situation this crate treats as worse than a failure.
+    #[error("{name} (handle {handle}) left {remaining} of its {declared} bits unread in {context}")]
+    MemberNotFullyConsumed {
+        name: String,
+        handle: u32,
+        declared: u32,
+        remaining: u64,
+        context: &'static str,
+    },
 }
 
 /// Convenience alias.

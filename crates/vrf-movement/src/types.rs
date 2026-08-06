@@ -50,10 +50,21 @@ pub struct RpcDecodeResult {
     pub total_moves: u32,
     /// Number of character updates in the batch.
     pub update_count: u32,
-    /// Number of updates that had parse errors.
+    /// Number of decode problems that cost data, counted per occurrence.
     ///
     /// An update that fails mid-parse leaves the bit cursor at an
     /// indeterminate position, so the rest of its array is skipped rather than
     /// guessed at. The count is what makes that skip visible instead of silent.
+    ///
+    /// It covers the framing anomalies too, and for the same reason: an update
+    /// index past the declared count, a field declaring more bits than its
+    /// window holds, a shooter-GUID field too narrow to hold a `u32`, a
+    /// component stream with no GUID to attribute it to, and a trailing
+    /// padding byte that does not parse. None of those can be recovered from
+    /// mid-stream, so each one still discards what follows it -- but every one
+    /// of them used to return `Ok` with this field at zero, which is
+    /// bit-for-bit the shape of a batch of well-formed empty updates. What is
+    /// counted here is loss, not severity: one update may contribute more than
+    /// one.
     pub error_count: u32,
 }
