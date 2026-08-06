@@ -131,6 +131,35 @@ fn enum_remaining_bits_reads_all_remaining() {
     assert_eq!(result, DecodedValue::I64(3));
 }
 
+/// A payload too wide for the type must not come back as its low 32 bits.
+///
+/// `decode_enum_remaining_bits` read `min(bits_left, 32)` and returned, and
+/// `decode_field` exempted this one type from the not-fully-consumed check --
+/// so the bits above 32 were dropped without reaching any counter, any error,
+/// or the `skipped_bits` tally. The C# reference throws here. This follows
+/// `UnsignedOverflow`'s rule instead: a value that cannot be represented is an
+/// error, not a plausible wrong number.
+///
+/// Latent on this corpus -- handles 215/216 reach 47 at most across 71
+/// replays, so nothing triggers it today. That is exactly why it needs a test.
+#[test]
+fn enum_remaining_bits_wider_than_32_errors_instead_of_truncating() {
+    let data = [0xFFu8; 5];
+    let err = decode_field(FieldType::EnumRemainingBits, &data, 40).unwrap_err();
+    assert!(
+        matches!(err, DecodeError::NotFullyConsumed { remaining: 8 }),
+        "expected the leftover to be reported, got {err:?}"
+    );
+}
+
+/// The boundary still decodes: 32 bits is representable, 33 is not.
+#[test]
+fn enum_remaining_bits_reads_a_full_32() {
+    let data = [0xFFu8, 0xFF, 0xFF, 0xFF];
+    let result = decode_field(FieldType::EnumRemainingBits, &data, 32).unwrap();
+    assert_eq!(result, DecodedValue::I64(u32::MAX as i64));
+}
+
 #[test]
 fn gameplay_tag_reads_packed_index() {
     // IntPacked 252: 252 = 0b11111100, split: chunk0=252&0x7F=124, chunk1=252>>7=1

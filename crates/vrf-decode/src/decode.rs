@@ -104,7 +104,14 @@ pub fn decode_field(
     let mut reader = BitReader::with_bit_len(data, u64::from(bit_count));
     let value = dispatch_decode(field_type, &mut reader, bit_count)?;
     let remaining = reader.bits_remaining();
-    if remaining != 0 && !matches!(field_type, FieldType::EnumRemainingBits) {
+    // No exemption. `EnumRemainingBits` used to have one, because its decoder
+    // reads `min(bits_left, 32)` and a wider payload therefore left bits over
+    // -- so the exemption turned "wider than the type can hold" into silence:
+    // no error, no counter, not even the `skipped_bits` tally. The C# reference
+    // throws in that case. Now the leftover reports itself like any other
+    // layout mismatch, which is also what `UnsignedOverflow` does one variant
+    // up: refuse to return a plausible wrong number.
+    if remaining != 0 {
         return Err(DecodeError::NotFullyConsumed { remaining });
     }
     Ok(value)
