@@ -404,7 +404,7 @@ disabling it would produce files this crate could not explain.
 
 | Script | Produces |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,249 + 84 handles) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,255 + 84 handles) |
 | `apply_type_corrections.py` | Applies verified corrections/additions to that file and recomputes the two-line generation header |
 | `extract_checksum_types.py` | `crates/vrf-decode/src/checksum_table.rs` -- `compatible_checksum` -> `FieldType`, learned from the fields the overlay table already declares. Needs an export directory rather than the C# tree, since checksums come from the replay. Checksums whose donors disagree are dropped, which is the safety property. Repeat `--export` to widen the basis; the run **merges** into the committed table rather than replacing it, because a checksum this basis did not happen to see is still correct. `--check` asks whether the two agree *where they overlap* -- not whether they are byte-identical, which a content-addressed table cannot be across different sets of replays. |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
@@ -418,15 +418,15 @@ the script does not trust its own apply count -- it **re-verifies the final
 state after applying** and fails if it disagrees.
 
 ```bash
-python tools/apply_type_corrections.py           # apply, then verify (88 corrections)
+python tools/apply_type_corrections.py           # apply, then verify (94 corrections)
 python tools/apply_type_corrections.py --check   # verify only
 ```
 
-Those 88 corrections are the whole `EXPECTED` set the script re-verifies; `ADDITIONS` is the
+Those 94 corrections are the whole `EXPECTED` set the script re-verifies; `ADDITIONS` is the
 subset of it that has no C# descriptor behind it at all.
 
 The `ADDITIONS` pass inserts items the C# descriptor is **silent on**. There are
-currently 64 of them, and every one is admitted on wire evidence written into the
+currently 70 of them, and every one is admitted on wire evidence written into the
 comment above the list -- bit width, value range, distribution -- and nothing else.
 The original three still show the bar: `BaseTeamState.LoadoutValue` /
 `AverageLoadoutValue` (26-I, where the reference declares the type of the same
@@ -518,14 +518,14 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 419 passing
+cargo test                                        # 421 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 115 files, ASCII only
 python tools/check_effect_decoder.py --check      # 12 cases
 python -m unittest discover -s tools/tests -p "test_*.py"   # 176 passing
 python tools/check_docs.py --fast                 # do the docs still describe this repo
-python tools/apply_type_corrections.py --check    # 88 corrections present
+python tools/apply_type_corrections.py --check    # 94 corrections present
 ```
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a

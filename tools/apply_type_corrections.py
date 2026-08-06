@@ -268,6 +268,46 @@ ADDITIONS = [
      "GameObject_Phoenix_Q_FlameWallManager_Production."
      "GameObject_Phoenix_Q_FlameWallManager_Production_C:MulticastAddSmokeScreenPoint",
      "Scale3D", "FieldType::VectorDouble"),
+    # `249` on the effect-placement RPCs: the rotation that pairs with `248`.
+    #
+    # `248` is already here as the placement location. `249` follows it,
+    # unnamed, on 441,814 rows over 20 replays, and three things settle it as a
+    # `RotationShort`. The widths are 3, 19, 35 and 51 bits, which is exactly
+    # `3 + 16 x (flags set)` for that type's three conditional components and
+    # is not a shape any other type produces. Decoding all 441,814 that way
+    # consumes every payload exactly, no leftover at any width. And the table
+    # already carries `ReplayPlayContinuousEffectAtLocation.Rotation` as
+    # `RotationShort` -- the same UFunction parameter, from a replay that named
+    # it instead of sending the number.
+    #
+    # Decoded, yaw is set on 92.5% of rows, pitch on 14.5% and roll on 0.1%,
+    # all on a 0.0055-degree lattice: a ground-placed effect facing somewhere.
+    #
+    # Not to be confused with the other `249` above, which is a `VectorDouble`.
+    # That one is 192 bits under a different checksum; this family shares
+    # 2526428638 and is 19 bits on most rows. Same number, different property --
+    # which is the whole reason the checksum is the thing to check.
+    ("/Script/ShooterGame.LocationalEffectManagerComponent:ClientPlayOneShotEffectAtLocation",
+     "249", "FieldType::RotationShort"),
+    ("/Script/ShooterGame.ReplayEffectComponent:ReplayPlayContinuousEffectAtLocation",
+     "249", "FieldType::RotationShort"),
+    ("/Script/ShooterGame.ReplayEffectComponent:ReplayPlayOneShotEffectAtLocation",
+     "249", "FieldType::RotationShort"),
+    ("/Script/ShooterGame.EffectManagerComponent:ReplayRecordOneShotEffect",
+     "249", "FieldType::RotationShort"),
+    ("/Script/ShooterGame.EffectManagerComponent:ReplayRecordContinuousEffect",
+     "249", "FieldType::RotationShort"),
+    # The RNG component's seed. 120,853 rows, one group, one checksum, 32 bits
+    # on every row, and 120,852 of the values distinct across the full i32
+    # range -- which is what a seed looks like and what a counter, a time or a
+    # GUID does not. The sibling `AuthInitialRandomSeed` matches in width and
+    # in that near-total distinctness.
+    #
+    # Int32 rather than UInt32 is not settled by the data: the same 32 bits
+    # read either way. It follows Unreal's `FRandomStream`, whose seed is an
+    # `int32`, and the choice only changes the sign of half the values.
+    ("/Script/ShooterGame.NetworkedRandomNumberGeneratorComponent",
+     "AuthCurrentRandomSeed", "FieldType::Int32"),
     ("/Script/ShooterGame.BaseTeamState", "AverageLoadoutValue", "FieldType::Int32"),
     ("/Script/ShooterGame.BaseTeamState", "LoadoutValue", "FieldType::Int32"),
     ("/Script/ShooterGame.DamageableComponent:MulticastNotifyHeal",

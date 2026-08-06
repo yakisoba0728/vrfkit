@@ -118,6 +118,14 @@ class AdditionsTests(unittest.TestCase):
         `HandleNumber`, whose 3,741 rows hold a dense 1..765. One entry each is
         enough -- checksum propagation carries both to their sibling RPCs.
 
+        64 -> 70 is two findings, not six. Five entries type `249` as the
+        rotation that pairs with the already-typed `248` on every RPC that
+        sends the pair numbered -- 441,814 rows, whose 3/19/35/51-bit widths
+        are `3 + 16 x (flags set)` and nothing else, and whose named spelling
+        the table already carries on the same UFunction. The sixth is
+        `AuthCurrentRandomSeed`, 120,853 rows of near-total distinctness across
+        the full i32 range.
+
         63 -> 64 types `LocalizedStat` as `FText`. It was removed at 62 -> 61
         for being a wrong `FString`; it is back because a decoder now exists
         and the reason given for waiting was itself wrong -- `Statistic` was
@@ -154,7 +162,7 @@ class AdditionsTests(unittest.TestCase):
         2 as `AuthResourceAmount`, so the leaf remap in `sink/paths.rs` now
         reaches a real declaration and the guessed name is gone.
         """
-        self.assertEqual(len(atc.ADDITIONS), 64, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 70, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.

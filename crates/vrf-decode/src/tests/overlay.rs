@@ -1163,3 +1163,78 @@ fn the_weapon_classes_type_215_and_216_like_everything_else() {
         }
     }
 }
+
+/// The parameter after `248` is the rotation, on all five RPCs that send it.
+///
+/// `248` is already typed `VectorDouble` -- the placement location -- and `249`
+/// follows it, unnamed, on 441,814 rows over 20 replays. Three things settle
+/// it. The widths are 3, 19, 35 and 51 bits, which is exactly
+/// `3 + 16 x (flags set)` for `RotationShort`'s three conditional components
+/// and nothing else. Decoding all 441,814 that way consumes every payload
+/// exactly, with no leftover on any of the four widths. And the same UFunction
+/// declares this parameter by name on builds where the replay names it: the
+/// table already carries `ReplayPlayContinuousEffectAtLocation.Rotation` as
+/// `RotationShort`.
+///
+/// It is not the other `249`. That one is a `VectorDouble` under a different
+/// checksum; this family shares 2526428638 and is 19 bits, not 192.
+#[test]
+fn the_effect_placement_rotation_is_typed_on_every_rpc_that_sends_it() {
+    const GROUPS: [&str; 5] = [
+        "/Script/ShooterGame.LocationalEffectManagerComponent:ClientPlayOneShotEffectAtLocation",
+        "/Script/ShooterGame.ReplayEffectComponent:ReplayPlayContinuousEffectAtLocation",
+        "/Script/ShooterGame.ReplayEffectComponent:ReplayPlayOneShotEffectAtLocation",
+        "/Script/ShooterGame.EffectManagerComponent:ReplayRecordOneShotEffect",
+        "/Script/ShooterGame.EffectManagerComponent:ReplayRecordContinuousEffect",
+    ];
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    for group in GROUPS {
+        assert_eq!(
+            table.lookup(group, "249"),
+            Some(FieldType::RotationShort),
+            "{group}"
+        );
+    }
+    // The location it pairs with, unchanged, on the four that send it numbered.
+    // `ReplayPlayContinuousEffectAtLocation` is the exception and the reason
+    // this typing is safe: that one names both parameters, and its `Rotation`
+    // is already `RotationShort`. The numbered spelling now agrees with the
+    // named one on the same function.
+    for group in GROUPS {
+        if group.ends_with("ReplayPlayContinuousEffectAtLocation") {
+            assert_eq!(
+                table.lookup(group, "Rotation"),
+                Some(FieldType::RotationShort),
+                "{group} names its rotation and must still agree"
+            );
+            continue;
+        }
+        assert_eq!(
+            table.lookup(group, "248"),
+            Some(FieldType::VectorDouble),
+            "{group} 248"
+        );
+    }
+}
+
+/// The RNG component's seed is an Int32.
+///
+/// 120,853 rows, one group, one checksum, 32 bits on every row, and 120,852 of
+/// the 120,853 values distinct across the full i32 range -- which is what a
+/// seed looks like and what nothing else does. The sibling
+/// `AuthInitialRandomSeed` on the same component matches in width and in that
+/// near-total distinctness.
+///
+/// Int32 over UInt32 is not settled by the data -- the same 32 bits read either
+/// way -- and follows Unreal's `FRandomStream`, whose seed is an `int32`.
+#[test]
+fn the_random_number_generator_seed_is_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    assert_eq!(
+        table.lookup(
+            "/Script/ShooterGame.NetworkedRandomNumberGeneratorComponent",
+            "AuthCurrentRandomSeed"
+        ),
+        Some(FieldType::Int32)
+    );
+}
