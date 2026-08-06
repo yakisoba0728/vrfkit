@@ -188,9 +188,11 @@ The names say what the effect is and the measured durations match the game:
 An AoE applies to several victims in the same tick, each as its own row, so
 "who was affected" comes out per player rather than per cast.
 
-Over 71 demo replays the same pairing gives a much larger sample. These are not
-corrections to the table above -- that one is honest about being a single
-replay -- but they are the numbers to quote:
+Over 71 demo replays the Play/Stop pairs give a much larger duration sample.
+These are not corrections to the table above -- that one is honest about being a
+single replay -- but they are the numbers to quote. **Durations only:** this
+pass paired by `EffectID` to measure length and did not account for every
+unpaired Play, so it says nothing about the termination rate above.
 
 | effect container | n | median |
 |---|---|---|
@@ -209,9 +211,13 @@ rest of the column trustworthy.
 **Exclude the caster-side containers.** `_Equip_C` and `_Cast_C` play on the
 *caster's* actor and are the cast animation, not an application: counting them
 inflates Leer by 1,365 and Paranoia by 390 over these replays, and would make a
-one-sided cast look like a debuff on the caster. Filter by suffix; the three
-seen are `FXC_Vampire_4_NearsightAOE_Equip_C`,
-`FXC_Wraith_Q_NearsightMissile_Equip_C` and `FXC_Sequoia_Q_FragileMissile_Cast_C`.
+one-sided cast look like a debuff on the caster. The three seen are
+`FXC_Vampire_4_NearsightAOE_Equip_C`, `FXC_Wraith_Q_NearsightMissile_Equip_C`
+and `FXC_Sequoia_Q_FragileMissile_Cast_C`. The `_Equip_C`/`_Cast_C` suffix is
+the observed convention on those three, not a guarantee -- like the container
+names above it is cosmetic-asset naming, so a caster-side effect under some
+other suffix would not be caught by a suffix filter alone. Confirm against the
+actor the effect plays on when it matters.
 
 Two caveats. The container names are cosmetic-effect assets, so the same
 gameplay state can arrive under more than one name and a pure-audio variant sits
@@ -491,6 +497,18 @@ the three are limits rather than tasks.
    string-table asset path and a key, and the key is the statistic name. Nothing
    depends on it -- `Statistic` already carries the same fact as an enum -- so
    this is worth doing only when a second `FText` field turns up.
+
+5. **Type the `LifeChangeEvents[]` members.** Optional -- the array already
+   parses and `docs/DATA.md`'s health section is built on it -- but the members
+   arrive untyped: `ChangedComponent` wants `ObjectNetGuid`, `LifeResult` and
+   `DeltaLife` want `Float`, `bAliveAfterChange` wants `Bool`. `LifeResult` is
+   currently `Raw` on `Damage_Base`/`Damage_Point`, and all four are absent from
+   `MulticastSectionLifeChange`, `MulticastNotifyHeal` and
+   `MulticastNotifyOverhealDecay`. **The hook is the additive pass in
+   `crates/vrfkit/src/sink/rpc.rs` (the "Second, additive pass" branch), not
+   `is_known_array_field`** -- that one is reached only from `on_field`, the
+   replicated-property path, and never from `on_rpc`. Finding that out again
+   costs more than the change does.
 
 **Type nothing you have not seen decode.** `LocalizedStat` was typed `FString`
 on the strength of the name and produced null on 3,011 of 3,011 rows while
