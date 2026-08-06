@@ -286,12 +286,6 @@ ADDITIONS = [
     # typed from wire evidence, same bar as Ping/Money.
     ("/Script/ShooterGame.UsableComponent", "HighestProgress", "FieldType::Float"),
     ("/Script/ShooterGame.UsableComponent", "bIsActive", "FieldType::Bool"),
-    # MagazineAmmo is a bare group the replay never names (every row is handle 2,
-    # field_name None), so the handle table has to name it first -- see
-    # HANDLE_ADDITIONS. On a bomb replay the u32 runs 3..25 and steps down a
-    # 25,24,23... depletion ramp per weapon: classic magazine ammo. Int32,
-    # wire-evidence only (no C# descriptor).
-    ("MagazineAmmo", "AmmoCount", "FieldType::Int32"),
     # The 192-bit RPC vectors. Unreal serialises an FTransform parameter as
     # three separate double vectors on this wire -- rotation, translation,
     # scale -- and no descriptor declares any of them, so 54,859 rows arrived
@@ -381,7 +375,7 @@ EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 #: the newly-named handle. Keyed on (group_path, handle) and inserted at the
 #: sorted position the binary search over OVERLAY_HANDLE_TABLE requires.
 HANDLE_ADDITIONS = [
-    ("MagazineAmmo", 2, "AmmoCount"),
+
 ]
 
 GROUP_RE = re.compile(r'group_path: "([^"]+)"')

@@ -117,8 +117,13 @@ class AdditionsTests(unittest.TestCase):
         of a pair whose `StartMovementTime` is already Float, and
         `HandleNumber`, whose 3,741 rows hold a dense 1..765. One entry each is
         enough -- checksum propagation carries both to their sibling RPCs.
+
+        49 -> 48 removes one: `MagazineAmmo.AmmoCount`. The cooked game says
+        that group is an `AmmoComponent`, which the replay declares with handle
+        2 as `AuthResourceAmount`, so the leaf remap in `sink/paths.rs` now
+        reaches a real declaration and the guessed name is gone.
         """
-        self.assertEqual(len(atc.ADDITIONS), 49, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 48, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.
@@ -126,8 +131,16 @@ class AdditionsTests(unittest.TestCase):
         Each names a handle the replay leaves unnamed so the overlay can type
         it; the (group, field_name) must also appear in ADDITIONS, or the name
         resolves to nothing. Pinned exactly like ADDITIONS.
+
+        Currently empty. Its one entry named `MagazineAmmo` handle 2 as
+        `AmmoCount`, which the cooked game corrected: that group is an
+        `AmmoComponent`, and the replay declares handle 2 on it as
+        `AuthResourceAmount`. The leaf remap in `sink/paths.rs` reaches the real
+        declaration, so the hand-written name is not needed. The mechanism stays
+        because the next unnamed handle will not necessarily have a native group
+        to borrow from.
         """
-        self.assertEqual(len(atc.HANDLE_ADDITIONS), 1, atc.HANDLE_ADDITIONS)
+        self.assertEqual(len(atc.HANDLE_ADDITIONS), 0, atc.HANDLE_ADDITIONS)
         addition_keys = {(g, f) for g, f, _t in atc.ADDITIONS}
         for group, _handle, field in atc.HANDLE_ADDITIONS:
             self.assertIn(

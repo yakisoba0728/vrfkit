@@ -189,7 +189,12 @@ purchase; all ten players' purchases are replicated.
 
 Roughly in value order. Each names the file to touch first.
 
-1. **Remaining Blueprint components** — `ZoomStateMachine`, `ReserveAmmo`,
+1. ~~**Remaining Blueprint components**~~ — **done, from the shipped game.** See
+   "Reading component classes out of the game" below. `ReserveAmmo` (item 3)
+   went with it. What follows is the original entry, kept because the inferred
+   route it describes is still the one to use without a game install:
+
+   `ZoomStateMachine`, `ReserveAmmo`,
    `CalloutRegionTracker`, `VisionComponent`, `*StateMachine`, ... resolve to a
    bare Blueprint class name instead of their native parent group, exactly as
    `InventoryComponent` did before the remap. Two ways to get the
@@ -239,6 +244,47 @@ Roughly in value order. Each names the file to touch first.
 5. **Exact ability cast count** — confirmed wire-limit: the GAS stream is
    state-sync, not one RPC per cast. No on-wire work helps; the approximation is
    ability-actor spawns + `characterUltimateUsed`/`UltimateActive`.
+
+### Reading component classes out of the game
+
+The bare group names -- `ZoomStateMachine`, `ReserveAmmo`, `CalloutRegionTracker`
+and a dozen others -- are Blueprint *component instance* names, not classes, so
+nothing in a replay says what they are. The installed game does say, and it does
+not need decryption: VALORANT's IoStore containers are `Compressed+Signed+
+Indexed` with a zero encryption GUID, so the `Encrypted` flag is simply off.
+
+The chain, for the record, since nothing in `tools/` reproduces it:
+
+1. `.utoc` -> directory index -> the asset paths in each container.
+2. A cooked Blueprint stores each component as a `<Name>_GEN_VARIABLE` export.
+   Its `ClassIndex` is an `FPackageObjectIndex` of type `ScriptImport`, which is
+   a hash rather than a name.
+3. `global.ucas` holds the script object map -- a name batch followed by
+   `FScriptObjectEntry` records -- which turns that hash into
+   `/Script/ShooterGame.<Class>` by walking the outer chain.
+
+Chunks are Oodle-compressed, so this needs an Oodle-capable reader; vrfkit
+already depends on `oozextract` for replay chunks, which is what was used.
+
+Every pair landed in `KNOWN_SUBOBJECT_CLASS_PATHS` in
+`crates/vrfkit/src/sink/paths.rs`. The check on the method is that the same pass
+independently reproduced `InventoryComponent -> AresInventory` and
+`AbilitiesAndBuffsComponent -> AresAbilitySystemComponent`, which had been
+inferred from handle shapes and are now confirmed.
+
+It also corrected one guess. `MagazineAmmo` and `ReserveAmmo` are both
+`AmmoComponent`, a group the replay declares with handle 2 as
+`AuthResourceAmount` -- so the hand-written `AmmoCount` name, the one entry
+`HANDLE_ADDITIONS` ever had, was in the right place with the wrong word. Both
+ammo counters now read the real declaration and that mechanism is empty.
+
+Effect on 02d4d478: unnamed handles 17,013 -> 2,460, decoded OK 702,149 ->
+714,070, `Typed` 71.0% -> 72.2%, decode errors still 0. Corpus-wide, 215/215
+replays with decode errors 0.
+
+**This is the one thing here that a game patch can silently invalidate.** A
+renamed component stops matching and its handles go quiet again; no test in the
+repo can see that, because the replay never named it either.
 
 ### Closed: what the three mechanisms cannot reach
 

@@ -718,22 +718,34 @@ fn usable_component_interaction_is_typed() {
     assert_eq!(table.lookup(group, "bIsActive"), Some(FieldType::Bool));
 }
 
-/// `MagazineAmmo` is a bare group the replay never names -- every row is
-/// handle 2 with field_name None. `HANDLE_ADDITIONS` names it `AmmoCount` and
-/// the overlay types it Int32. On a bomb replay the u32 steps down 25,24,23...
-/// per weapon as the magazine empties: classic ammo. This pins the full path
-/// (handle table -> name -> type) that a name-only ADDITION cannot exercise.
+/// Ammo used to need a hand-written handle name and no longer does.
+///
+/// `MagazineAmmo` and `ReserveAmmo` are bare groups the replay never names --
+/// every row is handle 2 with field_name None -- so `HANDLE_ADDITIONS` called
+/// handle 2 `AmmoCount` and typed it Int32. The cooked game says both are
+/// `AmmoComponent`, which the replay *does* declare, with handle 2 as
+/// `AuthResourceAmount`. The leaf remap in `vrfkit`'s `sink/paths.rs` sends
+/// them there, so the guess is gone and the real declaration does the work.
+///
+/// What is pinned here is the destination: the group the remap targets carries
+/// the name and the type, so a regression in the table shows up as this test
+/// rather than as silently unnamed handles.
 #[test]
-fn magazine_ammo_is_typed_via_handle_addition() {
+fn the_ammo_component_declares_the_handle_the_bare_groups_land_on() {
     let table = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
+    const GROUP: &str = "/Script/ShooterGame.AmmoComponent";
+    assert_eq!(
+        table.lookup(GROUP, "AuthResourceAmount"),
+        Some(FieldType::Int32),
+    );
+
     let mut stats = OverlayStats::default();
     let data = 12i32.to_le_bytes();
-    // field_name is None on the wire; the handle table must supply "AmmoCount".
     let result = apply_overlay_with_handle(
         &table,
-        "MagazineAmmo",
-        group_hash_state("MagazineAmmo"),
-        None,
+        GROUP,
+        group_hash_state(GROUP),
+        Some("AuthResourceAmount"),
         2,
         Some(&data),
         32,
