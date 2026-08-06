@@ -428,7 +428,7 @@ succeeded: 215/215        failed: 0
 branches : 215  ++Ares-Core+release-13.01
 pass rate: min 97.487378%  median 99.323434%  max 99.682485%
 totals   : 136,545,822 content blocks / 98,884,839 fields / 75,571,092 RPCs
-           malformed framing 0        unattributed 1,972,018,965 bits
+           malformed framing 0        unattributed 1,972,019,383 bits
 ```
 
 `malformed framing 0` means the container, bunch, and content-block framing
@@ -515,8 +515,8 @@ still at zero across the 215-replay corpus.
 
 ```
 Decoded OK:   716,633      Decode errors:      0
-Raw/Skip:      74,624      Not in table: 195,697
-No field name: 17,013      Typed:          72.5%
+Raw/Skip:      74,657      Not in table: 195,697
+No field name:  1,996      Typed:          72.5%
 Effect blobs:  53,908
 ```
 
@@ -545,7 +545,7 @@ denominator includes every RPC parameter, so it reads low -- most of `Not in
 table` is RPC parameters without a C# descriptor, plus the groups the replay
 declares (475) that are not in the table. (Rows with a filled `value_*` also
 include additive decoders like effects and structs, so real value coverage is
-wider than this ratio -- see the 64.5% untyped figure above.) A row whose type
+wider than this ratio -- see the 36.8% untyped figure above.) A row whose type
 is unknown still ships with `raw_bits`, so it is **uninterpreted, not lost.**
 
 **Zero decode errors** holds across all 215 replays, checked corpus-wide by

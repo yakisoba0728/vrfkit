@@ -61,8 +61,8 @@ purchase; all ten players' purchases are replicated.
 
 | Data | Source | Status |
 |---|---|---|
-| K / D / A | `fields` CombatReport nested array | ✅ multiset-identical to the C# parser |
-| Kill log (killer/killed NetGUID) | `events.characterDeath` word0/word1 + `MulticastNotifyKilledEnemy` RPC | ✅ 132/132 reconciled |
+| K / D / A | `fields` CombatReport nested array | ✅ multiset-identical to the C# parser (on 13.01 -- see below) |
+| Kill log (killer/killed NetGUID) | `events.characterDeath` word0/word1 + `MulticastNotifyKilledEnemy` RPC | ✅ 132/132 on 13.01; 9,677/9,677 over 71 replays on 13.02 by the same two-source join |
 | Multikill level | `MulticastNotifyKilledEnemy.MultikillLevel` | ✅ single/double/triple/quad |
 | Kill timeline | `events.characterDeath` time_ms | ✅ (recovers the +13 the C# parser lost) |
 
@@ -71,7 +71,15 @@ purchase; all ten players' purchases are replicated.
 | Data | Source | Status |
 |---|---|---|
 | Damage dealt / received | CombatReport `DamageDealt` / `DamageReceived` | ✅ |
-| Regional damage (head/body/leg) | `Interactions[].Regions[].Hits/Damage` | ✅ multiset-identical |
+| Regional damage (head/body/leg) | `Interactions[].Regions[].Hits/Damage` | ✅ multiset-identical (on 13.01) |
+
+**Every "vs C#" claim in this file was measured on build 13.01 or earlier.**
+The reference parser registers payload transforms for 12.10, 12.11, 13.00 and
+13.01 only, so it refuses a 13.02 replay outright -- which is every demo the
+local machine now records. The comparisons still run against the preserved
+13.01 fixture, and `tools/compare_combat_report.py` still reports every
+interesting shape identical there. They cannot currently be re-run on 13.02 by
+anyone, so read them as fixed to the build they were taken on.
 | Wallbang | `bIsWallPen` | ✅ |
 | Damage source (weapon, location, bone) | `MulticastNotifyDamage` (EquippableUsed, ImpactLocation, ImpactBone) | ✅ |
 | ADR | derived from CombatReport | ◐ +0.1–0.2 vs trackers (wire damage is fractional; not a bug) |
@@ -85,6 +93,15 @@ after the change**), `DeltaLife`, and `bAliveAfterChange`. Nothing has to be
 accumulated. The array is still `raw_bits` -- typing it is listed under What's
 next -- but it walks with the ordinary RepLayout dynamic-array framing, and the
 decoded handles are the manifest handles with no offset.
+
+**Nothing shipped here reproduces the figures below.** The array is `raw_bits`,
+so these came from an ad-hoc walker written to check the semantics, and that
+script is not in the repo -- `vrfkit export` emits no `LifeResult`,
+`DeltaLife`, `bAliveAfterChange` or `ChangedComponent` column, and no tool
+reads them. Treat the numbers as provenance-tagged evidence for the
+*semantics*, not as something a reader can re-run. Typing the four members is
+item 5 under What's next, and doing it is what would make this section
+checkable.
 
 Verified over 69 replays on build 13.02: 377,487 elements, zero parse errors,
 zero residual bits, and every element carrying exactly four members (these RPC
@@ -128,7 +145,7 @@ Phoenix -- Run It Back, not a decode fault. On the reset broadcast
 | Ability state stream | `AbilitiesAndBuffsComponent` (`_cnc_h1`) | ◐ fc=34 brute-forced, inner decomposed (flag + u32 stream); semantics need game assets |
 | GAS owner / avatar / attribute sets | `AresAbilitySystemComponent` (OwnerActor, AvatarActor, SpawnedAttributes, CachedAttributeSet) | ✅ via AbilitiesAndBuffsComponent->AresAbilitySystemComponent remap |
 | Status effects on a player (nearsight / slow / detain / ...) | `EffectManagerComponent:MulticastPlayContinuousEffect` + `MulticastStopContinuousEffect`, on the **affected** player's actor | ✅ named, with start and end — see below |
-| Active gameplay effects (GAS array) | `AresAbilitySystemComponent.ActiveGameplayEffects` | ❌ **not replicated.** Across 15 exports every such row has `bit_count == 0` and none sit on a player character; the GAS spec handles the group declares (`Def`, `Duration`, `StackCount`, `StartServerWorldTime`, ...) never appear on the wire at all |
+| Active gameplay effects (GAS array) | `AresAbilitySystemComponent.ActiveGameplayEffects` | ❌ **not replicated.** The manifest declares the property and the wire never carries it: across 71 exports, checkpoints included, `fields.parquet` holds zero rows for it -- not empty rows, no rows. The GAS spec handles the group declares (`Def`, `Duration`, `StackCount`, `StartServerWorldTime`, ...) are absent the same way |
 | GAS attribute values | `AresAttributeSet.{BaseValue,CurrentValue}` per handle | ◐ **checkpoints only.** The live stream sends each attribute once when the channel opens and never updates it; `CurrentValue` does move (Reyna's ultimate puts handles at 1.1/0.9) but only checkpoint snapshots show it, and those are written at round transitions, so transient debuffs are gone by then |
 | Persistent effect position (smoke/wall/molly/slow/trap) | `actors.parquet` class_path + spawn xyz | ✅ every spawned effect actor |
 | Persistent effect lifetime | `actors.time_ms` paired across `event` `open`/`close` (non-fuel); `CurrentFuelLevel`+`WallActivated` (Viper) | ✅ |
@@ -159,11 +176,16 @@ not carry, not fitted to the data. The correct absolute time is
 
     roundStarted + buyPhaseLength(round) + CastTime
 
+Overtime follows the same rule: on the full 71 replays round 25 -- the first of
+overtime -- reads 44.88 s, so the 45 s buy phase applies there too.
+
 The median is the statistic to use here, not the mean. `AbilityCastsThisRound`
 is a replicated array that accumulates over the round, so a cast is re-sent on
 every later replication and its `time_ms` drifts upward; the residual is exact
-only on the first send. 60.1% of rows land within 29-31 s and the tail is all
-re-replication.
+only on the first send. The share landing within 29-31 s therefore depends on
+how much re-replication the sample carries -- 60.1% on the 20-replay set above,
+57.4% over all 71 -- and the rest of the mass is that tail, not disagreement
+about the epoch.
 
 ### Status effects, and where they actually live
 
@@ -236,7 +258,13 @@ Measured across all 215 replays:
 **Vulnerable doubles damage, exactly.** `DamageDealt / FalloffMultiplier`
 recovers each weapon's base damage, and over 123,008 gun and melee hits that
 ratio is 1.0 on 122,284 and exactly 2.0 on 171. Inside a Fragile window the 2x
-rate is 99/99; outside it is 72 in 122,356. The multiplier sits outside falloff,
+rate is 99/99; outside it is 72 in 122,356. A separate pass over the 71 demo
+replays -- a different corpus, so a different denominator -- put the in-window
+rate at 34 of 61 against 21 of 41,378 outside, a gap of the same three orders
+of magnitude. Read the direction as settled and the in-window share as
+depending on how completely the Fragile windows were paired.
+
+The multiplier sits outside falloff,
 so a Vandal headshot reads 320 = 40 x 4 x 2. Use `DamageDealt`, not
 `DamageTaken` -- the latter is clamped to remaining life.
 
@@ -296,7 +324,7 @@ corpus. Crouch is `bCrouchHeld` on the character actor, or a ~19 cm drop in
 
 | Data | Source | Status |
 |---|---|---|
-| Position (cm) | `movement.parquet` pos_x/y/z | ✅ ≤0.0005 vs C# |
+| Position (cm) | `movement.parquet` pos_x/y/z | ✅ ≤0.0005 vs C# (on 13.01) |
 | Rotation (yaw/pitch) | movement | ✅ exact |
 | Velocity | movement vel_x/y/z | ✅ exact |
 | Time (128 Hz tick, resets per round) / global | movement `timestamp` / `time_ms` | ✅ — `timestamp` is a **tick counter**, not milliseconds |
@@ -306,10 +334,15 @@ corpus. Crouch is `bCrouchHeld` on the character actor, or a ~19 cm drop in
 ### The tick is 128 Hz by a 3:13 pattern, not by alternating
 
 Consecutive per-character steps are 7 ms on 18.72% and 8 ms on 81.28% -- that is
-3:13, or 3/16 and 13/16. The mean is 7.8128 ms, **127.995 Hz**, and sixteen
-ticks come to 3x7 + 13x8 = **exactly 125 ms**. It is not a 1:1 alternation, so
-do not assume 7,8,7,8 when reconstructing a clock; count ticks and multiply by
-125/16. Measured over 37,775,664 steps on 20 replays.
+3:13, or 3/16 and 13/16. The mean is 7.8128 ms, **127.995 Hz**. It is not a 1:1
+alternation, so do not assume 7,8,7,8 when reconstructing a clock; count ticks
+and multiply by 125/16. Measured over 37,775,664 steps on 20 replays.
+
+3x7 + 13x8 = 125 ms is arithmetic on that ratio, not a measurement, and the two
+part company at the tail: of 7,836,799 sixteen-tick windows, 95.93% come to
+exactly 125 ms, and 0.45% of single-tick steps are neither 7 nor 8 ms (up to
+234 ms). Use 125/16 as the nominal rate; do not assume any given window hits
+it.
 
 `timestamp` increments by 1 per tick (Δ=1 on 37,938,231 steps, against 34 steps
 of 3 or 4) and resets each round, which is why the round cut is found at the
@@ -342,11 +375,14 @@ Two things to handle first:
 
 - **Park slot.** Hidden actors are parked at `pos_x ≈ -50000, pos_z ≈ -49900`.
   Filter on **both** x and z. Filtering on z alone misclassifies real falls.
-- **Abyss is the exception, and not a decode fault.** It reaches 99.8416%: of
-  2,482 out-of-range rows, 2,132 are already below z = -3000, and all 350 of the
-  near-floor rows have negative `vel_z` (median -1693 cm/s, against 0 for
-  in-range rows). The map has no floor, so players leave the minimap while
-  falling. Nothing to fix -- clamp or drop by `vel_z`.
+- **Abyss is the exception, and not a decode fault.** Two runs that fetched the
+  constants separately put it at 99.68% and 99.84%; the gap is unexplained and
+  neither is picked here, because the mechanism is what matters and both runs
+  found it. Of the out-of-range rows roughly six in seven are already below
+  z = -3000, and of the rest that sit near the floor, 99-100% have negative
+  `vel_z` (median around -1,600 cm/s, against 0 for in-range rows). The map has
+  no floor, so players leave the minimap while falling. Nothing to fix -- clamp
+  or drop by `vel_z`.
 
 Containment was measured over 12 maps on 69 replays, 121,672,885 live movement
 rows, on build 13.02.
