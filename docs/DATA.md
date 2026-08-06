@@ -100,7 +100,7 @@ script is not in the repo -- `vrfkit export` emits no `LifeResult`,
 `DeltaLife`, `bAliveAfterChange` or `ChangedComponent` column, and no tool
 reads them. Treat the numbers as provenance-tagged evidence for the
 *semantics*, not as something a reader can re-run. Typing the four members is
-item 6 under What's next, and doing it is what would make this section
+item 7 under What's next, and doing it is what would make this section
 checkable.
 
 Verified over 69 replays on build 13.02: 377,487 elements, zero parse errors,
@@ -507,7 +507,14 @@ guessing -- which is the only reason the failure was findable.
 ## What's next (where to start)
 
 Most of what this list used to hold is done. What remains is short, and two of
-the three are limits rather than tasks.
+them are limits rather than tasks.
+
+**Start by bucketing the untyped rows on `compatible_checksum`.** That column
+exists so this list can be found rather than stumbled on: a checksum the
+overlay already knows means a resolution bug, a checksum it has never seen
+means a coverage gap, and no checksum means the value is addressed inside a
+payload and there is nothing to look up. The recipe and the shape of the split
+are in `docs/USAGE.md` under the fields schema.
 
 1. **The next unnamed single handle** — `HANDLE_ADDITIONS` in
    `tools/apply_type_corrections.py` is currently empty: its one entry named
@@ -522,7 +529,17 @@ the three are limits rather than tasks.
    because GAS attributes are `FGameplayAttributeData` fields declared in C++
    and cooked assets carry no member list for them. Unpacking the paks does not
    help. The fc=34 RPC timing and size are already exported.
-3. **Re-base `checksum_table.rs`, or expect `--check` to fail.**
+3. **Handles 215/216 on the weapon classes: the type is known and is not
+   applied.** The first lead the checksum column produced, and the one bucket
+   that should be empty -- 48,010 rows over 20 replays, 0.5% of everything
+   untyped, all carrying a checksum `CHECKSUM_TYPES` already maps. It is the
+   same two handles across `Ability_Melee_Base_C`, `BasePistol_C`,
+   `AssaultRifle_AK_C` and `AssaultRifle_ACR_C`, which is a shape, not noise.
+   Identical before the column existed, so not a regression from d5c35c6 -- it
+   was simply invisible. Start by asking whether the checksum fallback is
+   reached at all when the field name is a bare handle number.
+
+4. **Re-base `checksum_table.rs`, or expect `--check` to fail.**
    `extract_checksum_types.py --check` reports the committed table as stale
    against any export set reachable here: one export learns 415 checksums, 71
    learn 442, and the file holds 417. It is not broken -- a checksum is
@@ -532,11 +549,11 @@ the three are limits rather than tasks.
    commit of its own: it swaps twenty-odd unrelated entries, so it must not
    ride along with an unrelated fix.
 
-4. **Keep the component remaps honest.** `KNOWN_SUBOBJECT_CLASS_PATHS` was read
+5. **Keep the component remaps honest.** `KNOWN_SUBOBJECT_CLASS_PATHS` was read
    out of one build; a later one can rename a component and nothing here would
    notice on its own. Run `tools/check_component_remaps.py --export <dir>`
    against a replay from a new build. It needs no game install and no baseline.
-5. **An `FText` decoder.** `FieldType` has none, which is why
+6. **An `FText` decoder.** `FieldType` has none, which is why
    `Comp_AbilityStatisticsReplicator`'s `LocalizedStat` is deliberately
    untyped. Shifted one bit off the byte grid the payload reads `uint32 Flags=0,
    uint8 HistoryType=5` (`ETextHistoryType::StringTableEntry`), then a
@@ -544,7 +561,7 @@ the three are limits rather than tasks.
    depends on it -- `Statistic` already carries the same fact as an enum -- so
    this is worth doing only when a second `FText` field turns up.
 
-6. **Type the `LifeChangeEvents[]` members.** Optional -- the array already
+7. **Type the `LifeChangeEvents[]` members.** Optional -- the array already
    parses and `docs/DATA.md`'s health section is built on it -- but the members
    arrive untyped: `ChangedComponent` wants `ObjectNetGuid`, `LifeResult` and
    `DeltaLife` want `Float`, `bAliveAfterChange` wants `Bool`. `LifeResult` is

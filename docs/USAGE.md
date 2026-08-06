@@ -185,7 +185,17 @@ Bucket the untyped rows by it and three different situations come apart:
 | **no checksum** | addressed inside a payload (array leaves, struct blobs), so the replay declares none |
 
 `None` means the third of those, not that the export failed to carry a value.
-On one 13.02 replay the split is 0.5% / 46.9% / 52.6% of 648,315 untyped rows.
+Over 20 replays on 13.02 the split is 0.5% / 48.6% / 51.0% of 10,062,142
+untyped rows, and it barely moves replay to replay.
+
+The middle bucket is a work list, not a bug list -- some of it is deliberate.
+Its largest members are `ClientReplayReceiveInputEventProcessing` (1,227,330
+rows), `ClientPlayOneShotEffectAtLocation.249` (344,426),
+`ReplayLastTransformUpdateTimeStamp` on each agent class (~114-124k each),
+`AuthCurrentRandomSeed` (120,853), `TransitionContext` (114,299) and
+`ServerMovementTime` (120,768), which `docs/DATA.md` already records as
+untyped on purpose because its epoch is unknown. Read the bucket as "described
+and unclaimed", then decide.
 
 Without this column those three are one undifferentiated pile. Phoenix's smoke
 wall sat in the middle bucket for the life of the project -- 2,791 rows of null
