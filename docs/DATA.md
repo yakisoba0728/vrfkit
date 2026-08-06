@@ -239,8 +239,12 @@ Roughly in value order. Each names the file to touch first.
    pin in `crates/vrf-decode/src/tests/overlay.rs`.
 4. **AbilitiesAndBuffs inner payload** — structurally decoded (`flag + u32`
    stream in `crates/vrf-decode/src/cnc.rs`), but the per-word meaning needs the
-   GAS C++ serializer, which is compiled and not in the assets. Effectively
-   blocked without game source. The fc=34 RPC timing/size is already exported.
+   GAS C++ serializer. **Confirmed against the shipped game, not just assumed:**
+   the script object map has `/Script/ShooterGame.AresAttributeSet` as a class
+   and *zero* members under it, because GAS attributes are
+   `FGameplayAttributeData` fields declared in C++ and cooked assets carry no
+   member list for them. Unpacking the paks does not help here. The fc=34 RPC
+   timing/size is already exported.
 5. **Exact ability cast count** — confirmed wire-limit: the GAS stream is
    state-sync, not one RPC per cast. No on-wire work helps; the approximation is
    ability-actor spawns + `characterUltimateUsed`/`UltimateActive`.
@@ -285,6 +289,14 @@ replays with decode errors 0.
 **This is the one thing here that a game patch can silently invalidate.** A
 renamed component stops matching and its handles go quiet again; no test in the
 repo can see that, because the replay never named it either.
+
+Three bare names are left, and the game says why none of them can be fixed this
+way. `AttachedDamageSection` and `MapTargetingState` do name real classes --
+`AttachedDamageSectionComponent`, `MapTargetingStateComponent` -- but **the
+replay declares neither group**, so a remap would point at nothing; their
+handles have no declaration to pick up anywhere in the file. `AresAttributeSet_2`
+is a GAS attribute set rather than a component, which is the same wall as item 4
+above. Nothing further to get from the paks for these.
 
 ### Closed: what the three mechanisms cannot reach
 
