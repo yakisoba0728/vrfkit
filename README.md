@@ -56,9 +56,17 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
   DuckDB.
 - **Spike state** — plant site A/B (`PlantedAtSite` + position), defuser
   (`CurrentDefuser`), timer, and the canonical detonation signal.
-- **Combat & abilities** — per-player economy, magazine ammo and equipped
-  weapon over time, ability casts, cooldowns, status effects (concussion / blind
-  / ability fuel / heal / decay), and the GAS attribute/effect stream.
+- **Combat & abilities** — per-player economy, magazine and reserve ammo,
+  equipped weapon over time, cooldowns, and absolute health/shield/overheal from
+  the damage log (not reconstructed by subtraction).
+- **Every ability cast** — one record per cast with the caster's account UUID,
+  slot, round, time and world location, plus the statistics it produced and the
+  players each one landed on: `EnemiesSuppressed`, `EnemiesSlowed`,
+  `EnemiesVulnerabled`, `EnemiesBlinded` and 27 more.
+- **Status effects per player** — nearsight, slow, detain, suppress and the rest
+  arrive as start/stop pairs on the *affected* player's actor, so each one is an
+  interval with a victim. Slows are independently legible from movement speed,
+  which sits on a lattice off 675 cm/s and halves exactly inside a slow.
 - **Persistent effects** — smoke / wall / molly / slow / trap position and
   lifetime from actor lifecycles; one command via
   `tools/extract_active_effects.py`.
