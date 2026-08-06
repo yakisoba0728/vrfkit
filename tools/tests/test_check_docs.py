@@ -172,6 +172,78 @@ class TestCountTests(unittest.TestCase):
             guard.stale_test_counts("we recover 2,387 intermediate moves", self.LIVE), [])
 
 
+class TableSizeClaimTests(unittest.TestCase):
+    """The eighth check, and the same upgrade `stale_test_counts` already made.
+
+    `check_table_sizes` asks whether the live size appears SOMEWHERE in the
+    file. That is the exact check README defeated by carrying `387 tests` and
+    `355 passing` at once: a stale size can sit one line from the correct one
+    and satisfy a membership test with the correct one. Here every number that
+    claims to BE the table size has to be the live one.
+    """
+
+    LENGTHS = ("1255", "84")
+
+    def test_a_stale_entry_count_beside_the_live_one_is_caught(self):
+        docs = {"README.md": "the overlay table (1,255 entries, 84 handles)\n"
+                             "elsewhere: 1,185 entries"}
+        problems = guard.stale_table_size_claims(docs, self.LENGTHS)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("1,185", problems[0])
+        self.assertIn("README.md:2", problems[0])
+
+    def test_a_stale_handle_count_is_caught(self):
+        problems = guard.stale_table_size_claims(
+            {"USAGE.md": "overlay table 1,255 + 63 handles"}, self.LENGTHS)
+        self.assertTrue(any("63" in p for p in problems), problems)
+
+    def test_both_spellings_of_the_live_numbers_pass(self):
+        docs = {"a.md": "1,255 entries and 84 handles",
+                "b.md": "1255 entries and 84 handles"}
+        self.assertEqual(guard.stale_table_size_claims(docs, self.LENGTHS), [])
+
+    def test_the_shipped_docs_make_no_stale_size_claim(self):
+        lengths = guard.table_lengths()
+        docs = {name: guard.read(guard.REPO / name) for name in guard.ALL_DOCS}
+        self.assertEqual(guard.stale_table_size_claims(docs, lengths), [])
+
+
+class MeasurementFailureTests(unittest.TestCase):
+    """A measurement that could not be taken must not silently skip its claim.
+
+    `measured_counts` omitted the `ascii` key entirely when `git ls-files`
+    returned nonzero, and `stale_measured_counts` skips any key not in `live`.
+    So on a machine where git failed, every quoted ASCII file count went
+    unchecked and the guard still printed "OK: the docs still describe this
+    repo".
+    """
+
+    def test_a_working_measurement_reports_no_problem(self):
+        problems = []
+        counts = guard.measured_counts(problems)
+        self.assertIn("ascii", counts)
+        self.assertEqual(problems, [])
+
+    def test_a_failed_enumeration_is_reported_rather_than_skipped(self):
+        import subprocess as sp
+        real = guard.subprocess.run
+
+        def failing(cmd, *a, **kw):
+            if cmd[:2] == ["git", "-C"]:
+                return sp.CompletedProcess(cmd, 128, stdout="", stderr="fatal")
+            return real(cmd, *a, **kw)
+
+        problems = []
+        guard.subprocess.run = failing
+        try:
+            counts = guard.measured_counts(problems)
+        finally:
+            guard.subprocess.run = real
+        self.assertNotIn("ascii", counts)
+        self.assertTrue(problems)
+        self.assertIn("ascii", " ".join(problems))
+
+
 class ContradictingCountTests(unittest.TestCase):
     """The half of the count check that survives `--fast`, and so the half CI runs.
 

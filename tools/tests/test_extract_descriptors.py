@@ -2319,5 +2319,102 @@ public sealed class EffectManagerComponentClassNetCacheDescriptor : ClassNetCach
         )
 
 
+class SilentDropTests(ExtractDescriptorsTests):
+    """Two ways a declared field left the table without saying so."""
+
+    def test_an_unknown_primitive_type_is_rejected_not_dropped(self):
+        """`.Int64()` is not in PRIMITIVE_TYPES, so the statement fell off the
+        end of the type ladder and contributed nothing -- no entry, no counter,
+        no message. Adding one method upstream would untype every field that
+        uses it and the run would still report success.
+
+        This is the same hazard EXPORT_GROUP_KIND_POLICY already names: an
+        unclassified kind is a hard failure, not a default. An unclassified
+        TYPE has to be one too.
+        """
+        stderr = self.run_generator_expecting_failure(
+            {
+                "WidgetDescriptor.cs": r'''
+public sealed class WidgetDescriptor : ExportGroupDescriptor<WidgetDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.Widget";
+    protected override void Configure()
+    {
+        AddProperty(x => x.Spin).Float();
+        AddProperty(x => x.Ticks).Int64();
+    }
+}
+''',
+            }
+        )
+        self.assertIn("Int64", stderr)
+
+    def test_a_known_primitive_still_generates(self):
+        """The guard must fire on the unknown method, not on every descriptor."""
+        output = self.run_generator(
+            {
+                "WidgetDescriptor.cs": r'''
+public sealed class WidgetDescriptor : ExportGroupDescriptor<WidgetDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.Widget";
+    protected override void Configure()
+    {
+        AddProperty(x => x.Spin).Float();
+    }
+}
+''',
+            }
+        )
+        self.assertEqual(
+            self.entries(output), {("/Script/ShooterGame.Widget", "Spin")}
+        )
+
+    #: Two descriptor classes, one Path, one field name, two types.
+    CONFLICTING_CLASSES = {
+        "AlphaDescriptor.cs": r'''
+public sealed class AlphaDescriptor : ExportGroupDescriptor<AlphaDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.Shared";
+    protected override void Configure()
+    {
+        AddProperty(x => x.Contested).Float();
+    }
+}
+''',
+        "BetaDescriptor.cs": r'''
+public sealed class BetaDescriptor : ExportGroupDescriptor<BetaDescriptor>
+{
+    public override string Path => "/Script/ShooterGame.Shared";
+    protected override void Configure()
+    {
+        AddProperty(x => x.Contested).Int32();
+    }
+}
+''',
+    }
+
+    def test_two_classes_typing_one_field_two_ways_is_rejected(self):
+        """Dedup kept the FIRST entry without comparing types, so which type
+        shipped was decided by `sorted(class_paths.items())` -- rename a class
+        and the table changes. The explicit handle table one loop below already
+        refuses the analogous conflict; this is the same rule for types.
+        """
+        stderr = self.run_generator_expecting_failure(self.CONFLICTING_CLASSES)
+        self.assertIn("Contested", stderr)
+
+    def test_two_classes_agreeing_on_one_field_still_dedupes(self):
+        """The case the dedup exists for -- parent and child both declaring the
+        same field -- stays silent. Only a DISAGREEMENT is a failure.
+        """
+        agreeing = {
+            name: source.replace(".Int32()", ".Float()")
+            for name, source in self.CONFLICTING_CLASSES.items()
+        }
+        output = self.run_generator(agreeing)
+        self.assertEqual(
+            self.entries(output), {("/Script/ShooterGame.Shared", "Contested")}
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,39 +15,47 @@ and passes every test. So this reads the repo and the docs and compares:
   3. every crate has a row in the layer table
   4. every relative link resolves
   5. the overlay table sizes quoted are the live ones
-  6. no Rust doc comment or Cargo.toml quotes a stale one
-  7. the test counts quoted are the live ones, and no stale count sits beside
+  6. no quoted table size in any of `ALL_DOCS` is stale, even beside a live
+     one -- presence alone was not enough, see `stale_table_size_claims`
+  7. no Rust doc comment or Cargo.toml quotes a stale one
+  8. the test counts quoted are the live ones, and no stale count sits beside
      a live one -- presence alone was not enough, see `stale_test_counts`
-  8. no quoted `check_ascii` file count or correction count is stale, in any
-     of `ALL_DOCS` -- see `stale_measured_counts`
-  9. every relative link resolves in `docs/DATA.md` and `CONTRIBUTING.md` too
+  9. no quoted `check_ascii` file count or correction count is stale, in any
+     of `ALL_DOCS` -- see `stale_measured_counts`, and a count that could not
+     be MEASURED is reported rather than skipped
+ 10. every relative link resolves in `docs/DATA.md` and `CONTRIBUTING.md` too
 
-(8) and (9) exist because this file used to read exactly two documents. Every
+(6) is (5) upgraded the way (8) was: (5) asks only whether the live number
+appears somewhere in README and USAGE, so a stale size could sit one line from
+the correct one and be excused by it -- exactly how `387 tests` and
+`355 passing` coexisted for twelve commits.
+
+(9) and (10) exist because this file used to read exactly two documents. Every
 number in `docs/DATA.md` -- the most number-dense file in the repo -- and in
 `CONTRIBUTING.md` was unguarded, and two counts rotted *inside* the two files
 it did read: the ASCII sweep said 114 files against a live 115, and USAGE.md
 managed to say 85, 86 and 49 corrections at once. Reading a file is not the
 same as checking a number in it.
 
-What (8) deliberately does not do is guard `docs/DATA.md`'s measurements --
+What (9) deliberately does not do is guard `docs/DATA.md`'s measurements --
 "377,487 elements", "1,021 windows". Those come from analysis runs, not from
 anything this can execute, so a check would either be a second copy of the
 number or a day of work. The rule is narrower: a number is guarded here when
 something in the repo can be *run* to produce it.
 
-It runs the test suites to get (7), so it is not free -- roughly the cost of
+It runs the test suites to get (8), so it is not free -- roughly the cost of
 `cargo test` plus the tools suite. Run it when touching docs, or before
 calling a session finished.
 
-**CI runs `--fast`, so (7) does not run there** and cannot: the Python job is
-Ubuntu-only by design (the Rust job needs Windows for the Oodle FFI), and (7)
-shells out to `cargo test`. Check (7) is a local gate, not an enforced one --
+**CI runs `--fast`, so (8) does not run there** and cannot: the Python job is
+Ubuntu-only by design (the Rust job needs Windows for the Oodle FFI), and (8)
+shells out to `cargo test`. Check (8) is a local gate, not an enforced one --
 which is precisely how `355 passing` survived twelve commits next to a correct
 `387 tests`. Run the full guard by hand before finishing a session.
 
 Usage:
     python tools/check_docs.py
-    python tools/check_docs.py --fast     # skip (7), no test runs
+    python tools/check_docs.py --fast     # skip (8), no test runs
 """
 from __future__ import annotations
 
@@ -124,6 +132,34 @@ def check_table_sizes(docs: dict[str, str]) -> list[str]:
             if n not in docs[name] and pretty not in docs[name]:
                 problems.append(f"{name}: {what} is {pretty}, not quoted")
     return problems
+
+
+#: How prose states the two generated table sizes, narrow enough that a match
+#: is always that claim. `check_table_sizes` asks whether the live number
+#: appears SOMEWHERE in the file -- the membership test README defeated by
+#: carrying `387 tests` and `355 passing` at once. These ask the stronger
+#: question `stale_test_counts` already asks of the suite sizes: every number
+#: that claims to BE a table size must be the live one, so a stale figure
+#: cannot sit one line away from the correct one.
+TABLE_CLAIM_RE = (
+    ("overlay table", 0, re.compile(r"([\d,]+)\s+entries\b")),
+    ("handle table", 1, re.compile(r"([\d,]+)\s+handles\b")),
+)
+
+
+def stale_table_size_claims(docs: dict[str, str], lengths) -> list[str]:
+    """Every quoted table size, in any doc, that is not the live one."""
+    if lengths is None:
+        return ["table.rs: could not read the declared slice lengths"]
+    return [
+        f"{name}:{i}: says {quoted} {what.split()[0]} entries/handles, but the "
+        f"{what} holds {int(lengths[index]):,}"
+        for name, text in docs.items()
+        for i, line in enumerate(text.splitlines(), 1)
+        for what, index, pattern in TABLE_CLAIM_RE
+        for quoted in pattern.findall(line)
+        if quoted.replace(",", "") != lengths[index]
+    ]
 
 
 #: The phrase Rust doc comments and Cargo.toml use for the table's size. Kept
@@ -238,14 +274,25 @@ MEASURED_RE = {
 }
 
 
-def measured_counts() -> dict[str, int]:
-    """The live values, read from the things that produce them."""
+def measured_counts(problems: list[str] | None = None) -> dict[str, int]:
+    """The live values, read from the things that produce them.
+
+    A measurement that could not be taken is left out of the returned dict --
+    and `stale_measured_counts` skips any key it does not find, so an unmeasured
+    count silently checked nothing while the guard still printed "OK: the docs
+    still describe this repo". Pass `problems` to hear about that instead.
+    """
     counts = {}
     r = subprocess.run(["git", "-C", str(REPO), "ls-files", "--", "*.rs"],
                        capture_output=True, text=True, encoding="utf-8",
                        errors="replace", timeout=120)
     if r.returncode == 0:
         counts["ascii"] = len([ln for ln in r.stdout.splitlines() if ln.strip()])
+    elif problems is not None:
+        problems.append(
+            f"could not measure the ascii file count: git ls-files exited "
+            f"{r.returncode} ({(r.stderr or '').strip()[:120]}); every quoted "
+            f"count went unchecked")
 
     spec = importlib.util.spec_from_file_location(
         "_atc", REPO / "tools" / "apply_type_corrections.py")
@@ -309,21 +356,26 @@ def main() -> int:
     #: *present*: DATA.md has no reason to quote the suite sizes.
     every = {name: read(REPO / name) for name in ALL_DOCS}
 
+    measurement_problems: list[str] = []
+    live_counts = measured_counts(measurement_problems)
+
     problems = (
         check_tools(usage)
         + check_crates(usage)
         + check_links(README, readme)
         + check_links(USAGE, usage)
         + check_table_sizes(docs)
+        + stale_table_size_claims(every, table_lengths())
         + check_source_table_size()
         + contradicting_test_counts(every)
-        + stale_measured_counts(every, measured_counts())
+        + measurement_problems
+        + stale_measured_counts(every, live_counts)
         + [p for name in ALL_DOCS
            for p in check_links(REPO / name, every[name])
            if name not in ("README.md", "docs/USAGE.md")]
     )
 
-    checked = 9
+    checked = 10
     if not args.fast:
         rust, tools_n, run_problems = measure_tests()
         problems += run_problems

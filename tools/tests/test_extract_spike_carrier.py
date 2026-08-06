@@ -63,6 +63,67 @@ class ClassifyOwnerTests(unittest.TestCase):
             spike.classify_owner(576, GROUND, PAWNS, {}), ("player", 576, ""))
 
 
+def interval(from_ms, to_ms, subject="gekko-uuid", pawn=576):
+    return {"from_ms": from_ms, "to_ms": to_ms, "holder_kind": "player",
+            "carrier_pawn_guid": pawn, "carrier_subject": subject,
+            "via_proxy_class": "", "round_number": 1}
+
+
+class CarrierAtTests(unittest.TestCase):
+    """Who held the spike at a given instant -- the plant-time join."""
+
+    def test_the_interval_covering_the_moment_is_the_carrier(self):
+        held = [interval(0, 100), interval(100, 900), interval(900, 1000)]
+        self.assertEqual(spike.carrier_at(held, 500), held[1])
+
+    def test_an_open_ended_final_interval_still_covers_later_moments(self):
+        """`to_ms` is None when the bomb actor never closed."""
+        held = [interval(0, 100), interval(100, None)]
+        self.assertEqual(spike.carrier_at(held, 99999), held[1])
+
+    def test_a_moment_nobody_was_carrying_it_resolves_to_nobody(self):
+        self.assertIsNone(spike.carrier_at([interval(0, 100)], 500))
+
+    def test_no_intervals_at_all_resolves_to_nobody(self):
+        self.assertIsNone(spike.carrier_at([], 500))
+
+
+class UnresolvedTests(unittest.TestCase):
+    """The command exited 0 whatever it failed to resolve.
+
+    The module docstring already says what a `NO CARRIER` plant means -- "a
+    plant with no carrier would mean the chain dropped something" -- and then
+    printed it as one more line of output. A run that writes an empty Parquet
+    and reports nobody planted the spike is not a successful extraction.
+    """
+
+    PLANTED = {"group": ["spikePlanted"], "time1": [500]}
+
+    def test_a_plant_with_a_carrier_resolves(self):
+        self.assertEqual(
+            spike.unresolved([interval(0, 900)], self.PLANTED), [])
+
+    def test_a_plant_with_no_carrier_is_a_failure(self):
+        problems = spike.unresolved([interval(0, 100)], self.PLANTED)
+        self.assertTrue(problems)
+        self.assertIn("500", " ".join(problems))
+
+    def test_an_extraction_with_no_custody_at_all_is_a_failure(self):
+        """An empty Parquet is not an answer."""
+        problems = spike.unresolved([], {"group": [], "time1": []})
+        self.assertTrue(problems)
+        self.assertIn("no custody", " ".join(problems).lower())
+
+    def test_every_unresolved_plant_is_named_not_just_the_first(self):
+        events = {"group": ["spikePlanted", "spikePlanted"], "time1": [500, 700]}
+        self.assertEqual(len(spike.unresolved([interval(0, 100)], events)), 2)
+
+    def test_a_replay_with_custody_and_no_plants_is_not_a_failure(self):
+        """Not every replay has a plant; only a plant that lost its carrier."""
+        self.assertEqual(
+            spike.unresolved([interval(0, 900)], {"group": [], "time1": []}), [])
+
+
 class LeafTests(unittest.TestCase):
     def test_a_class_path_reduces_to_its_last_segment(self):
         self.assertEqual(

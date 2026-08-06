@@ -166,6 +166,22 @@ def cross_checks(counters: dict, parquet: dict) -> list[str]:
     return out
 
 
+def unpinnable(current: dict) -> list[str]:
+    """Counters this run did not measure, which therefore must not be pinned.
+
+    `measure` records a counter the summary did not print as None rather than
+    0, for the reason stated at `COUNTERS`. Writing that None into the baseline
+    undoes the whole point: from then on a summary that has STOPPED printing
+    the counter compares equal to it, and the drift check reports OK.
+
+    The cross-check already refuses this for the four counters that are Parquet
+    row identities. This covers the rest, which had nothing.
+    """
+    return [f"{key}: the export summary did not print it"
+            for key in sorted(current["counters"])
+            if current["counters"][key] is None]
+
+
 def measure(exe: Path, replay: Path, out_dir: Path, checkpoints: bool = False) -> dict:
     """Export one replay and collect the summary counters and Parquet shape.
 
@@ -287,6 +303,16 @@ def main() -> int:
         return 1
 
     if args.update:
+        refusals = unpinnable(current)
+        if refusals:
+            print(f"FAILED: refusing to pin a run with {len(refusals)} "
+                  f"unmeasured counter(s)")
+            for line in refusals:
+                print(f"  {line}")
+            print("  A None in the baseline is matched by the counter going "
+                  "missing again, which is the failure this file exists to "
+                  "catch.")
+            return 1
         payload = {"replay": stored.get("replay") or str(replay), **current}
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
         args.baseline.write_text(json.dumps(payload, indent=1) + "\n",

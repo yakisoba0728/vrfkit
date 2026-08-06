@@ -11,7 +11,9 @@ whether the native group it targets carries rows. If it does not, and the bare
 leaf still does, the remap stopped matching.
 """
 import collections
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -19,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import check_component_remaps as guard  # noqa: E402
 
+SCRIPT = Path(__file__).resolve().parents[1] / "check_component_remaps.py"
 
 PAIRS = [("ZoomStateMachine", "/Script/ShooterGame.EquippableStateMachineComponent")]
 
@@ -95,6 +98,125 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(guard.exit_code(ok), 0)
         self.assertEqual(guard.exit_code(absent), 0)
         self.assertEqual(guard.exit_code(broken), 1)
+
+
+class RenameSignalTests(unittest.TestCase):
+    """What the ratio verdicts cannot see, and where it does show up.
+
+    The FAILED text told the reader "the likely cause is a game build renaming
+    the component". A rename cannot produce that verdict. When a build renames
+    `ZoomStateMachine` to something else the replay stops declaring the old
+    leaf at all, so `bare_rows` is 0, `share` is 0, and the pair reads `ok`
+    whenever any of the eight siblings keeps the native group busy -- or
+    `absent` when it does not. Never `broken`.
+
+    The renamed component does not vanish from the export, though. It arrives
+    as a bare group under its NEW name, which no pair in the table claims. That
+    is the signal, and nothing was looking at it.
+    """
+
+    def test_a_renamed_leaf_is_not_broken_by_the_ratio_check(self):
+        """States the gap the suspects list exists to cover."""
+        v = guard.verdicts(PAIRS, {
+            "/Script/ShooterGame.EquippableStateMachineComponent": 52059,
+            "ZoomStateMachineV2": 8112,
+        })
+        self.assertEqual([x.state for x in v], ["ok"])
+        self.assertEqual(guard.exit_code(v), 0)
+
+    def test_the_renamed_leaf_surfaces_as_an_unclaimed_bare_group(self):
+        suspects = guard.unmapped_bare_groups({
+            "/Script/ShooterGame.EquippableStateMachineComponent": 52059,
+            "ZoomStateMachineV2": 8112,
+        }, PAIRS)
+        self.assertEqual(suspects, [("ZoomStateMachineV2", 8112)])
+
+    def test_a_mapped_leaf_is_never_a_suspect(self):
+        """A leaf the table already claims is not an unexplained group."""
+        self.assertEqual(guard.unmapped_bare_groups({"ZoomStateMachine": 70}, PAIRS), [])
+
+    def test_a_native_group_is_never_a_suspect(self):
+        """Only bare Blueprint leaves can be renamed out from under the table."""
+        self.assertEqual(
+            guard.unmapped_bare_groups(
+                {"/Script/ShooterGame.EquippableStateMachineComponent": 52059}, PAIRS),
+            [])
+
+    def test_a_class_net_cache_only_group_is_not_a_suspect(self):
+        """`row_counts` already zeroes those; a zero must not read as a rename.
+
+        `AbilitiesAndBuffsComponent` is RepLayout-only by design, so its whole
+        RPC stream stays bare on a healthy export. It reaches this function
+        with a 0 because `bare_counts` dropped the `_cnc_h*` rows, and a
+        rename suspect list that reported it would be pure noise.
+        """
+        self.assertEqual(
+            guard.unmapped_bare_groups({"AbilitiesAndBuffsComponent": 0}, PAIRS), [])
+
+    def test_suspects_come_back_worst_first(self):
+        suspects = guard.unmapped_bare_groups(
+            {"Small": 3, "Large": 900, "Middle": 40}, PAIRS)
+        self.assertEqual([g for g, _ in suspects], ["Large", "Middle", "Small"])
+
+
+class NothingCheckedTests(unittest.TestCase):
+    """A run in which no pair appeared verified nothing, and must not say OK."""
+
+    def test_every_pair_absent_means_nothing_was_checked(self):
+        self.assertTrue(guard.nothing_checked(guard.verdicts(PAIRS, {})))
+
+    def test_one_working_pair_is_enough_to_have_checked_something(self):
+        v = guard.verdicts(PAIRS, {
+            "/Script/ShooterGame.EquippableStateMachineComponent": 1})
+        self.assertFalse(guard.nothing_checked(v))
+
+    def test_a_broken_pair_also_counts_as_having_checked_something(self):
+        self.assertFalse(guard.nothing_checked(
+            guard.verdicts(PAIRS, {"ZoomStateMachine": 1})))
+
+
+class MainTests(unittest.TestCase):
+    """The vacuity lives in `main`, so it is exercised there."""
+
+    def _export(self, directory, rows):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        table = pa.table({
+            "group_path": [g for g, _ in rows],
+            "field_name": [f for _, f in rows],
+        })
+        pq.write_table(table, Path(directory) / "fields.parquet")
+        return Path(directory)
+
+    def _run(self, directory):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--export", str(directory)],
+            capture_output=True, text=True, check=False)
+        return result
+
+    def test_an_export_with_no_remap_at_all_does_not_report_OK(self):
+        """Not the same as having no export: this one ran and learned nothing."""
+        with tempfile.TemporaryDirectory() as directory:
+            self._export(directory, [("/Script/Other.Thing", "X")] * 5)
+            result = self._run(directory)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("OK:", result.stdout)
+
+    def test_a_healthy_export_still_passes_and_says_so(self):
+        with tempfile.TemporaryDirectory() as directory:
+            native = "/Script/ShooterGame.EquippableStateMachineComponent"
+            self._export(directory, [(native, "CurrentState")] * 100)
+            result = self._run(directory)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("OK:", result.stdout)
+
+    def test_the_failure_text_no_longer_blames_a_rename(self):
+        """A `broken` verdict cannot be produced by a rename; see the class above."""
+        with tempfile.TemporaryDirectory() as directory:
+            self._export(directory, [("ZoomStateMachine", "CurrentState")] * 100)
+            result = self._run(directory)
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("renaming the component", result.stderr)
 
 
 class PairParsingTests(unittest.TestCase):

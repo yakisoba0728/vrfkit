@@ -25,6 +25,12 @@ cases that would mistype. On the reference corpus that drops two:
 (`ByteComponents` vs `ShortComponents`, genuinely different and different in
 width). The second is the case a name-based rule would have got wrong.
 
+Dropping decides what gets WRITTEN. It used to also end the story: the dropped
+set never reached `reconcile`, so a checksum the file already commits and the
+manifests now rule out passed `--check` and survived `merge`'s union. Conflicts
+are now compared against the committed file -- ruled out is a failure, merely
+ambiguous is reported.
+
 Usage:
     python tools/extract_checksum_types.py --export out/probe [--export out/other]
     python tools/extract_checksum_types.py --export out/probe --check
@@ -123,37 +129,74 @@ def load_committed() -> dict[int, str]:
 class Verdict:
     """How a freshly learned map relates to the committed one.
 
-    Three relations, and only one of them is a problem. `new` and `unseen` are
-    both coverage: a checksum identifies a property, so a wider set of replays
+    Five relations, and two of them are problems. `new` and `unseen` are both
+    coverage: a checksum identifies a property, so a wider set of replays
     teaches a larger subset of the same truth and a narrower one teaches less.
     `disagreed` is the real thing -- one checksum mapped two ways, which means
     one of them is wrong.
+
+    The last two come from the checksums `learn()` DROPPED. Dropping them is
+    the safety property for what gets written, but it used to end the story:
+    `conflicts` never reached this class, so a checksum the manifests now find
+    ambiguous was compared against nothing and `--check` passed.
+
+      `contradicted` the committed type is not among the candidate types at
+                     all, so the new evidence rules it out. A problem.
+      `ambiguous`    the committed type IS one of the candidates. That is a
+                     narrower-basis entry, learned when only one donor was
+                     visible -- the same case `unseen` is tolerated for.
+                     Reported, not failed: a guard that cannot pass is not a
+                     guard, and this file already learned that once.
     """
 
-    def __init__(self, disagreed, new, unseen):
+    def __init__(self, disagreed, new, unseen, contradicted=None, ambiguous=None):
         self.disagreed, self.new, self.unseen = disagreed, new, unseen
+        self.contradicted = contradicted or {}
+        self.ambiguous = ambiguous or {}
 
     @property
     def ok(self) -> bool:
-        return not self.disagreed
+        return not self.disagreed and not self.contradicted
 
 
-def reconcile(committed: dict[int, str], learned: dict[int, str]) -> Verdict:
+def _committed_vs_conflicts(committed: dict[int, str], conflicts: dict):
+    """`(contradicted, ambiguous)` -- see `Verdict`."""
+    contradicted, ambiguous = {}, {}
+    for checksum, (types, names) in (conflicts or {}).items():
+        if checksum not in committed:
+            continue
+        bucket = ambiguous if committed[checksum] in types else contradicted
+        bucket[checksum] = (committed[checksum], types, names)
+    return contradicted, ambiguous
+
+
+def reconcile(committed: dict[int, str], learned: dict[int, str],
+              conflicts: dict | None = None) -> Verdict:
     disagreed = {c: (committed[c], learned[c])
                  for c in committed.keys() & learned.keys()
                  if committed[c] != learned[c]}
+    contradicted, ambiguous = _committed_vs_conflicts(committed, conflicts)
     return Verdict(
         disagreed,
         {c: learned[c] for c in learned.keys() - committed.keys()},
         {c: committed[c] for c in committed.keys() - learned.keys()},
+        contradicted,
+        ambiguous,
     )
 
 
-def merge(committed: dict[int, str], learned: dict[int, str]) -> dict[int, str]:
+def merge(committed: dict[int, str], learned: dict[int, str],
+          conflicts: dict | None = None) -> dict[int, str]:
     """Union, refusing a disagreement rather than picking a winner.
 
     Widening the basis must not narrow the table: an entry a smaller run cannot
     re-derive is still correct, and a plain regeneration would silently drop it.
+
+    `conflicts` is refused for the same reason `clash` is. The write path never
+    consults the verdict -- it reconciles, prints, then merges -- so without
+    this a checksum the manifests rule out would be carried forward into the
+    freshly written file by the very `{**committed, ...}` that protects the
+    entries this basis merely did not see.
     """
     clash = [c for c in committed.keys() & learned.keys()
              if committed[c] != learned[c]]
@@ -162,6 +205,14 @@ def merge(committed: dict[int, str], learned: dict[int, str]) -> dict[int, str]:
             f"{len(clash)} checksum(s) disagree, refusing to merge: "
             + ", ".join(f"{c} {committed[c]} vs {learned[c]}"
                         for c in sorted(clash)[:5])
+        )
+    contradicted, _ambiguous = _committed_vs_conflicts(committed, conflicts)
+    if contradicted:
+        raise ValueError(
+            f"{len(contradicted)} committed checksum(s) are ruled out by these "
+            f"manifests, refusing to merge: "
+            + ", ".join(f"{c} {was} not in {types}"
+                        for c, (was, types, _n) in sorted(contradicted.items())[:5])
         )
     return {**committed, **learned}
 
@@ -200,16 +251,26 @@ def main() -> int:
           f"{len(resolved)} checksums, {len(conflicts)} dropped")
 
     committed = load_committed()
-    verdict = reconcile(committed, resolved)
+    verdict = reconcile(committed, resolved, conflicts)
     print(f"vs committed: {len(verdict.disagreed)} disagree, {len(verdict.new)} "
-          f"new here, {len(verdict.unseen)} not taught by these manifests")
+          f"new here, {len(verdict.unseen)} not taught by these manifests, "
+          f"{len(verdict.contradicted)} ruled out, {len(verdict.ambiguous)} now "
+          f"ambiguous")
     for checksum, (was, now) in sorted(verdict.disagreed.items())[:10]:
         print(f"  DISAGREE {checksum}: committed {was}, learned {now}")
+    for checksum, (was, types, names) in sorted(verdict.ambiguous.items())[:10]:
+        print(f"  ambiguous {checksum} ({names}): committed {was}, donors now "
+              f"disagree over {types} -- still one of them, so not a failure")
 
     if args.check:
         if not verdict.ok:
-            print(f"FAILED: {len(verdict.disagreed)} checksum(s) map two ways",
-                  file=sys.stderr)
+            for checksum, (was, types, names) in sorted(
+                    verdict.contradicted.items())[:10]:
+                print(f"  RULED OUT {checksum} ({names}): committed {was}, "
+                      f"donors declare {types}", file=sys.stderr)
+            print(f"FAILED: {len(verdict.disagreed)} checksum(s) map two ways, "
+                  f"{len(verdict.contradicted)} committed checksum(s) are ruled "
+                  f"out by these manifests", file=sys.stderr)
             return 1
         print(f"\nOK: {OUT_RS.name} agrees with these manifests wherever they "
               f"overlap")
@@ -221,7 +282,7 @@ def main() -> int:
     # equality with a regeneration was never achievable for a content-addressed
     # table, and demanding it is what made `--check` fail for every basis and
     # stop meaning anything.
-    widened = merge(committed, resolved)
+    widened = merge(committed, resolved, conflicts)
     OUT_RS.write_text(render(widened), encoding="utf-8")
     print(f"wrote {OUT_RS} ({len(widened)} checksums, +{len(verdict.new)})")
     return 0

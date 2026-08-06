@@ -147,8 +147,74 @@ def compare_group_paths(cs_manifest: dict, vk_manifest: dict,
 
 # ─── 3. (Group, Field) coverage comparison ───────────────────────────────────
 
-def compare_group_field_coverage(cs_events_path: Path, vk_parquet_path: Path) -> str:
-    """Compare (group_path, field_name) pairs between C# events and vrfkit parquet."""
+def coverage_problems(cs_pairs: set, vk_pairs: set) -> list[str]:
+    """Why this comparison compared nothing, if it compared nothing.
+
+    This script is a REPORT: vrfkit deliberately exports more than the C#
+    parser, so "vrfkit only" is expected and no threshold on the differences
+    can be defended without the corpus in hand. What a report may still not do
+    is announce a result it never measured, and it did: `cs_only` is empty when
+    the C# side yielded NO pairs at all -- an empty, slimmed, or wrong
+    events.ndjson -- and the section then printed "vrfkit covers everything C#
+    has".
+
+    C#-only pairs are deliberately NOT reported here. They are the report's
+    subject, listed in full under INVESTIGATE; gating on them would make a tool
+    that measures known-incomplete coverage permanently red.
+    """
+    if not cs_pairs and not vk_pairs:
+        return ["neither side produced a single (group, field) pair: "
+                "nothing was compared"]
+    if not cs_pairs:
+        return ["the C# side produced no (group, field) pairs at all, so "
+                "'vrfkit covers everything C# has' would be vacuous"]
+    if not vk_pairs:
+        return ["the vrfkit side produced no (group, field) pairs at all: "
+                "check fields.parquet"]
+    if not (cs_pairs & vk_pairs):
+        return [f"the two sides share no (group, field) pair at all "
+                f"({len(cs_pairs):,} C#, {len(vk_pairs):,} vrfkit): total "
+                f"disagreement, not a coverage difference"]
+    return []
+
+
+def coverage_lines(cs_pairs: set, vk_pairs: set) -> list[str]:
+    """The C#-only / vrfkit-only breakdown, split out so it can be tested."""
+    both = cs_pairs & vk_pairs
+    cs_only = cs_pairs - vk_pairs
+    vk_only = vk_pairs - cs_pairs
+
+    lines = [
+        f"\n  Both (intersection): {len(both):,}",
+        f"  C# only:             {len(cs_only):,}",
+        f"  vrfkit only:         {len(vk_only):,}",
+        f"\n### Both -- sample (first 30 of {len(both):,}):",
+    ]
+    lines += [f"  ({gp}, {fn})" for gp, fn in sorted(both)[:30]]
+
+    if cs_only:
+        lines.append(f"\n### C# only -- ALL {len(cs_only)} entries (INVESTIGATE):")
+        lines += [f"  ({gp}, {fn})" for gp, fn in sorted(cs_only)]
+    elif cs_pairs:
+        lines.append("\n### C# only: NONE -- vrfkit covers everything C# has!")
+    else:
+        # The claim above is only meaningful when the C# side had pairs to
+        # miss. Without them an empty difference is an empty measurement.
+        lines.append("\n### C# only: NOT MEASURED -- the C# side produced no "
+                     "pairs, so this says nothing about coverage.")
+
+    lines.append(f"\n### vrfkit only -- sample (first 30 of {len(vk_only):,}):")
+    lines += [f"  ({gp}, {fn})" for gp, fn in sorted(vk_only)[:30]]
+    if len(vk_only) > 30:
+        lines.append(f"  ... and {len(vk_only) - 30} more")
+    return lines
+
+
+def compare_group_field_coverage(cs_events_path: Path, vk_parquet_path: Path):
+    """Compare (group_path, field_name) pairs between C# events and vrfkit parquet.
+
+    Returns `(report text, problems)`.
+    """
     lines = ["## 3. (Group, Field) coverage comparison\n"]
 
     # Collect C# (group, field) pairs from export_group_received events
@@ -171,7 +237,7 @@ def compare_group_field_coverage(cs_events_path: Path, vk_parquet_path: Path) ->
     # Collect vrfkit (group, field) pairs from fields.parquet
     if not vk_parquet_path.exists():
         lines.append("  fields.parquet not found — cannot compare.")
-        return "\n".join(lines)
+        return "\n".join(lines), [f"fields.parquet not found at {vk_parquet_path}"]
 
     tbl = pq.read_table(vk_parquet_path, columns=["group_path", "field_name"])
     vk_pairs: set[tuple[str, str]] = set()
@@ -186,36 +252,9 @@ def compare_group_field_coverage(cs_events_path: Path, vk_parquet_path: Path) ->
 
     lines.append(f"  Distinct (group, field) pairs from vrfkit: {len(vk_pairs):,}")
 
-    both = cs_pairs & vk_pairs
-    cs_only = cs_pairs - vk_pairs
-    vk_only = vk_pairs - cs_pairs
-
-    lines.append(f"\n  Both (intersection): {len(both):,}")
-    lines.append(f"  C# only:             {len(cs_only):,}")
-    lines.append(f"  vrfkit only:         {len(vk_only):,}")
-
-    # Sample — both
-    lines.append(f"\n### Both — sample (first 30 of {len(both):,}):")
-    for gp, fn in sorted(both)[:30]:
-        lines.append(f"  ({gp}, {fn})")
-
-    # C# only — important (these are potential bugs)
-    if cs_only:
-        lines.append(f"\n### C# only — ALL {len(cs_only)} entries (INVESTIGATE):")
-        for gp, fn in sorted(cs_only):
-            lines.append(f"  ({gp}, {fn})")
-    else:
-        lines.append("\n### C# only: NONE — vrfkit covers everything C# has! ✓")
-
-    # vrfkit only — expected (C# drops groups without descriptors)
-    lines.append(f"\n### vrfkit only — sample (first 30 of {len(vk_only):,}):")
-    for gp, fn in sorted(vk_only)[:30]:
-        lines.append(f"  ({gp}, {fn})")
-    if len(vk_only) > 30:
-        lines.append(f"  ... and {len(vk_only) - 30} more")
-
+    lines += coverage_lines(cs_pairs, vk_pairs)
     lines.append("")
-    return "\n".join(lines)
+    return "\n".join(lines), coverage_problems(cs_pairs, vk_pairs)
 
 
 # ─── 4. RPC name comparison ──────────────────────────────────────────────────
@@ -535,7 +574,9 @@ def main():
     report_parts.append(compare_group_paths(cs_manifest, vk_manifest, vk_fields_path))
 
     # 3. (Group, Field) coverage
-    report_parts.append(compare_group_field_coverage(cs_events_path, vk_fields_path))
+    coverage_text, problems = compare_group_field_coverage(
+        cs_events_path, vk_fields_path)
+    report_parts.append(coverage_text)
 
     # 4. RPC names
     report_parts.append(compare_rpc_names(cs_events_path, vk_manifest, vk_fields_path))
@@ -555,8 +596,18 @@ def main():
     out_path.write_text(full_report, encoding="utf-8")
     print(f"\n[Report written to {out_path}]")
 
+    # This stays a report -- see `coverage_problems` for why nothing else in it
+    # is gated. What it must not do is finish quietly after comparing nothing.
+    if problems:
+        print(f"\nFAILED: {len(problems)} reason(s) this comparison measured "
+              f"nothing", file=sys.stderr)
+        for line in problems:
+            print(f"    {line}", file=sys.stderr)
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    main()
+    raise SystemExit(main())

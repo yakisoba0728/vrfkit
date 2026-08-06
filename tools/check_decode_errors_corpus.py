@@ -39,9 +39,26 @@ N decoded / 0 failed" is the statement that did not exist then.
 
 Exit code is 0 only when every replay reported "Decode errors: 0" and
 "Struct blobs: ... / 0 failed", AND every replay reported both counters at
-all. A counter that stops being printed must not read as zero; that is how the
-corpus malformed figure stayed a vacuous 0 for the project's whole history
-(see docs/archive/PROJECT_STATUS.md 5-O).
+all, AND the corpus as a whole decoded something. A counter that stops being
+printed must not read as zero; that is how the corpus malformed figure stayed
+a vacuous 0 for the project's whole history (see
+docs/archive/PROJECT_STATUS.md 5-O).
+
+The last of those three is the same argument one step further, and it was
+missing: `Decoded OK` and `Struct blobs: N decoded` were summed, printed, and
+never read again. An exporter whose decoders never ran prints
+
+    Rows offered: 0 / Decoded OK: 0 / Decode errors: 0 / Struct blobs: 0
+    decoded / 0 failed
+
+for every replay -- every counter a truthful zero, no error anywhere -- and
+that used to print "OK: every replay reported Decode errors: 0" and exit 0. A
+counter that CANNOT MOVE must not read as success either; see `dead_counters`.
+
+The process exit status is read for the same reason. `vrfkit export` prints
+this summary before it finalises the Parquet files, so an exporter that dies
+writing them has already printed `Decode errors: 0`. A nonzero exit makes the
+replay unreadable rather than clean; see `read_counters`.
 """
 from __future__ import annotations
 
@@ -64,6 +81,72 @@ STRUCT_DECODED = re.compile(r"Struct blobs:\s+(\d+) decoded")
 STRUCT_FAILED = re.compile(r"Struct blobs:\s+\d+ decoded / (\d+) failed")
 
 
+#: `(key, regex)` for every counter read off the export summary.
+COUNTERS = (
+    ("decode_errors", DECODE_ERRORS),
+    ("decoded_ok", DECODED_OK),
+    ("raw_skip", RAW_SKIP),
+    ("not_in_table", NOT_IN_TABLE),
+    ("rows_offered", ROWS_OFFERED),
+    ("struct_blobs_decoded", STRUCT_DECODED),
+    ("struct_blobs_failed", STRUCT_FAILED),
+)
+
+#: Counters a replay MUST report for its run to mean anything. `decoded_ok` and
+#: `struct_blobs_decoded` are here as well as the two error counters because a
+#: zero in an error counter is only evidence when the matching work counter
+#: proves the work happened.
+REQUIRED = (
+    ("decode_errors", "Decode errors"),
+    ("decoded_ok", "Decoded OK"),
+    ("struct_blobs_decoded", "Struct blobs ... decoded"),
+    ("struct_blobs_failed", "Struct blobs ... failed"),
+)
+
+#: Corpus totals that cannot legitimately stay at zero, and the label to name
+#: in the failure. Over a whole corpus of real matches both of these are large;
+#: a zero means the decoder never ran, not that it ran and found nothing.
+MUST_MOVE = (
+    ("decoded_ok", "Decoded OK"),
+    ("struct_blobs_decoded", "Struct blobs ... decoded"),
+)
+
+
+def read_counters(text: str, returncode: int) -> tuple[dict[str, int] | None, str]:
+    """`(counters, error)` for one export's output. `counters` is None on failure.
+
+    A nonzero exit is a failure even when the summary parsed cleanly: the
+    exporter prints these counters before it finalises the Parquet files, so a
+    run that dies writing them has already printed `Decode errors: 0`.
+    """
+    tail = " | ".join(l for l in text.splitlines()[-3:] if l.strip())
+    if returncode != 0:
+        return None, f"exit {returncode}: {tail[:200]}"
+    counters: dict[str, int] = {}
+    for key, pattern in COUNTERS:
+        m = pattern.search(text)
+        if m:
+            counters[key] = int(m.group(1))
+    for required, label in REQUIRED:
+        if required not in counters:
+            return None, f"no {label} counter: {tail[:200]}"
+    return counters, ""
+
+
+def dead_counters(totals: dict[str, int]) -> list[str]:
+    """Corpus totals that never moved, as human-readable failures.
+
+    `Decode errors: 0` is only a statement about the overlay if something was
+    decoded, and `Struct blobs: 0 failed` is only a statement about the struct
+    decoders if some blob was decoded. Both counters were summed and printed
+    and then never read, so a corpus on which nothing ran at all reported a
+    clean sweep.
+    """
+    return [f"{label} totalled 0 across the corpus: nothing decoded, so the "
+            f"zero in its error counter says nothing"
+            for key, label in MUST_MOVE if not totals.get(key)]
+
+
 def _export_one(exe: Path, replay: Path) -> tuple[str, dict[str, int] | None, str]:
     """Export one replay to a scratch dir and return its overlay counters."""
     out = Path(tempfile.mkdtemp(prefix="vrfkit-decode-"))
@@ -76,28 +159,9 @@ def _export_one(exe: Path, replay: Path) -> tuple[str, dict[str, int] | None, st
             errors="replace",
             timeout=600,
         )
-        text = (r.stdout or "") + (r.stderr or "")
-        counters: dict[str, int] = {}
-        for key, pattern in (
-            ("decode_errors", DECODE_ERRORS),
-            ("decoded_ok", DECODED_OK),
-            ("raw_skip", RAW_SKIP),
-            ("not_in_table", NOT_IN_TABLE),
-            ("rows_offered", ROWS_OFFERED),
-            ("struct_blobs_decoded", STRUCT_DECODED),
-            ("struct_blobs_failed", STRUCT_FAILED),
-        ):
-            m = pattern.search(text)
-            if m:
-                counters[key] = int(m.group(1))
-        for required, label in (
-            ("decode_errors", "Decode errors"),
-            ("struct_blobs_failed", "Struct blobs"),
-        ):
-            if required not in counters:
-                tail = " | ".join(l for l in text.splitlines()[-3:] if l.strip())
-                return replay.name, None, f"no {label} counter: {tail[:200]}"
-        return replay.name, counters, ""
+        counters, err = read_counters((r.stdout or "") + (r.stderr or ""),
+                                      r.returncode)
+        return replay.name, counters, err
     except subprocess.TimeoutExpired:
         return replay.name, None, "timeout"
     finally:
@@ -184,8 +248,17 @@ def main() -> int:
         for name, count in blob_offenders[:20]:
             print(f"    {name}: {count}", file=sys.stderr)
         return 1
+    dead = dead_counters(totals)
+    if dead:
+        print(f"\nFAILED: {len(dead)} counter(s) never moved, so the clean "
+              f"error counters beside them are vacuous", file=sys.stderr)
+        for line in dead:
+            print(f"    {line}", file=sys.stderr)
+        return 1
 
-    print("\nOK: every replay reported Decode errors: 0 and 0 struct-blob failures")
+    print(f"\nOK: {len(files)} replays reported Decode errors: 0 and 0 "
+          f"struct-blob failures, over {totals['decoded_ok']:,} decoded rows "
+          f"and {totals['struct_blobs_decoded']:,} decoded struct blobs")
     return 0
 
 

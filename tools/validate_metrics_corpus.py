@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -66,11 +67,40 @@ def run(cmd, **kw):
                           errors="replace", **kw)
 
 
+def fresh_dir(path: Path) -> Path:
+    """Delete `path` and recreate it empty.
+
+    These output directories persist between runs, and `compute_metrics.py` is
+    invoked without `-o`, so the comparison reads `metrics.json` from inside
+    the bundle directory. A previous run's file sitting there is read by the
+    next one whenever compute_metrics exits 0 without writing -- and a stale
+    metrics.json compared against its own reference looks EXACT. The same
+    applies one step earlier: a bundle built over an export that has stopped
+    writing a table silently mixes two runs.
+
+    `check_export_baseline.py` already states the rule for its own output.
+    """
+    shutil.rmtree(path, ignore_errors=True)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def failures(results: list[dict]) -> list[str]:
+    """Replays that did not complete the pipeline, as readable lines.
+
+    The exit status was `return 0` once any single replay finished. Nineteen
+    dead replays out of twenty exited 0, and so did a run in which every
+    section differed.
+    """
+    return [f"{r['id']}: failed at {r['stage']} -- {str(r.get('error', ''))[:160]}"
+            for r in results if r["stage"] != "ok"]
+
+
 def process(replay_id: str) -> dict:
     """Export, adapt and compute metrics for one replay. Returns a result dict."""
     t0 = time.time()
-    export_dir = REPO / "out" / "xval" / replay_id
-    bundle_root = REPO / "out" / "xval_bundle" / replay_id
+    export_dir = fresh_dir(REPO / "out" / "xval" / replay_id)
+    bundle_root = fresh_dir(REPO / "out" / "xval_bundle" / replay_id)
 
     r = run([str(VRFKIT), "export", str(VRF_DIR / f"{replay_id}.vrf"),
              "--out", str(export_dir)])
@@ -160,13 +190,26 @@ def main() -> int:
 
     print()
     print(f"replays compared        : {len(ok)} of {len(ids)}")
-    print(f"sections exact on ALL   : {len(always)} / {len(all_sections)}")
+    print(f"sections exact on ALL {len(ok):>2}: {len(always)} / {len(all_sections)}")
     print(f"  {', '.join(always) if always else '(none)'}")
+    if len(ok) < 2:
+        # "EXACT on all" over one replay is the claim this tool exists to
+        # test, not evidence for it.
+        print("  NOTE: 'ALL' is one replay here; that is the single-replay "
+              "claim this run was supposed to generalise.")
 
     summary = REPO / "out" / "xval_summary.json"
     summary.write_text(json.dumps(
         {"replays": order, "always_exact": always}, indent=1), encoding="utf-8")
     print(f"\nwrote {summary}")
+
+    dead = failures(results)
+    if dead:
+        print(f"\nFAILED: {len(dead)} of {len(ids)} replay(s) did not complete "
+              f"the pipeline", file=sys.stderr)
+        for line in dead[:15]:
+            print(f"    {line}", file=sys.stderr)
+        return 1
     return 0
 
 

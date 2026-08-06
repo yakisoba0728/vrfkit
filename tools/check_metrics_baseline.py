@@ -219,6 +219,23 @@ def run_one(build: str, replay: Path, exe: Path) -> tuple[str, dict | None, str]
         shutil.rmtree(out, ignore_errors=True)
 
 
+def merged_metrics(stored: dict, fresh: dict, only) -> dict:
+    """The metrics to write on `--update`, given what was already pinned.
+
+    A scoped run (`--only 13.02`) looked at one build and knows nothing about
+    the others, so it must not delete them. It used to: the payload was built
+    from this run's results alone, so re-pinning after inspecting a single
+    build left a one-build baseline and the docstring's guarantee -- "a build
+    disappearing from the set is itself a failure" -- was silently retired.
+
+    An unscoped run is the opposite case: it looked at every build in REPLAYS,
+    so it is the only thing allowed to retire one. Merging there would keep a
+    build pinned after it left REPLAYS and fail every later run with
+    "MISSING from this run".
+    """
+    return dict(fresh) if only is None else {**stored, **fresh}
+
+
 def compare(build: str, got: dict, want: dict) -> list[str]:
     drift = []
     for key in sorted(set(got) | set(want)):
@@ -298,16 +315,22 @@ def main() -> int:
         return 1
 
     if args.update:
+        stored = json.loads(args.baseline.read_text(encoding="utf-8")) \
+            if args.baseline.is_file() else {}
+        metrics = merged_metrics(stored.get("metrics", {}), results, args.only)
         payload = {
             "note": "Semantic metrics per build. See the module docstring: "
                     "framing counters cannot see a decoder that stops "
                     "producing values.",
             "replays": REPLAYS,
-            "metrics": results,
+            "metrics": metrics,
         }
         args.baseline.write_text(
             json.dumps(payload, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-        print(f"\nwrote {args.baseline} ({len(results)} build(s))")
+        kept = sorted(set(metrics) - set(results))
+        print(f"\nwrote {args.baseline}: re-pinned {len(results)} build(s)"
+              + (f", kept {len(kept)} not looked at ({', '.join(kept)})"
+                 if kept else ""))
         return 0
 
     if not args.baseline.is_file():

@@ -52,6 +52,7 @@ from __future__ import annotations
 import argparse
 import bisect
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -59,6 +60,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 BOMB_CLASS = "BombEquippable.BombEquippable_C"
+
+#: Holder kinds that mean somebody is actually carrying the spike.
+HELD_KINDS = ("player", "proxy")
 
 #: Owner classes that mean "nobody is carrying it". GroundPickup is the actor
 #: the spike lives inside while it sits on the floor; PickupProjectile is the
@@ -90,6 +94,45 @@ def classify_owner(owner: int, owner_class: str | None,
     if source in pawn_subject:
         return "proxy", source, name
     return "unknown", None, ""
+
+
+def carrier_at(held, t_ms: int):
+    """The custody interval covering `t_ms`, or None if nobody held it then.
+
+    `to_ms` is None for the last interval of a bomb whose actor never closed,
+    and that interval runs to the end of the replay.
+    """
+    covering = [r for r in held
+                if r["from_ms"] <= t_ms and (r["to_ms"] is None or t_ms <= r["to_ms"])]
+    return covering[-1] if covering else None
+
+
+def unresolved(rows, events) -> list[str]:
+    """Everything this extraction failed to resolve, as readable lines.
+
+    The command returned 0 whatever it could not answer. Two answers it cannot
+    fail to have:
+
+    - Custody at all. Zero rows writes a valid, empty Parquet, prints
+      "0 custody intervals" and exits 0 -- indistinguishable, to anything
+      reading `$?`, from a replay whose spike changed hands forty times.
+    - A carrier for every plant. The module docstring already says what a
+      `NO CARRIER` plant means: the chain between the `Owner` log and the
+      `spikePlanted` event dropped something. It was printed as one more line
+      of output.
+    """
+    problems = []
+    if not rows:
+        problems.append(
+            "no custody intervals at all: no BombEquippable_C.Owner writes "
+            "were found, so an empty table was written")
+    held = [r for r in rows if r["holder_kind"] in HELD_KINDS]
+    for group, t1 in zip(events.get("group", []), events.get("time1", [])):
+        if group == "spikePlanted" and carrier_at(held, t1) is None:
+            problems.append(
+                f"plant at t={t1} resolves to NO CARRIER: no player or proxy "
+                f"held the spike at that moment")
+    return problems
 
 
 def load(out_dir: Path):
@@ -251,20 +294,19 @@ def main() -> int:
     for k, n in sorted(by_kind.items()):
         print(f"  {k:8s} {n}")
 
-    held = [r for r in rows if r["holder_kind"] in ("player", "proxy")]
+    held = [r for r in rows if r["holder_kind"] in HELD_KINDS]
     print(f"  rounds {len({r['round_number'] for r in rows})}, "
           f"with a carrier {len({r['round_number'] for r in held})}, "
           f"bombs {len({r['bomb_net_guid'] for r in rows})}")
 
     # The carrier at plant time. `spikePlanted` carries no planter identity in
     # its payload, so this is the join answering rather than a check -- but a
-    # plant with no carrier would mean the chain dropped something.
+    # plant with no carrier means the chain dropped something, and `unresolved`
+    # below turns that into a nonzero exit rather than a line of output.
     for grp, t1 in zip(events.get("group", []), events.get("time1", [])):
         if grp != "spikePlanted":
             continue
-        at = [r for r in held
-              if r["from_ms"] <= t1 and (r["to_ms"] is None or t1 <= r["to_ms"])]
-        who = at[-1] if at else None
+        who = carrier_at(held, t1)
         tag = "NO CARRIER" if who is None else (
             f"{who['carrier_subject'][:8]} pawn={who['carrier_pawn_guid']}"
             + (f" via {who['via_proxy_class']}" if who["via_proxy_class"] else ""))
@@ -279,6 +321,14 @@ def main() -> int:
                 "in-hand " if r["in_hand"] else "",
                 "" if r["duration_ms"] is None
                 else f"({r['duration_ms'] / 1000:.1f}s)"))
+
+    problems = unresolved(rows, events)
+    if problems:
+        print(f"\nFAILED: {len(problems)} thing(s) this export could not "
+              f"resolve", file=sys.stderr)
+        for line in problems:
+            print(f"    {line}", file=sys.stderr)
+        return 1
     return 0
 
 

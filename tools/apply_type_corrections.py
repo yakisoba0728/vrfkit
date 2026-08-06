@@ -20,9 +20,17 @@ verifies the END STATE of every correction against the parsed table and fails
 loudly if any is missing. That check is format-independent: if the
 application patterns ever rot again, the verification still catches it.
 
+`--check` verifies the FILE, not the corrected copy. It used to apply every
+correction in memory and verify that, suppressing only the write, so it could
+not tell "already corrected" from "correctable and nobody corrected it" -- and
+CI runs `--check`, which is how a regenerated table.rs could go green while the
+Rust build used the uncorrected one. The two now report separately: a
+correction missing from the corrected copy is a DEAD PATTERN, and one present
+there but absent from the file means the file was NEVER CORRECTED.
+
 Usage:
     python tools/apply_type_corrections.py            # apply, then verify
-    python tools/apply_type_corrections.py --check    # verify only, no write
+    python tools/apply_type_corrections.py --check    # verify the file, no write
 """
 import re
 import sys
@@ -31,14 +39,21 @@ from pathlib import Path
 
 TABLE_RS = Path(__file__).parent.parent / "crates" / "vrf-decode" / "src" / "table.rs"
 
-#: (group_path substring, field_name, required FieldType substring).
+#: (group_path substring, field_name, required FieldType -- IN FULL).
 #: One entry per correction the passes below make. Checked against the file
 #: after writing; a miss is a hard failure.
+#:
+#: The type is the WHOLE `FieldType::...` expression and `verify` compares it
+#: with `==`, because a substring test cannot see the two mistakes a type table
+#: is most likely to make. `"Int32" in "FieldType::UInt32"` is True and
+#: `"Byte" in "FieldType::EnumByte"` is True, so under the old check an entry
+#: with the wrong signedness or the wrong byte variant verified clean -- the
+#: check passed on exactly the errors it existed to catch.
 EXPECTED = [
-    ("TimedBomb.TimedBomb_C", "TimeRemainingToExplode", "Double"),
-    ("TimedBomb.TimedBomb_C", "DefuseProgress", "Double"),
-    ("Comp_Ability_CooldownComponent_C", "StartTimeStamp", "Double"),
-    ("Comp_Ability_CooldownComponent_C", "CooldownSeconds", "Double"),
+    ("TimedBomb.TimedBomb_C", "TimeRemainingToExplode", "FieldType::Double"),
+    ("TimedBomb.TimedBomb_C", "DefuseProgress", "FieldType::Double"),
+    ("Comp_Ability_CooldownComponent_C", "StartTimeStamp", "FieldType::Double"),
+    ("Comp_Ability_CooldownComponent_C", "CooldownSeconds", "FieldType::Double"),
 ]
 for _group in (
     "TimedBomb.TimedBomb_C",
@@ -48,19 +63,23 @@ for _group in (
     "Projectile_Phoenix_Q_FlameWall_ThroughWall.Projectile_Phoenix_Q_FlameWall_ThroughWall_C",
 ):
     for _field in ("215", "216"):
-        EXPECTED.append((_group, _field, "EnumRemainingBits"))
+        EXPECTED.append((_group, _field, "FieldType::EnumRemainingBits"))
 EXPECTED += [
-    ("SmokeScreen", "ReplicatedMovement", "ByteComponents"),
-    ("AresEquippableDataTracker", "OriginalBuyerTeam", "Raw"),
-    ("MulticastNotifyDamage_Base", "EquippableUsed", "ObjectNetGuid"),
-    ("MulticastNotifyDamage_Point", "EquippableUsed", "ObjectNetGuid"),
-    ("MulticastNotifyDamage_Base", "DamageOrigin", "VectorNetQuantize { scale: 100 }"),
-    ("MulticastNotifyDamage_Point", "DamageOrigin", "VectorNetQuantize { scale: 100 }"),
-    ("MulticastNotifyDamage_Point", "DamageImpactLocation", "VectorNetQuantize { scale: 1 }"),
+    ("SmokeScreen", "ReplicatedMovement",
+     "FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents }"),
+    ("AresEquippableDataTracker", "OriginalBuyerTeam", "FieldType::Raw"),
+    ("MulticastNotifyDamage_Base", "EquippableUsed", "FieldType::ObjectNetGuid"),
+    ("MulticastNotifyDamage_Point", "EquippableUsed", "FieldType::ObjectNetGuid"),
+    ("MulticastNotifyDamage_Base", "DamageOrigin",
+     "FieldType::VectorNetQuantize { scale: 100 }"),
+    ("MulticastNotifyDamage_Point", "DamageOrigin",
+     "FieldType::VectorNetQuantize { scale: 100 }"),
+    ("MulticastNotifyDamage_Point", "DamageImpactLocation",
+     "FieldType::VectorNetQuantize { scale: 1 }"),
     ("MulticastNotifyDamage_Point", "DamageImpactBoneRelativeLocation",
-     "VectorNetQuantize { scale: 1 }"),
-    ("MulticastNotifyDamage_Point", "DamageDirection", "VectorNetQuantizeNormal"),
-    ("MulticastNotifyDamage_Point", "DamageImpactNormal", "VectorNetQuantizeNormal"),
+     "FieldType::VectorNetQuantize { scale: 1 }"),
+    ("MulticastNotifyDamage_Point", "DamageDirection", "FieldType::VectorNetQuantizeNormal"),
+    ("MulticastNotifyDamage_Point", "DamageImpactNormal", "FieldType::VectorNetQuantizeNormal"),
 ]
 
 #: Entries the WIRE carries that the C# descriptors cannot declare, because the
@@ -537,7 +556,7 @@ ADDITIONS = [
     ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
      "Value_5_203891704B7EF064EDB5528BFECC4807", "FieldType::Float"),
 ]
-EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
+EXPECTED += [(g, f, t) for g, f, t in ADDITIONS]
 
 #: Handle -> field_name additions for groups the replay never names. Each pairs
 #: with an ADDITION of the same (group_path, field_name) so the overlay can type
@@ -550,6 +569,21 @@ HANDLE_ADDITIONS = [
 GROUP_RE = re.compile(r'group_path: "([^"]+)"')
 FIELD_RE = re.compile(r'field_name: "([^"]+)"')
 TYPE_MARKER = "field_type:"
+
+
+def normalize_type(field_type: str) -> str:
+    """One spelling for a field type, whichever layout it was written in.
+
+    `verify` compares types with `==`, so the two spellings rustfmt can produce
+    have to collapse to one first. A struct-like type written on a single line
+    is `RepMovement { rotation: X }`; broken across lines rustfmt adds a
+    trailing comma before the brace, so the same type parses as
+    `RepMovement { rotation: X, }`. Without this the exact comparison would
+    report every braced type as wrong on a formatted table and right on a
+    freshly generated one -- a check that depends on formatting is not a check.
+    """
+    collapsed = " ".join(field_type.rstrip().rstrip(",").split())
+    return re.sub(r",\s*\}", " }", collapsed)
 
 
 def _field_type_of(block: str) -> str | None:
@@ -582,7 +616,7 @@ def _field_type_of(block: str) -> str | None:
             depth += 1
         elif ch == "}":
             if depth == 0:
-                return " ".join(block[start:i].rstrip().rstrip(",").split())
+                return normalize_type(block[start:i])
             depth -= 1
     return None
 
@@ -667,17 +701,68 @@ def apply_additions(content: str) -> tuple[str, int]:
     return content, added
 
 
+#: The weapon half of the "215"/"216" correction, which EXPECTED cannot list.
+#:
+#: The pass discovers its targets from the table itself -- every group under
+#: `/Game/Equippables/` that carries one of these fields, 18 of them today --
+#: so a hardcoded list would be a second, drifting copy of that discovery.
+#: EXPECTED's "215"/"216" rows name the five HARDCODED non-weapon groups and
+#: nothing else, so before this the weapon pass had no check at all: it could
+#: match nothing, print "Applied 0" and exit 0, which is indistinguishable from
+#: having had nothing to do. The expectation is therefore derived from the same
+#: table the pass ran over.
+WEAPON_GROUP_MARKER = "/Game/Equippables/"
+ACTOR_BOOKKEEPING_FIELDS = ("215", "216")
+ACTOR_BOOKKEEPING_TYPE = "FieldType::EnumRemainingBits"
+
+
+def weapon_expectations(content: str) -> list[tuple[str, str, str]]:
+    """Every `/Game/Equippables/` "215"/"216" entry, with the type it has."""
+    return sorted(
+        (g, f, t)
+        for g, f, t in parse_entries(content)
+        if WEAPON_GROUP_MARKER in g and f in ACTOR_BOOKKEEPING_FIELDS
+    )
+
+
+def expectation_count(content: str) -> int:
+    """How many corrections `verify` actually checks against `content`."""
+    return len(EXPECTED) + len(weapon_expectations(content))
+
+
 def verify(content: str) -> list[str]:
-    """Return one line per correction that is NOT present in `content`."""
+    """Return one line per correction that is NOT present in `content`.
+
+    EVERY hit has to carry the required type, not merely one of them. The group
+    is matched by substring, so `"SmokeScreen"` reaches both `SmokeScreen` and
+    `SmokeScreenManager`; under an `any()` a wrong-typed entry verified clean
+    whenever a sibling group happened to be right -- the same shape of hole as
+    the substring type test this function used to do.
+    """
     entries = list(parse_entries(content))
     problems = []
     for group_part, field, required in EXPECTED:
         hits = [ft for g, f, ft in entries if group_part in g and f == field]
         if not hits:
             problems.append(f"{field} in *{group_part}*: entry not found at all")
-        elif not any(required in ft for ft in hits):
+        elif any(ft != required for ft in hits):
             problems.append(
                 f"{field} in *{group_part}*: expected {required}, found {hits}"
+            )
+
+    weapons = weapon_expectations(content)
+    if not weapons:
+        problems.append(
+            f"no {WEAPON_GROUP_MARKER} entry named "
+            f"{' or '.join(ACTOR_BOOKKEEPING_FIELDS)} exists at all: the weapon "
+            f"pass had nothing to convert, which is exactly what its discovery "
+            f"going dead looks like"
+        )
+    for group, field, ftype in weapons:
+        if ftype != ACTOR_BOOKKEEPING_TYPE:
+            problems.append(
+                f"{field} in {group}: expected {ACTOR_BOOKKEEPING_TYPE}, "
+                f"found {ftype}"
             )
     return problems
 
@@ -851,6 +936,10 @@ def rewrite_header(content: str) -> tuple[str, tuple[str, ...]]:
 def main():
     check_only = "--check" in sys.argv[1:]
     content = TABLE_RS.read_text(encoding="utf-8")
+    # The file exactly as committed. Every pass below rewrites `content`, so by
+    # the end it is the CORRECTED COPY -- and verifying that copy is what made
+    # `--check` unable to tell an already-corrected table from a correctable one.
+    on_disk = content
     count = 0
 
     # Fix: Float -> Double for time-related fields (verified: 64-bit on wire)
@@ -1068,22 +1157,49 @@ def main():
 
     if not check_only:
         TABLE_RS.write_text(content, encoding="utf-8")
+        on_disk = content
 
     # The operation count is a diagnostic, not the verdict. 0 is correct when
     # the table was already corrected and wrong when the patterns are dead;
     # only the end state distinguishes them.
-    problems = verify(content)
-    if problems:
-        print(f"FAILED: {len(problems)} of {len(EXPECTED)} corrections are "
-              f"missing from {TABLE_RS}", file=sys.stderr)
-        for line in problems:
-            print(f"  {line}", file=sys.stderr)
-        print("If table.rs was regenerated, run extract_descriptors.py, then "
-              "THIS script, and only then cargo fmt.", file=sys.stderr)
+    #
+    # TWO end states, and they answer different questions:
+    #
+    #   dead        `content` is the corrected copy, so a correction missing
+    #               HERE could not be applied at all -- the pattern it matches
+    #               on is gone. That is the failure this script was rewritten
+    #               to catch and its message is unchanged.
+    #   uncorrected present in the corrected copy and absent from the FILE, so
+    #               the passes can fix it and nobody ran them. `--check` used
+    #               to verify only the copy, so this was silently clean --
+    #               and CI runs `--check`, which is how a regenerated table.rs
+    #               went green while the Rust build used the uncorrected one.
+    #
+    # A regenerated table trips both at once (the one-line passes are dead in
+    # the rustfmt'd layout while the block-based ones apply fine in memory), so
+    # both sections print rather than one hiding the other.
+    dead = verify(content)
+    uncorrected = [p for p in verify(on_disk) if p not in dead]
+    checked = expectation_count(content)
+    if dead or uncorrected:
+        if dead:
+            print(f"FAILED: {len(dead)} of {checked} corrections are "
+                  f"missing from {TABLE_RS}", file=sys.stderr)
+            for line in dead:
+                print(f"  {line}", file=sys.stderr)
+            print("If table.rs was regenerated, run extract_descriptors.py, "
+                  "then THIS script, and only then cargo fmt.", file=sys.stderr)
+        if uncorrected:
+            print(f"FAILED: {len(uncorrected)} of {checked} corrections are "
+                  f"absent from {TABLE_RS} but ARE applied by this script -- "
+                  f"the file was never corrected.", file=sys.stderr)
+            for line in uncorrected:
+                print(f"  {line}", file=sys.stderr)
+            print("Run this script WITHOUT --check, then cargo fmt, and commit "
+                  "the result.", file=sys.stderr)
         return 1
 
     if check_only:
-        on_disk = TABLE_RS.read_text(encoding="utf-8")
         for pattern, line in zip(HEADER_RES, header_lines):
             stale = pattern.search(on_disk)
             if stale and stale.group(0) != line:
@@ -1095,7 +1211,7 @@ def main():
     verb = "verified" if check_only else "applied"
     summary = "; ".join(line.lstrip("/ ").rstrip(".") for line in header_lines)
     print(f"{verb}: {count} replacement(s) made, "
-          f"all {len(EXPECTED)} corrections present in {TABLE_RS}; {summary}")
+          f"all {checked} corrections present in {TABLE_RS}; {summary}")
     return 0
 
 

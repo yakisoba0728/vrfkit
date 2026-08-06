@@ -75,12 +75,19 @@ def shape(path):
     return "".join(out)
 
 
+#: Decimal places floats are rounded to before the multisets are compared.
+#: `IDENTICAL multiset` therefore means identical to this precision and no
+#: further -- a real tolerance, which the verdict line now states rather than
+#: leaving the reader to find it here.
+FLOAT_PLACES = 3
+
+
 def norm(v):
     """Normalise so 1/True and 35.0/35 compare equal across JSON and Parquet."""
     if isinstance(v, bool):
         return int(v)
     if isinstance(v, float):
-        return round(v, 3)
+        return round(v, FLOAT_PLACES)
     if isinstance(v, int):
         return v
     return str(v)
@@ -140,10 +147,16 @@ def compare(cs, ours, interesting):
     rows, all_match = [], True
     for s in sorted(interesting):
         a, b = cs.get(s, collections.Counter()), ours.get(s, collections.Counter())
-        if a == b:
-            verdict = "IDENTICAL multiset"
-        elif not a and not b:
+        # Emptiness is tested FIRST. Two empty counters satisfy `a == b`, so
+        # this arm sat below the equality test and could never be reached --
+        # every shape of a replay carrying none of them read `IDENTICAL
+        # multiset`. `all_match` is deliberately left alone: per shape that is
+        # still not a disagreement. What it is not is a comparison, and that is
+        # what `compared_shapes` answers.
+        if not a and not b:
             verdict = "absent both sides"
+        elif a == b:
+            verdict = "IDENTICAL multiset"
         else:
             extra_ours = sum((b - a).values())
             extra_cs = sum((a - b).values())
@@ -155,12 +168,26 @@ def compare(cs, ours, interesting):
     return rows, all_match
 
 
+def compared_shapes(cs, ours, interesting) -> int:
+    """How many of the interesting shapes actually had something to compare.
+
+    `compare` reports every shape absent from both sides as a match, which per
+    shape is true and useless. Without this the whole run could compare nothing
+    -- a wrong parquet path, the wrong reference bundle, a CombatReport decoder
+    that stopped emitting -- and still print `ALL INTERESTING SHAPES MATCH`.
+    """
+    return sum(1 for s in interesting
+               if cs.get(s, collections.Counter()) or ours.get(s, collections.Counter()))
+
+
 def main(cs=None, ours=None, interesting=None):
-    """Exit 0 only if every interesting shape matches.
+    """Exit 0 only if every interesting shape matches, and some shape existed.
 
     A mismatch here means the CombatReport decoder disagrees with the C#
     reference on values, not just on how they are addressed -- the one thing
     this comparison exists to catch. Returning 0 regardless made it a report.
+    A run that compared nothing exits 2: it is neither agreement nor
+    disagreement, and reporting it as agreement is what this guards against.
     """
     if cs is None:
         if not CS.is_file():
@@ -171,13 +198,21 @@ def main(cs=None, ours=None, interesting=None):
     if ours is None:
         ours = load_ours()
 
-    rows, all_match = compare(cs, ours, interesting or INTERESTING)
+    shapes = interesting or INTERESTING
+    rows, all_match = compare(cs, ours, shapes)
+    checked = compared_shapes(cs, ours, shapes)
     print(f"{'shape':<66} {'C#':>7} {'ours':>7}  verdict")
     print("-" * 96)
     for row in rows:
         print(row)
     print()
-    print("ALL INTERESTING SHAPES MATCH" if all_match
+    if not checked:
+        print(f"NOTHING COMPARED: none of the {len(shapes)} interesting shapes "
+              f"carries a value on either side. This is not agreement -- check "
+              f"the parquet path and the reference bundle.")
+        return 2
+    print(f"ALL {checked} INTERESTING SHAPES PRESENT MATCH "
+          f"(values to {FLOAT_PLACES} decimal places)" if all_match
           else "SOME SHAPES DIFFER -- see above")
     return 0 if all_match else 1
 

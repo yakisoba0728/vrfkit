@@ -27,7 +27,15 @@ properties contribute nothing. Every other kind emits unchanged. See
 EXPORT_GROUP_KIND_POLICY -- an unclassified kind is a hard failure.
 
 Fields using custom IFieldDecoder implementations or RawPayload are classified
-as Raw. Fields using .Ignore() are classified as Skip.
+as Raw. Fields using .Ignore() are classified as Skip. An AddProperty whose type
+method is none of the above is a HARD FAILURE, not a silent omission: it used to
+fall off the end of the ladder and contribute nothing, so one new method
+upstream would untype every field declaring it while the run still reported
+success.
+
+Two descriptor classes that share a Path and declare one field at two different
+types are a hard failure too. The dedup kept the first entry without comparing
+types, so which one shipped was decided by class sort order.
 
 Literal AddPropertyHandle declarations also emit a separate handle-to-name
 table. Runtime lookup remains name-first; the handle table is only a fallback
@@ -337,7 +345,9 @@ def extract_class_info(source: str) -> tuple[str | None, str | None]:
 
 
 def extract_fields_from_block(
-    block: str, raw_wrapper_names: set[str] | None = None
+    block: str,
+    raw_wrapper_names: set[str] | None = None,
+    rejected: set[tuple[str, str]] | None = None,
 ) -> list[tuple[str, str, int | None]]:
     """Extract (field_export_name, rust_type, literal_handle) tuples.
 
@@ -345,6 +355,14 @@ def extract_fields_from_block(
     statements where the .Type() or .Decode() call is on a continuation line.
     ``literal_handle`` is populated only when the declaration supplies a
     concrete decimal handle; unresolved helper parameters remain ``None``.
+
+    ``rejected`` collects ``(type_method, statement)`` for every AddProperty
+    whose type method this file cannot classify. Those used to fall off the end
+    of the ladder below and contribute nothing -- no entry, no counter, no
+    message -- so one new method upstream (`.Int64()`) would untype every field
+    that uses it while the run still reported success. The caller fails on a
+    non-empty set; passing ``None`` keeps the old silence for callers that only
+    want the fields.
     """
     if raw_wrapper_names is None:
         raw_wrapper_names = set()
@@ -507,6 +525,12 @@ def extract_fields_from_block(
                     _extract_literal_handle(code_line),
                 ))
             continue
+        if type_name is not None and rejected is not None:
+            # A type method that reaches here is a declaration this file does
+            # not understand -- not an absent one. Record it rather than drop
+            # it; the statement goes in so the double scan (Configure body,
+            # then the whole class body for helpers) reports it once.
+            rejected.add((type_name, " ".join(code_line.split())))
 
     return fields
 
@@ -1225,6 +1249,8 @@ def main(argv: list[str]) -> int:
     # ClassNetCache function names -> Skip entries
     cnc_functions: dict[str, list[str]] = {}  # class_name -> function names
     runtime_cnc_specs: list[tuple[str, str]] = []  # (path suffix, function name)
+    # (type_method, statement) for every AddProperty this file cannot classify.
+    rejected_types: set[tuple[str, str]] = set()
 
     cs_files = sorted(src_dir.rglob("*.cs"))
     sources = []
@@ -1496,7 +1522,7 @@ def main(argv: list[str]) -> int:
                     else:
                         # Extract fields for ExportGroupDescriptor
                         fields = extract_fields_from_block(
-                            configure_body, raw_wrapper_names
+                            configure_body, raw_wrapper_names, rejected_types
                         )
                         if fields:
                             class_fields[class_name] = fields
@@ -1508,7 +1534,7 @@ def main(argv: list[str]) -> int:
                 # Look for methods that contain AddProperty calls but aren't
                 # Configure(). These are helper methods.
                 helper_fields = extract_fields_from_block(
-                    scoped_class_body, raw_wrapper_names
+                    scoped_class_body, raw_wrapper_names, rejected_types
                 )
                 if helper_fields and class_name not in class_fields:
                     class_fields[class_name] = helper_fields
@@ -1519,6 +1545,28 @@ def main(argv: list[str]) -> int:
                         if n not in existing_names:
                             class_fields[class_name].append((n, t, h))
                             existing_names.add(n)
+
+    # A declared property whose type this file cannot classify is an unknown,
+    # not an absence. Failing here rather than emitting a table that quietly
+    # omits it is the same rule EXPORT_GROUP_KIND_POLICY applies to an
+    # unclassified Kind -- and it fails BEFORE the output is written, so a run
+    # that stops here leaves the previous table in place.
+    if rejected_types:
+        methods = sorted({method for method, _stmt in rejected_types})
+        print(
+            f"{len(rejected_types)} AddProperty declaration(s) use a type "
+            f"method this extractor does not know: {', '.join(methods)}",
+            file=sys.stderr,
+        )
+        for method, statement in sorted(rejected_types):
+            print(f"  .{method}(): {statement}", file=sys.stderr)
+        print(
+            "Add each to PRIMITIVE_TYPES (or to the ladder in "
+            "extract_fields_from_block) -- dropping them would ship a table "
+            "that silently omits every field declared that way.",
+            file=sys.stderr,
+        )
+        return 1
 
     def effective_export_group_kind(cls: str) -> str:
         """The Kind a descriptor gets, walking up to the nearest override.
@@ -1588,6 +1636,16 @@ def main(argv: list[str]) -> int:
     # phase consults it. Phases 3b and 3c are built from ClassNetCacheDescriptor
     # classes, a separate C# hierarchy with no Kind property, and are untouched.
     kind_dropped: Counter[str] = Counter()
+    #: (group_path, field_name) -> the type the descriptors declared for it.
+    #:
+    #: The dedup further down keeps the FIRST entry for a key without looking
+    #: at its type, so two descriptor classes sharing a Path and declaring one
+    #: field as Float and Int32 resolved by `sorted(class_paths.items())` --
+    #: rename a class and the table changes type. The explicit handle table
+    #: below already refuses its analogous conflict; this is the same rule for
+    #: types, scoped to this phase because 3b/3c emit Skip for FUNCTION names,
+    #: a different namespace that the dedup is right to settle silently.
+    declared_type: dict[tuple[str, str], tuple[str, str]] = {}
     for class_name, path in sorted(class_paths.items()):
         fields = get_fields(class_name)
         if not fields:
@@ -1607,6 +1665,14 @@ def main(argv: list[str]) -> int:
             continue
         groups_seen.add(path)
         for field_name, rust_type, literal_handle in fields:
+            previous = declared_type.get((path, field_name))
+            if previous is not None and previous[0] != rust_type:
+                raise SystemExit(
+                    "conflicting declared types for "
+                    f"{path} field {field_name!r}: {previous[0]} (from "
+                    f"{previous[1]}) vs {rust_type} (from {class_name})"
+                )
+            declared_type[(path, field_name)] = (rust_type, class_name)
             entries.append((path, field_name, rust_type))
             if literal_handle is not None:
                 handle_entries.append((path, literal_handle, field_name))

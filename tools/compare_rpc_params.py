@@ -73,6 +73,13 @@ CS_FIELD_ALIASES = {
 }
 
 
+#: Decimal places float parameters are rounded to before comparison. `MATCH`
+#: means equal to this precision and no further, so the verdict line states it
+#: rather than leaving it buried here. (`compare_combat_report.py` uses 3 for
+#: the same job; neither number was written down anywhere the reader sees.)
+FLOAT_PLACES = 2
+
+
 def norm(v, vtype):
     """Normalise a value for multiset comparison."""
     if v is None:
@@ -80,7 +87,7 @@ def norm(v, vtype):
     if vtype == "int":
         return int(v)
     if vtype == "float":
-        return round(float(v), 2)
+        return round(float(v), FLOAT_PLACES)
     if vtype == "bool":
         return 1 if v else 0
     if vtype == "enum_byte":
@@ -172,57 +179,91 @@ def load_rust_rpc_values():
     return result
 
 
-def main():
-    if not CS_PATH.is_file():
-        print(f"set VRFKIT_VALPLAY_DIR to the valplay checkout root; "
-              f"events.ndjson not found at {CS_PATH}", file=sys.stderr)
-        return 1
-    print(f"C# source: {CS_PATH}")
-    print(f"Rust source: {PARQUET_PATH}")
-    print()
+def compare(cs, rust, rpcs=None):
+    """`(printable rows, everything matched, how many were compared)`.
 
-    cs = load_cs_rpc_values()
-    rust = load_rust_rpc_values()
+    Split out of `main` so the verdict can be asserted on -- it could not be
+    before, which is the same shape `compare_combat_report.py` had.
 
-    all_match = True
-    print(f"{'Function':<35} {'Param':<25} {'C#':>5} {'Rust':>5}  Verdict")
-    print("-" * 100)
-
-    for func_name, params in RPCS_TO_CHECK.items():
-        for pname, vtype in params:
+    Emptiness is tested BEFORE equality. Two empty Counters satisfy
+    `cs_vals == rust_vals`, so the `both empty` arm sat below it and could
+    never be reached: every parameter of a replay carrying none of these RPCs
+    reported `MATCH`. The third return value is what stops that reading as a
+    result -- `all_match` stays True for an empty pair, because per parameter
+    that is not a disagreement; it is simply not a comparison.
+    """
+    rows, all_match, checked = [], True, 0
+    for func_name, params in (rpcs or RPCS_TO_CHECK).items():
+        for pname, _vtype in params:
             key = (func_name, pname)
-            cs_vals = cs[key]
-            rust_vals = rust[key]
+            cs_vals = cs.get(key, collections.Counter())
+            rust_vals = rust.get(key, collections.Counter())
 
             cs_total = sum(cs_vals.values())
             rust_total = sum(rust_vals.values())
 
-            if cs_vals == rust_vals:
+            if not cs_vals and not rust_vals:
+                verdict = "both empty -- nothing compared"
+            elif cs_vals == rust_vals:
                 verdict = "MATCH"
-            elif not cs_vals and not rust_vals:
-                verdict = "both empty"
+                checked += 1
             else:
                 extra_rust = sum((rust_vals - cs_vals).values())
                 extra_cs = sum((cs_vals - rust_vals).values())
                 verdict = f"DIFFER (+{extra_rust} rust / +{extra_cs} C#)"
                 all_match = False
+                checked += 1
 
-            print(f"{func_name:<35} {pname:<25} {cs_total:>5} {rust_total:>5}  {verdict}")
+            rows.append(f"{func_name:<35} {pname:<25} {cs_total:>5} "
+                        f"{rust_total:>5}  {verdict}")
+    return rows, all_match, checked
+
+
+def main(cs=None, rust=None, rpcs=None):
+    """Exit 0 only if every parameter that exists matches.
+
+    A run that compared nothing exits 2: it is neither agreement nor
+    disagreement, and it used to print `ALL RPC PARAMETER VALUES MATCH`.
+    """
+    if cs is None or rust is None:
+        if not CS_PATH.is_file():
+            print(f"set VRFKIT_VALPLAY_DIR to the valplay checkout root; "
+                  f"events.ndjson not found at {CS_PATH}", file=sys.stderr)
+            return 2
+        print(f"C# source: {CS_PATH}")
+        print(f"Rust source: {PARQUET_PATH}")
+        print()
+        cs = load_cs_rpc_values() if cs is None else cs
+        rust = load_rust_rpc_values() if rust is None else rust
+
+    checked_rpcs = rpcs or RPCS_TO_CHECK
+    rows, all_match, checked = compare(cs, rust, checked_rpcs)
+
+    print(f"{'Function':<35} {'Param':<25} {'C#':>5} {'Rust':>5}  Verdict")
+    print("-" * 100)
+    for row in rows:
+        print(row)
 
     print()
+    if not checked:
+        print("NOTHING COMPARED: not one of these RPC parameters carries a "
+              "value on either side. This is not agreement -- check the "
+              "parquet path and the reference bundle.")
+        return 2
     if all_match:
-        print("ALL RPC PARAMETER VALUES MATCH")
+        print(f"ALL {checked} RPC PARAMETER VALUES PRESENT MATCH "
+              f"(floats to {FLOAT_PLACES} decimal places)")
     else:
         print("SOME VALUES DIFFER -- see above")
 
     # Print sample values for verification
     print()
     print("=== Sample values (first 5 per function) ===")
-    for func_name, params in RPCS_TO_CHECK.items():
-        pname0, vtype0 = params[0]
+    for func_name, params in checked_rpcs.items():
+        pname0, _vtype0 = params[0]
         key = (func_name, pname0)
-        cs_sample = list(cs[key].most_common(5))
-        rust_sample = list(rust[key].most_common(5))
+        cs_sample = list(cs.get(key, collections.Counter()).most_common(5))
+        rust_sample = list(rust.get(key, collections.Counter()).most_common(5))
         print(f"\n{func_name}.{pname0}:")
         print(f"  C#:   {cs_sample}")
         print(f"  Rust: {rust_sample}")

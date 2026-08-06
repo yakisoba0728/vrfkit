@@ -41,6 +41,30 @@ PATTERNS = {
 }
 
 
+def problems(failures, missing) -> list[str]:
+    """Everything that makes this sweep a failure rather than a measurement.
+
+    A replay the oracle could not validate has always been fatal. A counter it
+    stopped PRINTING was not, and the accumulator above already argues that it
+    should be: "A counter the oracle stopped printing must not read as zero.
+    That is precisely how the malformed figure stayed a vacuous 0". The counter
+    was recorded as absent, printed as a WARNING, and the run exited 0 -- so
+    the corpus totals below could be summed over a subset nobody was told
+    about.
+
+    The pass rates deliberately stay informational. The docstring's robustness
+    claim is about them, but the threshold cannot be defended from here without
+    the corpus in hand, and `check_corpus_baseline.py` already pins each
+    replay's rate against a baseline -- which catches a rate that MOVED, the
+    thing a fixed threshold would only approximate.
+    """
+    out = [f"{name}: {why}" for name, why in failures]
+    out += [f"the oracle did not print '{key}' on {count} replay(s), so the "
+            f"corpus total for it is summed over the rest"
+            for key, count in sorted(missing.items())]
+    return out
+
+
 def _run_one(exe: Path, path: Path) -> tuple[str | None, str]:
     """Validate one replay. Returns (error, combined output).
 
@@ -145,7 +169,18 @@ def main(argv: list[str]) -> int:
     print("\ncorpus totals:")
     for key in ("blocks", "fields", "rpcs", "malformed", "skipped"):
         print(f"  {key:<10} {totals[key]:>14,}")
-    return 1 if failures else 0
+
+    found = problems(failures, missing)
+    if found:
+        print(f"\nFAILED: {len(found)} problem(s) across {len(files)} replays",
+              file=sys.stderr)
+        for line in found[:20]:
+            print(f"    {line}", file=sys.stderr)
+        return 1
+    print(f"\nOK: {ok}/{len(files)} replays validated, every counter printed on "
+          f"every one. Pass rates are reported above, not gated -- "
+          f"check_corpus_baseline.py pins them per replay.")
+    return 0
 
 
 if __name__ == "__main__":

@@ -68,6 +68,63 @@ class MergeTests(unittest.TestCase):
             gen.merge({1: "FieldType::Int32"}, {1: "FieldType::Float"})
 
 
+class ConflictTests(unittest.TestCase):
+    """A dropped conflict never reached the verdict.
+
+    `learn()` splits its findings into `resolved` and `conflicts`, and only
+    `resolved` was reconciled against the committed file. `conflicts` was
+    printed and counted and nothing else -- so when the manifests found a
+    checksum whose donors RULE OUT the type the file commits, `--check` passed
+    and `merge()` quietly kept the committed answer. Dropping a conflict is the
+    right thing to do with NEW evidence; it is not a reason to stop looking at
+    what is already written down.
+    """
+
+    def test_a_committed_type_the_evidence_rules_out_is_caught(self):
+        verdict = gen.reconcile(
+            committed={1: "FieldType::Float"},
+            learned={},
+            conflicts={1: (["FieldType::Int32", "FieldType::UInt32"], ["Foo"])},
+        )
+        self.assertIn(1, verdict.contradicted)
+        self.assertFalse(verdict.ok)
+
+    def test_a_committed_type_still_among_the_candidates_is_not_fatal(self):
+        """Ambiguity is not contradiction.
+
+        A committed entry learned from a narrower basis, where only one donor
+        was visible, is exactly the "a narrower basis teaches less" case this
+        module is built to tolerate. It is reported, not failed.
+        """
+        verdict = gen.reconcile(
+            committed={1: "FieldType::Int32"},
+            learned={},
+            conflicts={1: (["FieldType::Int32", "FieldType::UInt32"], ["Foo"])},
+        )
+        self.assertEqual(verdict.contradicted, {})
+        self.assertIn(1, verdict.ambiguous)
+        self.assertTrue(verdict.ok)
+
+    def test_a_conflict_the_file_never_committed_is_not_a_problem(self):
+        """The safety property stays: an unwritten checksum stays unwritten."""
+        verdict = gen.reconcile(
+            committed={},
+            learned={},
+            conflicts={1: (["FieldType::Int32", "FieldType::UInt32"], ["Foo"])},
+        )
+        self.assertTrue(verdict.ok)
+        self.assertEqual(verdict.ambiguous, {})
+
+    def test_merge_refuses_to_carry_a_contradicted_entry_forward(self):
+        """The write path never consults the verdict, so `merge` has to."""
+        with self.assertRaises(ValueError):
+            gen.merge(
+                {1: "FieldType::Float"},
+                {},
+                conflicts={1: (["FieldType::Int32", "FieldType::UInt32"], ["Foo"])},
+            )
+
+
 class ParseTests(unittest.TestCase):
     def test_the_committed_table_parses(self):
         committed = gen.load_committed()

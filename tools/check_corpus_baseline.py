@@ -73,6 +73,30 @@ def measure(exe: Path, root: Path) -> dict:
     return {"branches": branches, "totals": totals, "per_file": per_file}
 
 
+def unpinnable(current: dict) -> list[str]:
+    """Why this run must not become a baseline, if it must not.
+
+    `measure` records a replay the oracle could not validate as
+    `{"error": ...}` and skips it when summing, and a counter the oracle did
+    not print as None. Pinning either stores a number that was never measured:
+    the totals lose that replay's contribution, and a later run that fails in
+    exactly the same way then MATCHES and reports OK. A baseline is a record of
+    a run that worked; refusing here is the same rule
+    `check_metrics_baseline.py` states as "refusing to pin a broken run".
+    """
+    reasons = []
+    if not current["per_file"]:
+        return ["no replay produced any numbers"]
+    for name in sorted(current["per_file"]):
+        entry = current["per_file"][name]
+        if "error" in entry:
+            reasons.append(f"{name}: the oracle failed ({entry['error']})")
+            continue
+        for key in sorted(k for k, v in entry.items() if v is None):
+            reasons.append(f"{name}: the oracle did not print {key}")
+    return reasons
+
+
 def diff(baseline: dict, current: dict) -> list[str]:
     """Every way the two disagree, as human-readable lines."""
     out = []
@@ -130,6 +154,15 @@ def main() -> int:
         return 0
 
     if args.update:
+        refusals = unpinnable(current)
+        if refusals:
+            print(f"FAILED: refusing to pin a broken run -- {len(refusals)} "
+                  f"figure(s) were never measured", file=sys.stderr)
+            for line in refusals[:15]:
+                print(f"  {line}", file=sys.stderr)
+            print("  Fix the run first; a baseline of zeros is matched by the "
+                  "same failure next time.", file=sys.stderr)
+            return 1
         payload = {"corpus": stored.get("corpus") or str(corpus), **current}
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
         args.baseline.write_text(json.dumps(payload, indent=1) + "\n",

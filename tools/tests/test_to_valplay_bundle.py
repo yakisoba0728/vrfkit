@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -9,6 +10,169 @@ import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import to_valplay_bundle as bundle  # noqa: E402
+
+
+def write_fields_parquet(path: Path, rows: list[dict]) -> None:
+    """Write a fields.parquet with the column set the bundle reads.
+
+    Module level so every test class can build an export; `rows` carries only
+    the columns a case cares about and the rest default to null.
+    """
+    def values(name, default=None):
+        return [row.get(name, default) for row in rows]
+
+    table = pa.table(
+        {
+            "time_ms": pa.array(values("time_ms"), type=pa.uint32()),
+            "packet_id": pa.array(values("packet_id"), type=pa.uint32()),
+            "channel_index": pa.array(values("channel_index", 7), type=pa.uint32()),
+            "actor_net_guid": pa.array(values("actor"), type=pa.uint32()),
+            "object_net_guid": pa.array(values("object"), type=pa.uint32()),
+            "group_path": pa.array(values("group_path"), type=pa.string()),
+            "handle": pa.array(values("handle", 0), type=pa.uint32()),
+            "field_name": pa.array(values("field_name"), type=pa.string()),
+            "bit_count": pa.array(values("bit_count"), type=pa.uint32()),
+            "raw_bits": pa.array(values("raw_bits"), type=pa.binary()),
+            "value_i64": pa.array(values("value_i64"), type=pa.int64()),
+            "value_f64": pa.array(values("value_f64"), type=pa.float64()),
+            "value_bool": pa.array(values("value_bool"), type=pa.bool_()),
+            "value_str": pa.array(values("value_str"), type=pa.string()),
+        }
+    )
+    pq.write_table(table, path)
+
+
+#: One innocuous replicated property, so `convert` has a fields.parquet to read
+#: when the case under test is about some other table.
+MINIMAL_FIELD_ROWS = [
+    {
+        "time_ms": 10,
+        "packet_id": 1,
+        "actor": 101,
+        "group_path": "PlayerState",
+        "field_name": "Health",
+        "bit_count": 32,
+        "value_i64": 100,
+    },
+]
+
+
+def write_movement_parquet(path: Path, rows: list[dict]) -> None:
+    """Write a movement.parquet with the columns `_write_movement` reads."""
+    def values(name, default=0.0):
+        return [row.get(name, default) for row in rows]
+
+    def u32(name):
+        return pa.array([row.get(name, 0) for row in rows], type=pa.uint32())
+
+    table = pa.table(
+        {
+            "time_ms": u32("time_ms"),
+            "packet_id": u32("packet_id"),
+            "character_net_guid": u32("char"),
+            "pos_x": pa.array(values("pos_x"), type=pa.float32()),
+            "pos_y": pa.array(values("pos_y"), type=pa.float32()),
+            "pos_z": pa.array(values("pos_z"), type=pa.float32()),
+            "yaw": pa.array(values("yaw"), type=pa.float32()),
+            "pitch": pa.array(values("pitch"), type=pa.float32()),
+            "vel_x": pa.array(values("vel_x"), type=pa.float32()),
+            "vel_y": pa.array(values("vel_y"), type=pa.float32()),
+            "vel_z": pa.array(values("vel_z"), type=pa.float32()),
+        }
+    )
+    pq.write_table(table, path)
+
+
+class MovementCollapseTests(unittest.TestCase):
+    """The bundle keeps the final move PER PACKET, which is what the reference has.
+
+    Every sub-move decoded out of one movement RPC is stamped with the
+    time_ms and packet_id the sink hoisted before the loop
+    (vrfkit/src/sink/stream.rs, decode_movement_rpc), so all sub-moves of one
+    packet share both. Collapsing on the millisecond therefore also merges
+    two DIFFERENT packets that land in the same millisecond, and the earlier
+    packet's final move -- a real, distinct sample -- disappears.
+    """
+
+    @staticmethod
+    def convert_movement(root: Path, rows: list[dict]) -> list[str]:
+        export = root / "export"
+        out = root / "bundle"
+        export.mkdir()
+        write_fields_parquet(export / "fields.parquet", MINIMAL_FIELD_ROWS)
+        write_movement_parquet(export / "movement.parquet", rows)
+        bundle.convert(export, out)
+        text = (out / "movement.ndjson").read_text(encoding="utf-8")
+        return text.splitlines()
+
+    def test_two_packets_in_one_millisecond_each_keep_their_final_move(self):
+        rows = [
+            # Packet 1: two sub-moves, only the second survives.
+            {"time_ms": 100, "packet_id": 1, "char": 42, "pos_x": 1.0},
+            {"time_ms": 100, "packet_id": 1, "char": 42, "pos_x": 2.0},
+            # Packet 2, same millisecond, same character: a separate final
+            # move that must NOT be treated as packet 1's sub-move.
+            {"time_ms": 100, "packet_id": 2, "char": 42, "pos_x": 3.0},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = self.convert_movement(Path(tmp), rows)
+
+        self.assertEqual(len(lines), 2, lines)
+        self.assertIn('"x":2', lines[0])
+        self.assertIn('"x":3', lines[1])
+
+    def test_sub_moves_within_one_packet_are_still_collapsed(self):
+        rows = [
+            {"time_ms": 100, "packet_id": 1, "char": 42, "pos_x": 1.0},
+            {"time_ms": 100, "packet_id": 1, "char": 42, "pos_x": 2.0},
+            {"time_ms": 100, "packet_id": 1, "char": 43, "pos_x": 9.0},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = self.convert_movement(Path(tmp), rows)
+
+        self.assertEqual(len(lines), 2, lines)
+        self.assertIn('"x":2', lines[0])
+        self.assertIn('"x":9', lines[1])
+
+
+class MovementTruncationTests(unittest.TestCase):
+    """A replay with no movement table must not inherit the previous one's.
+
+    `convert` reuses an existing output directory, so converting replay B over
+    replay A's bundle left A's movement.ndjson sitting beside B's events while
+    the run reported success.
+    """
+
+    def test_missing_movement_table_truncates_a_reused_bundle_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with_mv = root / "with_movement"
+            without_mv = root / "without_movement"
+            out = root / "bundle"
+            with_mv.mkdir()
+            without_mv.mkdir()
+            write_fields_parquet(with_mv / "fields.parquet", MINIMAL_FIELD_ROWS)
+            write_fields_parquet(without_mv / "fields.parquet", MINIMAL_FIELD_ROWS)
+            write_movement_parquet(
+                with_mv / "movement.parquet",
+                [{"time_ms": 100, "packet_id": 1, "char": 42, "pos_x": 1.0}],
+            )
+
+            bundle.convert(with_mv, out)
+            self.assertNotEqual(
+                (out / "movement.ndjson").read_text(encoding="utf-8"), ""
+            )
+
+            summary = bundle.convert(without_mv, out)
+
+            self.assertEqual(summary["movement_written"], 0)
+            self.assertTrue(
+                (out / "movement.ndjson").exists(),
+                "movement.ndjson was neither written nor truncated",
+            )
+            self.assertEqual(
+                (out / "movement.ndjson").read_text(encoding="utf-8"), ""
+            )
 
 
 class ShotEventTests(unittest.TestCase):
@@ -288,6 +452,368 @@ class CombatReportLeafNameTests(unittest.TestCase):
         self.assertEqual(
             self.relabel("Rounds[0].Reports", 4), "Rounds[0].Reports",
         )
+
+
+class TallyTestCase(unittest.TestCase):
+    """Shared plumbing for the cases that read the conversion's loss counters."""
+
+    RPC_GROUP = "/Script/ShooterGame.DamageableComponent_ClassNetCache"
+
+    def convert_rows(self, tmp: str, rows: list[dict], **files) -> dict:
+        root = Path(tmp)
+        export = root / "export"
+        export.mkdir()
+        write_fields_parquet(export / "fields.parquet", rows)
+        for name, text in files.items():
+            (export / name.replace("_", ".")).write_text(text, encoding="utf-8")
+        return bundle.convert(export, root / "bundle")
+
+    def tally_of(self, tmp: str, rows: list[dict], **files) -> dict:
+        return self.convert_rows(tmp, rows, **files)["tally"]
+
+    def events_of(self, tmp: str, event_type: str) -> list[dict]:
+        """Every event of one type from the bundle `convert_rows` just wrote.
+
+        The bundle also carries actor_spawned/actor_closed for each actor it
+        saw, so a bare line count says nothing about the events under test.
+        """
+        text = (Path(tmp) / "bundle" / "events.ndjson").read_text(encoding="utf-8")
+        events = [json.loads(line) for line in text.splitlines()]
+        return [e for e in events if e["type"] == event_type]
+
+
+class UnnamedRowTallyTests(TallyTestCase):
+    """A row the parser could not name is a dropped row, and must be counted.
+
+    Both drop sites are silent today: a property group containing one becomes
+    an empty but valid-looking event, and an RPC whose rows are ALL unnamed is
+    dropped whole because no field_name ever supplies the function name. The
+    documented reference export carries 1,996 such rows and the bundle never
+    said so.
+    """
+
+    def test_an_unnamed_property_row_is_counted(self):
+        rows = [
+            {
+                "time_ms": 10, "packet_id": 1, "actor": 101,
+                "group_path": "PlayerState", "field_name": "Health",
+                "bit_count": 32, "value_i64": 100,
+            },
+            {
+                "time_ms": 10, "packet_id": 1, "actor": 101,
+                "group_path": "PlayerState", "field_name": None,
+                "bit_count": 3, "raw_bits": b"\x05",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            tally = self.tally_of(tmp, rows)
+        self.assertEqual(tally["unnamed_property_rows"], 1)
+
+    def test_an_rpc_of_only_unnamed_rows_counts_the_rows_and_the_invocation(self):
+        rows = [
+            {
+                "time_ms": 20, "packet_id": 2, "actor": 202,
+                "group_path": self.RPC_GROUP, "handle": 5,
+                "field_name": None, "bit_count": 3, "raw_bits": b"\x05",
+            },
+            {
+                "time_ms": 20, "packet_id": 2, "actor": 202,
+                "group_path": self.RPC_GROUP, "handle": 5,
+                "field_name": None, "bit_count": 4, "raw_bits": b"\x06",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = self.convert_rows(tmp, rows)
+            # The invocation really is gone -- the count is its only trace.
+            self.assertEqual(self.events_of(tmp, "rpc_received"), [])
+        self.assertEqual(summary["tally"]["unnamed_rpc_rows"], 2)
+        self.assertEqual(summary["tally"]["unnamed_rpc_invocations"], 1)
+
+
+class ManifestTallyTests(TallyTestCase):
+    """A substituted manifest must not read as a real one.
+
+    With no manifest the gameplay-tag table is empty, so every effect blob is
+    keyed by its numeric tag index instead of a name like
+    'FiringState.AmmoRemaining' -- and every shot then reports null ammo,
+    firing state, player and attack vectors while the run says SUCCESS.
+    """
+
+    SHOT_RPC = "/Script/ShooterGame.ShooterCharacter_ClassNetCache"
+
+    def shot_rows(self) -> list[dict]:
+        return [
+            {
+                "time_ms": 30, "packet_id": 3, "actor": 2, "object": 22,
+                "channel_index": 1, "group_path": self.SHOT_RPC, "handle": 9,
+                "field_name": "ReplayPlayContinuousEffectAtLocation.FloatValues",
+                "bit_count": len(EffectBlobBitLengthTests.BLOB) * 8,
+                "raw_bits": EffectBlobBitLengthTests.BLOB,
+            },
+        ]
+
+    def test_a_missing_manifest_is_counted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tally = self.tally_of(tmp, MINIMAL_FIELD_ROWS)
+        self.assertEqual(tally["missing_manifest"], 1)
+
+    def test_a_present_manifest_is_not_counted(self):
+        manifest = '{"replay_version": "x", "duration_ms": 5}'
+        with tempfile.TemporaryDirectory() as tmp:
+            tally = self.tally_of(tmp, MINIMAL_FIELD_ROWS, manifest_json=manifest)
+        self.assertEqual(tally["missing_manifest"], 0)
+
+    def test_shots_decoded_with_no_tag_table_are_counted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tally = self.tally_of(tmp, self.shot_rows())
+        self.assertEqual(tally["empty_gameplay_tag_table"], 1)
+
+    def test_a_tag_table_from_the_manifest_clears_the_count(self):
+        manifest = json.dumps({
+            "net_field_export_groups": [
+                {
+                    "path": "NetworkGameplayTagNodeIndex",
+                    "fields": [{"handle": 263, "name": "FiringState.AmmoRemaining"}],
+                }
+            ]
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            tally = self.tally_of(tmp, self.shot_rows(), manifest_json=manifest)
+        self.assertEqual(tally["empty_gameplay_tag_table"], 0)
+
+
+class RpcCollisionTallyTests(TallyTestCase):
+    """Two invocations of one function by one actor in one packet collide.
+
+    The RPC group key is (packet_id, actor, group_path, handle), so both calls
+    land in one group, the second call's parameters overwrite the first's, and
+    a single rpc_received comes out. Nothing can un-interleave them from the
+    export, so the fix is to say it happened, not to guess a boundary.
+    """
+
+    def collided_rows(self) -> list[dict]:
+        common = {
+            "time_ms": 40, "packet_id": 4, "actor": 404,
+            "group_path": self.RPC_GROUP, "handle": 12,
+            "field_name": "MulticastNotifyKilledEnemy.MultikillLevel",
+        }
+        return [
+            {**common, "bit_count": 8, "value_i64": 1},
+            {**common, "bit_count": 8, "value_i64": 2},
+        ]
+
+    def test_a_repeated_parameter_in_one_group_is_counted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = self.convert_rows(tmp, self.collided_rows())
+            # One rpc_received for what were two calls, carrying only the
+            # second call's value -- the loss the count names.
+            rpcs = self.events_of(tmp, "rpc_received")
+        self.assertEqual(summary["tally"]["rpc_param_collisions"], 1)
+        self.assertEqual(len(rpcs), 1, rpcs)
+        self.assertEqual(rpcs[0]["payload"], {"MultikillLevel": 2})
+
+    def test_distinct_parameters_in_one_group_are_not_counted(self):
+        common = {
+            "time_ms": 40, "packet_id": 4, "actor": 404,
+            "group_path": self.RPC_GROUP, "handle": 12, "bit_count": 8,
+        }
+        rows = [
+            {**common, "field_name": "MulticastNotifyKilledEnemy.KillerCharacter",
+             "value_i64": 1},
+            {**common, "field_name": "MulticastNotifyKilledEnemy.KilledCharacter",
+             "value_i64": 2},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            tally = self.tally_of(tmp, rows)
+        self.assertEqual(tally["rpc_param_collisions"], 0)
+
+
+class FlatPathTallyTests(unittest.TestCase):
+    """A path segment the parser cannot read becomes a literal key, silently.
+
+    'Rounds[0][1].Damage' yields the literal object key 'Rounds[0][1]', and
+    two rows whose shapes disagree ('Foo' and 'Foo.Bar') destroy each other
+    depending on arrival order. Both produce valid JSON and a successful
+    count, so a counter is the only thing that can report them.
+    """
+
+    def test_an_unparsable_segment_is_counted(self):
+        tally = bundle._Tally()
+        parts = bundle._parse_field_path("Rounds[0][1].Damage", tally)
+        self.assertEqual(parts[0], ("Rounds[0][1]", None))
+        self.assertEqual(tally["unparsable_path_segments"], 1)
+
+    def test_a_bare_numeric_segment_is_not_counted(self):
+        # '248' is the documented spelling of an unnamed handle, not a parse
+        # failure; counting it would drown the real ones.
+        tally = bundle._Tally()
+        self.assertEqual(bundle._parse_field_path("248", tally), [("248", None)])
+        self.assertEqual(tally["unparsable_path_segments"], 0)
+
+    def test_a_blueprint_name_with_spaces_is_not_counted(self):
+        # Measured on out/baseline: 449 rows carry a segment that is neither
+        # an identifier nor a number, and all 41 distinct spellings are
+        # Blueprint display names like these -- none has a bracket in it. A
+        # name with a space is a leaf, and a literal key is the RIGHT
+        # representation of a leaf, so counting these would put a
+        # three-figure number in every clean conversion's summary and teach
+        # the reader to skip the block.
+        tally = bundle._Tally()
+        for name in ("Victim FXC", "Set skeletal Collision", "Socket Name"):
+            self.assertEqual(bundle._parse_field_path(name, tally),
+                             [(name, None)])
+        self.assertEqual(tally["unparsable_path_segments"], 0)
+
+    def test_a_segment_whose_subscripts_did_not_parse_is_counted(self):
+        # The real failure: bracket structure the parser could not read. The
+        # nesting it describes is silently flattened into one literal key.
+        tally = bundle._Tally()
+        parts = bundle._parse_field_path("Rounds[0][1]", tally)
+        self.assertEqual(parts, [("Rounds[0][1]", None)])
+        self.assertEqual(tally["unparsable_path_segments"], 1)
+
+    def test_a_scalar_overwritten_by_a_nested_value_is_counted(self):
+        tally = bundle._Tally()
+        payload = {}
+        bundle._set_nested(payload, bundle._parse_field_path("Foo"), 1, tally)
+        bundle._set_nested(payload, bundle._parse_field_path("Foo.Bar"), 2, tally)
+        self.assertEqual(payload, {"Foo": {"Bar": 2}})
+        self.assertEqual(tally["payload_shape_conflicts"], 1)
+
+    def test_a_nested_value_overwritten_by_a_scalar_is_counted(self):
+        tally = bundle._Tally()
+        payload = {}
+        bundle._set_nested(payload, bundle._parse_field_path("Foo.Bar"), 2, tally)
+        bundle._set_nested(payload, bundle._parse_field_path("Foo"), 1, tally)
+        self.assertEqual(payload, {"Foo": 1})
+        self.assertEqual(tally["payload_shape_conflicts"], 1)
+
+    def test_ordinary_nesting_is_not_counted(self):
+        tally = bundle._Tally()
+        payload = {}
+        for path, value in (("Rounds[0].Damage", 5), ("Rounds[1].Damage", 7),
+                            ("Rounds[0].Kills", 2), ("Plain", 1)):
+            bundle._set_nested(payload, bundle._parse_field_path(path), value, tally)
+        self.assertEqual(tally["payload_shape_conflicts"], 0)
+        self.assertEqual(tally["unparsable_path_segments"], 0)
+
+    def test_life_change_child_rows_are_still_dropped(self):
+        # Guard, not a new claim: these children arrive spelled with '[0]'
+        # and must never reach the payload as flat keys.
+        for param in ("LifeChangeEvents[0].LifeResult",
+                      "LifeChangeBySection[1].Amount"):
+            self.assertIsNone(
+                bundle._normalize_rpc_param(
+                    "MulticastNotifyDamage_Point", param, 3, False
+                )
+            )
+
+
+class TypedColumnTallyTests(unittest.TestCase):
+    """More than one typed column set is a writer regression, not a value.
+
+    _get_value picks i64, then f64, then bool, then string. If a regression
+    filled value_i64=1 and value_bool=False, the bundle emits 1, discards the
+    boolean and completes normally.
+    """
+
+    def test_two_populated_typed_columns_are_counted(self):
+        tally = bundle._Tally()
+        value, is_raw = bundle._get_value(1, None, False, None, None, None, tally)
+        self.assertEqual((value, is_raw), (1, False))
+        self.assertEqual(tally["multi_typed_rows"], 1)
+
+    def test_one_populated_typed_column_is_not_counted(self):
+        tally = bundle._Tally()
+        for args in ((7, None, None, None, None, None),
+                     (None, 1.5, None, None, None, None),
+                     (None, None, True, None, None, None),
+                     (None, None, None, "s", None, None),
+                     (None, None, None, None, b"\x01", 8)):
+            bundle._get_value(*args, tally)
+        self.assertEqual(tally["multi_typed_rows"], 0)
+
+    def test_a_typed_value_beside_raw_bits_is_not_counted(self):
+        # raw_bits travels alongside decoded values by design; only the four
+        # TYPED columns are meant to be mutually exclusive.
+        tally = bundle._Tally()
+        bundle._get_value(1, None, None, None, b"\x01", 8, tally)
+        self.assertEqual(tally["multi_typed_rows"], 0)
+
+
+class FabricatedLocationTests(TallyTestCase):
+    """A shot with no readable location gets the world origin -- say so.
+
+    _parse_vector_or_zero's docstring claimed an upstream filter guarantees a
+    location is present. There is no such filter: _build_rpc_events emits
+    every ReplayPlayContinuousEffectAtLocation invocation and says so in its
+    own comment ('No blob guard'), so the fabricated origin is reachable.
+    """
+
+    def build_shot(self, scalar_params: dict, tally):
+        return bundle._build_shot_event(
+            bundle._ShotContext(tag_table={}), 1, 2, 3, 4, 5,
+            scalar_params, bundle._EffectBlobs(), tally=tally,
+        )["shot"]
+
+    def test_a_shot_with_no_location_counts_a_fabricated_origin(self):
+        tally = bundle._Tally()
+        shot = self.build_shot({}, tally)
+        self.assertEqual(shot["location"], {"x": 0, "y": 0, "z": 0})
+        self.assertEqual(tally["fabricated_shot_locations"], 1)
+
+    def test_an_unparsable_location_counts_a_fabricated_origin(self):
+        tally = bundle._Tally()
+        self.assertEqual(
+            self.build_shot({"Location": "(1,2)"}, tally)["location"],
+            {"x": 0, "y": 0, "z": 0},
+        )
+        self.assertEqual(tally["fabricated_shot_locations"], 1)
+
+    def test_a_real_location_counts_nothing(self):
+        tally = bundle._Tally()
+        self.assertEqual(
+            self.build_shot({"Location": "(1,2,3)"}, tally)["location"],
+            {"x": 1, "y": 2, "z": 3},
+        )
+        self.assertEqual(tally["fabricated_shot_locations"], 0)
+
+    def test_a_genuine_origin_shot_counts_nothing(self):
+        # (0,0,0) parsed from the wire is a real position, not a fabrication.
+        tally = bundle._Tally()
+        self.assertEqual(
+            self.build_shot({"Location": "(0,0,0)"}, tally)["location"],
+            {"x": 0, "y": 0, "z": 0},
+        )
+        self.assertEqual(tally["fabricated_shot_locations"], 0)
+
+
+class SummaryReportingTests(TallyTestCase):
+    """The summary must not say 'complete' about a conversion that lost rows."""
+
+    def test_a_clean_conversion_reports_no_losses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = '{"replay_version": "x"}'
+            summary = self.convert_rows(
+                tmp, MINIMAL_FIELD_ROWS, manifest_json=manifest
+            )
+        self.assertEqual(summary["tally"].total, 0)
+
+    def test_a_lossy_conversion_names_every_loss_in_its_summary(self):
+        rows = MINIMAL_FIELD_ROWS + [
+            {
+                "time_ms": 10, "packet_id": 1, "actor": 101,
+                "group_path": "PlayerState", "field_name": None,
+                "bit_count": 3, "raw_bits": b"\x05",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = self.convert_rows(tmp, rows)
+        lines = summary["tally"].lines()
+        self.assertTrue(any("unnamed_property_rows" in ln for ln in lines), lines)
+        self.assertTrue(any("missing_manifest" in ln for ln in lines), lines)
+        # Only the non-zero counters are printed.
+        self.assertEqual(len(lines), 2, lines)
 
 
 if __name__ == "__main__":

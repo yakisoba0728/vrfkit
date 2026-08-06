@@ -145,6 +145,19 @@ def main() -> int:
     except (OSError, subprocess.CalledProcessError, UnicodeDecodeError) as exc:
         print(f"ERROR: cannot enumerate tracked Rust files: {exc}", file=sys.stderr)
         return 2
+    if not paths:
+        # `git ls-files` can succeed and print nothing -- wrong directory, a
+        # repository with no commits, a pathspec that stopped matching. The
+        # sweep then covered nothing and said "OK: 0 tracked Rust file(s),
+        # ASCII only", which is indistinguishable from a clean sweep. This
+        # repository always has Rust files, so an empty enumeration is a broken
+        # measurement, not a clean result.
+        print(
+            f"ERROR: no tracked Rust files under {REPOSITORY_ROOT}; "
+            f"nothing was scanned",
+            file=sys.stderr,
+        )
+        return 2
     return run_check(paths, tracked=True)
 
 

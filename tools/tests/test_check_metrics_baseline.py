@@ -138,6 +138,40 @@ class DriftTests(unittest.TestCase):
         self.assertTrue(any("shot_rays" in d and "absent" in d for d in drift), drift)
 
 
+class UpdateScopeTests(unittest.TestCase):
+    """`--update --only X` used to rewrite the whole-build baseline with X alone.
+
+    The module docstring makes the one-file-covering-every-build design a
+    guarantee: "a build disappearing from the set is itself a failure. Per-file
+    baselines cannot see that". Re-pinning after looking at a single build
+    deleted the other four from the file, so the very next full run reported
+    them as new rather than as missing, and the guarantee was gone.
+    """
+
+    STORED = {"12.10": {"kills": 1}, "13.02": {"kills": 2}}
+
+    def test_a_scoped_update_keeps_the_builds_it_did_not_look_at(self):
+        merged = guard.merged_metrics(self.STORED, {"13.02": {"kills": 9}},
+                                      only=["13.02"])
+        self.assertEqual(sorted(merged), ["12.10", "13.02"])
+        self.assertEqual(merged["12.10"], {"kills": 1})
+
+    def test_a_scoped_update_replaces_the_build_it_did_look_at(self):
+        merged = guard.merged_metrics(self.STORED, {"13.02": {"kills": 9}},
+                                      only=["13.02"])
+        self.assertEqual(merged["13.02"], {"kills": 9})
+
+    def test_an_unscoped_update_replaces_the_whole_set(self):
+        """A full run is the only thing allowed to retire a build.
+
+        Merging there would keep a build pinned forever after it left REPLAYS,
+        and every later run would then fail with "MISSING from this run".
+        """
+        merged = guard.merged_metrics(self.STORED, {"13.02": {"kills": 9}},
+                                      only=None)
+        self.assertEqual(sorted(merged), ["13.02"])
+
+
 class WiringTests(unittest.TestCase):
     def test_every_build_has_a_replay_path(self):
         self.assertEqual(sorted(guard.REPLAYS),

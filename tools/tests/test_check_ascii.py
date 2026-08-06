@@ -62,6 +62,34 @@ class CheckAsciiTests(unittest.TestCase):
             "FAILED: 1 line(s), 2 byte(s)\n",
         )
 
+    def test_an_empty_tracked_list_is_a_broken_measurement_not_a_clean_sweep(self):
+        """`git ls-files` succeeding with no output scanned nothing.
+
+        It printed "OK: 0 tracked Rust file(s), ASCII only" and exited 0, which
+        is the vacuous-success shape this repo keeps finding: the sweep that
+        covers nothing reads exactly like the sweep that found nothing wrong.
+        This repo always has Rust files, so an empty enumeration means the
+        measurement failed -- wrong directory, wrong pathspec, no git.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            (repository / "tools").mkdir()
+            copied_script = repository / "tools" / "check_ascii.py"
+            shutil.copyfile(SCRIPT, copied_script)
+            (repository / "notes.md").write_bytes(b"no Rust here\n")
+            subprocess.run(["git", "init", "--quiet"], cwd=repository, check=True)
+            subprocess.run(["git", "add", "--", "notes.md"],
+                           cwd=repository, check=True)
+
+            result = subprocess.run(
+                [sys.executable, str(copied_script), "--check"],
+                cwd=repository, capture_output=True, text=True, check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("OK:", result.stdout)
+        self.assertIn("no tracked Rust files", result.stderr)
+
     def test_default_check_detects_tracked_fixture_outside_nested_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
