@@ -111,8 +111,23 @@ An AoE applies to several victims in the same tick, each as its own row, so
 Two caveats. The container names are cosmetic-effect assets, so the same
 gameplay state can arrive under more than one name and a pure-audio variant sits
 beside the real one (`..._DetainDebuff_Audio_C`). And this is a *visual* effect
-channel: it is strong evidence the state was applied, but it is not the
-authoritative state flag, which is the GAS array that never reaches the wire.
+channel: strong evidence the state was applied, but not an authoritative flag --
+no component carries an `IsVulnerable`-style boolean anywhere. A status is
+always reconstructed as an interval from a start/stop pair.
+
+Measured across all 215 replays:
+
+| status | signal | coverage |
+|---|---|---|
+| suppressed | `FXC_Grenadier_Player_Suppressed_C` | 1,021 windows over 83 replays, zero unterminated; median 8.0 s |
+| vulnerable | `..._Fragile*` effects (the internal name is **Fragile**, not Vulnerable) | 4.0 s duration; 82 of 215 replays show it by one signal or another |
+
+**Vulnerable doubles damage, exactly.** `DamageDealt / FalloffMultiplier`
+recovers each weapon's base damage, and over 123,008 gun and melee hits that
+ratio is 1.0 on 122,284 and exactly 2.0 on 171. Inside a Fragile window the 2x
+rate is 99/99; outside it is 72 in 122,356. The multiplier sits outside falloff,
+so a Vandal headshot reads 320 = 40 x 4 x 2. Use `DamageDealt`, not
+`DamageTaken` -- the latter is clamped to remaining life.
 
 ### Slows are visible in the movement data itself
 
@@ -294,12 +309,25 @@ Roughly in value order. Each names the file to touch first.
 
    What is left after it is mostly not reachable by typing at all -- see the
    closed question below.
-3. **`HANDLE_ADDITIONS` for the next unnamed single handle** — the mechanism
+3. **Walk one level further into `AbilityCastsThisRound[].Effects[]`** — the
+   largest concrete gap left, and it is a decoder gap rather than a wire limit.
+   The array flattener stops at `Effects`, leaving 366 rows raw, but the nesting
+   continues: `Effects[] -> {Statistic, LocalizedStat, Value, Time,
+   AffectedTargetsArray[] -> {AffectedPlayer, Value}}`. Walking it with the same
+   RepLayout dynamic-array framing succeeds on all 215 replays -- 92,564 effect
+   elements and 94,908 target entries -- and yields the **authoritative** debuff
+   log rather than the cosmetic-effect proxy above: 31 named statistics
+   including `EnemiesSuppressed`, `EnemiesVulnerabled`, `EnemiesSlowed`,
+   `EnemiesBlinded`, `EnemiesConcussed`, `EnemiesDetained`, each naming the
+   affected player. `AffectedPlayer` is a 16-bit packed-int NetGUID that
+   resolves to a `BombPlayerState` actor, i.e. straight to a manifest subject.
+   `crates/vrfkit/src/sink/blobs.rs` is where the flattening stops.
+4. **`HANDLE_ADDITIONS` for the next unnamed single handle** — the mechanism
    added for `MagazineAmmo` generalizes. `ReserveAmmo` (reserve bullets) is the
    obvious next candidate once its group is resolved (it may fall out of item 1).
    Add to `HANDLE_ADDITIONS` + `ADDITIONS` in `tools/apply_type_corrections.py`,
    pin in `crates/vrf-decode/src/tests/overlay.rs`.
-4. **AbilitiesAndBuffs inner payload** — structurally decoded (`flag + u32`
+5. **AbilitiesAndBuffs inner payload** — structurally decoded (`flag + u32`
    stream in `crates/vrf-decode/src/cnc.rs`), but the per-word meaning needs the
    GAS C++ serializer. **Confirmed against the shipped game, not just assumed:**
    the script object map has `/Script/ShooterGame.AresAttributeSet` as a class
@@ -307,7 +335,7 @@ Roughly in value order. Each names the file to touch first.
    `FGameplayAttributeData` fields declared in C++ and cooked assets carry no
    member list for them. Unpacking the paks does not help here. The fc=34 RPC
    timing/size is already exported.
-5. ~~**Exact ability cast count**~~ — **wrong, and instructively so.** This
+6. ~~**Exact ability cast count**~~ — **wrong, and instructively so.** This
    said "confirmed wire-limit: the GAS stream is state-sync, not one RPC per
    cast". The premise was right and the conclusion did not follow:
    `Comp_AbilityStatisticsReplicator` replicates one record per cast, with the
