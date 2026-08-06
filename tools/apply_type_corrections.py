@@ -410,6 +410,16 @@ ADDITIONS = [
     # `EnemiesVulnerabled` and 28 more -- where the cosmetic-effect channel is
     # only a proxy for it.
     #
+    # `LocalizedStat` is deliberately absent. It was typed `FString` here and
+    # decoded to null on 3,011 of 3,011 rows with decode errors still at 0 --
+    # the wire is an `FText`, not an `FString`. Shifted one bit off the byte
+    # grid it reads `uint32 Flags=0, uint8 HistoryType=5`
+    # (`ETextHistoryType::StringTableEntry`) followed by a string-table path and
+    # a key, and the key is the statistic name. The sibling `Player`, a real
+    # FString, decodes 3,030/3,030 -- so this is the type being wrong, not the
+    # walk. Typing it needs an FText decoder; until then the bits are in
+    # `raw_bits` and `Statistic` already carries the enum.
+    #
     # `AffectedPlayer` is the check: all 224 values resolve to a
     # `manifest.players.actor_net_guid`, across exactly 10 distinct players.
     # `Statistic` is a small enum whose observed values line up with the named
@@ -417,8 +427,6 @@ ADDITIONS = [
     # and `Time` reads as seconds within the round like its sibling `CastTime`.
     ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
      "Statistic_2_0868666A4F6501815AB301BB615B2B5C", "FieldType::EnumByte"),
-    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
-     "LocalizedStat_14_C3A26F5E46CDAD94571AE6B0EDEA058B", "FieldType::FString"),
     ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
      "Value_7_E46F38AE4D245059AF7BB09E301C3C65", "FieldType::Float"),
     ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",

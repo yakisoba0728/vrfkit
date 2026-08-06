@@ -497,7 +497,7 @@ cannot be expanded into fields, so it emits one preservation row (`handle` =
 `u32::MAX`, full payload in `raw_bits`) and a loud failure with skipped bits.
 
 The overlay table is extracted mechanically from the C# descriptors
-(`tools/extract_descriptors.py`) -- 196 groups, 1,247 entries, 84 handles.
+(`tools/extract_descriptors.py`) -- 196 groups, 1,246 entries, 84 handles.
 Nothing is transcribed by hand, for the same reason S-boxes and golden vectors
 are not: it is the kind of constant where a typo is invisible in review.
 
@@ -553,7 +553,7 @@ is unknown still ships with `raw_bits`, so it is **uninterpreted, not lost.**
 does not print overlay counters, so `validate_corpus.py` alone cannot see a
 wrong type. Reaching zero found three places where the wire disagreed with the
 C# declarations; they are recorded with evidence in
-`tools/apply_type_corrections.py` (86 corrections, verified with `--check`).
+`tools/apply_type_corrections.py` (85 corrections, verified with `--check`).
 
 | Symptom | Actual | Evidence |
 |---|---|---|
@@ -703,7 +703,7 @@ Four files in the tree are generated and must never be edited by hand:
 
 | Generated file | Generator | Notes |
 |---|---|---|
-| `crates/vrf-decode/src/table.rs` | `tools/extract_descriptors.py` then `tools/apply_type_corrections.py` | The overlay table (1,247 entries, 196 groups, 84 handles) and handle table |
+| `crates/vrf-decode/src/table.rs` | `tools/extract_descriptors.py` then `tools/apply_type_corrections.py` | The overlay table (1,246 entries, 196 groups, 84 handles) and handle table |
 | `crates/vrf-transform/src/sbox.rs` | `tools/extract_sboxes.py` | 768-byte S-box, shared across builds |
 | `crates/vrf-transform/tests/data/golden_vectors.rs` | `tools/extract_golden.py` | Per-build golden test vectors |
 | `tools/equippable_table.py` | `tools/extract_equippables.py` | Weapon class path to display name |

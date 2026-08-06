@@ -118,7 +118,11 @@ class AdditionsTests(unittest.TestCase):
         `HandleNumber`, whose 3,741 rows hold a dense 1..765. One entry each is
         enough -- checksum propagation carries both to their sibling RPCs.
 
-        56 -> 62 adds the six members of `AbilityCastsThisRound[].Effects[]`,
+        62 -> 61 drops `LocalizedStat`: typed `FString`, it decoded to null on
+        3,011 of 3,011 rows because the wire is an `FText`. Removing a type that
+        produces nothing is not a loss -- the bits stay in `raw_bits`.
+
+        56 -> 62 added the six members of `AbilityCastsThisRound[].Effects[]`,
         the authoritative debuff log. `AffectedPlayer` resolves to a manifest
         actor 224/224 over exactly 10 players.
 
@@ -136,7 +140,7 @@ class AdditionsTests(unittest.TestCase):
         2 as `AuthResourceAmount`, so the leaf remap in `sink/paths.rs` now
         reaches a real declaration and the guessed name is gone.
         """
-        self.assertEqual(len(atc.ADDITIONS), 62, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 61, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.

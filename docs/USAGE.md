@@ -357,7 +357,7 @@ disabling it would produce files this crate could not explain.
 
 | Script | Produces |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,247 + 84 handles) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,246 + 84 handles) |
 | `apply_type_corrections.py` | Applies verified corrections/additions to that file and recomputes the two-line generation header |
 | `extract_checksum_types.py` | `crates/vrf-decode/src/checksum_table.rs` -- `compatible_checksum` -> `FieldType`, learned from the fields the overlay table already declares. Needs an export directory rather than the C# tree, since checksums come from the replay. Checksums whose donors disagree are dropped, which is the safety property; `--check` verifies the committed file still matches. |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
@@ -371,7 +371,7 @@ the script does not trust its own apply count -- it **re-verifies the final
 state after applying** and fails if it disagrees.
 
 ```bash
-python tools/apply_type_corrections.py           # apply, then verify (86 corrections)
+python tools/apply_type_corrections.py           # apply, then verify (85 corrections)
 python tools/apply_type_corrections.py --check   # verify only
 ```
 
