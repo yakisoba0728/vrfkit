@@ -129,6 +129,28 @@ rate is 99/99; outside it is 72 in 122,356. The multiplier sits outside falloff,
 so a Vandal headshot reads 320 = 40 x 4 x 2. Use `DamageDealt`, not
 `DamageTaken` -- the latter is clamped to remaining life.
 
+### Callout regions name half the maps
+
+`CalloutRegionTrackingComponent.CurrentRegion` resolves through `net_guids` to a
+region asset, which gives a player's position as a map callout rather than as
+centimetres. Measured over 64 demo replays covering 12 maps, the asset names are
+only useful on half of them:
+
+| named | numbered |
+|---|---|
+| Ascent, Bonsai (Split), Infinity (Abyss), Port (Icebox), Rook (Corrode), Triad (Haven) | Canyon (Fracture), Foxtrot (Breeze), Jam (Lotus), Juliett (Sunset), Pitt (Pearl), Plummet (Summit) |
+
+On the first group the leaf reads `CalloutRegion_ASite`, `BP_CalloutRegion_A_Lobby`,
+`InfinityCallout_ABridge` and so on. On the second it is `BP_CalloutRegion10`,
+`BP_CalloutRegion_C_0` -- an index with no name behind it. The prefix varies
+independently of this (`BP_`, `InfinityCallout`, bare), so match on whether
+letters survive after stripping it, not on the prefix.
+
+The regions are still usable where they are numbered -- the id is stable within
+a map and the spatial extent can be recovered by pooling player positions per
+region -- but a consumer that wants to *label* the area has to supply its own
+names for six of the twelve maps.
+
 ### Slows are visible in the movement data itself
 
 Independently of the effect channel above, a slow is legible from speed alone,
