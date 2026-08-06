@@ -328,11 +328,27 @@ The first bucket is 60% of it and is nothing to fix: `BaseReplayController`'s
 Two ordinary additions came out of the second bucket and are now typed --
 `StopMovementTime` and `HandleNumber`, above. The largest remaining item does
 not yield to a `FieldType` at all.
-`ClientReplayReceiveInputEventProcessingCapture.InputEventData` (53,605 rows)
-is **not a scalar**: its width varies (24, 32, 40, 48, 64 bits) and the leading
-byte tracks it -- `0x0c` at 24 bits, `0x28` at 40, `0x38` at 48, which is
-`bit_count / 2` in each case. That is a self-describing record, so it needs a
-dedicated decoder in the shape of `effect` or `structs`, not a table entry.
+
+`ClientReplayReceiveInputEventProcessingCapture.InputEventData` (53,605 rows,
+one per `PlayerID` row) is a **tagged union**, not a scalar. The leading byte's
+top 7 bits are a tag, and the tag fixes the width exactly -- seven tags, five
+widths, no exceptions across all 53,605 rows:
+
+| tag | width | rows | | tag | width | rows |
+|---|---|---|---|---|---|---|
+| 41 | 64 | 18,288 | | 12 | 32 | 3,093 |
+| 15 | 32 | 14,724 | | 20 | 40 | 2,961 |
+| 6 | 24 | 11,486 | | 28 | 48 | 2,522 |
+| | | | | 13 | 32 | 531 |
+
+So the framing is settled and a dedicated decoder in the shape of `effect` or
+`structs` could walk it. **What is missing is what any of it means.** Nothing
+names the tags: the RPC carries only `PlayerID` beside it, no descriptor
+declares the parameter, no checksum donor exists, and the cooked assets do not
+help either -- this is engine-side input capture, not a Blueprint property. A
+decoder written now would produce seven anonymous payloads, which is what
+`raw_bits` already gives. Left alone until there is a source for the tag
+meanings.
 
 `ServerMovementTime` (4,654 rows) reads cleanly as Float and is still
 deliberately untyped: the epoch is undocumented, so the values are not
