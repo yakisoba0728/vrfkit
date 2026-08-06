@@ -109,6 +109,63 @@ def learn(manifests: list[Path], table: dict[tuple[str, str], str]):
     return resolved, conflicts
 
 
+COMMITTED_RE = re.compile(r"\((\d+), (FieldType::[^)]*)\),")
+
+
+def load_committed() -> dict[int, str]:
+    """The checksum -> type map as currently committed."""
+    if not OUT_RS.is_file():
+        return {}
+    src = OUT_RS.read_text(encoding="utf-8")
+    return {int(c): " ".join(t.split()) for c, t in COMMITTED_RE.findall(src)}
+
+
+class Verdict:
+    """How a freshly learned map relates to the committed one.
+
+    Three relations, and only one of them is a problem. `new` and `unseen` are
+    both coverage: a checksum identifies a property, so a wider set of replays
+    teaches a larger subset of the same truth and a narrower one teaches less.
+    `disagreed` is the real thing -- one checksum mapped two ways, which means
+    one of them is wrong.
+    """
+
+    def __init__(self, disagreed, new, unseen):
+        self.disagreed, self.new, self.unseen = disagreed, new, unseen
+
+    @property
+    def ok(self) -> bool:
+        return not self.disagreed
+
+
+def reconcile(committed: dict[int, str], learned: dict[int, str]) -> Verdict:
+    disagreed = {c: (committed[c], learned[c])
+                 for c in committed.keys() & learned.keys()
+                 if committed[c] != learned[c]}
+    return Verdict(
+        disagreed,
+        {c: learned[c] for c in learned.keys() - committed.keys()},
+        {c: committed[c] for c in committed.keys() - learned.keys()},
+    )
+
+
+def merge(committed: dict[int, str], learned: dict[int, str]) -> dict[int, str]:
+    """Union, refusing a disagreement rather than picking a winner.
+
+    Widening the basis must not narrow the table: an entry a smaller run cannot
+    re-derive is still correct, and a plain regeneration would silently drop it.
+    """
+    clash = [c for c in committed.keys() & learned.keys()
+             if committed[c] != learned[c]]
+    if clash:
+        raise ValueError(
+            f"{len(clash)} checksum(s) disagree, refusing to merge: "
+            + ", ".join(f"{c} {committed[c]} vs {learned[c]}"
+                        for c in sorted(clash)[:5])
+        )
+    return {**committed, **learned}
+
+
 def render(resolved: dict[int, str]) -> str:
     body = "".join(
         f"    ({checksum}, {resolved[checksum]}),\n" for checksum in sorted(resolved)
@@ -142,17 +199,31 @@ def main() -> int:
     print(f"{len(table)} table entries, {len(manifests)} manifest(s) -> "
           f"{len(resolved)} checksums, {len(conflicts)} dropped")
 
+    committed = load_committed()
+    verdict = reconcile(committed, resolved)
+    print(f"vs committed: {len(verdict.disagreed)} disagree, {len(verdict.new)} "
+          f"new here, {len(verdict.unseen)} not taught by these manifests")
+    for checksum, (was, now) in sorted(verdict.disagreed.items())[:10]:
+        print(f"  DISAGREE {checksum}: committed {was}, learned {now}")
+
     if args.check:
-        current = OUT_RS.read_text(encoding="utf-8") if OUT_RS.is_file() else ""
-        if current != rendered:
-            print(f"FAILED: {OUT_RS.name} is stale -- re-run without --check",
+        if not verdict.ok:
+            print(f"FAILED: {len(verdict.disagreed)} checksum(s) map two ways",
                   file=sys.stderr)
             return 1
-        print(f"\nOK: {OUT_RS.name} matches the manifests")
+        print(f"\nOK: {OUT_RS.name} agrees with these manifests wherever they "
+              f"overlap")
         return 0
 
-    OUT_RS.write_text(rendered, encoding="utf-8")
-    print(f"wrote {OUT_RS}")
+    # Merge rather than replace. A checksum this basis did not happen to see is
+    # still correct, so rendering fresh would drop it -- which is how the file
+    # came to hold 417 entries that no reachable export set reproduces. Byte
+    # equality with a regeneration was never achievable for a content-addressed
+    # table, and demanding it is what made `--check` fail for every basis and
+    # stop meaning anything.
+    widened = merge(committed, resolved)
+    OUT_RS.write_text(render(widened), encoding="utf-8")
+    print(f"wrote {OUT_RS} ({len(widened)} checksums, +{len(verdict.new)})")
     return 0
 
 

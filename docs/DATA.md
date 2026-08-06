@@ -100,7 +100,7 @@ script is not in the repo -- `vrfkit export` emits no `LifeResult`,
 `DeltaLife`, `bAliveAfterChange` or `ChangedComponent` column, and no tool
 reads them. Treat the numbers as provenance-tagged evidence for the
 *semantics*, not as something a reader can re-run. Typing the four members is
-item 7 under What's next, and doing it is what would make this section
+item 6 under What's next, and doing it is what would make this section
 checkable.
 
 Verified over 69 replays on build 13.02: 377,487 elements, zero parse errors,
@@ -539,21 +539,11 @@ are in `docs/USAGE.md` under the fields schema.
    was simply invisible. Start by asking whether the checksum fallback is
    reached at all when the field name is a bare handle number.
 
-4. **Re-base `checksum_table.rs`, or expect `--check` to fail.**
-   `extract_checksum_types.py --check` reports the committed table as stale
-   against any export set reachable here: one export learns 415 checksums, 71
-   learn 442, and the file holds 417. It is not broken -- a checksum is
-   content-addressed, so what is in the table is correct regardless of which
-   replays taught it -- but it does not reproduce, and typing Phoenix's smoke
-   RPC added two more donors it has never seen. Re-basing is a deliberate
-   commit of its own: it swaps twenty-odd unrelated entries, so it must not
-   ride along with an unrelated fix.
-
-5. **Keep the component remaps honest.** `KNOWN_SUBOBJECT_CLASS_PATHS` was read
+4. **Keep the component remaps honest.** `KNOWN_SUBOBJECT_CLASS_PATHS` was read
    out of one build; a later one can rename a component and nothing here would
    notice on its own. Run `tools/check_component_remaps.py --export <dir>`
    against a replay from a new build. It needs no game install and no baseline.
-6. **An `FText` decoder.** `FieldType` has none, which is why
+5. **An `FText` decoder.** `FieldType` has none, which is why
    `Comp_AbilityStatisticsReplicator`'s `LocalizedStat` is deliberately
    untyped. Shifted one bit off the byte grid the payload reads `uint32 Flags=0,
    uint8 HistoryType=5` (`ETextHistoryType::StringTableEntry`), then a
@@ -561,7 +551,7 @@ are in `docs/USAGE.md` under the fields schema.
    depends on it -- `Statistic` already carries the same fact as an enum -- so
    this is worth doing only when a second `FText` field turns up.
 
-7. **Type the `LifeChangeEvents[]` members.** Optional -- the array already
+6. **Type the `LifeChangeEvents[]` members.** Optional -- the array already
    parses and `docs/DATA.md`'s health section is built on it -- but the members
    arrive untyped: `ChangedComponent` wants `ObjectNetGuid`, `LifeResult` and
    `DeltaLife` want `Float`, `bAliveAfterChange` wants `Bool`. `LifeResult` is
