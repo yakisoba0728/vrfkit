@@ -77,11 +77,42 @@ purchase; all ten players' purchases are replicated.
 | Ability cast count / cast log | `Comp_AbilityStatisticsReplicator.AbilityCastsThisRound[]` — `Player` (subject UUID), `Slot`, `Round`, `RoundPhase`, `CastTime`, `CastLocation` | ✅ one record per cast, all ten players; `Player` matches a manifest subject 352/352 |
 | Ability state stream | `AbilitiesAndBuffsComponent` (`_cnc_h1`) | ◐ fc=34 brute-forced, inner decomposed (flag + u32 stream); semantics need game assets |
 | GAS owner / avatar / attribute sets | `AresAbilitySystemComponent` (OwnerActor, AvatarActor, SpawnedAttributes, CachedAttributeSet) | ✅ via AbilitiesAndBuffsComponent->AresAbilitySystemComponent remap |
-| Active gameplay effects (buffs/debuffs) | `AresAbilitySystemComponent.ActiveGameplayEffects` | ❌ **not replicated.** Across 15 exports every such row has `bit_count == 0` and none sit on a player character; the GAS spec handles the group declares (`Def`, `Duration`, `StackCount`, `StartServerWorldTime`, ...) never appear on the wire at all |
+| Status effects on a player (nearsight / slow / detain / ...) | `EffectManagerComponent:MulticastPlayContinuousEffect` + `MulticastStopContinuousEffect`, on the **affected** player's actor | ✅ named, with start and end — see below |
+| Active gameplay effects (GAS array) | `AresAbilitySystemComponent.ActiveGameplayEffects` | ❌ **not replicated.** Across 15 exports every such row has `bit_count == 0` and none sit on a player character; the GAS spec handles the group declares (`Def`, `Duration`, `StackCount`, `StartServerWorldTime`, ...) never appear on the wire at all |
+| GAS attribute values | `AresAttributeSet.{BaseValue,CurrentValue}` per handle | ◐ **checkpoints only.** The live stream sends each attribute once when the channel opens and never updates it; `CurrentValue` does move (Reyna's ultimate puts handles at 1.1/0.9) but only checkpoint snapshots show it, and those are written at round transitions, so transient debuffs are gone by then |
 | Persistent effect position (smoke/wall/molly/slow/trap) | `actors.parquet` class_path + spawn xyz | ✅ every spawned effect actor |
 | Persistent effect lifetime | `actors.time_ms` paired across `event` `open`/`close` (non-fuel); `CurrentFuelLevel`+`WallActivated` (Viper) | ✅ |
 | Smoke live position | `ReplicatedMovement` (x100) / `MulticastAddSmokeScreenPoint.Translation` | ✅ |
 | Interaction progress (plant/defuse/orb pickup) | `UsableComponent.HighestProgress` (Float 0..1) / `bIsActive` | ✅ |
+
+### Status effects, and where they actually live
+
+A debuff shows up as a continuous effect played **on the affected player's own
+actor**, not on the caster's. `EffectManagerComponent`'s
+`MulticastPlayContinuousEffect` carries an `EffectContainer` NetGUID that
+resolves through `net_guids.parquet` to a named effect, and
+`MulticastStopContinuousEffect` closes it by `EffectID`. On the reference replay
+every one of the 55 nearsight applications has a matching stop, so start, end
+and victim are all recovered.
+
+The names say what the effect is and the measured durations match the game:
+
+| effect | applications | median duration |
+|---|---|---|
+| `FXC_Wraith_Q_NearsightMissile_Nearsight_C` (Paranoia) | 13 | 2.37 s |
+| `FXC_Vampire_4_NearsightAOE_Nearsight_C` (Leer) | 15 | 0.31 s |
+| `FXC_Wushu_4_SmokeNearsight_C` | 15 | 0.95 s |
+| `FXC_Deadeye_4_Trap_Slowed_C` (trap slow) | 2 | 2.01 s |
+| `FXC_Aggrobot_X_DetainDebuff_C` (detain) | 1 | 3.15 s |
+
+An AoE applies to several victims in the same tick, each as its own row, so
+"who was affected" comes out per player rather than per cast.
+
+Two caveats. The container names are cosmetic-effect assets, so the same
+gameplay state can arrive under more than one name and a pure-audio variant sits
+beside the real one (`..._DetainDebuff_Audio_C`). And this is a *visual* effect
+channel: it is strong evidence the state was applied, but it is not the
+authoritative state flag, which is the GAS array that never reaches the wire.
 
 ## Movement & position
 
