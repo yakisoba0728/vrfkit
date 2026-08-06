@@ -90,6 +90,8 @@ pub mod cnc;
 
 #[cfg(feature = "array")]
 mod array;
+#[cfg(feature = "overlay")]
+mod checksum_table;
 /// Effect-blob decoder for the `EffectContainer` arrays that RPCs carry as
 /// `FloatValues` / `ObjectValues` / `VectorValues`. Wired into the export path
 /// through [`effect::decode_effect_blob_json`]; one RPC is deliberately left to
@@ -100,7 +102,6 @@ pub mod effect;
 mod overlay;
 #[cfg(feature = "structs")]
 pub mod structs;
-#[cfg(feature = "overlay")]
 mod table;
 #[cfg(test)]
 mod tests;
@@ -113,13 +114,16 @@ pub use array::{
     ArrayDecodeStats, ArrayFieldSchema, COMBAT_ROUNDS_SCHEMA, FlattenedField, MAX_ELEMENTS,
     MAX_FIELDS_PER_ELEMENT, MAX_RECURSION_DEPTH, decode_object_ref_array, decode_struct_array,
 };
+#[cfg(feature = "overlay")]
+pub use checksum_table::CHECKSUM_TYPES;
 #[cfg(feature = "effect")]
 pub use effect::{EffectArrayKind, EffectBlobError, decode_effect_blob_json};
 #[cfg(feature = "overlay")]
 pub use overlay::{
     DecodeErrorKind, GroupHashState, OverlayEntry, OverlayErrorReport, OverlayErrorRow,
-    OverlayHandleEntry, OverlayStats, OverlayTable, apply_overlay, apply_overlay_with_handle,
-    canonical_group, group_hash_state, resolve_field_type,
+    OverlayHandleEntry, OverlayStats, OverlayTable, apply_overlay, apply_overlay_with_checksum,
+    apply_overlay_with_handle, canonical_group, group_hash_state, lookup_checksum,
+    resolve_field_type, resolve_field_type_with_checksum,
 };
 #[cfg(feature = "overlay")]
 pub use table::{OVERLAY_HANDLE_TABLE, OVERLAY_TABLE};

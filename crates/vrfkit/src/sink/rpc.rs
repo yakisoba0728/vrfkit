@@ -10,7 +10,7 @@ use std::sync::Arc;
 use smallvec::{SmallVec, smallvec};
 use vrf_bitio::BitReader;
 use vrf_decode::{
-    DecodeErrorKind, EffectArrayKind, EffectBlobError, FieldType, apply_overlay_with_handle,
+    DecodeErrorKind, EffectArrayKind, EffectBlobError, FieldType, apply_overlay_with_checksum,
     decode_effect_blob_json, group_hash_state,
 };
 use vrf_schema::{FxHashMap, NetGuidCache};
@@ -151,12 +151,17 @@ impl ExportSink<'_> {
             // Resolve parameter field name from the group. Borrowed, not
             // cloned: it is only needed to build `full_field_name` and to key
             // the overlay, both of which end before the next mutation of self.
-            let param_name: Option<&str> = param_group_path_ref.and_then(|gp| {
+            //
+            // The same `NetFieldExport` carries `compatible_checksum`, so the
+            // overlay's last-resort lookup costs nothing extra here -- one
+            // schema walk yields both.
+            let param_export = param_group_path_ref.and_then(|gp| {
                 self.cache
                     .get_group_by_path(gp)
                     .and_then(|g| g.get_field(param_handle))
-                    .map(|f| f.name.as_str())
             });
+            let param_name: Option<&str> = param_export.map(|f| f.name.as_str());
+            let param_checksum: Option<u32> = param_export.map(|f| f.compatible_checksum);
 
             // Build field_name: "FunctionName.ParamName" or "FunctionName._h{N}".
             //
@@ -183,24 +188,26 @@ impl ExportSink<'_> {
                 None => self.current_group_hash,
             };
             let overlay_field = param_name.unwrap_or(&full_field_name);
-            let (value_i64, value_f64, value_bool, mut value_str) = match apply_overlay_with_handle(
-                &TABLE,
-                overlay_group,
-                group_state,
-                Some(overlay_field),
-                param_handle,
-                raw_bits.as_deref(),
-                payload_bits,
-                &mut self.stats.overlay,
-            ) {
-                Some(result) => (
-                    result.value_i64,
-                    result.value_f64,
-                    result.value_bool,
-                    result.value_str,
-                ),
-                None => (None, None, None, None),
-            };
+            let (value_i64, value_f64, value_bool, mut value_str) =
+                match apply_overlay_with_checksum(
+                    &TABLE,
+                    overlay_group,
+                    group_state,
+                    Some(overlay_field),
+                    param_handle,
+                    param_checksum,
+                    raw_bits.as_deref(),
+                    payload_bits,
+                    &mut self.stats.overlay,
+                ) {
+                    Some(result) => (
+                        result.value_i64,
+                        result.value_f64,
+                        result.value_bool,
+                        result.value_str,
+                    ),
+                    None => (None, None, None, None),
+                };
 
             // Second, additive pass: the EffectContainer arrays.
             //

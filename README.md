@@ -74,7 +74,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **396 tests** plus a layered validation suite (framing / bytes / decode
+- **401 tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -128,7 +128,7 @@ produces seven files:
 
 | File | Rows | Bytes |
 |---|---|---|
-| `fields.parquet` | 1,255,920 | 14,580,144 |
+| `fields.parquet` | 1,255,920 | 14,815,391 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
@@ -260,7 +260,7 @@ it as one gives the year 3626.
 
 ## Status
 
-Work in progress. Currently verified: `cargo test --workspace` **396 passing**,
+Work in progress. Currently verified: `cargo test --workspace` **401 passing**,
 `clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 114 files. The
 Python suite in `tools/tests` has 147 tests.
 
@@ -506,9 +506,9 @@ still at zero across the 215-replay corpus.
 `02d4d478` at the current HEAD:
 
 ```
-Decoded OK:   488,424      Decode errors:      0
-Raw/Skip:      74,624      Not in table: 408,922
-No field name: 17,013      Typed:          49.4%
+Decoded OK:   677,290      Decode errors:      0
+Raw/Skip:      74,624      Not in table: 220,056
+No field name: 17,013      Typed:          68.5%
 Effect blobs:  53,908
 ```
 
@@ -521,7 +521,7 @@ prints identically. (The bucket counts themselves do move as overlay entries
 are added; the figures above are post-economy-typing.)
 
 The real coverage figure is the fraction of all 1,255,920 rows with a filled
-`value_*`. Before effect linkage 68.8% were untyped; it is now **55.3%.**
+`value_*`. Before effect linkage 68.8% were untyped; it is now **40.2%.**
 
 **These numbers change often; re-measure before quoting** -- four of the six
 were left stale at one point:
@@ -683,7 +683,7 @@ that way is a trap:
   (97.28% of the residual is `AbilitiesAndBuffsComponent`, which the replay
   never declares). `Malformed framing` and `Transform failed` are the lines
   that must be zero; the pass rate is expected to sit below 100%.
-- The **~49% `Typed`** ratio reads low because of the *RPC-parameter
+- The **~69% `Typed`** ratio reads low because of the *RPC-parameter
   denominator* -- most of `Not in table` is RPC parameters with no C#
   descriptor. A low ratio is uninterpreted, not lost: those rows still carry
   `raw_bits`, and additive decoders (effects, structs, the economy typing)

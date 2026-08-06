@@ -1,10 +1,12 @@
 //! The overlay table's resolution order, and the hash index's agreement
 //! with the binary search it replaced.
 
+use crate::checksum_table::CHECKSUM_TYPES;
 use crate::decode::FieldType;
 use crate::overlay::{
     OverlayEntry, OverlayHandleEntry, OverlayStats, OverlayTable, apply_overlay,
-    apply_overlay_with_handle, canonical_group, group_hash_state, resolve_field_type,
+    apply_overlay_with_handle, canonical_group, group_hash_state, lookup_checksum,
+    resolve_field_type, resolve_field_type_with_checksum,
 };
 use crate::{OVERLAY_HANDLE_TABLE, OVERLAY_TABLE};
 
@@ -897,4 +899,88 @@ fn a_192_bit_rpc_vector_decodes_as_three_doubles() {
     assert_eq!(result.and_then(|v| v.value_str).as_deref(), Some("(1,1,1)"));
     assert_eq!(stats.decoded_ok, 1);
     assert_eq!(stats.decoded_err, 0);
+}
+
+/// Checksum propagation: a parameter no descriptor declares takes the type of
+/// a declared field sharing its `compatible_checksum`.
+///
+/// `PlayerID` on `ReplayPlayerController:ClientReplayReceiveInputEvent`
+/// `ProcessingCapture` is undeclared, and `BombPlayerState_C.PlayerId` is
+/// declared `Int32`. They share checksum 2396673102, and reading the
+/// undeclared rows as `Int32` yields exactly the ten values the declared column
+/// holds.
+#[test]
+fn a_checksum_types_a_field_the_table_never_declared() {
+    const UNDECLARED: &str =
+        "/Script/ShooterGame.ReplayPlayerController:ClientReplayReceiveInputEventProcessingCapture";
+    let table = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
+    assert_eq!(table.lookup(UNDECLARED, "PlayerID"), None, "not declared");
+    assert_eq!(
+        resolve_field_type_with_checksum(
+            &table,
+            UNDECLARED,
+            Some("PlayerID"),
+            None,
+            Some(2396673102)
+        ),
+        Some(FieldType::Int32),
+    );
+}
+
+/// The checksum runs last, so anything the table declares still wins.
+#[test]
+fn a_declared_entry_outranks_the_checksum() {
+    let entries: &[OverlayEntry] = &[OverlayEntry {
+        group_path: "/test",
+        field_name: "PlayerID",
+        field_type: FieldType::Raw,
+    }];
+    let table = OverlayTable::new(entries);
+    assert_eq!(
+        resolve_field_type_with_checksum(&table, "/test", Some("PlayerID"), None, Some(2396673102)),
+        Some(FieldType::Raw),
+    );
+}
+
+/// A checksum nothing donated types nothing -- the map asserts only what it
+/// learned.
+#[test]
+fn an_unlearned_checksum_resolves_nothing() {
+    let table = OverlayTable::with_handles(&OVERLAY_TABLE, &OVERLAY_HANDLE_TABLE);
+    assert_eq!(
+        resolve_field_type_with_checksum(
+            &table,
+            "/Game/Nope.Nope_C",
+            Some("Whatever"),
+            None,
+            Some(1)
+        ),
+        None,
+    );
+}
+
+/// The safety property: a checksum whose donors disagree is not in the table at
+/// all, so the mechanism declines the cases it cannot settle. `ReplicatedMovement`
+/// is the one that matters -- `ByteComponents` on 18 groups and `ShortComponents`
+/// on 6, which differ in width, so guessing would desync the block rather than
+/// read a wrong value.
+#[test]
+fn checksums_whose_donors_disagree_are_omitted() {
+    for (checksum, why) in [
+        (
+            2749104612u32,
+            "ReplicatedMovement: Byte vs Short components",
+        ),
+        (2270825073, "AllianceFilter: EnumByte vs EnumRemainingBits"),
+    ] {
+        assert_eq!(lookup_checksum(checksum), None, "{why}");
+    }
+}
+
+/// The map is only useful if it holds something; a silently empty generated
+/// table would make every test above pass for the wrong reason.
+#[test]
+fn the_checksum_table_is_populated_and_sorted() {
+    assert!(CHECKSUM_TYPES.len() > 300, "{}", CHECKSUM_TYPES.len());
+    assert!(CHECKSUM_TYPES.windows(2).all(|w| w[0].0 < w[1].0));
 }

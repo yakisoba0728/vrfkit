@@ -291,6 +291,7 @@ pub fn apply_overlay(
         group_state,
         field_name,
         None,
+        None,
         raw_bits,
         bit_count,
         stats,
@@ -319,6 +320,38 @@ pub fn apply_overlay_with_handle(
         group_state,
         field_name,
         Some(handle),
+        None,
+        raw_bits,
+        bit_count,
+        stats,
+    )
+}
+
+/// [`apply_overlay_with_handle`] with the field's `compatible_checksum`.
+///
+/// Only the RPC-parameter path passes one. It already holds the
+/// `NetFieldExport` it took the parameter name from, so the checksum is free
+/// there, while the property path would need a second schema lookup on its
+/// hottest loop to reach 4% as many rows.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_overlay_with_checksum(
+    table: &OverlayTable,
+    group_path: &str,
+    group_state: GroupHashState,
+    field_name: Option<&str>,
+    handle: u32,
+    checksum: Option<u32>,
+    raw_bits: Option<&[u8]>,
+    bit_count: u32,
+    stats: &mut OverlayStats,
+) -> Option<OverlayResult> {
+    apply_overlay_inner(
+        table,
+        group_path,
+        group_state,
+        field_name,
+        Some(handle),
+        checksum,
         raw_bits,
         bit_count,
         stats,
@@ -339,12 +372,28 @@ pub fn resolve_field_type(
     field_name: Option<&str>,
     handle: Option<u32>,
 ) -> Option<FieldType> {
+    resolve_field_type_with_checksum(table, group_path, field_name, handle, None)
+}
+
+/// [`resolve_field_type`] with the field's `compatible_checksum` in hand.
+///
+/// The checksum is the last resort in the order, so passing it can only resolve
+/// fields that would otherwise have stayed raw.
+#[must_use]
+pub fn resolve_field_type_with_checksum(
+    table: &OverlayTable,
+    group_path: &str,
+    field_name: Option<&str>,
+    handle: Option<u32>,
+    checksum: Option<u32>,
+) -> Option<FieldType> {
     resolve_entry(
         table,
         group_path,
         group_hash_state(group_path),
         field_name,
         handle,
+        checksum,
     )
     .map(|(field_type, _)| field_type)
 }
@@ -427,6 +476,23 @@ pub fn canonical_group(group_path: &str) -> &str {
 /// names as something else keeps its declared type.
 const ENGINE_OBJECT_REFS: [&str; 4] = ["Owner", "Instigator", "AttachParent", "Controller"];
 
+/// The type a `compatible_checksum` was learned to carry, or `None`.
+///
+/// Unreal hashes a property's type into its checksum alongside its name, so a
+/// checksum identifies a property in a way a name cannot -- across the RPC
+/// groups here exactly one pair of distinct names collides, while 38 of 211
+/// parameter names carry more than one checksum. `CHECKSUM_TYPES` is generated
+/// from the fields this table already declares, and omits any checksum whose
+/// donors disagreed, so a lookup that returns `Some` is a type at least one
+/// descriptor stated for the same property.
+#[must_use]
+pub fn lookup_checksum(checksum: u32) -> Option<FieldType> {
+    let index = crate::checksum_table::CHECKSUM_TYPES
+        .binary_search_by_key(&checksum, |(key, _)| *key)
+        .ok()?;
+    Some(crate::checksum_table::CHECKSUM_TYPES[index].1)
+}
+
 /// The full order, then the same order again against the aliased class, then
 /// the engine-level object references by name.
 ///
@@ -439,6 +505,7 @@ fn resolve_entry<'a>(
     group_state: GroupHashState,
     field_name: Option<&'a str>,
     handle: Option<u32>,
+    checksum: Option<u32>,
 ) -> Option<(FieldType, &'a str)> {
     if let Some(hit) = resolve_in_group(table, group_path, group_state, field_name, handle) {
         return Some(hit);
@@ -457,9 +524,13 @@ fn resolve_entry<'a>(
         return Some(hit);
     }
     let name = field_name?;
-    ENGINE_OBJECT_REFS
-        .contains(&name)
-        .then_some((FieldType::ObjectNetGuid, name))
+    if ENGINE_OBJECT_REFS.contains(&name) {
+        return Some((FieldType::ObjectNetGuid, name));
+    }
+    // Last, and last on purpose: a checksum match is a type some descriptor
+    // stated for the same property on another class, which is weaker than
+    // anything declared for this one.
+    lookup_checksum(checksum?).map(|field_type| (field_type, name))
 }
 
 /// Resolve which table entry a wire field belongs to within ONE group, and the
@@ -527,12 +598,13 @@ fn apply_overlay_inner(
     group_state: GroupHashState,
     field_name: Option<&str>,
     handle: Option<u32>,
+    checksum: Option<u32>,
     raw_bits: Option<&[u8]>,
     bit_count: u32,
     stats: &mut OverlayStats,
 ) -> Option<OverlayResult> {
     let (field_type, diagnostic_name) =
-        match resolve_entry(table, group_path, group_state, field_name, handle) {
+        match resolve_entry(table, group_path, group_state, field_name, handle, checksum) {
             Some(resolved) => resolved,
             None => {
                 if field_name.is_none() {

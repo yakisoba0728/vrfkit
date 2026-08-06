@@ -122,7 +122,7 @@ member and handle by name.
 #### Reading the `Typed` ratio
 
 ```
-  Typed:            49.4% (properties + RPC parameters)
+  Typed:            68.5% (properties + RPC parameters)
 ```
 
 The denominator is **every row offered** to the overlay, and thanks to RPC
@@ -141,7 +141,7 @@ Measured on `02d4d478` (48,215,213 bytes):
 
 | File | Rows | Bytes | Notes |
 |---|---|---|---|
-| `fields.parquet` | 1,255,920 | 14,580,144 | |
+| `fields.parquet` | 1,255,920 | 14,815,391 | |
 | `movement.parquet` | 1,839,607 | 31,835,557 | |
 | `actors.parquet` | 3,827 | 87,281 | |
 | `net_guids.parquet` | 16,167 | 153,606 | |
@@ -357,6 +357,7 @@ disabling it would produce files this crate could not explain.
 |---|---|
 | `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,232 + 85 handles) |
 | `apply_type_corrections.py` | Applies verified corrections/additions to that file and recomputes the two-line generation header |
+| `extract_checksum_types.py` | `crates/vrf-decode/src/checksum_table.rs` -- `compatible_checksum` -> `FieldType`, learned from the fields the overlay table already declares. Needs an export directory rather than the C# tree, since checksums come from the replay. Checksums whose donors disagree are dropped, which is the safety property; `--check` verifies the committed file still matches. |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
 | `extract_golden.py` | `crates/vrf-transform/tests/data/golden_vectors.rs` |
 | `extract_equippables.py` | `tools/equippable_table.py` |
@@ -467,7 +468,7 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 396 passing
+cargo test                                        # 401 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 114 files, ASCII only
@@ -568,7 +569,7 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
 
 ## 8. Known limits
 
-- **Untyped residual** -- the [`export`](#export) `Typed` is ~49% (denominator
+- **Untyped residual** -- the [`export`](#export) `Typed` is ~69% (denominator
   including RPC parameters). **Untyped != lost** (`raw_bits` preserved). Typing
   the rest needs the game binary or UE headers -- this is not a table-editing
   problem (archive/PROJECT_STATUS.md section 24).
