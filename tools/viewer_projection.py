@@ -90,7 +90,7 @@ def load_constants(map_url: str, cache_dir: Path, fetch=None) -> MapConstants:
                     )
             # Map not in cache, but cache is valid. Return the "not found" error.
             raise ConstantsUnavailable(f"no published transform for map {map_url}")
-        except (json.JSONDecodeError, KeyError, ValueError):
+        except (json.JSONDecodeError, KeyError, ValueError, AttributeError, TypeError):
             # Cache is corrupted. Treat as a cache miss and re-fetch below.
             pass
 
@@ -107,14 +107,16 @@ def load_constants(map_url: str, cache_dir: Path, fetch=None) -> MapConstants:
     # Parse and validate before persisting.
     try:
         published = json.loads(fetched_bytes.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        # Accessing .get() requires published to be a dict.
+        data = published.get("data") or []
+    except (json.JSONDecodeError, UnicodeDecodeError, AttributeError, TypeError) as error:
         raise ConstantsUnavailable(
             f"could not parse {MAPS_API}: {error}\n"
             f"the minimap transform is not in the replay; without it "
             f"nothing can be projected"
         ) from error
 
-    for entry in published.get("data") or []:
+    for entry in data:
         if entry.get("mapUrl") == map_url:
             try:
                 constants = MapConstants(

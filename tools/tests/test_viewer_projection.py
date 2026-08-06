@@ -185,6 +185,78 @@ class MinimapTests(unittest.TestCase):
         with self.assertRaises(vp.ConstantsUnavailable):
             vp.load_minimap_png(self.k, self.cache, fetch=fetch)
 
+    def test_a_failing_fetch_does_not_persist_a_cache_file(self):
+        """If fetch fails, no .png file should exist on disk."""
+        def fetch(url):
+            raise OSError("network down")
+
+        with self.assertRaises(vp.ConstantsUnavailable):
+            vp.load_minimap_png(self.k, self.cache, fetch=fetch)
+        # Verify no cache file was created.
+        name = self.k.map_url.strip("/").replace("/", "_") + ".png"
+        cached = self.cache / name
+        self.assertFalse(cached.exists(),
+                        f"cache file {cached} should not exist after failed fetch")
+
+
+class ConstantsCacheFileTests(unittest.TestCase):
+    """Tests that verify cache files are not persisted on validation failure."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.cache = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.payload = json.dumps({"data": [{
+            "mapUrl": "/Game/Maps/Ascent/Ascent",
+            "xMultiplier": 7.2e-05, "yMultiplier": -7.2e-05,
+            "xScalarToAdd": 0.500202, "yScalarToAdd": 0.510265,
+            "displayIcon": "https://example.invalid/ascent.png",
+        }]}).encode()
+
+    def test_malformed_json_does_not_persist_cache_file(self):
+        """Fetching malformed JSON must not leave a cache file on disk."""
+        def fetch(url):
+            return b"not json"
+
+        with self.assertRaises(vp.ConstantsUnavailable):
+            vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache, fetch=fetch)
+        # Verify no cache file was created.
+        cached = self.cache / "maps.json"
+        self.assertFalse(cached.exists(),
+                        f"cache file {cached} should not exist after malformed JSON")
+
+    def test_missing_required_key_does_not_persist_cache_file(self):
+        """Entry matching mapUrl but missing yScalarToAdd must not be persisted."""
+        bad_payload = json.dumps({"data": [{
+            "mapUrl": "/Game/Maps/Ascent/Ascent",
+            "xMultiplier": 7.2e-05, "yMultiplier": -7.2e-05,
+            "xScalarToAdd": 0.500202,
+            # missing yScalarToAdd
+            "displayIcon": "https://example.invalid/ascent.png",
+        }]}).encode()
+
+        def fetch(url):
+            return bad_payload
+
+        with self.assertRaises(vp.ConstantsUnavailable):
+            vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache, fetch=fetch)
+        # Verify no cache file was created.
+        cached = self.cache / "maps.json"
+        self.assertFalse(cached.exists(),
+                        f"cache file {cached} should not exist after missing key")
+
+    def test_wrong_shaped_json_raises_unavailable_not_attribute_error(self):
+        """Cache with valid JSON but wrong shape (bare []) should raise
+        ConstantsUnavailable, not AttributeError."""
+        # Valid JSON but wrong shape: a bare list instead of dict with "data" key.
+        bad_payload = json.dumps([]).encode()
+
+        def fetch(url):
+            return bad_payload
+
+        with self.assertRaises(vp.ConstantsUnavailable):
+            vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache, fetch=fetch)
+
 
 if __name__ == "__main__":
     unittest.main()
