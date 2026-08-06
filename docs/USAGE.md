@@ -77,8 +77,20 @@ reports a pass rate. **It writes no files.**
   Malformed framing:  0          <- blocks whose framing slipped. Nonzero is serious
   Transform failed:   0          <- payload transform failed. Signals an unsupported build
   RPC stream failed:  7889       <- blocks whose group could not be identified, so the handle width is unknown
+  NOT COVERED:          18 Checkpoint chunk(s) were NOT walked
   ORACLE PASS RATE:     98.938381%
+  VERDICT: PASS - every content block framed (exit 0)
 ```
+
+**Exit code**: `0` every content block framed, `1` malformed framing was found,
+`2` there was nothing to validate (no ReplayData blocks). Those are three
+different outcomes and are kept apart deliberately -- a file this command
+cannot read must not be reported as a file that passed. The pass rate itself is
+NOT gated; see below.
+
+The oracle walks the **ReplayData stream only**. Checkpoint chunks carry their
+own replication framing and are not covered by this verdict; the count above
+says how many were skipped. Use `export --checkpoints` to decode them.
 
 **A pass rate below 100% is normal.** This is an attribution problem, not a
 framing one -- blocks are cut exactly, but some cannot be definitively assigned
@@ -276,7 +288,7 @@ only add a byte-identical column on top of ~1.8M rows.
 
 ### `actors.parquet`
 
-One row per channel open/close (`event`). `event` is `open` / `close`, not
+One row per channel open/close (`event`). `event` is `open` / `close` / `dormant`, not
 spawn/close. This is where weapon and ability instance classes are found --
 actors that produce no field rows at all (DefuserItem, HeavyArmorItem, etc.)
 still show up here when they open a channel.
@@ -287,7 +299,7 @@ still show up here when they open a channel.
 | `packet_id` | u32 | Packet sequence number |
 | `channel_index` | u32 | Actor channel |
 | `actor_net_guid` | u32 | Actor NetGUID |
-| `event` | str | `open` / `close` |
+| `event` | str | `open` / `close` / `dormant` (dormancy is not destruction -- the actor stopped replicating but still exists) |
 | `class_path` | str? | Actor class path |
 | `archetype_path` | str? | Archetype path (absent for static actors) |
 | `spawn_x` / `spawn_y` / `spawn_z` | f32? | Spawn position |
@@ -508,7 +520,7 @@ deliberately sequential for accuracy.
 | `analyze_coverage.py` | Coverage analysis |
 | `find_skips.py` | Finds skipped bits |
 | `bench_export.py` | Times a full `export` against `tools/baselines/bench.json`. A smoke detector, not a profiler -- wall clock is noisy, so the default tolerance is 25% and it answers "did something get twice as slow", nothing finer. Reports a run *faster* than the baseline too: that means the recorded number no longer describes the code. |
-| `extract_active_effects.py` | Derives an `active_effects.parquet` view from an export -- one row per persistent ability instance (smoke/wall/molly/slow/trap/recon/orb) with class, spawn position, and open/close lifetime. The data already lives in `actors.parquet`; this filters and pairs it. |
+| `extract_active_effects.py` | Derives an `active_effects.parquet` view from an export -- one row per persistent ability instance (smoke/wall/molly/slow/trap/recon/orb) with class, spawn position, and open/close lifetime. A `dormant` event does NOT end an instance -- a settled smoke that stops replicating has not despawned -- so those instances stay open-ended and the summary counts them. The data already lives in `actors.parquet`; this filters and pairs it. |
 | `extract_spike_carrier.py` | Derives a `spike_carrier.parquet` view -- one row per spike custody interval, resolved through to the manifest `subject`. Reads `BombEquippable_C.Owner` on the spike's own channel rather than the inventory side, so it covers carrying-in-the-backpack and not just in-hand, and it follows proxy carriers (Gekko's Wingman) back through `Instigator`. |
 
 ---

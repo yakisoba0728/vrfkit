@@ -154,7 +154,7 @@ Phoenix -- Run It Back, not a decode fault. On the reset broadcast
 | Active gameplay effects (GAS array) | `AresAbilitySystemComponent.ActiveGameplayEffects` | ❌ **not replicated.** The manifest declares the property and the wire never carries it: across 71 exports, checkpoints included, `fields.parquet` holds zero rows for it -- not empty rows, no rows. The GAS spec handles the group declares (`Def`, `Duration`, `StackCount`, `StartServerWorldTime`, ...) are absent the same way |
 | GAS attribute values | `AresAttributeSet.{BaseValue,CurrentValue}` per handle | ◐ **checkpoints only.** The live stream sends each attribute once when the channel opens and never updates it; `CurrentValue` does move (Reyna's ultimate puts handles at 1.1/0.9) but only checkpoint snapshots show it, and those are written at round transitions, so transient debuffs are gone by then |
 | Persistent effect position (smoke/wall/molly/slow/trap) | `actors.parquet` class_path + spawn xyz | ✅ every spawned effect actor |
-| Persistent effect lifetime | `actors.time_ms` paired across `event` `open`/`close` (non-fuel); `CurrentFuelLevel`+`WallActivated` (Viper) | ✅ |
+| Persistent effect lifetime | `actors.time_ms` paired across `event` `open`/`close` (non-fuel; a `dormant` event does not end the instance); `CurrentFuelLevel`+`WallActivated` (Viper) | ✅ |
 | Smoke live position | `ReplicatedMovement` (x100) / `MulticastAddSmokeScreenPoint.Translation` | ✅ |
 | Interaction progress (plant/defuse/orb pickup) | `UsableComponent.HighestProgress` (Float 0..1) / `bIsActive` | ✅ |
 
@@ -457,7 +457,7 @@ guessing -- which is the only reason the failure was findable.
 
 | Data | Source | Status |
 |---|---|---|
-| Every actor spawn/despawn + class/archetype/spawn location | `actors.parquet` | ✅ |
+| Every actor spawn/despawn + class/archetype/spawn location | `actors.parquet` -- `event` is `open`/`close`/`dormant`; only `close` is a despawn | ✅ |
 | GUID → object path | `net_guids.parquet` | ✅ |
 | Containment chain (subobject → parent) | `net_guids.outer_net_guid` | ✅ |
 | Full declared schema (475 groups, handle→name) | `manifest.net_field_export_groups` | ✅ |

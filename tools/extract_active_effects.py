@@ -107,6 +107,11 @@ def is_effect_class(class_path: str) -> bool:
 
 
 def build(out_dir: Path) -> list[dict]:
+    """The effect instances alone. See [`build_with_tally`] for what was lost."""
+    return build_with_tally(out_dir)[0]
+
+
+def build_with_tally(out_dir: Path) -> tuple[list[dict], dict]:
     actors_path = out_dir / "actors.parquet"
     if not actors_path.exists():
         raise SystemExit(f"no actors.parquet in {out_dir} -- run `vrfkit export` first")
@@ -134,6 +139,7 @@ def build(out_dir: Path) -> list[dict]:
             (time_ms[i], event[i], sx[i], sy[i], sz[i], cp)
         )
 
+    tally = {"went_dormant": 0}
     rows: list[dict] = []
     for g, evs in events.items():
         evs.sort(key=lambda e: e[0])
@@ -151,11 +157,26 @@ def build(out_dir: Path) -> list[dict]:
                     pending = None
                 # A close with no pending open is an orphan (actor opened before
                 # the export window); drop it rather than invent an open time.
+            elif ev == "dormant":
+                # Dormancy is NOT destruction. The actor stopped replicating --
+                # which for a settled smoke or wall is its normal steady state --
+                # so ending the instance here would make persistent effects
+                # vanish early in anything built on this table. The instance
+                # stays pending and, absent a later close, ends up open-ended.
+                #
+                # That is also what the code did before `dormant` existed as a
+                # value, purely because `elif ev == "close"` did not match it.
+                # The behaviour was right and unstated, which is the same shape
+                # as the bug this whole pass was fixing: an open-ended row
+                # because the actor went dormant and an open-ended row because
+                # the export window ended are indistinguishable in the table.
+                # Hence the tally.
+                tally["went_dormant"] += 1
         if pending is not None:
             rows.append(_row(g, pending, None))
 
     rows.sort(key=lambda r: (r["open_ms"] if r["open_ms"] is not None else -1, r["actor_net_guid"]))
-    return rows
+    return rows, tally
 
 
 def _row(guid: int, open_rec: tuple, close_ms):
@@ -196,7 +217,7 @@ def main() -> int:
                     help="output active_effects.parquet path")
     args = ap.parse_args()
 
-    rows = build(args.export)
+    rows, tally = build_with_tally(args.export)
     cols = {name: [r[name] for r in rows] for name in SCHEMA.names}
     table = pa.Table.from_pydict(cols, schema=SCHEMA)
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -207,6 +228,10 @@ def main() -> int:
     print(f"wrote {args.out} ({len(rows)} effect instances)")
     for t, n in sorted(by_type.items()):
         print(f"  {t:12s} {n}")
+    # Printed with its zero. An open-ended row can mean "the actor went dormant"
+    # or "the export window ended first", and the table cannot tell them apart.
+    open_ended = sum(1 for r in rows if r["close_ms"] is None)
+    print(f"  {'open-ended':12s} {open_ended} ({tally['went_dormant']} actor(s) went dormant)")
     return 0
 
 
