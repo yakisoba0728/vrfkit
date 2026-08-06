@@ -276,8 +276,13 @@ impl ExportSink<'_> {
                     entry.subject = Some(s.to_owned());
                 }
             }
+            // Last *non-zero* write wins, not last write. The field is
+            // replicated again as 0 when the player disconnects, and plain
+            // last-write-wins threw the real GUID away -- 9 players across 5
+            // of 69 demos. 0 is not a NetGUID, so there is nothing to lose by
+            // ignoring it.
             "SpawnedCharacter" => {
-                if let Some(c) = character {
+                if let Some(c) = character.filter(|c| *c != 0) {
                     entry.character_net_guid = Some(c as u32);
                 }
             }
@@ -915,5 +920,48 @@ mod tests {
             assert_eq!(entry.subject.as_deref(), Some("uuid-here"), "{path}");
             assert_eq!(entry.character_net_guid, Some(576), "{path}");
         }
+    }
+
+    /// A disconnect must not erase the character link.
+    ///
+    /// `SpawnedCharacter` is replicated twice: the real GUID about 60 ms in,
+    /// and then 0 when the player leaves. Last-write-wins kept the 0, so
+    /// `manifest.players.character_net_guid` was 0 for 9 players across 5 of
+    /// 69 demo replays -- and every one of those was a character that *did*
+    /// spawn, still reachable through its pawn's `PlayerState`. The cost was
+    /// paid downstream: spike custody went `unknown`, two planters went
+    /// unattributed, and the worst replay attributed only 73.2% of its
+    /// movement rows to a player.
+    #[test]
+    fn a_disconnect_does_not_erase_the_character_link() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        sink.current_group_path = Arc::from(BOMB_PLAYER_STATE);
+        sink.current_actor_guid = 42;
+
+        sink.record_player_identity(Some("SpawnedCharacter"), None, Some(1368));
+        sink.record_player_identity(Some("SpawnedCharacter"), None, Some(0));
+
+        let players = sink.channel_state.players.clone();
+        assert_eq!(players.get(&42).unwrap().character_net_guid, Some(1368));
+    }
+
+    /// ...but a character that never spawned still reports nothing, rather
+    /// than a 0 that reads like a NetGUID.
+    #[test]
+    fn a_character_that_never_spawned_stays_none() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        sink.current_group_path = Arc::from(BOMB_PLAYER_STATE);
+        sink.current_actor_guid = 7;
+
+        sink.record_player_identity(Some("SpawnedCharacter"), None, Some(0));
+
+        let players = sink.channel_state.players.clone();
+        assert_eq!(players.get(&7).unwrap().character_net_guid, None);
     }
 }
