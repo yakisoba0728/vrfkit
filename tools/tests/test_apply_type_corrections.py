@@ -105,8 +105,15 @@ class AdditionsTests(unittest.TestCase):
         so adding or removing one forces this number to update in the same
         commit. The prior `<= 8` ceiling silently went stale at 13; an exact
         count cannot.
+
+        25 -> 47 is one piece of evidence, not 22: `FTransform` reaches this
+        wire as three separate double vectors, and the 22 entries apply that
+        one finding to every group carrying them. `Scale3D` reading exactly
+        (1,1,1) is what rules out any other split, and the replay's own
+        `compatible_checksum` agrees with the grouping without having been used
+        to derive it.
         """
-        self.assertEqual(len(atc.ADDITIONS), 25, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 47, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.

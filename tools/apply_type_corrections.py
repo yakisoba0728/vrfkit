@@ -292,6 +292,72 @@ ADDITIONS = [
     # 25,24,23... depletion ramp per weapon: classic magazine ammo. Int32,
     # wire-evidence only (no C# descriptor).
     ("MagazineAmmo", "AmmoCount", "FieldType::Int32"),
+    # The 192-bit RPC vectors. Unreal serialises an FTransform parameter as
+    # three separate double vectors on this wire -- rotation, translation,
+    # scale -- and no descriptor declares any of them, so 54,859 rows arrived
+    # raw. The table's `MulticastPlayContinuousEffect:Transform` entry
+    # (FieldType::Transform, 320 bits) is dead against this stream: no
+    # `Transform` parameter exists in the replay's own schema.
+    #
+    # Read as 3 x f64 they are unambiguous. `Scale3D` is exactly
+    # (1.0, 1.0, 1.0) on every row, which no other reading produces -- 6 x f32
+    # gives (0, 1.875, 0, 1.875, 0, 1.875). The `248` locations are map
+    # coordinates in Unreal units with plausible floor heights, and `249` is a
+    # rotator carrying negative zero, which a wrong split would not produce.
+    #
+    # Independently cross-checked: `BombPlantedRPC.PlantLocation` and
+    # `MulticastActivateBombSiteEffects.BombLocation` are two unrelated RPCs
+    # that report byte-identical coordinates, 9 rows each against 9
+    # `spikePlanted` events.
+    #
+    # The replay's own `compatible_checksum` agrees with the grouping and was
+    # not used to derive it: every `248` is 598402184, every `249` is
+    # 747197698, every `Translation` 2235276067, every `Scale3D` 2983776962,
+    # across all the groups below.
+    ("/Script/ShooterGame.LocationalEffectManagerComponent:ClientPlayOneShotEffectAtLocation",
+     "248", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.ReplayEffectComponent:ReplayPlayOneShotEffectAtLocation",
+     "248", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.EffectManagerComponent:ReplayRecordOneShotEffect",
+     "248", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.EffectManagerComponent:ReplayRecordContinuousEffect",
+     "248", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.EffectManagerComponent:MulticastPlayContinuousEffect",
+     "249", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.EffectManagerComponent:MulticastPlayContinuousEffect",
+     "Translation", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.EffectManagerComponent:MulticastPlayContinuousEffect",
+     "Scale3D", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.AresEquippable:MulticastPlayContinuousEffectFromClient",
+     "249", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.AresEquippable:MulticastPlayContinuousEffectFromClient",
+     "Translation", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.AresEquippable:MulticastPlayContinuousEffectFromClient",
+     "Scale3D", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.EffectManagerComponent:MulticastPlayOneShotEffect",
+     "249", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.EffectManagerComponent:MulticastPlayOneShotEffect",
+     "Translation", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.EffectManagerComponent:MulticastPlayOneShotEffect",
+     "Scale3D", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.AresEquippable:MulticastPlayOneShotEffectFromClient",
+     "249", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.AresEquippable:MulticastPlayOneShotEffectFromClient",
+     "Translation", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.AresEquippable:MulticastPlayOneShotEffectFromClient",
+     "Scale3D", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.AresGameStateBase:MulticastResetForRespawn",
+     "249", "FieldType::VectorDouble"),
+    ("/Script/ShooterGame.ForceModuleManagerComponent:NetMulticastApplyForceModule",
+     "SourceLocation", "FieldType::VectorDouble"),
+    ("/Game/Abilities/GrenadeExplodeIndicator.GrenadeExplodeIndicator_C:MulticastTriggerExplodeIndicator",
+     "IndicatorLocation", "FieldType::VectorDouble"),
+    ("/Game/GameModes/Bomb/BombDestination.BombDestination_C:MulticastActivateBombSiteEffects",
+     "BombLocation", "FieldType::VectorDouble"),
+    ("/Game/GameModes/Components/Comp_BombEvents.Comp_BombEvents_C:BombPlantedRPC",
+     "PlantLocation", "FieldType::VectorDouble"),
+    ("/Game/Equippables/Finishers/Rogue/Desturctible/FXC_Rogue_Finisher_Destructible.FXC_Rogue_Finisher_Destructible_C:Set skeletal Collision",
+     "Collision Static Mesh Scale", "FieldType::VectorDouble"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 

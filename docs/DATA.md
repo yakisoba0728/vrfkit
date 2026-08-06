@@ -238,13 +238,19 @@ name rule there would not read a wrong value quietly; it would desync the block.
 groups this replay never spawned -- measuring against the wire alone would have
 called both of them clean.
 
-**RPC parameters are categorically excluded.** A parameter name is scoped to one
-function signature, and the table already contains the counterexample:
-`AllianceFilter` is `EnumByte` under `EffectManagerComponent:MulticastPlay`
-`ContinuousEffect` and `EnumRemainingBits` under `ReplayEffectComponent:`
-`ReplayPlayContinuousEffectAtLocation`. Same name, different type, no engine
-contract behind it. That is why item 2 above reaches for an alias and not a
-name.
+**RPC parameters are categorically excluded from a *name* rule.** A parameter
+name is scoped to one function signature: 38 of the 211 parameter names in this
+replay carry more than one `compatible_checksum`, which is exactly the same
+statement the checksum makes. Typing them by name would merge signatures that
+the schema itself distinguishes.
+
+(An earlier revision of this section offered `AllianceFilter` as the
+counterexample -- `EnumByte` on one group, `EnumRemainingBits` on another. It is
+not one. Both groups declare it under checksum 2270825073 and every row is 3
+bits wide, and `decode_byte` reads `bits_remaining()` for any width in 1..=8, so
+the two declarations return the same value. It is an inconsistency in the table,
+not a difference on the wire. The conclusion stands on the checksum evidence
+above.)
 
 Three names did clear the mechanical bar -- `AttachComponent` (declared `Raw`,
 so it would produce no values at all), `PreventPickupCharacter` and

@@ -122,7 +122,7 @@ member and handle by name.
 #### Reading the `Typed` ratio
 
 ```
-  Typed:            43.8% (properties + RPC parameters)
+  Typed:            49.4% (properties + RPC parameters)
 ```
 
 The denominator is **every row offered** to the overlay, and thanks to RPC
@@ -141,13 +141,13 @@ Measured on `02d4d478` (48,215,213 bytes):
 
 | File | Rows | Bytes | Notes |
 |---|---|---|---|
-| `fields.parquet` | 1,255,920 | 14,107,587 | |
+| `fields.parquet` | 1,255,920 | 14,580,144 | |
 | `movement.parquet` | 1,839,607 | 31,835,557 | |
 | `actors.parquet` | 3,827 | 87,281 | |
 | `net_guids.parquet` | 16,167 | 153,606 | |
 | `events.parquet` | 195 | 11,136 | |
 | `checkpoint_fields.parquet` | 78,829 | 196,448 | requires `--checkpoints` |
-| `manifest.json` | -- | 660,032 | |
+| `manifest.json` | -- | ~660,030 | varies: it records `elapsed_ms` |
 
 `export` takes 0.83 s (median of 5; re-measure with
 [`bench_export.py`](#analysis-helpers)). String columns are dictionary-encoded
@@ -355,7 +355,7 @@ disabling it would produce files this crate could not explain.
 
 | Script | Produces |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,210 + 85 handles) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,232 + 85 handles) |
 | `apply_type_corrections.py` | Applies verified corrections/additions to that file and recomputes the two-line generation header |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
 | `extract_golden.py` | `crates/vrf-transform/tests/data/golden_vectors.rs` |
@@ -368,15 +368,15 @@ the script does not trust its own apply count -- it **re-verifies the final
 state after applying** and fails if it disagrees.
 
 ```bash
-python tools/apply_type_corrections.py           # apply, then verify (49 corrections)
+python tools/apply_type_corrections.py           # apply, then verify (71 corrections)
 python tools/apply_type_corrections.py --check   # verify only
 ```
 
-Those 49 are the whole `EXPECTED` set the script re-verifies; `ADDITIONS` is the
+Those 71 are the whole `EXPECTED` set the script re-verifies; `ADDITIONS` is the
 subset of it that has no C# descriptor behind it at all.
 
 The `ADDITIONS` pass inserts items the C# descriptor is **silent on**. There are
-currently 25 of them, and every one is admitted on wire evidence written into the
+currently 47 of them, and every one is admitted on wire evidence written into the
 comment above the list -- bit width, value range, distribution -- and nothing else.
 The original three still show the bar: `BaseTeamState.LoadoutValue` /
 `AverageLoadoutValue` (26-I, where the reference declares the type of the same
@@ -467,7 +467,7 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 394 passing
+cargo test                                        # 396 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 114 files, ASCII only
@@ -568,7 +568,7 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
 
 ## 8. Known limits
 
-- **Untyped residual** -- the [`export`](#export) `Typed` is ~44% (denominator
+- **Untyped residual** -- the [`export`](#export) `Typed` is ~49% (denominator
   including RPC parameters). **Untyped != lost** (`raw_bits` preserved). Typing
   the rest needs the game binary or UE headers -- this is not a table-editing
   problem (archive/PROJECT_STATUS.md section 24).

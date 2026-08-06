@@ -826,3 +826,75 @@ fn a_table_entry_outranks_the_engine_fallback() {
         Some(FieldType::Raw),
     );
 }
+
+/// The 192-bit RPC vectors. Unreal splits an `FTransform` parameter into three
+/// separate double vectors on this wire, and no descriptor declares any of
+/// them, so 54,859 rows on 02d4d478 arrived raw. Read as 3 x f64 they are
+/// unambiguous -- `Scale3D` is exactly (1,1,1) on every row, which no other
+/// split produces. ADDITIONS, same wire-evidence class as `Money`.
+///
+/// The replay's own `compatible_checksum` agrees with the grouping and was not
+/// used to derive it: `248` is 598402184 wherever it appears, `249` is
+/// 747197698, `Translation` 2235276067, `Scale3D` 2983776962.
+#[test]
+fn the_rpc_transform_vectors_are_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    for (group, field) in [
+        (
+            "/Script/ShooterGame.EffectManagerComponent:MulticastPlayContinuousEffect",
+            "Scale3D",
+        ),
+        (
+            "/Script/ShooterGame.EffectManagerComponent:MulticastPlayContinuousEffect",
+            "Translation",
+        ),
+        (
+            "/Script/ShooterGame.EffectManagerComponent:MulticastPlayContinuousEffect",
+            "249",
+        ),
+        (
+            "/Script/ShooterGame.LocationalEffectManagerComponent:ClientPlayOneShotEffectAtLocation",
+            "248",
+        ),
+        (
+            "/Game/GameModes/Components/Comp_BombEvents.Comp_BombEvents_C:BombPlantedRPC",
+            "PlantLocation",
+        ),
+        (
+            "/Game/GameModes/Bomb/BombDestination.BombDestination_C:MulticastActivateBombSiteEffects",
+            "BombLocation",
+        ),
+    ] {
+        assert_eq!(
+            table.lookup(group, field),
+            Some(FieldType::VectorDouble),
+            "{group}:{field}",
+        );
+    }
+}
+
+/// The decode that makes the reading unambiguous: the bytes below are the
+/// `Scale3D` payload every row carries, and only a 3 x f64 split reads them as
+/// (1,1,1). Six f32s would give (0, 1.875, 0, 1.875, 0, 1.875).
+#[test]
+fn a_192_bit_rpc_vector_decodes_as_three_doubles() {
+    const GROUP: &str = "/Script/ShooterGame.EffectManagerComponent:MulticastPlayContinuousEffect";
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    let mut stats = OverlayStats::default();
+    let mut bits = Vec::new();
+    for _ in 0..3 {
+        bits.extend_from_slice(&1.0f64.to_le_bytes());
+    }
+    let result = apply_overlay(
+        &table,
+        GROUP,
+        group_hash_state(GROUP),
+        Some("Scale3D"),
+        Some(&bits),
+        192,
+        &mut stats,
+    );
+    assert_eq!(result.and_then(|v| v.value_str).as_deref(), Some("(1,1,1)"));
+    assert_eq!(stats.decoded_ok, 1);
+    assert_eq!(stats.decoded_err, 0);
+}
