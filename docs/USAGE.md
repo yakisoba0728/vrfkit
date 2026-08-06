@@ -451,7 +451,7 @@ records the fields that failed the bar and why.
 | `compare_rpc_params.py` | RPC parameter comparison |
 | `compare_with_csharp.py` | Diff against the C# parser |
 | `check_effect_decoder.py` | Effect decoder (12 cases) |
-| `check_ascii.py` | Rust source ASCII sweep (115 files) |
+| `check_ascii.py` | Rust source ASCII sweep (116 files) |
 | `check_docs.py` | This document itself (below) |
 
 `check_docs.py` checks this document -- that every `tools/` script is
@@ -521,7 +521,7 @@ deliberately sequential for accuracy.
 cargo test                                        # 496 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
-python tools/check_ascii.py --check               # 115 files, ASCII only
+python tools/check_ascii.py --check               # 116 files, ASCII only
 python tools/check_effect_decoder.py --check      # 12 cases
 python -m unittest discover -s tools/tests -p "test_*.py"   # 372 passing
 python tools/check_docs.py --fast                 # do the docs still describe this repo
