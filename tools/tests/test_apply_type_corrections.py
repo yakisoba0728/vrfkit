@@ -118,12 +118,16 @@ class AdditionsTests(unittest.TestCase):
         `HandleNumber`, whose 3,741 rows hold a dense 1..765. One entry each is
         enough -- checksum propagation carries both to their sibling RPCs.
 
-        49 -> 48 removes one: `MagazineAmmo.AmmoCount`. The cooked game says
+        48 -> 49 adds `CalloutRegionTrackingComponent.CurrentRegion`, the named
+        map area a player is standing in: every one of its 1,957 non-zero rows
+        resolves through `net_guids` to a `CalloutRegion_*` path.
+
+        49 -> 48 removed one: `MagazineAmmo.AmmoCount`. The cooked game says
         that group is an `AmmoComponent`, which the replay declares with handle
         2 as `AuthResourceAmount`, so the leaf remap in `sink/paths.rs` now
         reaches a real declaration and the guessed name is gone.
         """
-        self.assertEqual(len(atc.ADDITIONS), 48, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 49, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.

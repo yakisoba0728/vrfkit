@@ -1027,3 +1027,24 @@ fn the_movement_time_pair_and_force_module_handle_are_typed() {
         Some(FieldType::Int32),
     );
 }
+
+/// Which named area of the map a player is standing in -- "A Site", "Mid",
+/// "Heaven", the callouts the game itself announces.
+///
+/// The group only became reachable when the `CalloutRegionTracker` leaf was
+/// remapped to its native class. The field is an `ObjectNetGuid`: unpacking the
+/// raw bits of all 1,957 non-zero rows and resolving them through
+/// `net_guids.parquet` gives 1,957 of 1,957 a `CalloutRegion_*` path, over 22
+/// distinct regions. Nothing else in the export says where a player is in map
+/// terms rather than in centimetres.
+#[test]
+fn the_callout_region_is_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    assert_eq!(
+        table.lookup(
+            "/Script/ShooterGame.CalloutRegionTrackingComponent",
+            "CurrentRegion"
+        ),
+        Some(FieldType::ObjectNetGuid),
+    );
+}

@@ -367,6 +367,15 @@ ADDITIONS = [
     # `ForceModule`.
     ("/Script/ShooterGame.ForceModuleManagerComponent:NetMulticastApplyForceModule",
      "HandleNumber", "FieldType::Int32"),
+    # Which named area of the map a player is standing in -- "A Site", "Mid",
+    # "Heaven" and so on, the same callouts the game announces. The group only
+    # became reachable when the `CalloutRegionTracker` leaf was remapped, and
+    # the field is an ObjectNetGuid: unpacking the raw bits of all 1,957
+    # non-zero rows and looking them up in net_guids resolves 1,957 of 1,957 to
+    # a `CalloutRegion_*` path, 22 distinct regions. Nothing else in the export
+    # names where a player is in map terms.
+    ("/Script/ShooterGame.CalloutRegionTrackingComponent",
+     "CurrentRegion", "FieldType::ObjectNetGuid"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 

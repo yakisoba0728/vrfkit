@@ -17,7 +17,7 @@ thiserror = { workspace = true }
 # depends on another -- and all are on by default, so a consumer that asks for
 # nothing gets what it got before these existed. `overlay` is the one worth
 # dropping if the primitive decoders are all you want: it is what pulls in the
-# 1,233-entry generated table.
+# 1,234-entry generated table.
 [features]
 default = ["array", "effect", "overlay", "structs"]
 array = []
