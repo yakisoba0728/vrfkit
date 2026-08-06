@@ -122,7 +122,7 @@ member and handle by name.
 #### Reading the `Typed` ratio
 
 ```
-  Typed:            72.4% (properties + RPC parameters)
+  Typed:            72.5% (properties + RPC parameters)
 ```
 
 The denominator is **every row offered** to the overlay, and thanks to RPC
@@ -141,12 +141,12 @@ Measured on `02d4d478` (48,215,213 bytes):
 
 | File | Rows | Bytes | Notes |
 |---|---|---|---|
-| `fields.parquet` | 1,255,920 | 14,883,753 | |
+| `fields.parquet` | 1,255,920 | 14,883,907 | |
 | `movement.parquet` | 1,839,607 | 31,835,557 | |
 | `actors.parquet` | 3,827 | 87,281 | |
 | `net_guids.parquet` | 16,167 | 153,606 | |
 | `events.parquet` | 195 | 11,136 | |
-| `checkpoint_fields.parquet` | 78,829 | 202,176 | requires `--checkpoints` |
+| `checkpoint_fields.parquet` | 78,829 | 202,398 | requires `--checkpoints` |
 | `manifest.json` | -- | ~660,030 | varies: it records `elapsed_ms` |
 
 `export` takes 0.79 s (median of 5; re-measure with
@@ -471,7 +471,7 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 406 passing
+cargo test                                        # 407 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 114 files, ASCII only

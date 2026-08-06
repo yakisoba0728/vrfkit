@@ -200,6 +200,18 @@ const KNOWN_SUBOBJECT_CLASS_PATHS: &[(&str, &str, GroupKind)] = &[
         "/Script/InputTooling.AimToolingPointsTargetComponent",
         GroupKind::RepLayout,
     ),
+    // GAS creates its attribute sets as runtime subobjects rather than as
+    // Blueprint components, so this pair does not come from a cooked asset like
+    // the ones above -- it is read off the wire. The name is the giveaway and
+    // the handles confirm it: all 116 handles the bare group uses are a subset
+    // of the 122 the native group declares, every one 32 bits wide, same as the
+    // named instance. It is the same attribute set replicated a second time,
+    // for actors that are not player characters.
+    (
+        "AresAttributeSet_2",
+        "/Script/ShooterGame.AresAttributeSet",
+        GroupKind::RepLayout,
+    ),
 ];
 
 /// Everything a block's resolution depends on that is not cache state.
@@ -874,6 +886,24 @@ mod tests {
                 "{leaf}",
             );
         }
+    }
+
+    /// `AresAttributeSet_2` is the one remap not read from a cooked asset: GAS
+    /// builds its attribute sets as runtime subobjects, so no Blueprint lists
+    /// them. It rests on the wire instead -- all 116 handles the bare group
+    /// uses are a subset of the 122 the native group declares, every one 32
+    /// bits wide.
+    #[test]
+    fn the_second_attribute_set_reaches_the_same_native_group() {
+        assert_eq!(
+            actor_group_path_for(
+                &["/Script/ShooterGame.AresAttributeSet"],
+                100,
+                "AresAttributeSet_2",
+                true,
+            ),
+            "/Script/ShooterGame.AresAttributeSet",
+        );
     }
 
     /// The remap only fires for names it was given. A Blueprint component this

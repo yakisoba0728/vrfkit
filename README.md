@@ -74,7 +74,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **406 tests** plus a layered validation suite (framing / bytes / decode
+- **407 tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -128,12 +128,12 @@ produces seven files:
 
 | File | Rows | Bytes |
 |---|---|---|
-| `fields.parquet` | 1,255,920 | 14,883,753 |
+| `fields.parquet` | 1,255,920 | 14,883,907 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
 | `events.parquet` | 195 | 11,136 |
-| `checkpoint_fields.parquet` | 78,829 | 202,176 |
+| `checkpoint_fields.parquet` | 78,829 | 202,398 |
 | `manifest.json` |  | ~660,030 |
 
 `checkpoint_fields.parquet` requires `--checkpoints`; with or without it, **the
@@ -260,7 +260,7 @@ it as one gives the year 3626.
 
 ## Status
 
-Work in progress. Currently verified: `cargo test --workspace` **406 passing**,
+Work in progress. Currently verified: `cargo test --workspace` **407 passing**,
 `clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 114 files. The
 Python suite in `tools/tests` has 156 tests.
 
@@ -506,9 +506,9 @@ still at zero across the 215-replay corpus.
 `02d4d478` at the current HEAD:
 
 ```
-Decoded OK:   716,169      Decode errors:      0
+Decoded OK:   716,633      Decode errors:      0
 Raw/Skip:      74,624      Not in table: 195,697
-No field name: 17,013      Typed:          72.4%
+No field name: 17,013      Typed:          72.5%
 Effect blobs:  53,908
 ```
 
@@ -521,7 +521,7 @@ prints identically. (The bucket counts themselves do move as overlay entries
 are added; the figures above are post-economy-typing.)
 
 The real coverage figure is the fraction of all 1,255,920 rows with a filled
-`value_*`. Before effect linkage 68.8% were untyped; it is now **36.9%.**
+`value_*`. Before effect linkage 68.8% were untyped; it is now **36.8%.**
 
 **These numbers change often; re-measure before quoting** -- four of the six
 were left stale at one point:
