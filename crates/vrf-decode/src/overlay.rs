@@ -329,10 +329,12 @@ pub fn apply_overlay_with_handle(
 
 /// [`apply_overlay_with_handle`] with the field's `compatible_checksum`.
 ///
-/// Only the RPC-parameter path passes one. It already holds the
-/// `NetFieldExport` it took the parameter name from, so the checksum is free
-/// there, while the property path would need a second schema lookup on its
-/// hottest loop to reach 4% as many rows.
+/// Both export paths pass one, and neither pays for it: each already walks the
+/// schema for the field's name, and the same `NetFieldExport` carries the
+/// checksum. The property path was first wired without it on the assumption
+/// that reaching the checksum there meant a second lookup on the hottest loop
+/// in the export; extending the existing walk to return both costs nothing, and
+/// `tools/bench_export.py` measured no slowdown.
 #[allow(clippy::too_many_arguments)]
 pub fn apply_overlay_with_checksum(
     table: &OverlayTable,

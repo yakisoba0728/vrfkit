@@ -122,7 +122,7 @@ member and handle by name.
 #### Reading the `Typed` ratio
 
 ```
-  Typed:            68.5% (properties + RPC parameters)
+  Typed:            69.3% (properties + RPC parameters)
 ```
 
 The denominator is **every row offered** to the overlay, and thanks to RPC
@@ -141,7 +141,7 @@ Measured on `02d4d478` (48,215,213 bytes):
 
 | File | Rows | Bytes | Notes |
 |---|---|---|---|
-| `fields.parquet` | 1,255,920 | 14,815,391 | |
+| `fields.parquet` | 1,255,920 | 14,830,013 | |
 | `movement.parquet` | 1,839,607 | 31,835,557 | |
 | `actors.parquet` | 3,827 | 87,281 | |
 | `net_guids.parquet` | 16,167 | 153,606 | |
@@ -149,7 +149,7 @@ Measured on `02d4d478` (48,215,213 bytes):
 | `checkpoint_fields.parquet` | 78,829 | 196,448 | requires `--checkpoints` |
 | `manifest.json` | -- | ~660,030 | varies: it records `elapsed_ms` |
 
-`export` takes 0.83 s (median of 5; re-measure with
+`export` takes 0.79 s (median of 5; re-measure with
 [`bench_export.py`](#analysis-helpers)). String columns are dictionary-encoded
 + ZSTD.
 

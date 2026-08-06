@@ -123,12 +123,12 @@ A binary built without `export` **refuses the subcommand rather than failing
 silently** -- a subcommand that printed nothing and exited 0 would be
 indistinguishable from one that wrote the files.
 
-On `02d4d478` (48,215,213 bytes, build 13.01), `export` takes ~0.83 s and
+On `02d4d478` (48,215,213 bytes, build 13.01), `export` takes ~0.79 s and
 produces seven files:
 
 | File | Rows | Bytes |
 |---|---|---|
-| `fields.parquet` | 1,255,920 | 14,815,391 |
+| `fields.parquet` | 1,255,920 | 14,830,013 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
@@ -506,9 +506,9 @@ still at zero across the 215-replay corpus.
 `02d4d478` at the current HEAD:
 
 ```
-Decoded OK:   677,290      Decode errors:      0
-Raw/Skip:      74,624      Not in table: 220,056
-No field name: 17,013      Typed:          68.5%
+Decoded OK:   685,092      Decode errors:      0
+Raw/Skip:      74,624      Not in table: 212,254
+No field name: 17,013      Typed:          69.3%
 Effect blobs:  53,908
 ```
 
@@ -521,7 +521,7 @@ prints identically. (The bucket counts themselves do move as overlay entries
 are added; the figures above are post-economy-typing.)
 
 The real coverage figure is the fraction of all 1,255,920 rows with a filled
-`value_*`. Before effect linkage 68.8% were untyped; it is now **40.2%.**
+`value_*`. Before effect linkage 68.8% were untyped; it is now **39.6%.**
 
 **These numbers change often; re-measure before quoting** -- four of the six
 were left stale at one point:

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use vrf_bitio::BitReader;
-use vrf_decode::apply_overlay_with_handle;
+use vrf_decode::apply_overlay_with_checksum;
 use vrf_decode::cnc::decode_cnc_payload;
 use vrf_export::{ActorRecord, MovementRecord, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME};
 use vrf_net::content::ContentBlockHeader;
@@ -31,6 +31,15 @@ impl ExportSink<'_> {
     /// Interned: 429,637 property rows and 342,735 RPC rows on the reference
     /// replay each used to clone the group's `String` name.
     fn resolve_field_name(&mut self, handle: u32) -> Option<Arc<str>> {
+        self.resolve_field_name_and_checksum(handle).0
+    }
+
+    /// [`Self::resolve_field_name`] plus the handle's `compatible_checksum`.
+    ///
+    /// One schema walk yields both. The checksum feeds the overlay's last-resort
+    /// lookup, and asking for it separately would double the cost of the hottest
+    /// loop in the export.
+    fn resolve_field_name_and_checksum(&mut self, handle: u32) -> (Option<Arc<str>>, Option<u32>) {
         // Destructured so the immutable borrow of `cache` that produces the
         // name and the mutable borrow of `channel_state` that pools it are
         // seen as the disjoint fields they are.
@@ -43,21 +52,26 @@ impl ExportSink<'_> {
         // The replay's own export group names the handle when it can.
         if let Some(group) = cache.get_group_by_path(current_group_path) {
             if let Some(field) = group.get_field(handle) {
-                return Some(channel_state.names.intern(field.name.as_str()));
+                return (
+                    Some(channel_state.names.intern(field.name.as_str())),
+                    Some(field.compatible_checksum),
+                );
             }
         }
         // Some groups (e.g. `MagazineAmmo`) are declared without field names, so
         // a handle the wire leaves unnamed falls back to the overlay's handle
         // table -- without this the row keeps field_name None even though the
         // overlay resolved and typed it.
-        let name = TABLE.lookup_handle(current_group_path, handle)?;
-        Some(channel_state.names.intern(name))
+        let Some(name) = TABLE.lookup_handle(current_group_path, handle) else {
+            return (None, None);
+        };
+        (Some(channel_state.names.intern(name)), None)
     }
 }
 
 impl FieldSink for ExportSink<'_> {
     fn on_field(&mut self, handle: u32, bit_count: u32, reader: BitReader<'_>) {
-        let field_name = self.resolve_field_name(handle);
+        let (field_name, field_checksum) = self.resolve_field_name_and_checksum(handle);
         let raw_bits = copy_raw_bits(reader, bit_count);
 
         // Additive pass 1: a known DynamicArray is flattened into one row per
@@ -90,12 +104,13 @@ impl FieldSink for ExportSink<'_> {
         }
 
         // Apply the type overlay: decode raw_bits into a typed value if possible.
-        let (value_i64, value_f64, value_bool, value_str) = match apply_overlay_with_handle(
+        let (value_i64, value_f64, value_bool, value_str) = match apply_overlay_with_checksum(
             &TABLE,
             &self.current_group_path,
             self.current_group_hash,
             field_name.as_deref(),
             handle,
+            field_checksum,
             raw_bits.as_deref(),
             bit_count,
             &mut self.stats.overlay,

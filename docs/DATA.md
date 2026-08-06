@@ -220,12 +220,13 @@ Roughly in value order. Each names the file to touch first.
    ordering worry that made this look hard dissolved: a checksum is derived from
    the property, not the replay, so the map is *generated* rather than learned
    at run time and nothing depends on when a group arrives. Verified stable on
-   all five supported builds. Wired on the RPC path only, where the schema
-   lookup is already being made; the property path would need a second lookup on
-   its hottest loop to reach 4% as many rows.
+   all five supported builds. Wired on both export paths: each already walks the
+   schema for the field's name and the same `NetFieldExport` carries the
+   checksum, so returning both from one walk costs nothing -- measured, after an
+   initial guess that the property path would need a second lookup.
 
-   Remaining after it: about 50.2M rows corpus-wide, the largest single item
-   being `ClientReplayReceiveInputEventProcessingCapture.InputEventData`
+   Remaining after it: the largest single item is
+   `ClientReplayReceiveInputEventProcessingCapture.InputEventData`
    (53,605 rows on 02d4d478, 32 bits), whose checksum no declared field donates.
 3. **`HANDLE_ADDITIONS` for the next unnamed single handle** — the mechanism
    added for `MagazineAmmo` generalizes. `ReserveAmmo` (reserve bullets) is the
