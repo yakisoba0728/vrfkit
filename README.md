@@ -57,8 +57,8 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Spike state** — plant site A/B (`PlantedAtSite` + position), defuser
   (`CurrentDefuser`), timer, and the canonical detonation signal.
 - **Combat & abilities** — per-player economy, magazine and reserve ammo,
-  equipped weapon over time, cooldowns, and absolute health/shield/overheal from
-  the damage log (not reconstructed by subtraction).
+  equipped weapon over time, cooldowns, and absolute health, armour and overheal
+  from the damage log — the value after each change, not a running subtraction.
 - **Every ability cast** — one record per cast with the caster's account UUID,
   slot, round, time and world location, plus the statistics it produced and the
   players each one landed on: `EnemiesSuppressed`, `EnemiesSlowed`,

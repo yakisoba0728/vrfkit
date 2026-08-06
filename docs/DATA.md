@@ -67,6 +67,48 @@ purchase; all ten players' purchases are replicated.
 | Wallbang | `bIsWallPen` | ✅ |
 | Damage source (weapon, location, bone) | `MulticastNotifyDamage` (EquippableUsed, ImpactLocation, ImpactBone) | ✅ |
 | ADR | derived from CombatReport | ◐ +0.1–0.2 vs trackers (wire damage is fractional; not a bug) |
+| Health / armour / overheal, absolute | `DamageableComponent` RPCs → `LifeChangeEvents[]` / `LifeChangeBySection[]` | ◐ **raw** — decodes cleanly, see below |
+
+### Health is absolute, not a subtraction
+
+The `DamageableComponent` RPCs carry an array whose elements hold
+`ChangedComponent` (which damage section), `LifeResult` (**the absolute value
+after the change**), `DeltaLife`, and `bAliveAfterChange`. Nothing has to be
+accumulated. The array is still `raw_bits` -- typing it is listed under What's
+next -- but it walks with the ordinary RepLayout dynamic-array framing, and the
+decoded handles are the manifest handles with no offset.
+
+Verified over 69 replays on build 13.02: 377,487 elements, zero parse errors,
+zero residual bits, and every element carrying exactly four members (these RPC
+parameters never send partial elements). Corroborated against separate decode
+paths -- `sum(DeltaLife)` equals the RPC's own `DamageTaken`/`HealTaken`/
+`DecayApplied` on 230,855 of 230,855, and `bAliveAfterChange` agrees with
+`bAliveAfterDamage` on 61,045 of 61,045.
+
+Three conventions a consumer has to get right, each found by a check failing:
+
+- **Death is `bAliveAfterChange == False`, not `LifeResult == 0`.** Deduplicated
+  per `(victim, RespawnNumber)` the first matches `events.characterDeath`
+  9,362/9,362 across all 69 replays; the second misses on two, because a
+  character really can sit at exactly 0 health and be alive (65 cases, all
+  KAY-O). The flag is also re-reported after death, hence the RespawnNumber
+  dedup.
+- **Armour is `AttachedDamageSection`, not `ShieldDamageSection`.** The latter
+  is an empty shell -- 67,316 elements, every `LifeResult` 0. The real armour
+  section's outer is a `HeavyArmorItem_C` / `LightArmorItem_C` /
+  `PlasmaArmorItem_C`, and its maximum reads 50.00 / 25.00 / 25.00, which is the
+  game's own numbers and an outside confirmation that the f32 decode is right.
+  Armour absorbs 2:1 against health on 12,747 of 12,747 hits where it survived.
+- **`MulticastNotifyOverhealDecay` sends `DeltaLife` positive while life goes
+  down.** Its magnitude matches `DecayApplied` 33,181/33,181, and the running
+  chain only closes if the sign is flipped. `life += DeltaLife` runs overheal
+  backwards.
+
+Round starts anchor at 100: `LifeResult - DeltaLife == 100` on the first health
+event of 10,981 of 10,996 lives. The 15 exceptions all read 200 and are all
+Phoenix -- Run It Back, not a decode fault. On the reset broadcast
+(`MulticastSectionLifeChange`) the `LifeResult` is trustworthy and the
+`DeltaLife` is not an edge delta; ignore it there.
 
 ## Abilities
 
