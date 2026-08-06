@@ -115,7 +115,12 @@ pub struct MovementRecord {
     pub vel_z: f32,
     /// Server-assigned tick decoded from the move header.
     pub timestamp: u32,
-    /// Posture byte (crouch / walk / run / jump).
+    /// Move-header byte at bits [9..17]. Named for a posture it has never been
+    /// observed to carry: it is 0 on all 128,324,174 movement rows across 70
+    /// corpus replays. Exported anyway, because it is a byte the wire spends and
+    /// a later build may start using it -- but do not read posture out of it.
+    /// Crouch is `bCrouchHeld` on the character actor, or the ~19 cm step in
+    /// `pos_z`.
     pub movement_state: u8,
     /// 0 = variant0 (velocity absent on the wire), 1 = variant1.
     pub move_type: u8,

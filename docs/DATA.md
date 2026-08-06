@@ -114,6 +114,36 @@ beside the real one (`..._DetainDebuff_Audio_C`). And this is a *visual* effect
 channel: it is strong evidence the state was applied, but it is not the
 authoritative state flag, which is the GAS array that never reaches the wire.
 
+### Slows are visible in the movement data itself
+
+Independently of the effect channel above, a slow is legible from speed alone,
+because VALORANT's horizontal speeds sit on a multiplicative lattice off
+675 cm/s:
+
+```
+675.00 run   607.50 (0.90)   573.75 (0.85)   540.00 (0.80, rifle ADS)
+513.00 (0.76)   506.25 (0.75)   405.00 (0.60)   324.00 walk
+```
+
+Inside a slow zone every one of those values appears **halved** -- 337.50,
+303.75, 286.88, 270.00, 256.50, 253.13, 161.90. Measured across 70 replays and
+128,324,174 movement rows, the multiplier is 0.500 to within 0.04%. It is a
+multiplier and not a cap: values already below 337.5 are halved too.
+
+Matching a speed against the halved lattice to within ~1% classifies a slow with
+under 1% false positives on four negative-control zones (smokes, cages, molly,
+heal pool). A plain threshold does not work -- walking is 324 and slowed running
+is 337.5, 13.5 cm/s apart.
+
+Effective radius is roughly 500-600 cm and the estimate is genuinely unstable
+below that, so treat it as a range. The slow lingers about 0.3-0.5 s after
+leaving. Sage's orb and Chamber's trap slow; Fade's Seize and Terra's time-slow
+grenade showed no movement-speed effect at their actor's position.
+
+**Crouch is not in `movement_state`.** That column is 0 on every row of the
+corpus. Crouch is `bCrouchHeld` on the character actor, or a ~19 cm drop in
+`pos_z`, and crouch speed is ~190 cm/s.
+
 ## Movement & position
 
 | Data | Source | Status |
