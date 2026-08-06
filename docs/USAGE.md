@@ -189,13 +189,29 @@ Over 20 replays on 13.02 the split is 0.5% / 48.6% / 51.0% of 10,062,142
 untyped rows, and it barely moves replay to replay.
 
 The middle bucket is a work list, not a bug list -- some of it is deliberate.
-Its largest members are `ClientReplayReceiveInputEventProcessing` (1,227,330
-rows), `ClientPlayOneShotEffectAtLocation.249` (344,426),
-`ReplayLastTransformUpdateTimeStamp` on each agent class (~114-124k each),
-`AuthCurrentRandomSeed` (120,853), `TransitionContext` (114,299) and
-`ServerMovementTime` (120,768), which `docs/DATA.md` already records as
-untyped on purpose because its epoch is unknown. Read the bucket as "described
-and unclaimed", then decide.
+Its largest members over those 20 replays:
+
+| rows | field |
+|---|---|
+| 1,227,330 | `ClientReplayReceiveInputEventProcessingCapture.InputEventData` |
+| 908,046 | `ReplayLastTransformUpdateTimeStamp` (every agent class) |
+| 344,426 | `ClientPlayOneShotEffectAtLocation.249` |
+| 131,884 | `ServerMovementTime` |
+| 120,853 | `AuthCurrentRandomSeed` |
+| 114,299 | `TransitionContext` |
+| 97,573 | `MulticastStopContinuousEffect.StopEffectType` |
+
+`ServerMovementTime` is the reminder that this is not a bug list: `docs/DATA.md`
+records it as untyped on purpose, its epoch being unknown. The bucket says a
+property is described and unclaimed, not that it should be claimed.
+
+Note what separates the second and third buckets among RPCs, since both hold
+`ClassNetCache` rows: an RPC whose parameters were resolved gets a checksum per
+parameter and lands in the second, while an RPC whose payload could not be
+split into parameters is emitted whole with no declared handle and lands in the
+third. `ClientPlayOneShotEffectAtLocation.249` sits in the second because it is
+a parameter -- one whose name the replay gives as a bare handle number, and
+whose sibling `248` this repo already types as a `VectorDouble`.
 
 Without this column those three are one undifferentiated pile. Phoenix's smoke
 wall sat in the middle bucket for the life of the project -- 2,791 rows of null
