@@ -13,7 +13,7 @@
 
 use smallvec::SmallVec;
 use vrf_bitio::BitReader;
-use vrf_decode::{COMBAT_ROUNDS_SCHEMA, FieldType};
+use vrf_decode::{ABILITY_CASTS_SCHEMA, COMBAT_ROUNDS_SCHEMA, FieldType};
 use vrf_schema::NetGuidCache;
 
 use super::intern::put;
@@ -84,6 +84,18 @@ impl ExportSink<'_> {
         match field_name {
             Some("Rounds") if self.current_group_path.contains("CombatReportComponent") => {
                 Some(&COMBAT_ROUNDS_SCHEMA)
+            }
+            // One cast per element, and each cast carries an `Effects` array of
+            // the statistics it produced -- which in turn names the players each
+            // one landed on. Without a schema the walker cannot see that
+            // nesting, so `Effects` came out as one opaque leaf and the
+            // authoritative debuff log stayed raw.
+            Some("AbilityCastsThisRound")
+                if self
+                    .current_group_path
+                    .contains("Comp_AbilityStatisticsReplicator") =>
+            {
+                Some(&ABILITY_CASTS_SCHEMA)
             }
             _ => None,
         }

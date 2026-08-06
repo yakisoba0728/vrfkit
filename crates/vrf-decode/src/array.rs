@@ -66,7 +66,9 @@ use std::fmt::Write as _;
 
 use vrf_bitio::BitReader;
 
-pub use schema::{ArrayFieldSchema, COMBAT_ROUNDS_SCHEMA};
+pub use schema::{
+    ABILITY_CASTS_SCHEMA, ABILITY_EFFECTS_SCHEMA, ArrayFieldSchema, COMBAT_ROUNDS_SCHEMA,
+};
 
 /// Maximum number of elements per array level.
 pub const MAX_ELEMENTS: u32 = 4096;
@@ -868,5 +870,56 @@ mod tests {
             "mid-stream read failure must count errors, got {}",
             stats.errors
         );
+    }
+
+    /// `AbilityCastsThisRound[].Effects[]` is a nested array, and until it had
+    /// a schema the walker could not know that: a sub-array and an opaque leaf
+    /// both arrive as `handle + payloadBits + bits`, so `Effects` was emitted
+    /// whole and the per-cast statistics inside it stayed raw.
+    ///
+    /// The payload below is a real one off the wire, the smallest that carries
+    /// an `AffectedTargetsArray`: 128 bits holding one effect element whose
+    /// only field is handle 18, itself an 80-bit array.
+    #[test]
+    fn the_ability_effects_array_descends_into_its_targets() {
+        let raw = [
+            0x02, 0x02, 0x26, 0xa0, 0x04, 0x04, 0x2a, 0x40, 0x7e, 0x16, 0x12, 0x3f, 0x00, 0x00,
+            0x00, 0x00,
+        ];
+        let mut stats = ArrayDecodeStats::default();
+        let out = decode_struct_array(&raw, 128, Some(&ABILITY_EFFECTS_SCHEMA), &[], &mut stats);
+        assert_eq!(stats.errors, 0, "{stats:?}");
+
+        // Without the schema this is one opaque leaf at handle 18. With it, the
+        // walker descends and the target's own members come out with an index.
+        //
+        // Only `Value` appears here, not `AffectedPlayer`: replication is per
+        // property, so an element re-sent because one member changed carries
+        // only that member. Reconstructing a target means carrying the last
+        // seen value forward per (element index), the same as any delta stream.
+        let paths: Vec<&str> = out.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(paths, ["[0].AffectedTargetsArray[1].Value"], "{paths:?}");
+    }
+
+    /// The nesting the schema declares, checked against the replay's own
+    /// declaration rather than against itself: `Effects` is handle 13 on a cast,
+    /// its members are 14..18, and `AffectedTargetsArray` (18) holds 19 and 20.
+    #[test]
+    fn the_ability_effects_schema_matches_the_declared_handles() {
+        assert!(ABILITY_CASTS_SCHEMA.sub_array(13).is_some(), "Effects");
+        let effects = ABILITY_CASTS_SCHEMA.sub_array(13).unwrap();
+        for (handle, name) in [
+            (14, "Statistic"),
+            (15, "LocalizedStat"),
+            (16, "Value"),
+            (17, "Time"),
+            (18, "AffectedTargetsArray"),
+        ] {
+            assert_eq!(effects.field_name(handle), Some(name), "handle {handle}");
+        }
+        let targets = effects.sub_array(18).expect("AffectedTargetsArray");
+        assert_eq!(targets.field_name(19), Some("AffectedPlayer"));
+        assert_eq!(targets.field_name(20), Some("Value"));
+        assert!(targets.sub_array(19).is_none(), "leaves stay leaves");
     }
 }

@@ -164,3 +164,53 @@ pub static COMBAT_ROUNDS_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     sub_arrays: &[(4, &CHARACTER_REPORT_SCHEMA)],
     field_names: &[(3, "RoundNumber"), (4, "Reports")],
 };
+
+// -- AbilityCastsThisRound schema ---------------------------------------------
+//
+// `Comp_AbilityStatisticsReplicator` replicates one element per ability cast.
+// The handles are read straight off the replay's own declaration for the group,
+// which names every member:
+//
+// AbilityCastsThisRound[] (top array)
+//   handle 3:  Player (FString, the caster's subject UUID)
+//   handle 4:  Slot          handle 5: Round        handle 6: RoundPhase
+//   handle 7:  CastTime      handle 8: CastLocation handle 9/10: EffectLocations
+//   handle 12: DestroyedCount
+//   handle 13: Effects[] (sub-array)
+//     handle 14: Statistic (the stat enum -- EnemiesSuppressed, EnemiesSlowed, ...)
+//     handle 15: LocalizedStat (FString)
+//     handle 16: Value         handle 17: Time
+//     handle 18: AffectedTargetsArray[] (sub-array)
+//       handle 19: AffectedPlayer (packed-int NetGUID -> BombPlayerState actor)
+//       handle 20: Value
+//
+// Only the container handles need to be here. The leaves are named by the
+// replay's declaration, which the walker prefers over the schema anyway; the
+// names below are what label the container segments of the emitted path.
+
+/// One affected target: who, and by how much. Leaf level.
+static AFFECTED_TARGET_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[],
+    field_names: &[(19, "AffectedPlayer"), (20, "Value")],
+};
+
+/// One statistic a cast produced, with the players it applied to.
+///
+/// Public because a bare `Effects` payload can be walked on its own, without
+/// the enclosing cast element.
+pub static ABILITY_EFFECTS_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[(18, &AFFECTED_TARGET_SCHEMA)],
+    field_names: &[
+        (14, "Statistic"),
+        (15, "LocalizedStat"),
+        (16, "Value"),
+        (17, "Time"),
+        (18, "AffectedTargetsArray"),
+    ],
+};
+
+/// Cast-level schema: handle 13 -> Effects sub-array.
+pub static ABILITY_CASTS_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[(13, &ABILITY_EFFECTS_SCHEMA)],
+    field_names: &[(13, "Effects")],
+};

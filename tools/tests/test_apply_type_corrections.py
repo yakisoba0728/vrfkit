@@ -118,7 +118,11 @@ class AdditionsTests(unittest.TestCase):
         `HandleNumber`, whose 3,741 rows hold a dense 1..765. One entry each is
         enough -- checksum propagation carries both to their sibling RPCs.
 
-        49 -> 56 adds the seven members of `AbilityCastsThisRound`, the
+        56 -> 62 adds the six members of `AbilityCastsThisRound[].Effects[]`,
+        the authoritative debuff log. `AffectedPlayer` resolves to a manifest
+        actor 224/224 over exactly 10 players.
+
+        49 -> 56 added the seven members of `AbilityCastsThisRound`, the
         per-cast ability log. One finding, seven fields, each checked against
         something outside itself -- `Player` matches a manifest subject 352/352,
         `Round` covers exactly 0..17.
@@ -132,7 +136,7 @@ class AdditionsTests(unittest.TestCase):
         2 as `AuthResourceAmount`, so the leaf remap in `sink/paths.rs` now
         reaches a real declaration and the guessed name is gone.
         """
-        self.assertEqual(len(atc.ADDITIONS), 56, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 62, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.

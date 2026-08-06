@@ -309,8 +309,15 @@ Roughly in value order. Each names the file to touch first.
 
    What is left after it is mostly not reachable by typing at all -- see the
    closed question below.
-3. **Walk one level further into `AbilityCastsThisRound[].Effects[]`** — the
-   largest concrete gap left, and it is a decoder gap rather than a wire limit.
+3. ~~**Walk one level further into `AbilityCastsThisRound[].Effects[]`**~~ —
+   **done.** `ABILITY_CASTS_SCHEMA` in `crates/vrf-decode/src/array/schema.rs`
+   declares the nesting and the walker descends it; the six leaves are typed.
+   `AffectedPlayer` resolves to a manifest actor 224/224 over exactly 10
+   players, and `Statistic` comes out as the named statistic. What follows is
+   the original entry.
+
+   The largest concrete gap left, and it is a decoder gap rather than a wire
+   limit.
    The array flattener stops at `Effects`, leaving 366 rows raw, but the nesting
    continues: `Effects[] -> {Statistic, LocalizedStat, Value, Time,
    AffectedTargetsArray[] -> {AffectedPlayer, Value}}`. Walking it with the same

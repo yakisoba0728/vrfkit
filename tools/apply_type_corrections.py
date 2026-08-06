@@ -405,6 +405,28 @@ ADDITIONS = [
      "CastLocation_21_61F4B6BC47A10FE8CD34D29141FC9B88", "FieldType::VectorDouble"),
     ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
      "DestroyedCount_36_5936AB33418F8A2AB3A52DBF4492CF7F", "FieldType::Int32"),
+    # Inside each cast, `Effects[]` records what the cast did and to whom. This
+    # is the authoritative debuff log -- `EnemiesSuppressed`, `EnemiesSlowed`,
+    # `EnemiesVulnerabled` and 28 more -- where the cosmetic-effect channel is
+    # only a proxy for it.
+    #
+    # `AffectedPlayer` is the check: all 224 values resolve to a
+    # `manifest.players.actor_net_guid`, across exactly 10 distinct players.
+    # `Statistic` is a small enum whose observed values line up with the named
+    # statistics (0 EnemiesBlinded, 7 EnemiesBlocked, 8 EnemiesNearsighted, ...),
+    # and `Time` reads as seconds within the round like its sibling `CastTime`.
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "Statistic_2_0868666A4F6501815AB301BB615B2B5C", "FieldType::EnumByte"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "LocalizedStat_14_C3A26F5E46CDAD94571AE6B0EDEA058B", "FieldType::FString"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "Value_7_E46F38AE4D245059AF7BB09E301C3C65", "FieldType::Float"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "Time_8_6CD58DD7441CBD0407DD1F89FDD05167", "FieldType::Float"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "AffectedPlayer_2_BAF988E34EAAE6B7A1D4758455186559", "FieldType::ObjectNetGuid"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "Value_5_203891704B7EF064EDB5528BFECC4807", "FieldType::Float"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 

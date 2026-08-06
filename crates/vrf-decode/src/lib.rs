@@ -71,14 +71,14 @@
 //!
 //! | Feature | Brings in | Notes |
 //! |---------|-----------|-------|
-//! | `overlay` | [`OverlayTable`], [`apply_overlay_with_handle`], `OVERLAY_TABLE` | Also compiles the 1,241-entry generated table |
+//! | `overlay` | [`OverlayTable`], [`apply_overlay_with_handle`], `OVERLAY_TABLE` | Also compiles the 1,247-entry generated table |
 //! | `array` | [`decode_struct_array`] and [`COMBAT_ROUNDS_SCHEMA`] | |
 //! | `structs` | [`structs`] | |
 //! | `effect` | [`effect`] | |
 //!
 //! All four are on by default, so a consumer that does nothing gets the whole
 //! crate. `overlay` is the one worth dropping if the primitive decoders are all
-//! you want: it is what pulls in the 1,241-entry generated table.
+//! you want: it is what pulls in the 1,247-entry generated table.
 
 #![forbid(unsafe_code)]
 
@@ -111,8 +111,9 @@ pub use types::{FQuat, FRepMovement, FRotator, FTransform, FVector, RotatorQuant
 
 #[cfg(feature = "array")]
 pub use array::{
-    ArrayDecodeStats, ArrayFieldSchema, COMBAT_ROUNDS_SCHEMA, FlattenedField, MAX_ELEMENTS,
-    MAX_FIELDS_PER_ELEMENT, MAX_RECURSION_DEPTH, decode_object_ref_array, decode_struct_array,
+    ABILITY_CASTS_SCHEMA, ABILITY_EFFECTS_SCHEMA, ArrayDecodeStats, ArrayFieldSchema,
+    COMBAT_ROUNDS_SCHEMA, FlattenedField, MAX_ELEMENTS, MAX_FIELDS_PER_ELEMENT,
+    MAX_RECURSION_DEPTH, decode_object_ref_array, decode_struct_array,
 };
 #[cfg(feature = "overlay")]
 pub use checksum_table::CHECKSUM_TYPES;
