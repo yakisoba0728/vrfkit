@@ -73,6 +73,45 @@ pub(super) fn decode_fstring(r: &mut BitReader<'_>) -> Result<DecodedValue, Deco
     Ok(DecodedValue::Str(r.read_fstring(64 * 1024)?))
 }
 
+/// `FText` as a string-table entry, returning the key.
+///
+/// The one on this wire is `Comp_AbilityStatisticsReplicator`'s
+/// `LocalizedStat`, and the key it carries is the statistic's name --
+/// `EnemiesBlinded`, `DamageDealt`, and 27 more. That is worth having because
+/// the sibling `Statistic` enum decodes to a bare integer and nothing in this
+/// repository maps those integers to names; they exist only in a comment. So
+/// this is the only machine-readable source of them in the export.
+///
+/// Layout, confirmed on 4,341 of 4,341 rows with zero residual bits:
+///
+/// ```text
+///   41 bits  header, ending in the history-type discriminator (always 5)
+///   FString  the string table's asset path
+///   i32      that FName's numeric suffix (always 0)
+///   FString  the key
+/// ```
+///
+/// The header's internal boundary is not settled: `[1][u32][u8]` and
+/// `[u32][1][u8]` both fit every sample, because all 4,341 agree byte for byte
+/// and nothing splits them. It does not matter for decoding -- the 33 bits
+/// before the discriminator carry no value this needs -- so they are consumed
+/// rather than named, which is the honest thing to write down.
+///
+/// A history type other than 5 is refused. Each `ETextHistory` variant lays
+/// out differently after the header, so reading one as another would return a
+/// plausible wrong string: exactly the failure that had this field typed
+/// `FString` and returning null on every row.
+pub(super) fn decode_ftext(r: &mut BitReader<'_>) -> Result<DecodedValue, DecodeError> {
+    r.read_bits(33)?;
+    let history_type = r.read_bits(8)? as u8;
+    if history_type != 5 {
+        return Err(DecodeError::UnsupportedTextHistory { history_type });
+    }
+    let _table_path = r.read_fstring(64 * 1024)?;
+    let _number = r.read_bits(32)?;
+    Ok(DecodedValue::Str(r.read_fstring(64 * 1024)?))
+}
+
 /// FName on the wire: 1 bit `isHardcoded`, then one of two shapes.
 ///
 /// Mirrors `FArchive.ReadFNameCore` in the reference. When the bit is set the

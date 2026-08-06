@@ -435,6 +435,29 @@ ADDITIONS = [
     # `EnemiesVulnerabled` and 28 more -- where the cosmetic-effect channel is
     # only a proxy for it.
     #
+    # `LocalizedStat`: an FText, and now typed as one.
+    #
+    # It was `FString` once and returned null on 3,011 of 3,011 rows, which is
+    # why it was removed. The wire is an `FText` carrying a string-table entry,
+    # and the key it carries is the statistic's name -- `EnemiesBlinded`,
+    # `DamageDealt`, 29 distinct values across 4,341 rows, each mapping 1:1 to
+    # a `Statistic` enum value.
+    #
+    # The note that removed it said this was not worth doing because
+    # `Statistic` already carried the same fact. That was wrong in the way that
+    # matters: `Statistic` decodes to a bare integer and this repository ships
+    # no table mapping those integers to names -- they exist in a comment
+    # below and in README prose, and nowhere a consumer can reach. This column
+    # is the only machine-readable source of them.
+    #
+    # Evidence: 4,341 of 4,341 rows decode with zero residual bits, on the
+    # layout in `decode_ftext`. The keys agree with `Statistic` without a
+    # single collision.
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator"
+     ".Comp_AbilityStatisticsReplicator_C",
+     "LocalizedStat_14_C3A26F5E46CDAD94571AE6B0EDEA058B", "FieldType::FText"),
+
+    # (historical note kept below)
     # `LocalizedStat` is deliberately absent. It was typed `FString` here and
     # decoded to null on 3,011 of 3,011 rows with decode errors still at 0 --
     # the wire is an `FText`, not an `FString`. Shifted one bit off the byte

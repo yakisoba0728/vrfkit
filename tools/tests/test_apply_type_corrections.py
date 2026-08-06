@@ -118,6 +118,13 @@ class AdditionsTests(unittest.TestCase):
         `HandleNumber`, whose 3,741 rows hold a dense 1..765. One entry each is
         enough -- checksum propagation carries both to their sibling RPCs.
 
+        63 -> 64 types `LocalizedStat` as `FText`. It was removed at 62 -> 61
+        for being a wrong `FString`; it is back because a decoder now exists
+        and the reason given for waiting was itself wrong -- `Statistic` was
+        said to carry the same fact, but it decodes to a bare integer and no
+        table in this repo maps those integers to names. 225 of 225 rows now
+        decode to `EnemiesBlocked`, `HealingDone` and 17 more.
+
         61 -> 63 types Phoenix's `MulticastAddSmokeScreenPoint`. Viper's class
         declares the same RPC and was typed; Phoenix's was not, so 2,791 rows
         over 31 replays read null while decode errors stayed at 0, and Viper's
@@ -147,7 +154,7 @@ class AdditionsTests(unittest.TestCase):
         2 as `AuthResourceAmount`, so the leaf remap in `sink/paths.rs` now
         reaches a real declaration and the guessed name is gone.
         """
-        self.assertEqual(len(atc.ADDITIONS), 63, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 64, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.

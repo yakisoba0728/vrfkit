@@ -100,7 +100,7 @@ script is not in the repo -- `vrfkit export` emits no `LifeResult`,
 `DeltaLife`, `bAliveAfterChange` or `ChangedComponent` column, and no tool
 reads them. Treat the numbers as provenance-tagged evidence for the
 *semantics*, not as something a reader can re-run. Typing the four members is
-item 5 under What's next, and doing it is what would make this section
+item 4 under What's next, and doing it is what would make this section
 checkable.
 
 Verified over 69 replays on build 13.02: 377,487 elements, zero parse errors,
@@ -533,15 +533,7 @@ are in `docs/USAGE.md` under the fields schema.
    out of one build; a later one can rename a component and nothing here would
    notice on its own. Run `tools/check_component_remaps.py --export <dir>`
    against a replay from a new build. It needs no game install and no baseline.
-4. **An `FText` decoder.** `FieldType` has none, which is why
-   `Comp_AbilityStatisticsReplicator`'s `LocalizedStat` is deliberately
-   untyped. Shifted one bit off the byte grid the payload reads `uint32 Flags=0,
-   uint8 HistoryType=5` (`ETextHistoryType::StringTableEntry`), then a
-   string-table asset path and a key, and the key is the statistic name. Nothing
-   depends on it -- `Statistic` already carries the same fact as an enum -- so
-   this is worth doing only when a second `FText` field turns up.
-
-5. **Type the `LifeChangeEvents[]` members.** Optional -- the array already
+4. **Type the `LifeChangeEvents[]` members.** Optional -- the array already
    parses and `docs/DATA.md`'s health section is built on it -- but the members
    arrive untyped: `ChangedComponent` wants `ObjectNetGuid`, `LifeResult` and
    `DeltaLife` want `Float`, `bAliveAfterChange` wants `Bool`. `LifeResult` is
@@ -556,7 +548,15 @@ are in `docs/USAGE.md` under the fields schema.
 **Type nothing you have not seen decode.** `LocalizedStat` was typed `FString`
 on the strength of the name and produced null on 3,011 of 3,011 rows while
 `Decode errors: 0` held the whole time. A wrong type is not loud. After adding
-one, count non-null values on the column before believing it.
+one, count non-null values on the column before believing it. That same field
+now decodes 225 of 225 as an `FText`, which is the check working in the other
+direction.
+
+**And check the reason you gave for not doing something.** `LocalizedStat` was
+left untyped on the grounds that `Statistic` already carried the same fact.
+`Statistic` decodes to a bare integer, and this repository maps those integers
+to names only in a source comment -- so the export carried the fact in a form
+no consumer could read, and the stated reason had never been checked either.
 
 ### Done, and where the reasoning lives
 

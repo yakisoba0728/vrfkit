@@ -29,6 +29,8 @@ pub enum FieldType {
     Float,
     Double,
     FString,
+    /// See [`scalar::decode_ftext`].
+    FText,
     FName,
     ObjectNetGuid,
     Guid,
@@ -83,6 +85,14 @@ pub enum DecodeError {
     /// (negative) number.
     #[error("unsigned value {value} (0x{value:016X}) exceeds i64::MAX")]
     UnsignedOverflow { value: u64 },
+    /// An `FText` whose history discriminator was never observed.
+    ///
+    /// Only type 5 (a string-table entry) appears on this wire, and each
+    /// `ETextHistory` variant lays out differently after the header. Reading
+    /// one as another would return a plausible wrong string, which is the
+    /// failure `LocalizedStat` was untyped for.
+    #[error("FText history type {history_type} is not one this decoder has seen")]
+    UnsupportedTextHistory { history_type: u8 },
 }
 
 /// Decode raw bits according to the given [`FieldType`].
@@ -131,6 +141,7 @@ fn dispatch_decode(
         FieldType::Float => scalar::decode_float(r),
         FieldType::Double => scalar::decode_double(r),
         FieldType::FString => scalar::decode_fstring(r),
+        FieldType::FText => scalar::decode_ftext(r),
         FieldType::FName => scalar::decode_fname(r),
         FieldType::ObjectNetGuid => scalar::decode_object_net_guid(r),
         FieldType::Guid => scalar::decode_guid(r),
