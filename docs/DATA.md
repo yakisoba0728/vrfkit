@@ -74,10 +74,10 @@ purchase; all ten players' purchases are replicated.
 |---|---|---|
 | Ultimate cast | `events.characterUltimateUsed` (word0 = character) | ✅ |
 | Cooldown / start time | `Comp_Ability_CooldownComponent` | ✅ Double |
-| Ability cast count | ability-actor spawns (over-counts) / `characterUltimateUsed` (ultimates exact) | ◐ no exact per-cast count on the wire |
+| Ability cast count / cast log | `Comp_AbilityStatisticsReplicator.AbilityCastsThisRound[]` — `Player` (subject UUID), `Slot`, `Round`, `RoundPhase`, `CastTime`, `CastLocation` | ✅ one record per cast, all ten players; `Player` matches a manifest subject 352/352 |
 | Ability state stream | `AbilitiesAndBuffsComponent` (`_cnc_h1`) | ◐ fc=34 brute-forced, inner decomposed (flag + u32 stream); semantics need game assets |
 | GAS owner / avatar / attribute sets | `AresAbilitySystemComponent` (OwnerActor, AvatarActor, SpawnedAttributes, CachedAttributeSet) | ✅ via AbilitiesAndBuffsComponent->AresAbilitySystemComponent remap |
-| Active gameplay effects (buffs/debuffs) | `AresAbilitySystemComponent.ActiveGameplayEffects` (FastArray elements) | ◐ array framing recovered; per-effect semantics need game assets |
+| Active gameplay effects (buffs/debuffs) | `AresAbilitySystemComponent.ActiveGameplayEffects` | ❌ **not replicated.** Across 15 exports every such row has `bit_count == 0` and none sit on a player character; the GAS spec handles the group declares (`Def`, `Duration`, `StackCount`, `StartServerWorldTime`, ...) never appear on the wire at all |
 | Persistent effect position (smoke/wall/molly/slow/trap) | `actors.parquet` class_path + spawn xyz | ✅ every spawned effect actor |
 | Persistent effect lifetime | `actors.time_ms` paired across `event` `open`/`close` (non-fuel); `CurrentFuelLevel`+`WallActivated` (Viper) | ✅ |
 | Smoke live position | `ReplicatedMovement` (x100) / `MulticastAddSmokeScreenPoint.Translation` | ✅ |
@@ -246,9 +246,21 @@ Roughly in value order. Each names the file to touch first.
    `FGameplayAttributeData` fields declared in C++ and cooked assets carry no
    member list for them. Unpacking the paks does not help here. The fc=34 RPC
    timing/size is already exported.
-5. **Exact ability cast count** — confirmed wire-limit: the GAS stream is
-   state-sync, not one RPC per cast. No on-wire work helps; the approximation is
-   ability-actor spawns + `characterUltimateUsed`/`UltimateActive`.
+5. ~~**Exact ability cast count**~~ — **wrong, and instructively so.** This
+   said "confirmed wire-limit: the GAS stream is state-sync, not one RPC per
+   cast". The premise was right and the conclusion did not follow:
+   `Comp_AbilityStatisticsReplicator` replicates one record per cast, with the
+   caster's subject UUID, slot, round, time and world location. It is now typed
+   (see the Abilities table).
+
+   **Why it went unseen through several sweeps** is the part worth keeping. The
+   rows were always there and vrfkit was already flattening the array into
+   `AbilityCastsThisRound[i].<member>` with every member *named* -- but no
+   member had a type, so every value sat in `raw_bits` with the `value_*`
+   columns null. Each survey of "what is still untyped" ranked by row count and
+   looked at the top of the list; these fields sit at 300-800 rows each and
+   never made the cut. A named field with no type is invisible to a scan that
+   starts from typed columns.
 
 ### Reading component classes out of the game
 

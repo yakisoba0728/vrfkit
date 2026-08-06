@@ -376,6 +376,35 @@ ADDITIONS = [
     # names where a player is in map terms.
     ("/Script/ShooterGame.CalloutRegionTrackingComponent",
      "CurrentRegion", "FieldType::ObjectNetGuid"),
+    # The per-cast ability log: who cast what, when, and where. vrfkit already
+    # flattens the array into `AbilityCastsThisRound[i].<member>` rows and the
+    # replay declares every member name -- but every value arrived raw, so a
+    # survey that scans typed columns walks straight past it. That is how this
+    # repo concluded twice that no exact cast count exists on the wire.
+    #
+    # The names carry Blueprint property GUIDs, which are stable: byte-identical
+    # on 13.01 and 13.02.
+    #
+    # Each member checks out against something outside itself. `Player` is an
+    # FString whose 352 values are all 36-char UUIDs, and all 352 match a
+    # `manifest.players.subject`. `Round` covers exactly 0..17, the replay's 18
+    # rounds. `CastLocation` reads as 3 x f64 inside the map bounds that
+    # `movement.parquet` describes. `Slot` takes four values (3, 4, 5, 9) --
+    # three abilities and an ultimate. `CastTime` is seconds within the round.
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "Player_11_0963330440D68BDF1A8E34B035420342", "FieldType::FString"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "Slot_12_22D571914FAFD5F0EBD400B7E2F28B36", "FieldType::Byte"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "Round_22_905E6CC0448D2C6270A94C9690101E49", "FieldType::Int32"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "RoundPhase_25_84478C0047988409FEEC9E95C15DFB02", "FieldType::Byte"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "CastTime_4_5AE288704801A9B74D6D159DFC2BD147", "FieldType::Float"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "CastLocation_21_61F4B6BC47A10FE8CD34D29141FC9B88", "FieldType::VectorDouble"),
+    ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator.Comp_AbilityStatisticsReplicator_C",
+     "DestroyedCount_36_5936AB33418F8A2AB3A52DBF4492CF7F", "FieldType::Int32"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 

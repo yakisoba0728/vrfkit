@@ -1048,3 +1048,47 @@ fn the_callout_region_is_typed() {
         Some(FieldType::ObjectNetGuid),
     );
 }
+
+/// The per-cast ability log -- who cast what, when, and where.
+///
+/// This repo twice concluded there is no exact cast count on the wire. There
+/// is: `Comp_AbilityStatisticsReplicator` replicates one record per cast, and
+/// vrfkit was already flattening it into `AbilityCastsThisRound[i].<member>`
+/// rows. Every value arrived raw, so a survey that scans the typed columns
+/// walked straight past a fully named array.
+///
+/// The member names carry Blueprint property GUIDs. Those are stable --
+/// byte-identical on 13.01 and 13.02 -- which is what makes pinning them safe.
+///
+/// Each member is corroborated by something outside itself: `Player`'s 352
+/// values are all UUIDs and all match a `manifest.players.subject`, `Round`
+/// covers exactly 0..17 for an 18-round match, `CastLocation` reads as 3 x f64
+/// inside the map bounds `movement.parquet` describes, and `Slot` takes four
+/// values for three abilities plus an ultimate.
+#[test]
+fn the_ability_cast_log_is_typed() {
+    const GROUP: &str = "/Game/Characters/_Core/Comp_AbilityStatisticsReplicator\
+.Comp_AbilityStatisticsReplicator_C";
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    for (field, expected) in [
+        (
+            "Player_11_0963330440D68BDF1A8E34B035420342",
+            FieldType::FString,
+        ),
+        ("Slot_12_22D571914FAFD5F0EBD400B7E2F28B36", FieldType::Byte),
+        (
+            "Round_22_905E6CC0448D2C6270A94C9690101E49",
+            FieldType::Int32,
+        ),
+        (
+            "CastTime_4_5AE288704801A9B74D6D159DFC2BD147",
+            FieldType::Float,
+        ),
+        (
+            "CastLocation_21_61F4B6BC47A10FE8CD34D29141FC9B88",
+            FieldType::VectorDouble,
+        ),
+    ] {
+        assert_eq!(table.lookup(GROUP, field), Some(expected), "{field}");
+    }
+}

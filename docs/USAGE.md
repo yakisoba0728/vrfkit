@@ -141,12 +141,12 @@ Measured on `02d4d478` (48,215,213 bytes):
 
 | File | Rows | Bytes | Notes |
 |---|---|---|---|
-| `fields.parquet` | 1,255,920 | 14,869,670 | |
+| `fields.parquet` | 1,255,920 | 14,883,753 | |
 | `movement.parquet` | 1,839,607 | 31,835,557 | |
 | `actors.parquet` | 3,827 | 87,281 | |
 | `net_guids.parquet` | 16,167 | 153,606 | |
 | `events.parquet` | 195 | 11,136 | |
-| `checkpoint_fields.parquet` | 78,829 | 201,777 | requires `--checkpoints` |
+| `checkpoint_fields.parquet` | 78,829 | 202,176 | requires `--checkpoints` |
 | `manifest.json` | -- | ~660,030 | varies: it records `elapsed_ms` |
 
 `export` takes 0.79 s (median of 5; re-measure with
@@ -357,7 +357,7 @@ disabling it would produce files this crate could not explain.
 
 | Script | Produces |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,234 + 84 handles) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,241 + 84 handles) |
 | `apply_type_corrections.py` | Applies verified corrections/additions to that file and recomputes the two-line generation header |
 | `extract_checksum_types.py` | `crates/vrf-decode/src/checksum_table.rs` -- `compatible_checksum` -> `FieldType`, learned from the fields the overlay table already declares. Needs an export directory rather than the C# tree, since checksums come from the replay. Checksums whose donors disagree are dropped, which is the safety property; `--check` verifies the committed file still matches. |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
@@ -371,15 +371,15 @@ the script does not trust its own apply count -- it **re-verifies the final
 state after applying** and fails if it disagrees.
 
 ```bash
-python tools/apply_type_corrections.py           # apply, then verify (73 corrections)
+python tools/apply_type_corrections.py           # apply, then verify (80 corrections)
 python tools/apply_type_corrections.py --check   # verify only
 ```
 
-Those 73 are the whole `EXPECTED` set the script re-verifies; `ADDITIONS` is the
+Those 80 are the whole `EXPECTED` set the script re-verifies; `ADDITIONS` is the
 subset of it that has no C# descriptor behind it at all.
 
 The `ADDITIONS` pass inserts items the C# descriptor is **silent on**. There are
-currently 49 of them, and every one is admitted on wire evidence written into the
+currently 56 of them, and every one is admitted on wire evidence written into the
 comment above the list -- bit width, value range, distribution -- and nothing else.
 The original three still show the bar: `BaseTeamState.LoadoutValue` /
 `AverageLoadoutValue` (26-I, where the reference declares the type of the same
@@ -471,7 +471,7 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 405 passing
+cargo test                                        # 406 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 114 files, ASCII only

@@ -118,7 +118,12 @@ class AdditionsTests(unittest.TestCase):
         `HandleNumber`, whose 3,741 rows hold a dense 1..765. One entry each is
         enough -- checksum propagation carries both to their sibling RPCs.
 
-        48 -> 49 adds `CalloutRegionTrackingComponent.CurrentRegion`, the named
+        49 -> 56 adds the seven members of `AbilityCastsThisRound`, the
+        per-cast ability log. One finding, seven fields, each checked against
+        something outside itself -- `Player` matches a manifest subject 352/352,
+        `Round` covers exactly 0..17.
+
+        48 -> 49 added `CalloutRegionTrackingComponent.CurrentRegion`, the named
         map area a player is standing in: every one of its 1,957 non-zero rows
         resolves through `net_guids` to a `CalloutRegion_*` path.
 
@@ -127,7 +132,7 @@ class AdditionsTests(unittest.TestCase):
         2 as `AuthResourceAmount`, so the leaf remap in `sink/paths.rs` now
         reaches a real declaration and the guessed name is gone.
         """
-        self.assertEqual(len(atc.ADDITIONS), 49, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 56, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.
