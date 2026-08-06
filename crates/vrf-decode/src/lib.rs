@@ -71,14 +71,14 @@
 //!
 //! | Feature | Brings in | Notes |
 //! |---------|-----------|-------|
-//! | `overlay` | [`OverlayTable`], [`apply_overlay_with_handle`], `OVERLAY_TABLE` | Also compiles the 1,232-entry generated table |
+//! | `overlay` | [`OverlayTable`], [`apply_overlay_with_handle`], `OVERLAY_TABLE` | Also compiles the 1,234-entry generated table |
 //! | `array` | [`decode_struct_array`] and [`COMBAT_ROUNDS_SCHEMA`] | |
 //! | `structs` | [`structs`] | |
 //! | `effect` | [`effect`] | |
 //!
 //! All four are on by default, so a consumer that does nothing gets the whole
 //! crate. `overlay` is the one worth dropping if the primitive decoders are all
-//! you want: it is what pulls in the 1,232-entry generated table.
+//! you want: it is what pulls in the 1,234-entry generated table.
 
 #![forbid(unsafe_code)]
 

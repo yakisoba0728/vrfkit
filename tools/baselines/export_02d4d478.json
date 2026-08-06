@@ -17,10 +17,10 @@
   "movement_rows": 1839607,
   "net_guid_rows": 16167,
   "event_rows": 195,
-  "overlay_decoded_ok": 685092,
+  "overlay_decoded_ok": 702149,
   "overlay_decode_errors": 0,
   "overlay_raw_skip": 74624,
-  "overlay_not_in_table": 212254,
+  "overlay_not_in_table": 195197,
   "overlay_no_field_name": 17013,
   "overlay_rows_offered": 988983,
   "effect_blobs_decoded": 53908,
@@ -30,7 +30,7 @@
  "parquet": {
   "fields": {
    "rows": 1255920,
-   "bytes": 14830013
+   "bytes": 14870290
   },
   "movement": {
    "rows": 1839607,

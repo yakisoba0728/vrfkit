@@ -984,3 +984,34 @@ fn the_checksum_table_is_populated_and_sorted() {
     assert!(CHECKSUM_TYPES.len() > 300, "{}", CHECKSUM_TYPES.len());
     assert!(CHECKSUM_TYPES.windows(2).all(|w| w[0].0 < w[1].0));
 }
+
+/// `StopMovementTime` is the other half of a pair whose `StartMovementTime` is
+/// already Float: same RPC family, 32 bits on all 13,316 rows, and the same
+/// shape read as f32 -- a -1.0 sentinel on 5,371 of them and 0.76..136.98 on
+/// the rest, against -1.0..1771.83 for the declared sibling.
+///
+/// `HandleNumber` identifies a force module so a later Remove/Cleanup RPC can
+/// name it. Read as u32 its 3,741 rows hold 1..765 with every value present --
+/// a dense sequential id, which no other reading of those bits produces.
+///
+/// One entry each: checksum propagation carries `StopMovementTime` to
+/// `ReplayStopContinuousEffectAtLocation` (244888268) and `HandleNumber` to
+/// `NetMulticastRemoveForceModule` (3336285386).
+#[test]
+fn the_movement_time_pair_and_force_module_handle_are_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    assert_eq!(
+        table.lookup(
+            "/Script/ShooterGame.EffectManagerComponent:MulticastStopContinuousEffect",
+            "StopMovementTime"
+        ),
+        Some(FieldType::Float),
+    );
+    assert_eq!(
+        table.lookup(
+            "/Script/ShooterGame.ForceModuleManagerComponent:NetMulticastApplyForceModule",
+            "HandleNumber"
+        ),
+        Some(FieldType::Int32),
+    );
+}

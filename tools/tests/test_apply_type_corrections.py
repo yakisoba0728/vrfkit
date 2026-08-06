@@ -112,8 +112,13 @@ class AdditionsTests(unittest.TestCase):
         (1,1,1) is what rules out any other split, and the replay's own
         `compatible_checksum` agrees with the grouping without having been used
         to derive it.
+
+        47 -> 49 is two ordinary additions: `StopMovementTime`, the other half
+        of a pair whose `StartMovementTime` is already Float, and
+        `HandleNumber`, whose 3,741 rows hold a dense 1..765. One entry each is
+        enough -- checksum propagation carries both to their sibling RPCs.
         """
-        self.assertEqual(len(atc.ADDITIONS), 47, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 49, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.

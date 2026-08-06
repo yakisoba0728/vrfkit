@@ -225,9 +225,8 @@ Roughly in value order. Each names the file to touch first.
    checksum, so returning both from one walk costs nothing -- measured, after an
    initial guess that the property path would need a second lookup.
 
-   Remaining after it: the largest single item is
-   `ClientReplayReceiveInputEventProcessingCapture.InputEventData`
-   (53,605 rows on 02d4d478, 32 bits), whose checksum no declared field donates.
+   What is left after it is mostly not reachable by typing at all -- see the
+   closed question below.
 3. **`HANDLE_ADDITIONS` for the next unnamed single handle** — the mechanism
    added for `MagazineAmmo` generalizes. `ReserveAmmo` (reserve bullets) is the
    obvious next candidate once its group is resolved (it may fall out of item 1).
@@ -240,6 +239,36 @@ Roughly in value order. Each names the file to touch first.
 5. **Exact ability cast count** — confirmed wire-limit: the GAS stream is
    state-sync, not one RPC per cast. No on-wire work helps; the approximation is
    ability-actor spawns + `characterUltimateUsed`/`UltimateActive`.
+
+### Closed: what the three mechanisms cannot reach
+
+After the table, the engine-reference names and checksum propagation, 480,471
+rows on 02d4d478 are still untyped across 1,511 `(group, field)` pairs. Sorted
+by why:
+
+| rows | why |
+|---|---|
+| 289,533 | declared `Raw`/`Skip` -- intentional, not a gap |
+| 173,535 | has a `compatible_checksum`, but no declared field donates that checksum |
+| 17,403 | no checksum at all (the unresolved `AbilitiesAndBuffs` payload) |
+
+The first bucket is 60% of it and is nothing to fix: `BaseReplayController`'s
+4kbit blob alone is 225,808 rows, and the per-agent
+`ReplayLastTransformUpdateTimeStamp` rows are declared raw on purpose.
+
+Two ordinary additions came out of the second bucket and are now typed --
+`StopMovementTime` and `HandleNumber`, above. The largest remaining item does
+not yield to a `FieldType` at all.
+`ClientReplayReceiveInputEventProcessingCapture.InputEventData` (53,605 rows)
+is **not a scalar**: its width varies (24, 32, 40, 48, 64 bits) and the leading
+byte tracks it -- `0x0c` at 24 bits, `0x28` at 40, `0x38` at 48, which is
+`bit_count / 2` in each case. That is a self-describing record, so it needs a
+dedicated decoder in the shape of `effect` or `structs`, not a table entry.
+
+`ServerMovementTime` (4,654 rows) reads cleanly as Float and is still
+deliberately untyped: the epoch is undocumented, so the values are not
+interpretable. That decision is recorded with the other declined fields in the
+`ADDITIONS` comment.
 
 ### Closed: RPC signature aliasing
 

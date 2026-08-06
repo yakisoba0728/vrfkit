@@ -358,6 +358,21 @@ ADDITIONS = [
      "PlantLocation", "FieldType::VectorDouble"),
     ("/Game/Equippables/Finishers/Rogue/Desturctible/FXC_Rogue_Finisher_Destructible.FXC_Rogue_Finisher_Destructible_C:Set skeletal Collision",
      "Collision Static Mesh Scale", "FieldType::VectorDouble"),
+    # `StopMovementTime` is the other half of the pair whose `StartMovementTime`
+    # is already Float: same RPC family, same 32-bit width on all 13,316 rows,
+    # and the same shape when read as f32 -- a -1.0 sentinel on 5,371 of them
+    # and 0.76..136.98 on the rest, against -1.0..1771.83 for the declared
+    # sibling. One entry per checksum is enough; 244888268 carries it to
+    # `ReplayStopContinuousEffectAtLocation` as well.
+    ("/Script/ShooterGame.EffectManagerComponent:MulticastStopContinuousEffect",
+     "StopMovementTime", "FieldType::Float"),
+    # `HandleNumber` identifies a force module for the later Remove/Cleanup RPC
+    # to name. Read as u32 the 3,741 rows hold 1..765 with every value in that
+    # range present -- a dense sequential id, which no other reading of these
+    # bits produces. Checksum 3336285386 shares it with `NetMulticastRemove`
+    # `ForceModule`.
+    ("/Script/ShooterGame.ForceModuleManagerComponent:NetMulticastApplyForceModule",
+     "HandleNumber", "FieldType::Int32"),
 ]
 EXPECTED += [(g, f, t.split("::")[1]) for g, f, t in ADDITIONS]
 

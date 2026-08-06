@@ -74,7 +74,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **401 tests** plus a layered validation suite (framing / bytes / decode
+- **402 tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -128,12 +128,12 @@ produces seven files:
 
 | File | Rows | Bytes |
 |---|---|---|
-| `fields.parquet` | 1,255,920 | 14,830,013 |
+| `fields.parquet` | 1,255,920 | 14,870,290 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
 | `events.parquet` | 195 | 11,136 |
-| `checkpoint_fields.parquet` | 78,829 | 196,448 |
+| `checkpoint_fields.parquet` | 78,829 | 202,069 |
 | `manifest.json` |  | ~660,030 |
 
 `checkpoint_fields.parquet` requires `--checkpoints`; with or without it, **the
@@ -260,7 +260,7 @@ it as one gives the year 3626.
 
 ## Status
 
-Work in progress. Currently verified: `cargo test --workspace` **401 passing**,
+Work in progress. Currently verified: `cargo test --workspace` **402 passing**,
 `clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 114 files. The
 Python suite in `tools/tests` has 147 tests.
 
@@ -489,7 +489,7 @@ cannot be expanded into fields, so it emits one preservation row (`handle` =
 `u32::MAX`, full payload in `raw_bits`) and a loud failure with skipped bits.
 
 The overlay table is extracted mechanically from the C# descriptors
-(`tools/extract_descriptors.py`) -- 194 groups, 1,232 entries, 85 handles.
+(`tools/extract_descriptors.py`) -- 195 groups, 1,234 entries, 85 handles.
 Nothing is transcribed by hand, for the same reason S-boxes and golden vectors
 are not: it is the kind of constant where a typo is invisible in review.
 
@@ -506,9 +506,9 @@ still at zero across the 215-replay corpus.
 `02d4d478` at the current HEAD:
 
 ```
-Decoded OK:   685,092      Decode errors:      0
-Raw/Skip:      74,624      Not in table: 212,254
-No field name: 17,013      Typed:          69.3%
+Decoded OK:   702,149      Decode errors:      0
+Raw/Skip:      74,624      Not in table: 195,197
+No field name: 17,013      Typed:          71.0%
 Effect blobs:  53,908
 ```
 
@@ -521,7 +521,7 @@ prints identically. (The bucket counts themselves do move as overlay entries
 are added; the figures above are post-economy-typing.)
 
 The real coverage figure is the fraction of all 1,255,920 rows with a filled
-`value_*`. Before effect linkage 68.8% were untyped; it is now **39.6%.**
+`value_*`. Before effect linkage 68.8% were untyped; it is now **38.3%.**
 
 **These numbers change often; re-measure before quoting** -- four of the six
 were left stale at one point:
@@ -545,7 +545,7 @@ is unknown still ships with `raw_bits`, so it is **uninterpreted, not lost.**
 does not print overlay counters, so `validate_corpus.py` alone cannot see a
 wrong type. Reaching zero found three places where the wire disagreed with the
 C# declarations; they are recorded with evidence in
-`tools/apply_type_corrections.py` (71 corrections, verified with `--check`).
+`tools/apply_type_corrections.py` (73 corrections, verified with `--check`).
 
 | Symptom | Actual | Evidence |
 |---|---|---|
@@ -683,7 +683,7 @@ that way is a trap:
   (97.28% of the residual is `AbilitiesAndBuffsComponent`, which the replay
   never declares). `Malformed framing` and `Transform failed` are the lines
   that must be zero; the pass rate is expected to sit below 100%.
-- The **~69% `Typed`** ratio reads low because of the *RPC-parameter
+- The **~71% `Typed`** ratio reads low because of the *RPC-parameter
   denominator* -- most of `Not in table` is RPC parameters with no C#
   descriptor. A low ratio is uninterpreted, not lost: those rows still carry
   `raw_bits`, and additive decoders (effects, structs, the economy typing)
@@ -695,7 +695,7 @@ Four files in the tree are generated and must never be edited by hand:
 
 | Generated file | Generator | Notes |
 |---|---|---|
-| `crates/vrf-decode/src/table.rs` | `tools/extract_descriptors.py` then `tools/apply_type_corrections.py` | The overlay table (1,232 entries, 194 groups, 85 handles) and handle table |
+| `crates/vrf-decode/src/table.rs` | `tools/extract_descriptors.py` then `tools/apply_type_corrections.py` | The overlay table (1,234 entries, 195 groups, 85 handles) and handle table |
 | `crates/vrf-transform/src/sbox.rs` | `tools/extract_sboxes.py` | 768-byte S-box, shared across builds |
 | `crates/vrf-transform/tests/data/golden_vectors.rs` | `tools/extract_golden.py` | Per-build golden test vectors |
 | `tools/equippable_table.py` | `tools/extract_equippables.py` | Weapon class path to display name |

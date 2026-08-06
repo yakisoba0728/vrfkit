@@ -103,7 +103,14 @@ These corrupt downstream consumers silently — no test fails when they break.
 | `tools/equippable_table.py` | `tools/extract_equippables.py` |
 
 Ordering for the overlay table is load-bearing:
-`extract_descriptors.py` → `apply_type_corrections.py` → `cargo fmt`.
+`extract_descriptors.py` → `apply_type_corrections.py` → `cargo fmt` →
+`extract_checksum_types.py` (against a **fresh** export).
+
+The checksum step is last because it learns from what the overlay table
+declares. Run it before the additions land and the new entries are not donors
+yet -- the symptom is a field typed on the group you declared and still raw on
+its siblings, which is easy to read as the propagation not working. Re-export
+after rebuilding, then regenerate.
 
 ## Type corrections are conservative
 
