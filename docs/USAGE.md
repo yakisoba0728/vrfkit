@@ -522,6 +522,7 @@ deliberately sequential for accuracy.
 | `bench_export.py` | Times a full `export` against `tools/baselines/bench.json`. A smoke detector, not a profiler -- wall clock is noisy, so the default tolerance is 25% and it answers "did something get twice as slow", nothing finer. Reports a run *faster* than the baseline too: that means the recorded number no longer describes the code. |
 | `extract_active_effects.py` | Derives an `active_effects.parquet` view from an export -- one row per persistent ability instance (smoke/wall/molly/slow/trap/recon/orb) with class, spawn position, and open/close lifetime. A `dormant` event does NOT end an instance -- a settled smoke that stops replicating has not despawned -- so those instances stay open-ended and the summary counts them. The data already lives in `actors.parquet`; this filters and pairs it. |
 | `extract_spike_carrier.py` | Derives a `spike_carrier.parquet` view -- one row per spike custody interval, resolved through to the manifest `subject`. Reads `BombEquippable_C.Owner` on the spike's own channel rather than the inventory side, so it covers carrying-in-the-backpack and not just in-hand, and it follows proxy carriers (Gekko's Wingman) back through `Instigator`. |
+| `viewer_projection.py` | World-to-minimap projection and the park-slot filter, used by `build_replay_viewer` (a later task in this plan) |
 
 ---
 
@@ -535,7 +536,7 @@ cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 116 files, ASCII only
 python tools/check_effect_decoder.py --check      # 12 cases
-python -m unittest discover -s tools/tests -p "test_*.py"   # 372 passing
+python -m unittest discover -s tools/tests -p "test_*.py"   # 381 passing
 python tools/check_docs.py --fast                 # do the docs still describe this repo
 python tools/apply_type_corrections.py --check    # 94 corrections present
 ```
