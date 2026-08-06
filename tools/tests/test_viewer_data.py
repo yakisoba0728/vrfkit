@@ -53,12 +53,22 @@ class DownsampleTests(unittest.TestCase):
         Inject a 5000 cm jump between two 8 ms samples that both fall inside
         one 50 ms playback frame. Playback may drop them; the measurement pass
         reads the full-rate list and must still report it.
+
+        A count check is not enough here: `range(0, 400, 8)` always yields 50
+        elements and `samples` is never reassigned, so `len(samples) == 50`
+        can only fail if downsample changes the list's LENGTH -- it stays
+        silent about whether the jump itself survives. Pin the separation
+        directly instead: the full-rate list must come back byte-for-byte
+        unchanged (not merely the same length), and the jump must still be
+        sitting in it at the value it was injected with.
         """
         samples = [(t, 0.0, 0.0) for t in range(0, 400, 8)]
         samples[3] = (24, 5000.0, 0.0)  # inside the first 50 ms frame
+        before = list(samples)
         kept = vd.downsample(samples, hz=20)
         self.assertNotIn(samples[3], kept, "fixture is wrong: the jump survived playback")
-        self.assertEqual(len(samples), 50, "measurement must still see every sample")
+        self.assertEqual(samples, before, "downsample must not touch the full-rate stream")
+        self.assertIn((24, 5000.0, 0.0), samples, "measurement must still see the jump")
 
 
 if __name__ == "__main__":
