@@ -6,7 +6,9 @@ inside the unit square on eleven of twelve maps. The obvious reading collapses
 to 0.9% on Haven, so this file pins the crossing explicitly rather than
 trusting anyone to remember it.
 """
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -47,6 +49,49 @@ class ParkSlotTests(unittest.TestCase):
 
     def test_a_far_x_alone_is_not_a_parked_actor(self):
         self.assertFalse(vp.is_parked(-50000.0, 120.0))
+
+
+class ConstantsTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.cache = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.payload = json.dumps({"data": [{
+            "mapUrl": "/Game/Maps/Ascent/Ascent",
+            "xMultiplier": 7.2e-05, "yMultiplier": -7.2e-05,
+            "xScalarToAdd": 0.500202, "yScalarToAdd": 0.510265,
+            "displayIcon": "https://example.invalid/ascent.png",
+        }]}).encode()
+
+    def test_a_fetched_map_is_cached_and_the_second_call_does_not_fetch(self):
+        calls = []
+
+        def fetch(url):
+            calls.append(url)
+            return self.payload
+
+        first = vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache, fetch=fetch)
+        second = vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache, fetch=fetch)
+        self.assertEqual(first, second)
+        self.assertEqual(len(calls), 1, "the cache did not prevent a second fetch")
+
+    def test_an_unavailable_transform_fails_the_build(self):
+        """No constants means no projection. Drawing on a blank square at a
+        guessed scale would be a plausible wrong picture, which is worse than
+        no picture -- the same rule the decoder follows."""
+        def fetch(url):
+            raise OSError("network down")
+
+        with self.assertRaises(vp.ConstantsUnavailable):
+            vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache, fetch=fetch)
+
+    def test_a_map_absent_from_the_published_list_fails_by_name(self):
+        def fetch(url):
+            return self.payload
+
+        with self.assertRaises(vp.ConstantsUnavailable) as caught:
+            vp.load_constants("/Game/Maps/Nowhere/Nowhere", self.cache, fetch=fetch)
+        self.assertIn("Nowhere", str(caught.exception))
 
 
 if __name__ == "__main__":
