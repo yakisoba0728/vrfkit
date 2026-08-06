@@ -73,26 +73,68 @@ def load_constants(map_url: str, cache_dir: Path, fetch=None) -> MapConstants:
     fetch = fetch or _fetch
     cache_dir.mkdir(parents=True, exist_ok=True)
     cached = cache_dir / "maps.json"
-    if not cached.is_file():
+
+    # Try to use the cached file if it exists and is valid.
+    if cached.is_file():
         try:
-            cached.write_bytes(fetch(MAPS_API))
-        except Exception as error:
-            raise ConstantsUnavailable(
-                f"could not fetch {MAPS_API}: {error}\n"
-                f"the minimap transform is not in the replay; without it "
-                f"nothing can be projected"
-            ) from error
-    published = json.loads(cached.read_text(encoding="utf-8"))
+            published = json.loads(cached.read_text(encoding="utf-8"))
+            for entry in published.get("data") or []:
+                if entry.get("mapUrl") == map_url:
+                    return MapConstants(
+                        map_url=map_url,
+                        x_multiplier=entry["xMultiplier"],
+                        y_multiplier=entry["yMultiplier"],
+                        x_scalar=entry["xScalarToAdd"],
+                        y_scalar=entry["yScalarToAdd"],
+                        display_icon_url=entry["displayIcon"],
+                    )
+            # Map not in cache, but cache is valid. Return the "not found" error.
+            raise ConstantsUnavailable(f"no published transform for map {map_url}")
+        except (json.JSONDecodeError, KeyError, ValueError):
+            # Cache is corrupted. Treat as a cache miss and re-fetch below.
+            pass
+
+    # Fetch, validate, and persist.
+    try:
+        fetched_bytes = fetch(MAPS_API)
+    except Exception as error:
+        raise ConstantsUnavailable(
+            f"could not fetch {MAPS_API}: {error}\n"
+            f"the minimap transform is not in the replay; without it "
+            f"nothing can be projected"
+        ) from error
+
+    # Parse and validate before persisting.
+    try:
+        published = json.loads(fetched_bytes.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ConstantsUnavailable(
+            f"could not parse {MAPS_API}: {error}\n"
+            f"the minimap transform is not in the replay; without it "
+            f"nothing can be projected"
+        ) from error
+
     for entry in published.get("data") or []:
         if entry.get("mapUrl") == map_url:
-            return MapConstants(
-                map_url=map_url,
-                x_multiplier=entry["xMultiplier"],
-                y_multiplier=entry["yMultiplier"],
-                x_scalar=entry["xScalarToAdd"],
-                y_scalar=entry["yScalarToAdd"],
-                display_icon_url=entry["displayIcon"],
-            )
+            try:
+                constants = MapConstants(
+                    map_url=map_url,
+                    x_multiplier=entry["xMultiplier"],
+                    y_multiplier=entry["yMultiplier"],
+                    x_scalar=entry["xScalarToAdd"],
+                    y_scalar=entry["yScalarToAdd"],
+                    display_icon_url=entry["displayIcon"],
+                )
+                # Only persist after successful validation.
+                cached.write_bytes(fetched_bytes)
+                return constants
+            except KeyError as error:
+                raise ConstantsUnavailable(
+                    f"published entry for {map_url} is missing {error}: "
+                    f"the minimap transform is not in the replay; without it "
+                    f"nothing can be projected"
+                ) from error
+
     raise ConstantsUnavailable(f"no published transform for map {map_url}")
 
 
@@ -102,11 +144,17 @@ def load_minimap_png(k: MapConstants, cache_dir: Path, fetch=None) -> bytes:
     cache_dir.mkdir(parents=True, exist_ok=True)
     name = k.map_url.strip("/").replace("/", "_") + ".png"
     cached = cache_dir / name
-    if not cached.is_file():
-        try:
-            cached.write_bytes(fetch(k.display_icon_url))
-        except Exception as error:
-            raise ConstantsUnavailable(
-                f"could not fetch minimap {k.display_icon_url}: {error}"
-            ) from error
-    return cached.read_bytes()
+    if cached.is_file():
+        return cached.read_bytes()
+
+    # Fetch and persist.
+    try:
+        fetched_bytes = fetch(k.display_icon_url)
+    except Exception as error:
+        raise ConstantsUnavailable(
+            f"could not fetch minimap {k.display_icon_url}: {error}"
+        ) from error
+
+    # Only persist after successful fetch.
+    cached.write_bytes(fetched_bytes)
+    return fetched_bytes

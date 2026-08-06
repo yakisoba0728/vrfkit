@@ -93,6 +93,98 @@ class ConstantsTests(unittest.TestCase):
             vp.load_constants("/Game/Maps/Nowhere/Nowhere", self.cache, fetch=fetch)
         self.assertIn("Nowhere", str(caught.exception))
 
+    def test_malformed_json_does_not_persist_a_cache_and_raises_unavailable(self):
+        """Bad JSON should not be written to disk, and should raise
+        ConstantsUnavailable instead of a raw JSONDecodeError."""
+        def fetch(url):
+            return b"not json"
+
+        with self.assertRaises(vp.ConstantsUnavailable):
+            vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache, fetch=fetch)
+        # A subsequent call with good fetch should succeed, proving the poison
+        # was not persisted.
+        def good_fetch(url):
+            return self.payload
+        result = vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache,
+                                    fetch=good_fetch)
+        self.assertEqual(result.map_url, "/Game/Maps/Ascent/Ascent")
+
+    def test_missing_required_key_raises_unavailable_not_key_error(self):
+        """An entry that matches mapUrl but is missing yScalarToAdd should
+        raise ConstantsUnavailable, not a raw KeyError."""
+        bad_payload = json.dumps({"data": [{
+            "mapUrl": "/Game/Maps/Ascent/Ascent",
+            "xMultiplier": 7.2e-05, "yMultiplier": -7.2e-05,
+            "xScalarToAdd": 0.500202,
+            # missing yScalarToAdd
+            "displayIcon": "https://example.invalid/ascent.png",
+        }]}).encode()
+
+        def fetch(url):
+            return bad_payload
+
+        with self.assertRaises(vp.ConstantsUnavailable):
+            vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache, fetch=fetch)
+
+    def test_a_poisoned_cache_is_retried_on_next_call(self):
+        """If the cache file is unparseable, a subsequent call with a working
+        fetch should clear the poison and succeed."""
+        # Write bad JSON to the cache file manually.
+        self.cache.mkdir(parents=True, exist_ok=True)
+        cached = self.cache / "maps.json"
+        cached.write_bytes(b"not json")
+
+        # Now call with a good fetch. It should treat the bad cache as a miss
+        # and re-fetch.
+        def good_fetch(url):
+            return self.payload
+
+        result = vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache,
+                                    fetch=good_fetch)
+        self.assertEqual(result.map_url, "/Game/Maps/Ascent/Ascent")
+
+
+class MinimapTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.cache = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.icon_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100  # Fake PNG header
+        self.k = vp.MapConstants(
+            map_url="/Game/Maps/Ascent/Ascent",
+            x_multiplier=7.2e-05,
+            y_multiplier=-7.2e-05,
+            x_scalar=0.500202,
+            y_scalar=0.510265,
+            display_icon_url="https://example.invalid/ascent.png",
+        )
+
+    def test_the_minimap_bytes_come_back_unchanged(self):
+        def fetch(url):
+            return self.icon_bytes
+
+        result = vp.load_minimap_png(self.k, self.cache, fetch=fetch)
+        self.assertEqual(result, self.icon_bytes)
+
+    def test_the_second_call_does_not_re_fetch(self):
+        calls = []
+
+        def fetch(url):
+            calls.append(url)
+            return self.icon_bytes
+
+        first = vp.load_minimap_png(self.k, self.cache, fetch=fetch)
+        second = vp.load_minimap_png(self.k, self.cache, fetch=fetch)
+        self.assertEqual(first, second)
+        self.assertEqual(len(calls), 1, "the cache did not prevent a second fetch")
+
+    def test_a_failing_fetch_raises_unavailable(self):
+        def fetch(url):
+            raise OSError("network down")
+
+        with self.assertRaises(vp.ConstantsUnavailable):
+            vp.load_minimap_png(self.k, self.cache, fetch=fetch)
+
 
 if __name__ == "__main__":
     unittest.main()
