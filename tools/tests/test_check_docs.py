@@ -211,3 +211,53 @@ class ContradictingCountTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MeasuredCountTests(unittest.TestCase):
+    """Counts that live somewhere runnable, quoted in prose that rots.
+
+    `check_ascii`'s file count and `apply_type_corrections`'s correction count
+    were both quoted in README and USAGE -- files this guard already read --
+    and both went stale anyway, because nothing here knew those two numbers
+    existed. USAGE said 85, 86 and 49 corrections in one file.
+    """
+
+    def test_a_stale_ascii_count_is_caught(self):
+        problems = guard.stale_measured_counts(
+            {"x.md": "`check_ascii` on 999 files."}, {"ascii": 115})
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("999", problems[0])
+
+    def test_the_live_ascii_count_passes(self):
+        text = "`check_ascii` on 115 files, and 115 files, ASCII only"
+        self.assertEqual(
+            guard.stale_measured_counts({"x.md": text}, {"ascii": 115}), [])
+
+    def test_three_different_correction_counts_are_all_caught(self):
+        text = "(85 corrections)\nsays 86 corrections\n# 49 corrections present"
+        problems = guard.stale_measured_counts({"x.md": text}, {"corrections": 85})
+        self.assertEqual(len(problems), 2, problems)
+
+    def test_a_corpus_file_count_is_not_an_ascii_claim(self):
+        """README says "all 215 files" about replays, not about the sweep."""
+        text = "- **Framing** (`validate_corpus.py`, all 215 files) -- framing."
+        self.assertEqual(
+            guard.stale_measured_counts({"x.md": text}, {"ascii": 115}), [])
+
+    def test_the_repository_is_clean(self):
+        live = guard.measured_counts()
+        docs = {name: guard.read(guard.REPO / name) for name in guard.ALL_DOCS}
+        self.assertEqual(guard.stale_measured_counts(docs, live), [])
+
+
+class DocCoverageTests(unittest.TestCase):
+    """DATA.md and CONTRIBUTING.md were read by nothing at all."""
+
+    def test_data_md_and_contributing_are_covered(self):
+        self.assertIn("docs/DATA.md", guard.ALL_DOCS)
+        self.assertIn("CONTRIBUTING.md", guard.ALL_DOCS)
+
+    def test_every_covered_doc_has_resolving_links(self):
+        for name in guard.ALL_DOCS:
+            path = guard.REPO / name
+            self.assertEqual(guard.check_links(path, guard.read(path)), [], name)

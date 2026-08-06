@@ -375,11 +375,11 @@ python tools/apply_type_corrections.py           # apply, then verify (85 correc
 python tools/apply_type_corrections.py --check   # verify only
 ```
 
-Those 86 are the whole `EXPECTED` set the script re-verifies; `ADDITIONS` is the
+Those 85 corrections are the whole `EXPECTED` set the script re-verifies; `ADDITIONS` is the
 subset of it that has no C# descriptor behind it at all.
 
 The `ADDITIONS` pass inserts items the C# descriptor is **silent on**. There are
-currently 62 of them, and every one is admitted on wire evidence written into the
+currently 61 of them, and every one is admitted on wire evidence written into the
 comment above the list -- bit width, value range, distribution -- and nothing else.
 The original three still show the bar: `BaseTeamState.LoadoutValue` /
 `AverageLoadoutValue` (26-I, where the reference declares the type of the same
@@ -404,7 +404,7 @@ records the fields that failed the bar and why.
 | `compare_rpc_params.py` | RPC parameter comparison |
 | `compare_with_csharp.py` | Diff against the C# parser |
 | `check_effect_decoder.py` | Effect decoder (12 cases) |
-| `check_ascii.py` | Rust source ASCII sweep (114 files) |
+| `check_ascii.py` | Rust source ASCII sweep (115 files) |
 | `check_docs.py` | This document itself (below) |
 
 `check_docs.py` checks this document -- that every `tools/` script is
@@ -474,11 +474,11 @@ deliberately sequential for accuracy.
 cargo test                                        # 412 passing
 cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
-python tools/check_ascii.py --check               # 114 files, ASCII only
+python tools/check_ascii.py --check               # 115 files, ASCII only
 python tools/check_effect_decoder.py --check      # 12 cases
-python -m unittest discover -s tools/tests -p "test_*.py"   # 156 passing
+python -m unittest discover -s tools/tests -p "test_*.py"   # 163 passing
 python tools/check_docs.py --fast                 # do the docs still describe this repo
-python tools/apply_type_corrections.py --check    # 49 corrections present
+python tools/apply_type_corrections.py --check    # 85 corrections present
 ```
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a

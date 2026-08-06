@@ -269,8 +269,8 @@ it as one gives the year 3626.
 ## Status
 
 Work in progress. Currently verified: `cargo test --workspace` **412 passing**,
-`clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 114 files. The
-Python suite in `tools/tests` has 156 tests.
+`clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 115 files. The
+Python suite in `tools/tests` has 163 tests.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.

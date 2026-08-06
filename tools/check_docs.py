@@ -1,4 +1,4 @@
-"""Assert that README.md and docs/USAGE.md still describe THIS repo.
+"""Assert that the prose docs still describe THIS repo.
 
 Documentation in this project goes stale in a specific, repeatable way: a
 number that was measured once gets quoted forever. The workspace test count
@@ -18,6 +18,22 @@ and passes every test. So this reads the repo and the docs and compares:
   6. no Rust doc comment or Cargo.toml quotes a stale one
   7. the test counts quoted are the live ones, and no stale count sits beside
      a live one -- presence alone was not enough, see `stale_test_counts`
+  8. no quoted `check_ascii` file count or correction count is stale, in any
+     of `ALL_DOCS` -- see `stale_measured_counts`
+  9. every relative link resolves in `docs/DATA.md` and `CONTRIBUTING.md` too
+
+(8) and (9) exist because this file used to read exactly two documents. Every
+number in `docs/DATA.md` -- the most number-dense file in the repo -- and in
+`CONTRIBUTING.md` was unguarded, and two counts rotted *inside* the two files
+it did read: the ASCII sweep said 114 files against a live 115, and USAGE.md
+managed to say 85, 86 and 49 corrections at once. Reading a file is not the
+same as checking a number in it.
+
+What (8) deliberately does not do is guard `docs/DATA.md`'s measurements --
+"377,487 elements", "1,021 windows". Those come from analysis runs, not from
+anything this can execute, so a check would either be a second copy of the
+number or a day of work. The rule is narrower: a number is guarded here when
+something in the repo can be *run* to produce it.
 
 It runs the test suites to get (7), so it is not free -- roughly the cost of
 `cargo test` plus the tools suite. Run it when touching docs, or before
@@ -37,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -201,6 +218,59 @@ def contradicting_test_counts(docs: dict[str, str]) -> list[str]:
     ]
 
 
+#: Every doc this guard reads. README and USAGE must *quote* the live numbers;
+#: the rest only have to not contradict them. `docs/DATA.md` was outside this
+#: set entirely -- the most number-dense file in the repo, with no link check,
+#: no size check and no count check -- and `CONTRIBUTING.md` names the suites a
+#: contributor is told to run.
+ALL_DOCS = ("README.md", "docs/USAGE.md", "docs/DATA.md", "CONTRIBUTING.md")
+
+#: Numbers that are quoted in prose *and* produced by something runnable, with
+#: the phrasing narrow enough that a match is always that claim. Both of these
+#: rotted while sitting in files this guard already read.
+#: `(count pattern, line context)`. The context is what keeps "files" from
+#: meaning the corpus: README says "all 215 files" about replays two lines
+#: apart from nothing to do with ASCII. A line must name the check to be read
+#: as claiming its count.
+MEASURED_RE = {
+    "ascii": (re.compile(r"(\d+) files?\b"), re.compile(r"ascii", re.I)),
+    "corrections": (re.compile(r"(\d+) corrections"), None),
+}
+
+
+def measured_counts() -> dict[str, int]:
+    """The live values, read from the things that produce them."""
+    counts = {}
+    r = subprocess.run(["git", "-C", str(REPO), "ls-files", "--", "*.rs"],
+                       capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=120)
+    if r.returncode == 0:
+        counts["ascii"] = len([ln for ln in r.stdout.splitlines() if ln.strip()])
+
+    spec = importlib.util.spec_from_file_location(
+        "_atc", REPO / "tools" / "apply_type_corrections.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    counts["corrections"] = len(module.EXPECTED)
+    return counts
+
+
+def stale_measured_counts(docs: dict[str, str], live: dict[str, int]) -> list[str]:
+    """Every quoted measured count that is not the live one.
+
+    Not "does the right number appear somewhere" -- that is the check that let
+    README hold 387 and 355 at once. Every match must be right, so a file
+    saying 85, 86 and 49 corrections reports two problems, not zero.
+    """
+    return [f"{name}:{i}: says {quoted} {what}, but it is {live[what]}"
+            for name, text in docs.items()
+            for i, line in enumerate(text.splitlines(), 1)
+            for what, (pattern, context) in MEASURED_RE.items() if what in live
+            if context is None or context.search(line)
+            for quoted in pattern.findall(line)
+            if int(quoted) != live[what]]
+
+
 def measure_tests() -> tuple[int, int, list[str]]:
     problems = []
     r = subprocess.run(["cargo", "test", "--quiet"], cwd=REPO, capture_output=True,
@@ -234,6 +304,10 @@ def main() -> int:
 
     readme, usage = read(README), read(USAGE)
     docs = {"README.md": readme, "USAGE.md": usage}
+    #: Every doc, for the checks that only ask a number not to be wrong.
+    #: `docs` stays README+USAGE for the ones that require a number to be
+    #: *present*: DATA.md has no reason to quote the suite sizes.
+    every = {name: read(REPO / name) for name in ALL_DOCS}
 
     problems = (
         check_tools(usage)
@@ -242,10 +316,14 @@ def main() -> int:
         + check_links(USAGE, usage)
         + check_table_sizes(docs)
         + check_source_table_size()
-        + contradicting_test_counts(docs)
+        + contradicting_test_counts(every)
+        + stale_measured_counts(every, measured_counts())
+        + [p for name in ALL_DOCS
+           for p in check_links(REPO / name, every[name])
+           if name not in ("README.md", "docs/USAGE.md")]
     )
 
-    checked = 7
+    checked = 9
     if not args.fast:
         rust, tools_n, run_problems = measure_tests()
         problems += run_problems
@@ -257,7 +335,7 @@ def main() -> int:
                     problems.append(
                         f"{name}: {label} test count is {count}, not quoted")
         live = {s for c in (rust, tools_n) for s in (str(c), f"{c:,}")}
-        for name, text in docs.items():
+        for name, text in every.items():
             problems += [
                 f"{name}:{i}: says {quoted}; the suites are {rust} and {tools_n}"
                 for i, quoted in stale_test_counts(text, live)]
@@ -266,7 +344,7 @@ def main() -> int:
 
     n_tools = len(list((REPO / "tools").glob("*.py")))
     n_crates = len({p.parent.name for p in (REPO / "crates").glob("*/Cargo.toml")})
-    print(f"docs: README.md + docs/USAGE.md   "
+    print(f"docs: {len(ALL_DOCS)} files   "
           f"{n_tools} tools, {n_crates} crates, {checked} checks")
 
     if problems:
