@@ -243,6 +243,31 @@ EXPECTED += [
 ADDITIONS = [
     ("/Game/GameModes/Bomb/BombGameState.BombGameState_C",
      "ChosenCeremonyForRound", "FieldType::ObjectNetGuid"),
+    # Phoenix's wall, the other class declaring `MulticastAddSmokeScreenPoint`.
+    # Viper's `SmokeScreenManager` was typed and this one was not, so 2,791 rows
+    # over 31 replays came out null while decode errors stayed at 0 -- and
+    # because Viper's side worked, the ability looked handled.
+    #
+    # The checksum fallback could not carry the type across and was right not
+    # to: Unreal hashes the property, and these are different properties
+    # (2794273677 / 1639439377 against Viper's 2235276067 / 2983776962). It
+    # refused instead of guessing, which is the behaviour that made this a
+    # missing name rather than a wrong type.
+    #
+    # Admitted on wire evidence, same bar as the rest: every row is 192 bits
+    # (3 x f64); `Translation` reads as map coordinates (7211.7, 1670.3, 96.0)
+    # on an Ascent replay; `Scale3D` is (1,1,1) on every row, which no other
+    # reading of those bits produces. The third parameter of the same RPC
+    # arrives as handle `249` with no name from the replay and is left raw --
+    # naming a handle is what HANDLE_ADDITIONS is for, and its bar is higher.
+    ("/Game/Characters/Phoenix/S0/Ability_Q/Production/"
+     "GameObject_Phoenix_Q_FlameWallManager_Production."
+     "GameObject_Phoenix_Q_FlameWallManager_Production_C:MulticastAddSmokeScreenPoint",
+     "Translation", "FieldType::VectorDouble"),
+    ("/Game/Characters/Phoenix/S0/Ability_Q/Production/"
+     "GameObject_Phoenix_Q_FlameWallManager_Production."
+     "GameObject_Phoenix_Q_FlameWallManager_Production_C:MulticastAddSmokeScreenPoint",
+     "Scale3D", "FieldType::VectorDouble"),
     ("/Script/ShooterGame.BaseTeamState", "AverageLoadoutValue", "FieldType::Int32"),
     ("/Script/ShooterGame.BaseTeamState", "LoadoutValue", "FieldType::Int32"),
     ("/Script/ShooterGame.DamageableComponent:MulticastNotifyHeal",

@@ -1092,3 +1092,41 @@ fn the_ability_cast_log_is_typed() {
         assert_eq!(table.lookup(GROUP, field), Some(expected), "{field}");
     }
 }
+
+/// Both smoke walls are typed, not just the one that was noticed.
+///
+/// `MulticastAddSmokeScreenPoint` is declared by two classes -- Viper's
+/// `SmokeScreenManager` and Phoenix's `FlameWallManager` -- and only Viper's
+/// was in the table. Phoenix's `Translation` and `Scale3D` came out null on
+/// 2,791 rows across 31 replays with decode errors at 0, and because Viper's
+/// side decoded fine the ability looked handled.
+///
+/// The checksum fallback could not rescue it and should not have: Unreal gives
+/// the two classes' properties different checksums (2794273677 / 1639439377
+/// against Viper's 2235276067 / 2983776962), so it refused rather than
+/// guessing -- fail-closed working exactly as designed, which is why this
+/// needed a name-level fix.
+///
+/// The bar for admitting them is the repo's usual one, read off the wire:
+/// every row is 192 bits (3 x f64), `Translation` decodes to map coordinates
+/// (7211.7, 1670.3, 96.0), and `Scale3D` is (1,1,1) on every row -- a value no
+/// other reading produces.
+#[test]
+fn both_classes_declaring_the_smoke_point_rpc_are_typed() {
+    const VIPER: &str = "/Game/Characters/Pandemic/S0/Ability_E/\
+GameObject_Pandemic_E_SmokeScreenManager.GameObject_Pandemic_E_SmokeScreenManager_C\
+:MulticastAddSmokeScreenPoint";
+    const PHOENIX: &str = "/Game/Characters/Phoenix/S0/Ability_Q/Production/\
+GameObject_Phoenix_Q_FlameWallManager_Production.\
+GameObject_Phoenix_Q_FlameWallManager_Production_C:MulticastAddSmokeScreenPoint";
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    for group in [VIPER, PHOENIX] {
+        for field in ["Translation", "Scale3D"] {
+            assert_eq!(
+                table.lookup(group, field),
+                Some(FieldType::VectorDouble),
+                "{group} {field}"
+            );
+        }
+    }
+}

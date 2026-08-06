@@ -118,6 +118,13 @@ class AdditionsTests(unittest.TestCase):
         `HandleNumber`, whose 3,741 rows hold a dense 1..765. One entry each is
         enough -- checksum propagation carries both to their sibling RPCs.
 
+        61 -> 63 types Phoenix's `MulticastAddSmokeScreenPoint`. Viper's class
+        declares the same RPC and was typed; Phoenix's was not, so 2,791 rows
+        over 31 replays read null while decode errors stayed at 0, and Viper's
+        working side made the ability look handled. The checksum fallback could
+        not carry it -- different properties, different checksums -- and
+        refusing rather than guessing is what made this a missing name.
+
         62 -> 61 drops `LocalizedStat`: typed `FString`, it decoded to null on
         3,011 of 3,011 rows because the wire is an `FText`. Removing a type that
         produces nothing is not a loss -- the bits stay in `raw_bits`.
@@ -140,7 +147,7 @@ class AdditionsTests(unittest.TestCase):
         2 as `AuthResourceAmount`, so the leaf remap in `sink/paths.rs` now
         reaches a real declaration and the guessed name is gone.
         """
-        self.assertEqual(len(atc.ADDITIONS), 61, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 63, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.

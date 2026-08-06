@@ -6,7 +6,7 @@
 //! million `(group_path, field_name)` probes -- one per row, plus a second for
 //! the `b`-prefixed spelling on each of the 511,881 that miss -- and another
 //! ~0.5 million `(group_path, handle)` probes. Every one of those was a binary
-//! search over a 1,246-entry table. That is ~10 comparisons, and every
+//! search over a 1,248-entry table. That is ~10 comparisons, and every
 //! comparison looks at `group_path` first -- paths like
 //! `/Game/Characters/AggroBot/AggroBot_PC.AggroBot_PC_C` that share 20 to 40
 //! leading bytes with their neighbours, so each comparison is a real memcmp
