@@ -793,9 +793,43 @@ def main():
             content = content.replace(old, new)
             count += 1
 
-    # Fix: Int32 -> EnumRemainingBits for "215"/"216" actor bookkeeping in
-    # non-weapon groups. Weapons use Raw (correct). These groups use Int32 in
-    # the C# descriptor but the wire sends 3 bits.
+    # Fix: every group's "215"/"216" is EnumRemainingBits, weapons included.
+    #
+    # These are not handles. They are field *names* -- the decimal spelling of
+    # a hardcoded Unreal FName index the replay never resolves to text (see
+    # `read_fname` in vrf-schema) -- and they appear on 370 groups.
+    #
+    # The block below used to say "Weapons use Raw (correct)" and nothing had
+    # checked. The wire says otherwise, and the checksum is what settles it:
+    # `"215"` carries 1710918439 and `"216"` carries 4109980037 on every group
+    # that sends them, decoding or not, at a uniform 3 bits. Unreal hashes the
+    # property's type into that number, so one checksum is one property; `Raw`
+    # on a weapon was never a second type, only an unverified guess. Where it
+    # does decode the value is 3 and 1 without exception.
+    #
+    # It cost 48,010 rows over 20 replays, and it was invisible: a name hit
+    # wins in `resolve_in_group` before the checksum fallback is consulted, so
+    # `Raw` blocked the very mechanism that would have caught it, and the rows
+    # counted as "raw/skip" rather than as an error.
+    #
+    # Two passes because the two sets arrive spelled differently -- the
+    # non-weapon groups are declared Int32 by the C# descriptor, the weapon
+    # groups Raw. A single Int32-matching pass silently does nothing to the
+    # weapons: the string it looks for is not there, so no substitution is made
+    # and no counter moves.
+    weapon_groups_215_216 = [
+        line.split('group_path: "')[1].split('"')[0]
+        for line in content.splitlines()
+        if 'group_path: "/Game/Equippables/' in line
+    ]
+    for g in sorted(set(weapon_groups_215_216)):
+        for field in ["215", "216"]:
+            old = f'{g}", field_name: "{field}", field_type: FieldType::Raw'
+            new = f'{g}", field_name: "{field}", field_type: FieldType::EnumRemainingBits'
+            if old in content:
+                content = content.replace(old, new)
+                count += 1
+
     groups_215_216 = [
         "TimedBomb.TimedBomb_C",
         "EquippablePickupProjectile.EquippablePickupProjectile_C",

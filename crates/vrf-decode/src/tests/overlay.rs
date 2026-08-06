@@ -1130,3 +1130,36 @@ GameObject_Phoenix_Q_FlameWallManager_Production_C:MulticastAddSmokeScreenPoint"
         }
     }
 }
+
+/// The weapon classes declare the same property as everything else.
+///
+/// `"215"` and `"216"` are not handles -- they are field *names*, the decimal
+/// spelling of a hardcoded Unreal FName index the replay never resolves to
+/// text. 353 groups decode them; 17 weapon groups did not, because `table.rs`
+/// pinned those to `Raw` and a name hit wins before the checksum fallback is
+/// ever consulted. 48,010 rows over 20 replays.
+///
+/// The checksums settle it: `1710918439` and `4109980037` on every group,
+/// decoding or not, at a uniform 3 bits, and where it decodes the value is
+/// always 3 and 1. Same checksum means Unreal hashed the same property, so
+/// `Raw` on a weapon was never a different type -- it was a guess. The comment
+/// that introduced it said "Weapons use Raw (correct)" and nothing had checked.
+#[test]
+fn the_weapon_classes_type_215_and_216_like_everything_else() {
+    const WEAPONS: [&str; 3] = [
+        "/Game/Equippables/Guns/Rifles/AK/AssaultRifle_AK.AssaultRifle_AK_C",
+        "/Game/Equippables/Guns/Sidearms/BasePistol/BasePistol.BasePistol_C",
+        "/Game/Equippables/Melee/Ability_Melee_Base.Ability_Melee_Base_C",
+    ];
+    const ALREADY_TYPED: &str = "/Game/GameModes/Bomb/TimedBomb.TimedBomb_C";
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    for group in WEAPONS.iter().chain(std::iter::once(&ALREADY_TYPED)) {
+        for field in ["215", "216"] {
+            assert_eq!(
+                table.lookup(group, field),
+                Some(FieldType::EnumRemainingBits),
+                "{group} {field}"
+            );
+        }
+    }
+}
