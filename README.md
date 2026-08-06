@@ -48,7 +48,9 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 
 - **Lossless by construction** — every field's raw bits are always exported,
   even when the type is unknown or decoding fails. Typed values are an
-  *additive* overlay on top.
+  *additive* overlay on top, and each row carries the replay's own
+  `compatible_checksum`, so an untyped field can be told apart from an
+  undescribed one without guessing.
 - **Self-describing stream** — field names come from the replay itself
   (`NetFieldExportGroup`); no hardcoded agent or map names in the parser.
 - **Six Parquet tables + manifest** — `fields`, `movement`, `actors`,
@@ -547,6 +549,16 @@ declares (475) that are not in the table. (Rows with a filled `value_*` also
 include additive decoders like effects and structs, so real value coverage is
 wider than this ratio -- see the 36.8% untyped figure above.) A row whose type
 is unknown still ships with `raw_bits`, so it is **uninterpreted, not lost.**
+
+`fields.parquet` also carries the replay's own `compatible_checksum` per row,
+which turns that leftover into something searchable. Unreal hashes a property's
+type into it, so it identifies the property across builds; bucketing untyped
+rows on it separates three situations that otherwise look identical -- a type
+the overlay knows and failed to apply, a described property nothing has typed,
+and a value addressed inside a payload that declares no handle at all. Over 20
+replays that splits 10,062,142 untyped rows 0.5% / 48.6% / 51.0%, and the first
+bucket is supposed to be empty. The recipe is in
+[`docs/USAGE.md`](docs/USAGE.md#fieldsparquet).
 
 **Zero decode errors** holds across all 215 replays, checked corpus-wide by
 `tools/check_decode_errors_corpus.py`. It exists because `vrfkit validate`
