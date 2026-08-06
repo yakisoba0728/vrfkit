@@ -100,7 +100,8 @@ purchase; all ten players' purchases are replicated.
 |---|---|---|
 | Weapon instance class | `actors.parquet` class_path + `tools/equippable_table.py` (display name) | ✅ |
 | Shot events (ammo, projectiles, vectors, seed, fire mode) | effect blobs | ✅ typed JSON |
-| Magazine ammo over time | `MagazineAmmo.AmmoCount` (Int32, per weapon) | ✅ typed via handle addition (3..25, depletion ramp) |
+| Magazine ammo over time | `AmmoComponent.AuthResourceAmount` (Int32) | ✅ via the `MagazineAmmo` remap; reads 0..100 |
+| Reserve ammo over time | `AmmoComponent.AuthResourceAmount` (Int32) | ✅ via the `ReserveAmmo` remap -- same native component, second instance; reads 0..200 |
 | Equipped weapon (per player, over time) | `AresInventory.CurrentEquippable` / `NewCurrentEquippable` -> actor class | ✅ via InventoryComponent->AresInventory remap (resolve the NetGUID to its equippable actor) |
 | Equipped weapon (on damage) | `MulticastNotifyDamage.EquippableUsed` | ✅ |
 | Skin / spray / charm | `manifest` playerLoadouts (per subject) | ✅ |
@@ -287,8 +288,18 @@ Effect on 02d4d478: unnamed handles 17,013 -> 2,460, decoded OK 702,149 ->
 replays with decode errors 0.
 
 **This is the one thing here that a game patch can silently invalidate.** A
-renamed component stops matching and its handles go quiet again; no test in the
-repo can see that, because the replay never named it either.
+renamed component stops matching and its handles go quiet again, and the replay
+never named it either, so no unit test can see it.
+
+`tools/check_component_remaps.py` is what watches for that. It needs only an
+export -- not the game, not a baseline -- so it works on a replay from a new
+build, which is exactly when the question comes up. For each pair it compares
+the rows still bare under the leaf against the rows that reached the native
+group; healthy is ~0.1%, and a rename measured 15.6%. Asking only whether the
+target has rows is not enough: nine leaves share
+`EquippableStateMachineComponent`, so one going quiet leaves the other eight
+covering for it. ClassNetCache rows are excluded, because the two RepLayout-only
+remaps leave their RPC stream bare by design.
 
 Three bare names are left, and the game says why none of them can be fixed this
 way. `AttachedDamageSection` and `MapTargetingState` do name real classes --
