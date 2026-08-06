@@ -503,6 +503,30 @@ guessing -- which is the only reason the failure was findable.
   cannot attribute or count casts (use ability-actor spawns + `UltimateActive`
   for that). The later words' meaning is game-asset-dependent (the authoritative
   C# parser does not model this stream), so they stay in `raw_bits`.
+- **FName instance numbers are part of the name.** Unreal stores an FName as a
+  string plus a number, where number 0 means "no suffix" and number N means the
+  displayed suffix N-1. Both the schema readers and `decode_fname` used to drop
+  that number, which merged genuinely distinct properties: on the reference
+  replay, 553 rows spelled `MyEquippable` were really `MyEquippable` on
+  `EquippableGroundPickup_C` (handle 15, 277 rows) and `MyEquippable_0` on
+  `EquippablePickupProjectile_C` (handle 16, 276 rows). `IsAlive` /`IsAlive_0`
+  on Thorne's wall segments is the same shape. They are now rendered apart.
+  Consequence to know: `table.rs` is generated from C# descriptors that spell
+  the projectile's field `MyEquippable`, so that name entry no longer matches
+  and the field resolves through the weakest fallback — `compatible_checksum`
+  (`checksum_table.rs`, to `ObjectNetGuid`). No row lost its type, but the name
+  path for that one entry is dead until the generator learns the number.
+- **A reused channel used to inherit the previous actor's archetype.** Channel
+  archetypes were keyed by channel alone and never cleared, so when a channel
+  closed and reopened for a different actor, `resolve_actor_group_path` read the
+  stale archetype and assigned the old class. Measured, not hypothesised: on
+  `08aec1e1` packet 28115, a `BP_Destructible_Snowman_B1` was decoded as
+  `Projectile_Pandemic_4_SmokeGrenade_C`, emitting field names `215`/`216` with
+  typed values for a class it was not. 13 of the 215 replays carried this, 98
+  rows in total. Archetypes are now stamped with the actor GUID they were read
+  for, so those rows report the bare group with no field name instead — which is
+  why corpus `Decoded OK` fell 169,335,818 -> 169,335,720 while `raw/skip`,
+  `not in table` and `rows offered` all held exactly steady.
 - **spikeExploded** — not a limitation: `events.spikeExploded` is the canonical
   detonation signal and is always emitted. `RoundResults` records the round
   *win reason* (elimination/detonate/defuse), not whether the spike detonated,
