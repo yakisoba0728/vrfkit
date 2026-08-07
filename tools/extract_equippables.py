@@ -15,7 +15,8 @@ This does NOT weaken the parser's "no hardcoded names" invariant: the Rust
 crates stay free of name tables and emit class_path only. The mapping lives on
 the presentation side, in the Python adapter, where turning
 "AssaultRifle_AK" into "Vandal" is a labelling concern rather than a parsing
-rule. See docs/archive/PROJECT_STATUS.md section 8 and NEXT_STEPS_FINDINGS.md.
+rule. See docs/archive/PROJECT_STATUS.md section 8 and
+docs/archive/NEXT_STEPS_FINDINGS.md.
 
 Usage:
     python tools/extract_equippables.py [--csharp-root <path>] [--check]

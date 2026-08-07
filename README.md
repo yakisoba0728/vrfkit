@@ -246,7 +246,8 @@ timestamp in the exported parquet, about 1.4-1.6% of keys disagree (of which
 absent from ReplayData entirely. Results are identical for 13.01 and 13.02.
 The earlier 6-11% figures were raw live-wire measurements; export's byte-width
 normalization collapses them to ~1.4% (see `docs/archive/PROJECT_STATUS.md`
-section 22-I; byte-level format in [`CHECKPOINT_SPEC.md`](CHECKPOINT_SPEC.md)).
+section 22-I; byte-level format in
+[`docs/archive/CHECKPOINT_SPEC.md`](docs/archive/CHECKPOINT_SPEC.md)).
 
 ### `manifest.json`
 

@@ -5,9 +5,10 @@ The CLI, output schemas, library use, `tools/` scripts, and validation suite.
 Design rationale and the comparison against the existing parser are in
 [`../README.md`](../README.md); work history and measurement records are in
 [`archive/PROJECT_STATUS.md`](archive/PROJECT_STATUS.md). The byte-level format
-of the checkpoint chunks is in [`../CHECKPOINT_SPEC.md`](../CHECKPOINT_SPEC.md),
-and finished task specs are in [`archive/`](archive/README.md) -- all of these
-are for the record, not things to run.
+of the checkpoint chunks is in
+[`archive/CHECKPOINT_SPEC.md`](archive/CHECKPOINT_SPEC.md), and finished task
+specs are in [`archive/`](archive/README.md) -- all of these are for the
+record, not things to run.
 
 ## Table of contents
 
