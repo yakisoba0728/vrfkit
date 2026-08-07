@@ -418,11 +418,19 @@
   }
 
   function roundIndexForTime(t) {
+    if (!rounds.length) return 0;
+    // rounds_from_events only creates a boundary at each roundStarted, so a
+    // finding timestamped before the FIRST one (pre-round warmup movement,
+    // for instance) falls before rounds[0].start_ms and matches no round in
+    // the loop below. Without this check that silently fell through to the
+    // LAST round instead of the first -- a click on an early finding would
+    // jump to the end of the match with no sign of why.
+    if (t < rounds[0].start_ms) return 0;
     var i;
     for (i = 0; i < rounds.length; i++) {
       if (t >= rounds[i].start_ms && t < rounds[i].end_ms) return i;
     }
-    return rounds.length ? rounds.length - 1 : 0;
+    return rounds.length - 1;
   }
 
   function stopPlayback() {
