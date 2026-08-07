@@ -198,13 +198,66 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(counts["effect_off_map"], 1)
 
     def test_health_rising_without_a_heal_is_reported(self):
-        hp = [(1000, 1, 50.0, False), (2000, 1, 90.0, False)]
+        """A genuine WITHIN-section rise (both rows the same section) with no
+        heal RPC still fires -- the fix for the cross-section artifact must
+        not blunt the check's actual job."""
+        hp = [(1000, 1, 50.0, False, "HealthDamageSection"),
+              (2000, 1, 90.0, False, "HealthDamageSection")]
         _, counts = vd.run_checks(context(health=hp))
         self.assertEqual(counts["unexplained_heal"], 1)
 
     def test_health_rising_with_a_heal_is_not_reported(self):
-        hp = [(1000, 1, 50.0, False), (2000, 1, 90.0, True)]
+        hp = [(1000, 1, 50.0, False, "HealthDamageSection"),
+              (2000, 1, 90.0, True, "HealthDamageSection")]
         _, counts = vd.run_checks(context(health=hp))
+        self.assertEqual(counts["unexplained_heal"], 0)
+
+    def test_two_sections_at_the_same_millisecond_do_not_produce_unexplained_heal(self):
+        """The real defect this round fixes: one damage call reports the
+        always-zero ShieldDamageSection (0.0) alongside the real
+        HealthDamageSection reading (61.0) at the identical time_ms.
+        Flattening both into one series and sorting by value makes "0 -> 61"
+        look like a rise with no heal RPC; splitting per (player, section)
+        means the two never get adjacent-paired at all. Measured on the real
+        export: 100% of the 554 pre-fix firings were exactly this shape or
+        the round-boundary reset below."""
+        hp = [(210343, 1, 0.0, False, "ShieldDamageSection"),
+              (210343, 1, 61.0, False, "HealthDamageSection")]
+        _, counts = vd.run_checks(context(health=hp))
+        self.assertEqual(counts["unexplained_heal"], 0)
+
+    def test_multiple_hits_in_the_same_millisecond_keep_call_order_not_value_order(self):
+        """A second real defect found by measuring the fix against
+        out/rev_check, not anticipated by the section split alone: several
+        hits landing in the SAME millisecond (e.g. automatic-weapon fire)
+        produce several calls to the same section, and health_series orders
+        same-millisecond rows by true call order (packet_id, a global wire
+        sequence number). run_checks must preserve that order rather than
+        re-sorting by life, or a real DECREASING damage sequence reads
+        backwards as an ascending "staircase" of unexplained rises. Given
+        here in true call order: 90 (first hit) then 50 (second, bigger
+        hit) -- a value-sort would flip these into 50 -> 90 and misreport
+        it as an unexplained heal. Measured live: this shape, not fixed
+        here, accounted for 42 of the 98 firings left after the section
+        split alone."""
+        hp = [(1000, 1, 90.0, False, "HealthDamageSection"),
+              (1000, 1, 50.0, False, "HealthDamageSection")]
+        _, counts = vd.run_checks(context(health=hp))
+        self.assertEqual(counts["unexplained_heal"], 0)
+
+    def test_a_round_boundary_reset_does_not_fire_unexplained_heal(self):
+        """The other half of the real defect: every player's health resets to
+        100 within a millisecond of every round start, and a dead player's
+        last recorded value is essentially never exactly 100, so the rise
+        condition (l1 > l0) was met unconditionally at every boundary.
+        Respawn grace, matching the teleport checks (RESPAWN_GRACE_MS after
+        an internal round start), excuses it -- the round-reset broadcast
+        moving a player to full health is not a defect, same as it moving
+        their position to spawn."""
+        hp = [(400, 1, 0.0, False, "HealthDamageSection"),
+              (501, 1, 100.0, False, "HealthDamageSection")]
+        rounds = [vd.Round(0, 0, 500), vd.Round(1, 500, 100000)]
+        _, counts = vd.run_checks(context(health=hp, rounds=rounds))
         self.assertEqual(counts["unexplained_heal"], 0)
 
 
@@ -412,22 +465,36 @@ class ReadExportTests(unittest.TestCase):
         its rows under `context["health"]` when fields.parquet exists, not
         leave the Task 5 placeholder `[]` in place forever. Asserted as the
         exact tuple (not just non-empty) so a mutation that reverts the
-        wiring back to a bare `"health": []` cannot pass vacuously."""
+        wiring back to a bare `"health": []` cannot pass vacuously.
+
+        Round 2: health_series now takes the export directory (to also read
+        net_guids.parquet and resolve ChangedComponent to a section), so this
+        fixture writes packet_id/channel_index/value_i64 too, and a
+        net_guids.parquet, and pins the resolved section in the expected
+        tuple."""
         with tempfile.TemporaryDirectory() as tmp:
             export = self.write_export(
                 Path(tmp),
                 players=[{"actor_net_guid": 9, "subject": "11112222aaaa",
                           "character_net_guid": 1}])
             pq.write_table(pa.table({
-                "time_ms": pa.array([500], pa.uint32()),
-                "actor_net_guid": pa.array([1], pa.uint32()),
-                "field_name": pa.array(
-                    ["MulticastNotifyDamage_Point.LifeChangeEvents[0].LifeResult"],
-                    pa.string()),
-                "value_f64": pa.array([80.0], pa.float64()),
+                "time_ms": pa.array([500, 500], pa.uint32()),
+                "actor_net_guid": pa.array([1, 1], pa.uint32()),
+                "packet_id": pa.array([7000, 7000], pa.uint32()),
+                "channel_index": pa.array([1, 1], pa.uint32()),
+                "field_name": pa.array([
+                    "MulticastNotifyDamage_Point.LifeChangeEvents[0].LifeResult",
+                    "MulticastNotifyDamage_Point.LifeChangeEvents[0].ChangedComponent",
+                ], pa.string()),
+                "value_f64": pa.array([80.0, None], pa.float64()),
+                "value_i64": pa.array([None, 10], pa.int64()),
             }), export / "fields.parquet")
+            pq.write_table(pa.table({
+                "net_guid": pa.array([10], pa.uint32()),
+                "path": pa.array(["HealthDamageSection"], pa.string()),
+            }), export / "net_guids.parquet")
             context = vd.read_export(export)
-        self.assertEqual(context["health"], [(500, 1, 80.0, False)])
+        self.assertEqual(context["health"], [(500, 1, 80.0, False, "HealthDamageSection")])
 
     def test_manifest_is_returned_for_the_page_to_read(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -463,47 +530,184 @@ class HealthSeriesTests(unittest.TestCase):
     MulticastNotifyOverhealDecay name their array LifeChangeBySection while
     the damage RPCs call it LifeChangeEvents. Filtering on one alone silently
     drops more than half the calls -- that is what test_both_array_names_are_read
-    pins."""
+    pins.
+
+    Round 2: health_series also resolves each element's ChangedComponent
+    through net_guids.parquet to a section identity (HealthDamageSection,
+    AttachedDamageSection == real armour, ShieldDamageSection == an
+    always-zero decoy shell, ...), so the fixture writer below models one
+    array element as it really appears on the wire -- a LifeResult row and
+    a sibling ChangedComponent row sharing the same packet_id/channel_index,
+    which is the real join key (see health_series's docstring and
+    test_two_calls_at_the_same_millisecond_do_not_collide for why time_ms
+    alone is not safe)."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self._tmp.name)
         self.addCleanup(self._tmp.cleanup)
 
-    def write(self, rows):
-        """rows: (time_ms, actor_net_guid, field_name, value_f64)"""
+    def write_calls(self, calls, net_guids=None):
+        """Each dict in `calls` is one LifeChangeEvents/LifeChangeBySection
+        array element: time_ms, guid, fn, idx, life are required; arr
+        defaults to "LifeChangeEvents"; cc (the element's ChangedComponent
+        NetGUID) is omitted entirely, not just null, when a test wants to
+        simulate a call whose ChangedComponent never decoded; packet_id and
+        channel default to a fresh, distinct value per call (auto-assigned
+        from the call's position) unless a test deliberately shares them to
+        pin the join key.
+
+        net_guids, if given, is {net_guid: path} and becomes
+        net_guids.parquet; omitted (None) leaves that file absent, matching
+        read_export's own fields.parquet/net_guids.parquet optionality.
+        """
+        times, guids, pkts, chans, names, f64s, i64s = [], [], [], [], [], [], []
+        for n, call in enumerate(calls):
+            arr = call.get("arr", "LifeChangeEvents")
+            prefix = f"{call['fn']}.{arr}[{call['idx']}]"
+            packet_id = call.get("packet_id", 1000 + n)
+            channel = call.get("channel", 1)
+            times.append(call["time_ms"]); guids.append(call["guid"])
+            pkts.append(packet_id); chans.append(channel)
+            names.append(f"{prefix}.LifeResult")
+            f64s.append(call["life"]); i64s.append(None)
+            if "cc" in call:
+                times.append(call["time_ms"]); guids.append(call["guid"])
+                pkts.append(packet_id); chans.append(channel)
+                names.append(f"{prefix}.ChangedComponent")
+                f64s.append(None); i64s.append(call["cc"])
         pq.write_table(pa.table({
-            "time_ms": pa.array([r[0] for r in rows], pa.uint32()),
-            "actor_net_guid": pa.array([r[1] for r in rows], pa.uint32()),
-            "field_name": pa.array([r[2] for r in rows], pa.string()),
-            "value_f64": pa.array([r[3] for r in rows], pa.float64()),
+            "time_ms": pa.array(times, pa.uint32()),
+            "actor_net_guid": pa.array(guids, pa.uint32()),
+            "packet_id": pa.array(pkts, pa.uint32()),
+            "channel_index": pa.array(chans, pa.uint32()),
+            "field_name": pa.array(names, pa.string()),
+            "value_f64": pa.array(f64s, pa.float64()),
+            "value_i64": pa.array(i64s, pa.int64()),
         }), self.dir / "fields.parquet")
-        return self.dir / "fields.parquet"
+        if net_guids is not None:
+            pq.write_table(pa.table({
+                "net_guid": pa.array(list(net_guids.keys()), pa.uint32()),
+                "path": pa.array(list(net_guids.values()), pa.string()),
+            }), self.dir / "net_guids.parquet")
+        return self.dir
 
     def test_both_array_names_are_read(self):
         """Filtering on LifeChangeEvents alone drops more than half the calls."""
-        path = self.write([
-            (100, 1, "MulticastNotifyDamage_Point.LifeChangeEvents[0].LifeResult", 80.0),
-            (200, 1, "MulticastNotifyHeal.LifeChangeBySection[0].LifeResult", 100.0),
-        ])
-        series = vd.health_series(path, {1: "p1"})
-        self.assertEqual([(t, g, life) for t, g, life, _ in series],
+        export = self.write_calls([
+            dict(time_ms=100, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=80.0, cc=10),
+            dict(time_ms=200, guid=1, fn="MulticastNotifyHeal",
+                 arr="LifeChangeBySection", idx=0, life=100.0, cc=10),
+        ], net_guids={10: "HealthDamageSection"})
+        series = vd.health_series(export, {1: "p1"})
+        self.assertEqual([(t, g, life) for t, g, life, _, _ in series],
                          [(100, 1, 80.0), (200, 1, 100.0)])
 
     def test_a_heal_call_is_marked_as_a_heal(self):
-        path = self.write([
-            (200, 1, "MulticastNotifyHeal.LifeChangeBySection[0].LifeResult", 100.0)])
-        self.assertTrue(vd.health_series(path, {1: "p1"})[0][3])
+        export = self.write_calls([
+            dict(time_ms=200, guid=1, fn="MulticastNotifyHeal",
+                 arr="LifeChangeBySection", idx=0, life=100.0, cc=10)],
+            net_guids={10: "HealthDamageSection"})
+        self.assertTrue(vd.health_series(export, {1: "p1"})[0][3])
 
     def test_a_damage_call_is_not_marked_as_a_heal(self):
-        path = self.write([
-            (100, 1, "MulticastNotifyDamage_Point.LifeChangeEvents[0].LifeResult", 80.0)])
-        self.assertFalse(vd.health_series(path, {1: "p1"})[0][3])
+        export = self.write_calls([
+            dict(time_ms=100, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=80.0, cc=10)], net_guids={10: "HealthDamageSection"})
+        self.assertFalse(vd.health_series(export, {1: "p1"})[0][3])
 
     def test_a_non_player_actor_is_skipped(self):
-        path = self.write([
-            (100, 77, "MulticastNotifyDamage_Point.LifeChangeEvents[0].LifeResult", 80.0)])
-        self.assertEqual(vd.health_series(path, {1: "p1"}), [])
+        export = self.write_calls([
+            dict(time_ms=100, guid=77, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=80.0, cc=10)], net_guids={10: "HealthDamageSection"})
+        self.assertEqual(vd.health_series(export, {1: "p1"}), [])
+
+    def test_changed_component_resolves_to_its_section_name(self):
+        export = self.write_calls([
+            dict(time_ms=100, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=61.0, cc=10)], net_guids={10: "HealthDamageSection"})
+        self.assertEqual(vd.health_series(export, {1: "p1"})[0][4], "HealthDamageSection")
+
+    def test_the_shield_shell_and_real_armour_resolve_to_distinct_sections(self):
+        """docs/DATA.md convention 2: armour is AttachedDamageSection, not
+        ShieldDamageSection (an empty shell, every LifeResult 0). Both must
+        come through as their own section identity rather than one being
+        mistakable for the other."""
+        export = self.write_calls([
+            dict(time_ms=100, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=0.0, cc=20),
+            dict(time_ms=100, guid=1, fn="MulticastNotifyDamage_Point", idx=1,
+                 life=23.33, cc=30),
+        ], net_guids={20: "ShieldDamageSection", 30: "AttachedDamageSection"})
+        sections = {row[4] for row in vd.health_series(export, {1: "p1"})}
+        self.assertEqual(sections, {"ShieldDamageSection", "AttachedDamageSection"})
+
+    def test_an_unresolvable_changed_component_is_labelled_unknown(self):
+        """A ChangedComponent NetGUID absent from net_guids.parquet must not
+        silently join another section. Labelled "unknown" rather than
+        dropped, matching this module's existing pattern of surfacing an
+        anomaly instead of hiding it (parked rows, unknown movement GUIDs)."""
+        export = self.write_calls([
+            dict(time_ms=100, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=61.0, cc=999)], net_guids={10: "HealthDamageSection"})
+        self.assertEqual(vd.health_series(export, {1: "p1"})[0][4], "unknown")
+
+    def test_a_missing_changed_component_row_is_labelled_unknown(self):
+        """A LifeResult with no sibling ChangedComponent row at all (it never
+        decoded) is the same "cannot resolve" case as an unresolvable GUID,
+        and gets the same "unknown" label rather than a crash or a guess."""
+        export = self.write_calls([
+            dict(time_ms=100, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=61.0)], net_guids={10: "HealthDamageSection"})
+        self.assertEqual(vd.health_series(export, {1: "p1"})[0][4], "unknown")
+
+    def test_a_missing_net_guids_file_labels_every_row_unknown(self):
+        """net_guids.parquet is optional, exactly like fields.parquet is
+        optional in read_export: a caller can hand health_series an export
+        directory that has fields.parquet but not net_guids.parquet. Every
+        section must come back "unknown" rather than raising."""
+        export = self.write_calls([
+            dict(time_ms=100, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=61.0, cc=10)])
+        self.assertEqual(vd.health_series(export, {1: "p1"})[0][4], "unknown")
+
+    def test_same_millisecond_rows_are_ordered_by_packet_id_not_value(self):
+        """Several hits landing in one tick share a time_ms; the returned
+        order must reflect true call order (packet_id), not be re-sorted by
+        life -- or a real decreasing damage sequence (bigger hits landing
+        after smaller ones) would come back looking like an ascending
+        staircase, which is exactly the shape run_checks' unexplained_heal
+        misread on the real export before this test existed."""
+        export = self.write_calls([
+            dict(time_ms=1000, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=90.0, cc=10, packet_id=500, channel=1),
+            dict(time_ms=1000, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=50.0, cc=10, packet_id=501, channel=1),
+        ], net_guids={10: "HealthDamageSection"})
+        series = vd.health_series(export, {1: "p1"})
+        self.assertEqual([row[2] for row in series], [90.0, 50.0])
+
+    def test_two_calls_at_the_same_millisecond_do_not_collide(self):
+        """Measured directly on out/rev_check: two SEPARATE calls to the same
+        function, reusing the same array index, can land in the same
+        millisecond -- the round-reset broadcast fires as two distinct RPCs,
+        one per section, both at LifeChangeEvents[0]. A join key of (guid,
+        time_ms, fn, arr, idx) collides on this and silently drops or
+        corrupts a reading: measured as 514 real rows where a second call's
+        value overwrote a first call's DIFFERENT value at the identical key,
+        out of 5,170 total LifeResult rows on that export. packet_id +
+        channel_index (both present on every field row) disambiguate two
+        calls that merely happen to share a millisecond."""
+        export = self.write_calls([
+            dict(time_ms=92034, guid=1, fn="MulticastSectionLifeChange", idx=0,
+                 life=100.0, cc=10, packet_id=28687, channel=77),
+            dict(time_ms=92034, guid=1, fn="MulticastSectionLifeChange", idx=0,
+                 life=0.0, cc=20, packet_id=28688, channel=77),
+        ], net_guids={10: "HealthDamageSection", 20: "ShieldDamageSection"})
+        series = vd.health_series(export, {1: "p1"})
+        got = sorted((life, section) for _, _, life, _, section in series)
+        self.assertEqual(got, [(0.0, "ShieldDamageSection"), (100.0, "HealthDamageSection")])
 
 
 if __name__ == "__main__":

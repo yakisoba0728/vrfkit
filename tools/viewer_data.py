@@ -201,15 +201,33 @@ def run_checks(context: dict) -> tuple[list[Finding], dict[str, int]]:
             report("effect_off_map", effect["open_ms"], effect["effect_type"],
                    f"spawn projects to ({u:.3f}, {v:.3f})")
 
-    by_player: dict[int, list[tuple]] = {}
-    for time_ms, guid, life, is_heal in context["health"]:
-        by_player.setdefault(guid, []).append((time_ms, life, is_heal))
-    for guid, rows in by_player.items():
-        rows.sort()
+    # Grouped by (guid, section), NOT by guid alone: one damage call can
+    # report several sections (e.g. the always-zero ShieldDamageSection
+    # alongside the real HealthDamageSection reading) in the same
+    # millisecond, and comparing across sections as if they were one
+    # quantity misreads "shield 0, health 61" as a 0 -> 61 rise. See
+    # health_series and docs/DATA.md, "Health is absolute, not a
+    # subtraction". Respawn grace mirrors the teleport checks above: every
+    # player's health resets to full within a millisecond of every round
+    # start, and that reset is not a defect any more than the position reset
+    # at the same moment is.
+    by_player_section: dict[tuple[int, str], list[tuple]] = {}
+    for time_ms, guid, life, is_heal, section in context["health"]:
+        by_player_section.setdefault((guid, section), []).append((time_ms, life, is_heal))
+    for (guid, section), rows in by_player_section.items():
+        # Stable sort keyed on time_ms ALONE, not the bare tuple: sorting the
+        # bare (time_ms, life, is_heal) tuple breaks a time_ms tie on life
+        # ascending, which is wrong -- several hits landing in the same
+        # millisecond are already in true call order from health_series
+        # (packet_id, a global wire sequence number), and re-sorting by
+        # value here would undo that and misread a real, decreasing damage
+        # sequence as an ascending "staircase" of unexplained rises.
+        rows.sort(key=lambda r: r[0])
         for (t0, l0, _), (t1, l1, heal1) in zip(rows, rows[1:]):
-            if l1 > l0 and not heal1:
+            in_grace = any(0 <= t1 - s <= RESPAWN_GRACE_MS for s in respawn_boundaries)
+            if l1 > l0 and not heal1 and not in_grace:
                 report("unexplained_heal", t1, players.get(guid, str(guid)),
-                       f"{l0:.0f} -> {l1:.0f} with no heal RPC")
+                       f"{section}: {l0:.0f} -> {l1:.0f} with no heal RPC")
 
     findings.sort(key=lambda f: (f.time_ms, f.kind))
     return findings, counts
@@ -241,33 +259,111 @@ def _column(table, name):
 # their array `LifeChangeBySection`; the damage RPCs name it
 # `LifeChangeEvents`. Filtering on one alone silently drops more than half the
 # calls, which is how this was found (docs/DATA.md, "Health is absolute, not
-# a subtraction").
-LIFE_RESULT_RE = re.compile(
-    r"^(?P<fn>[A-Za-z_]+)\.(LifeChangeEvents|LifeChangeBySection)\[\d+\]\.LifeResult$")
+# a subtraction"). One array element carries several sibling members --
+# LifeResult and ChangedComponent both matched here, by the same
+# fn/array/index prefix, so a LifeResult row can be paired with the
+# ChangedComponent row for the SAME element.
+_ARRAY_ELEMENT_RE = re.compile(
+    r"^(?P<fn>[A-Za-z_]+)\.(?P<arr>LifeChangeEvents|LifeChangeBySection)"
+    r"\[(?P<idx>\d+)\]\.(?P<member>LifeResult|ChangedComponent)$")
 HEAL_FUNCTIONS = ("MulticastNotifyHeal", "MulticastNotifyOverhealDecay")
 
+# A ChangedComponent that cannot be resolved to a section -- absent from
+# net_guids.parquet, net_guids.parquet itself absent, or no ChangedComponent
+# row decoded for that element -- is labelled with this sentinel rather than
+# dropped or folded into another section. Dropping would silently shrink the
+# series with no visible trace; folding it into, say, "health" would let an
+# unresolved reading masquerade as a real one. Neither is acceptable given
+# this module's own pattern elsewhere (parked rows, unknown movement GUIDs)
+# of surfacing an anomaly rather than hiding it.
+UNKNOWN_SECTION = "unknown"
 
-def health_series(fields_path: Path, players: dict) -> list[tuple]:
-    """`(time_ms, guid, life_result, is_heal)` for the manifest players.
+
+def health_series(export_dir: Path, players: dict) -> list[tuple]:
+    """`(time_ms, guid, life_result, is_heal, section)` for the manifest
+    players.
 
     `LifeResult` is the ABSOLUTE value after the change, so nothing has to be
-    accumulated (docs/DATA.md).
+    accumulated (docs/DATA.md). `section` is the element's `ChangedComponent`
+    resolved through net_guids.parquet to its component identity --
+    "HealthDamageSection", "AttachedDamageSection" (real armour),
+    "ShieldDamageSection" (an always-zero decoy shell, docs/DATA.md
+    convention 2), or others (OverhealDamageSection, ability-specific
+    sections) -- reported as-is rather than normalized into a fixed enum,
+    since docs/DATA.md is explicit that component names move with the game
+    and inventing a mapping here would need the same upkeep. A caller must
+    split per (player, section) before comparing values over time: one
+    damage call can report several sections (e.g. shield then health) in the
+    SAME element burst, and treating them as one flattened series makes an
+    always-zero shield reading look like a "rise" into the real health
+    value that landed beside it. See `docs/DATA.md`, "Health is absolute,
+    not a subtraction".
+
+    Grouped by (actor_net_guid, packet_id, channel_index, fn, array, index),
+    not by time_ms: measured on the real export, the SAME function can be
+    invoked twice in the SAME millisecond, each call reusing array index 0
+    (docs/DATA.md's round-reset broadcast fires once per section, and both
+    calls can land in one tick) -- a time_ms-keyed join silently drops or
+    corrupts one of the two readings. packet_id + channel_index identify the
+    one wire call an element belongs to.
+
+    net_guids.parquet is optional, matching fields.parquet's own optionality
+    in `read_export`: if it is missing, every section resolves to
+    `UNKNOWN_SECTION`.
     """
+    fields_path = export_dir / "fields.parquet"
     table = pq.read_table(
-        fields_path, columns=["time_ms", "actor_net_guid", "field_name", "value_f64"])
-    out = []
-    for time_ms, guid, name, value in zip(
+        fields_path, columns=["time_ms", "actor_net_guid", "packet_id",
+                               "channel_index", "field_name", "value_f64", "value_i64"])
+
+    net_guids_path = export_dir / "net_guids.parquet"
+    section_of: dict[int, str] = {}
+    if net_guids_path.is_file():
+        ng = pq.read_table(net_guids_path, columns=["net_guid", "path"])
+        section_of = dict(zip(_column(ng, "net_guid"), _column(ng, "path")))
+
+    life_by_key: dict[tuple, tuple[int, int, str, float]] = {}
+    changed_component_by_key: dict[tuple, int] = {}
+
+    for time_ms, guid, packet_id, channel, name, life, changed_component in zip(
         _column(table, "time_ms"), _column(table, "actor_net_guid"),
+        _column(table, "packet_id"), _column(table, "channel_index"),
         _column(table, "field_name"), _column(table, "value_f64"),
+        _column(table, "value_i64"),
     ):
-        if guid not in players or value is None or not name:
+        if guid not in players or not name:
             continue
-        matched = LIFE_RESULT_RE.match(name)
+        matched = _ARRAY_ELEMENT_RE.match(name)
         if not matched:
             continue
-        out.append((time_ms, guid, value, matched.group("fn") in HEAL_FUNCTIONS))
-    out.sort()
-    return out
+        key = (guid, packet_id, channel, matched.group("fn"),
+               matched.group("arr"), matched.group("idx"))
+        if matched.group("member") == "LifeResult":
+            if life is not None:
+                life_by_key[key] = (time_ms, guid, matched.group("fn"), life)
+        elif changed_component is not None:
+            changed_component_by_key[key] = changed_component
+
+    # Sorted by (time_ms, packet_id), NOT plain tuple order: packet_id is a
+    # global, monotonically increasing wire sequence number, so it is the
+    # true call order within a tied millisecond. Plain tuple order would
+    # break a time_ms tie on the next field instead (life_result, ascending)
+    # -- measured on the real export: several separate hits landing in the
+    # SAME millisecond (e.g. automatic-weapon fire) produce several calls to
+    # the same section, and sorting those by value re-labels a real
+    # DECREASING health sequence as an ascending "staircase", which then
+    # misreads as consecutive unexplained rises. packet_id is dropped from
+    # the returned tuple; only its ordering effect is kept.
+    ordered = []
+    for key, (time_ms, guid, fn, life) in life_by_key.items():
+        changed_component = changed_component_by_key.get(key)
+        section = (section_of.get(changed_component) or UNKNOWN_SECTION
+                   if changed_component is not None else UNKNOWN_SECTION)
+        packet_id = key[1]
+        ordered.append((time_ms, packet_id, guid, life, fn in HEAL_FUNCTIONS, section))
+    ordered.sort()
+    return [(time_ms, guid, life, is_heal, section)
+            for time_ms, packet_id, guid, life, is_heal, section in ordered]
 
 
 _REQUIRED_EXPORT_FILES = ("movement.parquet", "actors.parquet", "events.parquet", "manifest.json")
@@ -344,7 +440,7 @@ def read_export(export_dir: Path) -> dict:
         "events": list(zip(times, groups, word0s, word1s)),
         "effects": effects,
         "effect_tally": effect_tally,
-        "health": (health_series(export_dir / "fields.parquet", players)
+        "health": (health_series(export_dir, players)
                    if (export_dir / "fields.parquet").is_file() else []),
         "match_end_ms": match_end_ms,
     }
