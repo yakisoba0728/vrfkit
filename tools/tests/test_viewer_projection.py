@@ -143,6 +143,36 @@ class ConstantsTests(unittest.TestCase):
                                     fetch=good_fetch)
         self.assertEqual(result.map_url, "/Game/Maps/Ascent/Ascent")
 
+    def test_a_wrong_shaped_cache_entry_recovers_via_fetch(self):
+        """A cache file that parses as valid JSON but holds non-dict entries
+        under "data" (e.g. {"data": [1, 2, 3]}) must not escape the
+        cache-read branch as a raw AttributeError: `entry.get("mapUrl")`
+        raises AttributeError when `entry` is an int, not a dict, and
+        `cached.is_file()` short-circuits the fetch path's own guard below
+        it, so an uncaught AttributeError here would become permanently
+        fatal rather than a recoverable cache miss. This is the poisoned-
+        cache bug this branch spent two fix rounds closing (see
+        `test_a_poisoned_cache_is_retried_on_next_call` and
+        `test_wrong_shaped_json_raises_unavailable_not_attribute_error`
+        above and below) -- narrowing the except tuple on the cache-read
+        branch back to (json.JSONDecodeError, KeyError, ValueError) drops
+        AttributeError and reintroduces it silently."""
+        self.cache.mkdir(parents=True, exist_ok=True)
+        cached = self.cache / "maps.json"
+        cached.write_text(json.dumps({"data": [1, 2, 3]}), encoding="utf-8")
+
+        calls = []
+
+        def good_fetch(url):
+            calls.append(url)
+            return self.payload
+
+        result = vp.load_constants("/Game/Maps/Ascent/Ascent", self.cache,
+                                    fetch=good_fetch)
+        self.assertEqual(result.map_url, "/Game/Maps/Ascent/Ascent")
+        self.assertEqual(len(calls), 1,
+                         "recovery must go through fetch, not some other path")
+
 
 class MinimapTests(unittest.TestCase):
     def setUp(self):

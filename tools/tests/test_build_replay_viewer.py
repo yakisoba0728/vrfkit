@@ -125,6 +125,73 @@ class BuildTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             builder.build(self.export, self.tmp / "x.html", self.tmp / "cache", fetch=dead)
 
+    def test_build_measures_at_full_rate_while_playback_stays_downsampled(self):
+        """The load-bearing invariant, pinned where it actually composes.
+
+        `run_checks` reads the full-rate movement stream and `_pack_frames`
+        downsamples for playback -- but nothing before this test exercised
+        that separation THROUGH `build()` itself. A plausible refactor
+        ("`_pack_frames` already downsamples per GUID, reuse it for both")
+        can insert a downsample call ahead of `run_checks` inside `build()`
+        without touching `downsample()` or `run_checks()` in isolation, so
+        `test_downsampling_does_not_hide_a_teleport` (which pins `downsample`
+        alone) and `test_a_teleport_is_reported` (which pins that
+        `run_checks` does not downsample internally) both stay green while
+        the composition in `build()` silently hides the defect.
+
+        Two movement rows 8 ms apart -- both inside the same 50 ms playback
+        bucket -- carry a horizontal jump far past TELEPORT_CM_PER_S.
+        `counts["teleport"]` must be 1: the measurement pass saw it at full
+        rate. The guid's packed frame blob in the rendered page must be
+        exactly 9 bytes -- one <IHHB record -- because playback correctly
+        collapsed both rows into the single bucket they share.
+        """
+        export = self.tmp / "teleport_export"
+        export.mkdir()
+        (export / "manifest.json").write_text(json.dumps({
+            "level_names_and_times": [{"name": "/Game/Maps/Ascent/Ascent", "time_ms": 0}],
+            "players": [{"character_net_guid": 1, "subject": "aaaaaaaa-0000"}],
+        }), encoding="utf-8")
+        pq.write_table(pa.table({
+            "time_ms": pa.array([0, 8], pa.uint32()),
+            "character_net_guid": pa.array([1, 1], pa.uint32()),
+            "pos_x": pa.array([0.0, 5000.0], pa.float32()),
+            "pos_y": pa.array([0.0, 0.0], pa.float32()),
+            "pos_z": pa.array([100.0, 100.0], pa.float32()),
+            "vel_z": pa.array([0.0, 0.0], pa.float32()),
+            "yaw": pa.array([0.0, 90.0], pa.float32()),
+        }), export / "movement.parquet")
+        pq.write_table(pa.table({
+            "time_ms": pa.array([0], pa.uint32()),
+            "actor_net_guid": pa.array([1], pa.uint32()),
+            "event": pa.array(["open"], pa.string()),
+            "class_path": pa.array(["/G/TestCharacter.TestCharacter_C"], pa.string()),
+            "spawn_x": pa.array([0.0], pa.float32()),
+            "spawn_y": pa.array([0.0], pa.float32()),
+            "spawn_z": pa.array([100.0], pa.float32()),
+        }), export / "actors.parquet")
+        pq.write_table(pa.table({
+            "time1": pa.array([0], pa.uint32()),
+            "group": pa.array(["roundStarted"], pa.string()),
+            "word0": pa.array([0], pa.uint32()),
+            "word1": pa.array([0], pa.uint32()),
+        }), export / "events.parquet")
+
+        out = self.tmp / "teleport.html"
+        counts = builder.build(export, out, self.tmp / "cache", fetch=fetch)
+        self.assertEqual(counts["teleport"], 1,
+                         "measurement must see the jump at full rate, not "
+                         "whatever build() left after any downsampling")
+
+        html = out.read_text(encoding="utf-8")
+        match = re.search(r"const PAYLOAD = (\{.*\});\n\n// This page", html, re.S)
+        self.assertIsNotNone(match, "PAYLOAD assignment not found in the rendered page")
+        payload = json.loads(match.group(1))
+        blob = base64.b64decode(payload["frames"]["1"]["data"])
+        self.assertEqual(len(blob), 9,
+                         "playback must keep exactly one sample: both rows "
+                         "share one 50 ms bucket")
+
 
 class PayloadShapeTests(unittest.TestCase):
     """The template reads these fields by name (`row.section`,

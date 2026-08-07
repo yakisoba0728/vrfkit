@@ -766,6 +766,69 @@ class TemplateTests(unittest.TestCase):
         """Checked by default, it renders a dead player walking around."""
         self.assertRegex(self.template, r'id="layer-postdeath"(?![^>]*\bchecked\b)')
 
+    def test_effect_projection_in_template_matches_viewer_projection_in_node(self):
+        """`drawEffects` in the template hand-copies `viewer_projection.project()`
+        into JS (see the comment above it) because the payload sends effects
+        as raw world spawn_x/spawn_y, unlike frames, which arrive
+        pre-projected. A hand-copy can silently drift from the Python
+        original -- an axis swap, say -- while every OTHER test in this
+        suite stays green: players still render correctly (pre-projected in
+        Python), `effect_off_map` above still uses the correct Python
+        formula and keeps reporting 0, and nothing else here executes the
+        template's JS at all. The page would contradict its own check with
+        no alarm.
+
+        Run the two lines verbatim, extracted from the template, through
+        Node and compare their output to `vp.project()` for several
+        coordinates where x != y -- with x == y an axis swap in the JS
+        could still coincidentally match Python's answer, so symmetric
+        cases would not be a real guard.
+        """
+        if shutil.which("node") is None:
+            self.skipTest("node not found on PATH; CI's python-checks job "
+                          "installs Node explicitly (.github/workflows/ci.yml) "
+                          "so this guard executes there even when it skips "
+                          "in a Node-less local run")
+        match = re.search(r"var u = ([^;]+);\s*\n\s*var v = ([^;]+);", self.template)
+        self.assertIsNotNone(match, "effect projection lines not found in drawEffects")
+        u_expr, v_expr = match.group(1), match.group(2)
+
+        k = vp.MapConstants(map_url="/m", x_multiplier=7.2e-05, y_multiplier=-6.5e-05,
+                            x_scalar=0.41, y_scalar=0.57,
+                            display_icon_url="https://x.invalid/m.png")
+        cases = [(1234.5, 9876.25), (-500.0, 20321.0), (30000.0, -750.5)]
+        js_cases = json.dumps([
+            {"spawn_x": x, "spawn_y": y,
+             "k": {"x_multiplier": k.x_multiplier, "y_multiplier": k.y_multiplier,
+                   "x_scalar": k.x_scalar, "y_scalar": k.y_scalar}}
+            for x, y in cases
+        ])
+        script = (
+            "var cases = " + js_cases + ";\n"
+            "var results = cases.map(function (c) {\n"
+            "  var e = {spawn_x: c.spawn_x, spawn_y: c.spawn_y};\n"
+            "  var k = c.k;\n"
+            "  var u = " + u_expr + ";\n"
+            "  var v = " + v_expr + ";\n"
+            "  return [u, v];\n"
+            "});\n"
+            "console.log(JSON.stringify(results));\n"
+        )
+        result = subprocess.run(["node", "-e", script], capture_output=True,
+                                text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        got = json.loads(result.stdout)
+        for (x, y), (got_u, got_v) in zip(cases, got):
+            want_u, want_v = vp.project(x, y, k)
+            self.assertAlmostEqual(
+                got_u, want_u, places=9,
+                msg=f"u mismatch at spawn=({x},{y}): template's drawEffects "
+                    f"gives {got_u}, viewer_projection.project gives {want_u}")
+            self.assertAlmostEqual(
+                got_v, want_v, places=9,
+                msg=f"v mismatch at spawn=({x},{y}): template's drawEffects "
+                    f"gives {got_v}, viewer_projection.project gives {want_v}")
+
 
 class HudFabricationTests(unittest.TestCase):
     """Fix round 1 on Task 7. The player HUD label rendered a literal '0'

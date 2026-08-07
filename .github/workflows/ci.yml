@@ -47,6 +47,8 @@ jobs:
       # the string-level pin unnoticed; this step is what makes the stronger
       # check actually execute in CI instead of silently skipping.
       - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: ASCII guard
         run: python tools/check_ascii.py --check
       - name: overlay corrections

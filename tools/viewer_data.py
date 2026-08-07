@@ -63,11 +63,24 @@ def downsample(samples, hz: int = PLAYBACK_HZ):
     return kept
 
 
-# Measured from the reference replay's own distribution rather than invented:
-# p90 of inter-sample speed is 659 cm/s, which matches VALORANT's 675 cm/s run
-# speed. 3000 is 4.4x that -- above Jett's dash and Raze's satchel (roughly
-# 1600-1800 cm/s) and below a real teleport. It leaves 391 of 1,773,814
-# samples, 0.022%.
+# Measured on out/rev_check (1,839,607 movement rows) rather than invented.
+# p90 of inter-sample speed, over the 1,836,960 consecutive per-guid pairs
+# with dt <= 100 ms (of 1,837,180 total dt > 0 pairs -- a handful with a
+# bigger gap are not comparable speed samples, so this p90 excludes them),
+# is 659 cm/s, which matches VALORANT's 675 cm/s run speed. 3000 is 4.4x
+# that -- above Jett's dash and Raze's satchel (roughly 1600-1800 cm/s) and
+# below a real teleport.
+#
+# Three different counts of pairs exceeding 3000 cm/s exist, each under a
+# different filter; they are not one number refined into the next:
+#   448 of the 1,837,180 dt > 0 pairs exceed it with no dt cap and no
+#       respawn-grace exclusion -- every consecutive pair, any gap size.
+#   391 of the 1,836,960 dt <= 100 ms pairs above (the same subset the p90
+#       figure was measured over) exceed it, again with no grace exclusion.
+#   390 is what the shipped check below actually reports: run_checks
+#       applies no dt <= 100 ms cap of its own -- 448, not 391, is its base
+#       population -- but does exclude pairs within RESPAWN_GRACE_MS of a
+#       round start, which removes 58 of those 448.
 TELEPORT_CM_PER_S = 3000.0
 
 # hypot(x1-x0, y1-y0) above is blind to a pure-vertical displacement -- two
