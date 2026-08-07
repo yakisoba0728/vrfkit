@@ -41,15 +41,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      # tools/tests/test_viewer_data.py runs two guards (fmtStat, and the
-      # template's effect projection against project()) through real
-      # Node, not just a source-level pin -- see that test's docstring. With
-      # no Node on this runner a condition-inversion mutation there passes
-      # the string-level pin unnoticed; this step is what makes the stronger
-      # check actually execute in CI instead of silently skipping.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
       - name: ASCII guard
         run: python tools/check_ascii.py --check
       - name: overlay corrections

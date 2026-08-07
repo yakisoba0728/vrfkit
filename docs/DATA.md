@@ -393,29 +393,6 @@ Two things to handle first:
 Containment was measured over 12 maps on 69 replays, 121,672,885 live movement
 rows, on build 13.02.
 
-### 2D replay viewer
-
-`tools/build_replay_viewer.py` renders one export directory into a single
-self-contained HTML page -- a top-down minimap replay with a round selector,
-a seekable timeline, and togglable layers for players, ability pawns /
-unresolved actors, post-death cameras, effects, events and health. It is the
-fastest way to eyeball whether a decode actually describes a game of
-VALORANT: a wrong value is usually invisible in a table of numbers but
-obvious as a marker teleporting across the map or a health reading rising
-with no heal RPC behind it.
-
-Playback runs at 20 Hz for legibility; the anomaly checks
-(`viewer_data.run_checks`) still read the full 125 Hz movement stream (see
-"The tick is 128 Hz..." above), so a defect that falls between two rendered
-frames is still counted and listed as a clickable finding even though it is
-never drawn between frames. The minimap itself uses the projection this
-section documents; a missing or unfetchable per-map transform fails the
-build rather than drawing at a guessed scale.
-
-```bash
-python tools/build_replay_viewer.py --export out/myreplay --out replay.html
-```
-
 ## Weapons & loadout
 
 | Data | Source | Status |
