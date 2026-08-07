@@ -23,7 +23,8 @@ These apply to every task. Violating any of them fails CI.
 - **Verified constants, copied verbatim from the spec:**
   - Projection (the axes cross): `u = pos_y * xMultiplier + xScalarToAdd`, `v = pos_x * yMultiplier + yScalarToAdd`
   - Park slot: filter when `pos_x < -40000` **and** `pos_z < -40000`. Both axes. Filtering on z alone misclassifies real falls.
-  - Teleport threshold: **3000 cm/s**, measured from the reference replay's own distribution (p90 is 659 cm/s, matching VALORANT's 675 cm/s run speed; 3000 leaves 391 of 1,773,814 samples, 0.022%).
+  - Teleport threshold: **3000 cm/s**, measured from the reference replay's own distribution (p90 is 659 cm/s, matching VALORANT's 675 cm/s run speed; 3000 leaves 448 of 1,837,180 consecutive pairs on `out/rev_check`, 0.024%; the shipped
+    check reports 390 of those after the respawn-grace exclusion).
   - Respawn grace: a displacement within **3000 ms** after a `roundStarted` is a respawn, not a teleport.
   - Playback rate: **20 Hz** (50 ms). Measurement rate: full data, ~125 Hz.
 
