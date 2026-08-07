@@ -64,6 +64,22 @@ def downsample(samples, hz: int = PLAYBACK_HZ):
 # samples, 0.022%.
 TELEPORT_CM_PER_S = 3000.0
 
+# hypot(x1-x0, y1-y0) above is blind to a pure-vertical displacement -- two
+# rows with identical x/y report zero horizontal speed no matter the z gap --
+# so it needs a companion check, not a fold-in. Folding z into one distance
+# is not safe either way: Abyss has no floor, players genuinely fall off it,
+# and every real fall would then false-positive as a teleport.
+#
+# There is no measured vertical-speed distribution to calibrate against the
+# way TELEPORT_CM_PER_S was (that used a real p90 over 1.7M samples). Reusing
+# the same 3000 cm/s bound is a deliberate, conservative stand-in: legitimate
+# vertical impulses (jump apex, Jett updraft, Raze satchel/boombot launch)
+# are the same order of magnitude as the horizontal ability bursts the
+# horizontal bound already clears (roughly 1600-1800 cm/s), so 3000 should
+# clear them too. It is a placeholder for real calibration, not a measurement,
+# and is flagged as such rather than presented as one.
+VERTICAL_TELEPORT_CM_PER_S = 3000.0
+
 # A round start moves every player to spawn. That is a teleport in the data and
 # not a defect, so displacements this soon after a round boundary are excused.
 RESPAWN_GRACE_MS = 3000
@@ -72,6 +88,7 @@ DEATH_POSITION_WINDOW_MS = 2000
 
 CHECK_KINDS = (
     "teleport",
+    "vertical_teleport",
     "off_map",
     "parked",
     "absent_player",
@@ -124,7 +141,7 @@ def run_checks(context: dict) -> tuple[list[Finding], dict[str, int]]:
     respawn_boundaries = sorted(r.start_ms for r in rounds)[1:]
 
     live: dict[int, list[tuple]] = {}
-    for time_ms, guid, x, y, z in movement:
+    for time_ms, guid, x, y, z, vel_z in movement:
         if vp.is_parked(x, z):
             report("parked", time_ms, str(guid), "hidden-actor park slot")
             continue
@@ -134,21 +151,30 @@ def run_checks(context: dict) -> tuple[list[Finding], dict[str, int]]:
         u, v = vp.project(x, y, k)
         if not _in_unit_square(u, v):
             report("off_map", time_ms, str(guid), f"projects to ({u:.3f}, {v:.3f})")
-        live.setdefault(guid, []).append((time_ms, x, y))
+        live.setdefault(guid, []).append((time_ms, x, y, z, vel_z))
 
     for guid, rows in live.items():
         rows.sort()
-        for (t0, x0, y0), (t1, x1, y1) in zip(rows, rows[1:]):
+        for (t0, x0, y0, z0, vz0), (t1, x1, y1, z1, vz1) in zip(rows, rows[1:]):
             dt = t1 - t0
             if dt <= 0:
                 continue
+            in_grace = any(0 <= t1 - s <= RESPAWN_GRACE_MS for s in respawn_boundaries)
+
             speed = math.hypot(x1 - x0, y1 - y0) / dt * 1000.0
-            if speed <= TELEPORT_CM_PER_S:
-                continue
-            if any(0 <= t1 - s <= RESPAWN_GRACE_MS for s in respawn_boundaries):
-                continue
-            report("teleport", t1, players.get(guid, str(guid)),
-                   f"{speed:.0f} cm/s over {dt} ms")
+            if speed > TELEPORT_CM_PER_S and not in_grace:
+                report("teleport", t1, players.get(guid, str(guid)),
+                       f"{speed:.0f} cm/s over {dt} ms")
+
+            # A downward move with negative vel_z at arrival is a fall, not a
+            # defect (see VERTICAL_TELEPORT_CM_PER_S above). Everything else
+            # that crosses the bound -- upward, or downward with vel_z >= 0,
+            # which no genuine fall produces -- is the anomaly.
+            vspeed = abs(z1 - z0) / dt * 1000.0
+            falling = z1 < z0 and vz1 < 0
+            if vspeed > VERTICAL_TELEPORT_CM_PER_S and not falling and not in_grace:
+                report("vertical_teleport", t1, players.get(guid, str(guid)),
+                       f"{vspeed:.0f} cm/s vertical over {dt} ms")
 
     for guid, label in players.items():
         for r in rounds:

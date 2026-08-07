@@ -80,7 +80,11 @@ def context(**over):
     # that the "reports its zero" baseline actually exercises every loop --
     # an all-empty context is zero because nothing runs, not because nothing
     # is wrong. Tests that need a different movement stream override it below.
-    base = dict(movement=[(0, 1, 0.0, 0.0, 100.0)], rounds=[vd.Round(0, 0, 100000)],
+    # Tuple shape: (time_ms, guid, pos_x, pos_y, pos_z, vel_z). vel_z is the
+    # sixth element added in this round, needed to tell a genuine fall (Abyss
+    # has no floor; docs/DATA.md: real falls carry negative vel_z, median
+    # around -1600 cm/s) from an anomalous vertical displacement.
+    base = dict(movement=[(0, 1, 0.0, 0.0, 100.0, 0.0)], rounds=[vd.Round(0, 0, 100000)],
                 players={1: "p1"}, pawn_classes={}, deaths=[], effects=[], health=[],
                 constants=CONSTANTS)
     base.update(over)
@@ -96,25 +100,70 @@ class CheckTests(unittest.TestCase):
         self.assertTrue(all(v == 0 for v in counts.values()), counts)
 
     def test_a_teleport_is_reported(self):
-        mv = [(1000, 1, 0.0, 0.0, 100.0), (1008, 1, 5000.0, 0.0, 100.0)]
+        # The 8 ms spacing is load-bearing, not incidental: both rows fall in
+        # the same 50 ms playback bucket, so downsample() would collapse this
+        # pair to one sample and hide the jump. This is the only thing in the
+        # suite that would catch run_checks silently downsampling before
+        # measuring -- widening the gap removes that guard.
+        mv = [(1000, 1, 0.0, 0.0, 100.0, 0.0), (1008, 1, 5000.0, 0.0, 100.0, 0.0)]
         findings, counts = vd.run_checks(context(movement=mv))
         self.assertEqual(counts["teleport"], 1)
         self.assertEqual(findings[0].time_ms, 1008)
 
     def test_a_respawn_jump_is_not_a_teleport(self):
         """A round start moves everyone to spawn. That is not a defect."""
-        mv = [(1000, 1, 0.0, 0.0, 100.0), (1008, 1, 5000.0, 0.0, 100.0)]
+        mv = [(1000, 1, 0.0, 0.0, 100.0, 0.0), (1008, 1, 5000.0, 0.0, 100.0, 0.0)]
         rounds = [vd.Round(0, 0, 500), vd.Round(1, 500, 100000)]
         _, counts = vd.run_checks(context(movement=mv, rounds=rounds))
         self.assertEqual(counts["teleport"], 0)
 
+    def test_a_vertical_jump_is_reported(self):
+        """Horizontal hypot() is blind to a pure-vertical displacement: two
+        rows with identical x/y report zero horizontal speed no matter how
+        far apart in z. This is the check that catches that case."""
+        mv = [(1000, 1, 0.0, 0.0, 100.0, 0.0), (1008, 1, 0.0, 0.0, 5100.0, 50.0)]
+        findings, counts = vd.run_checks(context(movement=mv))
+        self.assertEqual(counts["vertical_teleport"], 1)
+        self.assertEqual(counts["teleport"], 0, "pure-vertical must not also trip the horizontal check")
+
+    def test_a_fall_with_negative_vel_z_is_not_a_vertical_teleport(self):
+        """docs/DATA.md: Abyss has no floor and real falls carry negative
+        vel_z (median around -1600 cm/s, against 0 for in-range rows).
+        Folding z into the horizontal distance would make every real fall a
+        false teleport; vel_z is what tells the two apart."""
+        mv = [(1000, 1, 0.0, 0.0, 5100.0, 0.0), (1008, 1, 0.0, 0.0, 100.0, -1600.0)]
+        _, counts = vd.run_checks(context(movement=mv))
+        self.assertEqual(counts["vertical_teleport"], 0)
+
+    def test_a_vertical_jump_at_a_round_boundary_is_not_reported(self):
+        """Respawn parity with the horizontal check: a round transition
+        moves players to spawn, z included, and that is not a defect."""
+        mv = [(1000, 1, 0.0, 0.0, 100.0, 0.0), (1008, 1, 0.0, 0.0, 5100.0, 50.0)]
+        rounds = [vd.Round(0, 0, 500), vd.Round(1, 500, 100000)]
+        _, counts = vd.run_checks(context(movement=mv, rounds=rounds))
+        self.assertEqual(counts["vertical_teleport"], 0)
+
+    def test_horizontal_and_vertical_can_both_fire_on_the_same_pair(self):
+        """Pins independence between the two checks. Both walk the same
+        (t0, t1) pair; the horizontal check firing must not suppress the
+        vertical one, or vice versa. A `continue` reinstated after the
+        horizontal branch (the brief's original shape) would exit the pair
+        before the vertical block ever runs -- exactly how a pure-vertical
+        teleport went silent before this check existed, except here it would
+        hide a MIXED teleport instead, which none of the single-axis tests
+        above can catch."""
+        mv = [(1000, 1, 0.0, 0.0, 100.0, 0.0), (1008, 1, 5000.0, 0.0, 5100.0, 50.0)]
+        _, counts = vd.run_checks(context(movement=mv))
+        self.assertEqual(counts["teleport"], 1)
+        self.assertEqual(counts["vertical_teleport"], 1)
+
     def test_a_parked_row_is_counted_not_dropped_in_silence(self):
-        mv = [(10, 1, -50000.0, 0.0, -49900.0)]
+        mv = [(10, 1, -50000.0, 0.0, -49900.0, 0.0)]
         _, counts = vd.run_checks(context(movement=mv))
         self.assertEqual(counts["parked"], 1)
 
     def test_a_position_outside_the_map_is_reported(self):
-        mv = [(10, 1, 9.0e6, 9.0e6, 100.0)]
+        mv = [(10, 1, 9.0e6, 9.0e6, 100.0, 0.0)]
         _, counts = vd.run_checks(context(movement=mv))
         self.assertEqual(counts["off_map"], 1)
 
@@ -127,12 +176,12 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(counts["death_without_position"], 1)
 
     def test_an_unknown_movement_guid_is_reported(self):
-        mv = [(10, 999, 0.0, 0.0, 100.0)]
+        mv = [(10, 999, 0.0, 0.0, 100.0, 0.0)]
         _, counts = vd.run_checks(context(movement=mv))
         self.assertEqual(counts["unknown_guid"], 1)
 
     def test_a_known_pawn_guid_is_not_unknown(self):
-        mv = [(10, 999, 0.0, 0.0, 100.0)]
+        mv = [(10, 999, 0.0, 0.0, 100.0, 0.0)]
         _, counts = vd.run_checks(
             context(movement=mv, pawn_classes={999: "Pawn_Hunter_E_Drone_C"}))
         self.assertEqual(counts["unknown_guid"], 0)
