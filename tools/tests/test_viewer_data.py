@@ -740,5 +740,29 @@ class HealthSeriesTests(unittest.TestCase):
         self.assertEqual(got, [(0.0, "ShieldDamageSection"), (100.0, "HealthDamageSection")])
 
 
+class TemplateTests(unittest.TestCase):
+    """The template is data for the builder, so its contract is testable."""
+
+    def setUp(self):
+        self.template = (Path(__file__).resolve().parents[1]
+                         / "viewer_template.html").read_text(encoding="utf-8")
+
+    def test_the_payload_placeholder_is_present_exactly_once(self):
+        self.assertEqual(self.template.count("/*__VIEWER_PAYLOAD__*/"), 1)
+
+    def test_the_minimap_placeholder_is_present_exactly_once(self):
+        self.assertEqual(self.template.count("__MINIMAP_DATA_URI__"), 1)
+
+    def test_the_page_loads_nothing_from_the_network(self):
+        """Self-contained is the whole point: a finding must survive being
+        emailed as one file."""
+        for marker in ("http://", "https://", "src=\"//"):
+            self.assertNotIn(marker, self.template, f"external reference: {marker}")
+
+    def test_the_post_death_layer_is_off_by_default(self):
+        """Checked by default, it renders a dead player walking around."""
+        self.assertRegex(self.template, r'id="layer-postdeath"(?![^>]*\bchecked\b)')
+
+
 if __name__ == "__main__":
     unittest.main()
