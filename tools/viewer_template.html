@@ -38,7 +38,7 @@
     <label><input type="checkbox" id="layer-events" checked> events</label>
     <label><input type="checkbox" id="layer-health" checked> health</label>
   </div>
-  <div id="legend">markers -- player: green, pawn: cyan, unresolved guid: magenta, post-death camera: orange</div>
+  <div id="legend">markers -- player: green, pawn: cyan, unresolved guid: magenta, post-death camera: orange<br>the short direction line is a rough facing cue, not a calibrated compass bearing</div>
   <div id="rate">playback 20 Hz (source 125 Hz) -- an anomaly between frames is in the findings list, not on the canvas</div>
   <div id="counts"></div>
   <div id="diag"></div>
@@ -229,6 +229,19 @@
     return val;
   }
 
+  // The one place every HUD stat (hp, ar, ...) turns a reading into text.
+  // A reading that was never recorded renders as an honest '?', NEVER as a
+  // number -- 0 is a real value several of these stats can legitimately
+  // hold, so defaulting a missing one to '0' would make "no data" look
+  // exactly like "confirmed zero", which is the one thing this whole page
+  // exists to make visible instead of hiding. One shared formatter, not
+  // one ternary written out per stat, so two stats handling the same
+  // "never recorded" case cannot again quietly drift apart the way hp and
+  // ar once did here.
+  function fmtStat(v) {
+    return v === null ? '?' : String(Math.round(v));
+  }
+
   // Last sample at or before t: playback holds the last known position
   // between rendered frames rather than interpolating one that was never
   // recorded.
@@ -383,8 +396,7 @@
         if (show.health && healthIndex[guid]) {
           var hp = lastValueAt(healthIndex[guid].HealthDamageSection, t);
           var ar = lastValueAt(healthIndex[guid].AttachedDamageSection, t);
-          label += ' hp' + (hp === null ? '?' : Math.round(hp)) +
-                   ' ar' + (ar === null ? '0' : Math.round(ar));
+          label += ' hp' + fmtStat(hp) + ' ar' + fmtStat(ar);
         }
       }
       drawMarker(ctx, x, y, angleDeg, f.kind, label);

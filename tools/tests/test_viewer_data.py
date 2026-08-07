@@ -8,6 +8,9 @@ the full-rate stream. If that separation ever collapses, the viewer will look
 correct while hiding the thing it was built to find.
 """
 import json
+import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -762,6 +765,94 @@ class TemplateTests(unittest.TestCase):
     def test_the_post_death_layer_is_off_by_default(self):
         """Checked by default, it renders a dead player walking around."""
         self.assertRegex(self.template, r'id="layer-postdeath"(?![^>]*\bchecked\b)')
+
+
+class HudFabricationTests(unittest.TestCase):
+    """Fix round 1 on Task 7. The player HUD label rendered a literal '0'
+    for armour when no AttachedDamageSection reading was ever recorded for
+    that player -- three lines below `hp` handling the identical "never
+    recorded" condition correctly as '?'. 0 is a plausible real armour
+    value, so the fabricated zero was indistinguishable from a confirmed
+    reading of zero armour: exactly the class of defect this whole
+    instrument exists to catch, committed by the tool built to catch it.
+    A reviewer built a player with an hp reading and no armour reading,
+    hooked `fillText`, and captured the rendered label "hp80 ar0".
+
+    Fixed by giving hp and ar ONE shared formatter (`fmtStat`) instead of
+    two independently-written ternaries -- the duplication is what let them
+    drift apart in the first place, three lines apart, in code that looked
+    parallel. One formatter means one place left to get "never recorded"
+    wrong, which both tests below pin.
+    """
+
+    def setUp(self):
+        self.template = (Path(__file__).resolve().parents[1]
+                         / "viewer_template.html").read_text(encoding="utf-8")
+
+    def test_a_missing_stat_reading_is_never_rendered_as_a_fabricated_number(self):
+        """Source-level pin, not an executed-DOM assertion: this suite runs
+        under `python -m unittest discover` in a CI job
+        (.github/workflows/ci.yml) that installs only Python -- no Node, no
+        browser -- and no test in this suite has ever shelled out to
+        either. Adding that dependency for one assertion would trade a gate
+        that always runs for one that sometimes does. The real, EXECUTED
+        behaviour (a player with an hp reading and no armour reading
+        rendering "hp80 ar?", not "hp80 ar0", in an actual browser) was
+        verified live via Playwright; see task-7-report.md for that run.
+        """
+        match = re.search(r"function fmtStat\(v\)\s*\{([^}]*)\}", self.template)
+        self.assertIsNotNone(match, "fmtStat (the shared hp/ar formatter) not found")
+        body = match.group(1)
+        self.assertIn("null", body)
+        self.assertIn("'?'", body)
+        self.assertNotIn("'0'", body,
+                         "a formatter that can return the literal string '0' for a "
+                         "reading that was never recorded is indistinguishable from "
+                         "a genuine zero reading")
+        # Both stats must go through the ONE shared formatter, not each spell
+        # out its own "never recorded" handling -- that duplication is
+        # exactly the shape that let ar drift from hp's correct '?' to a
+        # fabricated '0' in the first place.
+        self.assertIn("fmtStat(hp)", self.template)
+        self.assertIn("fmtStat(ar)", self.template)
+
+    def test_fmtstat_executed_in_node_treats_a_missing_reading_as_absent(self):
+        """The stronger version of the test above: run the real `fmtStat`
+        source, extracted verbatim rather than reimplemented, and check its
+        actual output. Skips (does not fail) when `node` is not on PATH --
+        this dev environment has Node, and GitHub's ubuntu-latest runner
+        image documents Node as preinstalled, but this repo's own CI config
+        never installs it explicitly, so this must not be the only gate on
+        the fix; test_a_missing_stat_reading_is_never_rendered_as_a_fabricated_number
+        above is the one that always runs.
+        """
+        if shutil.which("node") is None:
+            self.skipTest("node not found on PATH; the unconditional string-level "
+                          "guard on this fix still ran")
+        match = re.search(r"function fmtStat\(v\)\s*\{[^}]*\}", self.template)
+        self.assertIsNotNone(match, "fmtStat not found in the template")
+        script = match.group(0) + (
+            "\nconsole.log(JSON.stringify([fmtStat(null), fmtStat(0), fmtStat(82.6)]));"
+        )
+        result = subprocess.run(["node", "-e", script], capture_output=True,
+                                text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        got = json.loads(result.stdout)
+        self.assertEqual(got, ["?", "0", "83"],
+                         "fmtStat(null) (never recorded) must be '?', never a "
+                         "number that could be mistaken for a real reading; "
+                         "fmtStat(0) (a genuine zero reading) must still read as "
+                         "a real '0', not also be swallowed into '?'")
+
+    def test_the_yaw_arrow_disclaimer_is_in_the_legend(self):
+        """The direction line drawn for every marker is a rough facing cue,
+        not a calibrated compass bearing (the page does not correct for the
+        projection's axis swap). That caveat used to live only in
+        task-7-report.md, which nobody looking at an emailed anomaly will
+        ever open -- it has to travel with the artifact itself."""
+        match = re.search(r'<div id="legend">(.*?)</div>', self.template, re.S)
+        self.assertIsNotNone(match, "no #legend div found")
+        self.assertIn("rough facing cue", match.group(1))
 
 
 if __name__ == "__main__":

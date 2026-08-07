@@ -121,7 +121,7 @@ def _in_unit_square(u: float, v: float) -> bool:
 def run_checks(context: dict) -> tuple[list[Finding], dict[str, int]]:
     """Every check, over the FULL-RATE movement stream.
 
-    Returns the findings and a per-kind count that always carries all eight
+    Returns the findings and a per-kind count that always carries all nine
     keys, zeros included. A count that only appears when non-zero cannot
     distinguish a clean replay from a check that stopped running.
     """
