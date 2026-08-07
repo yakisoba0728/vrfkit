@@ -1,0 +1,513 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>vrfkit replay viewer</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font: 13px/1.5 monospace; display: flex; }
+  /* #stage needs an explicit box: both children are position:absolute (out
+     of flow), so a #stage with no width/height of its own collapses to
+     0x0, #side then renders at left:0 UNDER the canvas, and the canvas --
+     painted on top -- silently swallows every click meant for the sidebar
+     (findings become unclickable with no visible sign why). Caught by
+     actually opening the page, not by any grep. */
+  #stage { position: relative; width: 720px; height: 720px; flex: none; }
+  #minimap, #canvas { position: absolute; top: 0; left: 0; width: 720px; height: 720px; }
+  #side { padding: 12px; width: 380px; overflow-y: auto; height: 100vh; box-sizing: border-box; }
+  .finding { cursor: pointer; padding: 2px 0; border-bottom: 1px solid #333; }
+  .finding:hover { background: #222; }
+  #legend { color: #888; margin: 6px 0; }
+  #rate { color: #ffb400; margin: 6px 0; }
+  #counts { margin: 6px 0; }
+  #counts div:first-child { color: #888; }
+  #diag div { color: #ff5a5a; font-weight: bold; margin: 2px 0; }
+  #clock { margin: 6px 0; color: #8fd3ff; }
+  label { display: block; }
+</style>
+<div id="stage">
+  <img id="minimap" src="__MINIMAP_DATA_URI__" alt="">
+  <canvas id="canvas" width="720" height="720"></canvas>
+</div>
+<div id="side">
+  <div><select id="round"></select> <button id="play">play</button></div>
+  <input id="seek" type="range" min="0" max="0" value="0" style="width:100%">
+  <div id="clock"></div>
+  <div id="layers">
+    <label><input type="checkbox" id="layer-players" checked> players</label>
+    <label><input type="checkbox" id="layer-pawns" checked> ability pawns / unresolved actors</label>
+    <label><input type="checkbox" id="layer-postdeath"> post-death cameras (spectator, not a position -- off by default)</label>
+    <label><input type="checkbox" id="layer-effects" checked> effects</label>
+    <label><input type="checkbox" id="layer-events" checked> events</label>
+    <label><input type="checkbox" id="layer-health" checked> health</label>
+  </div>
+  <div id="legend">markers -- player: green, pawn: cyan, unresolved guid: magenta, post-death camera: orange<br>the short direction line is a rough facing cue, not a calibrated compass bearing</div>
+  <div id="rate">playback 20 Hz (source 125 Hz) -- an anomaly between frames is in the findings list, not on the canvas</div>
+  <div id="counts"></div>
+  <div id="diag"></div>
+  <div id="findings"></div>
+</div>
+<script>
+/*__VIEWER_PAYLOAD__*/
+
+// This page is a verification instrument, not a product: a wrong value in
+// PAYLOAD has to become visible, not disappear behind an uncaught exception.
+// So the order below is deliberate -- render what needs nothing that can
+// throw (the counts, the findings list) BEFORE touching the frame blobs,
+// wrap every stage that can throw, and write failures onto the page in
+// #diag rather than only to the console. A blank sidebar and a clean replay
+// must never look the same.
+(function () {
+  'use strict';
+
+  var canvas = document.getElementById('canvas');
+  var diagHost = document.getElementById('diag');
+
+  function diag(msg) {
+    var line = document.createElement('div');
+    line.textContent = msg;
+    diagHost.appendChild(line);
+  }
+
+  // The #rate div already carries this exact sentence as static HTML, so it
+  // survives even if the whole script below fails to run. This just makes
+  // it track PAYLOAD.playbackHz if that ever stops being 20.
+  try {
+    document.getElementById('rate').textContent =
+      'playback ' + PAYLOAD.playbackHz + ' Hz (source 125 Hz) -- ' +
+      'an anomaly between frames is in the findings list, not on the canvas';
+  } catch (err) {
+    diag('rate line: ' + err);
+  }
+
+  // Every key of PAYLOAD.counts, including the zeros: a count that only
+  // appears when non-zero cannot tell "nothing wrong" apart from "the check
+  // stopped running".
+  function renderCounts() {
+    var host = document.getElementById('counts');
+    host.innerHTML = '';
+    var keys = Object.keys((PAYLOAD && PAYLOAD.counts) || {});
+    if (keys.length === 0) {
+      diag('counts: PAYLOAD.counts is empty or missing -- the checks did not run');
+      return;
+    }
+    var title = document.createElement('div');
+    title.textContent = 'checks (full-rate stream, zeros included):';
+    host.appendChild(title);
+    keys.forEach(function (k) {
+      var line = document.createElement('div');
+      line.textContent = '  ' + k + ': ' + PAYLOAD.counts[k];
+      host.appendChild(line);
+    });
+  }
+
+  // One clickable line per finding. Each seeks to its time_ms (defined
+  // below, after function-hoisting makes it available here regardless of
+  // source order).
+  function renderFindings() {
+    var host = document.getElementById('findings');
+    host.innerHTML = '';
+    ((PAYLOAD && PAYLOAD.findings) || []).forEach(function (f) {
+      var row = document.createElement('div');
+      row.className = 'finding';
+      row.textContent = f.time_ms + 'ms [' + f.kind + '] ' + f.subject + ' -- ' + f.detail;
+      row.addEventListener('click', function () { seekTo(f.time_ms); });
+      host.appendChild(row);
+    });
+  }
+
+  try { renderCounts(); } catch (err) { diag('renderCounts failed: ' + err); }
+  try { renderFindings(); } catch (err) { diag('renderFindings failed: ' + err); }
+
+  var rounds = (PAYLOAD && PAYLOAD.rounds) || [];
+
+  function populateRounds() {
+    var sel = document.getElementById('round');
+    sel.innerHTML = '';
+    rounds.forEach(function (r, i) {
+      var opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = 'round ' + r.index + '  (' + r.start_ms + '-' + r.end_ms + ' ms)';
+      sel.appendChild(opt);
+    });
+  }
+  try { populateRounds(); } catch (err) { diag('populateRounds failed: ' + err); }
+
+  // ---- packed movement records --------------------------------------
+  //
+  // One record per playback sample, little-endian, 9 bytes, struct format
+  // "<IHHB":
+  //   offset 0  uint32  time_ms  -- absolute match time, playback rate
+  //   offset 4  uint16  u        -- projected u, normalised 0..65535 across
+  //                                 the unit square (clamp at the ends;
+  //                                 an off-map row is already its own
+  //                                 finding, so this must not wrap)
+  //   offset 6  uint16  v        -- same normalisation, v axis
+  //   offset 8  uint8   yaw      -- an ANGLE BYTE, not raw degrees mod 256
+  //
+  //   Pack side (Task 8):  byte = round((yaw_deg % 360.0) / 360.0 * 256.0) % 256
+  //   Unpack side (here):  yaw_deg = byte * 360 / 256
+  //
+  // This is the layout this page's decoder was built and tested against.
+  // It deliberately does NOT use the plan sketch's `int(yaw) % 256`: raw
+  // degrees taken mod 256 do not round-trip (300 deg and 44 deg pack to the
+  // identical byte), so every arrow on the canvas would point wrong for a
+  // yaw outside 0..255. Do not transcribe that sketch into the packer.
+  function decodeFrames(frames) {
+    var out = {};
+    Object.keys(frames || {}).forEach(function (guid) {
+      var rec = frames[guid];
+      var bin = atob(rec.data || '');
+      var bytes = new Uint8Array(bin.length);
+      var i;
+      for (i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      if (bytes.length % 9 !== 0) {
+        diag('frame ' + guid + ': ' + bytes.length + ' bytes is not a multiple of 9, skipped');
+        return;
+      }
+      var n = bytes.length / 9;
+      if (rec.count !== undefined && rec.count !== n) {
+        diag('frame ' + guid + ': count says ' + rec.count + ' but the blob holds ' + n);
+      }
+      var view = new DataView(bytes.buffer);
+      var times = new Uint32Array(n);
+      var us = new Uint16Array(n);
+      var vs = new Uint16Array(n);
+      var yaws = new Uint8Array(n);
+      var s, off;
+      for (s = 0; s < n; s++) {
+        off = s * 9;
+        times[s] = view.getUint32(off, true);
+        us[s] = view.getUint16(off + 4, true);
+        vs[s] = view.getUint16(off + 6, true);
+        yaws[s] = view.getUint8(off + 8);
+      }
+      out[guid] = {kind: rec.kind, class_path: rec.class_path, count: n,
+                   times: times, us: us, vs: vs, yaws: yaws};
+    });
+    return out;
+  }
+
+  var decoded = {};
+  try {
+    decoded = decodeFrames(PAYLOAD.frames);
+  } catch (err) {
+    diag('decodeFrames failed: ' + err + ' -- no positions will be drawn');
+  }
+
+  // Health HUD: HealthDamageSection and AttachedDamageSection only.
+  // ShieldDamageSection is an always-zero decoy shell (docs/DATA.md) and
+  // must never be drawn as armour; OverhealDamageSection and any unresolved
+  // section are left out on purpose. This is a "plausible current number"
+  // display, not the anomaly check -- that already ran server-side, grouped
+  // by (player, section, instance), and its results are in findings/counts.
+  function indexHealth(rows) {
+    var by = {};
+    (rows || []).forEach(function (row) {
+      if (row.section !== 'HealthDamageSection' && row.section !== 'AttachedDamageSection') return;
+      var g = String(row.guid);
+      if (!by[g]) by[g] = {HealthDamageSection: [], AttachedDamageSection: []};
+      by[g][row.section].push([row.time_ms, row.life_result]);
+    });
+    Object.keys(by).forEach(function (g) {
+      by[g].HealthDamageSection.sort(function (a, b) { return a[0] - b[0]; });
+      by[g].AttachedDamageSection.sort(function (a, b) { return a[0] - b[0]; });
+    });
+    return by;
+  }
+
+  var healthIndex = {};
+  try {
+    healthIndex = indexHealth(PAYLOAD.health);
+  } catch (err) {
+    diag('indexHealth failed: ' + err + ' -- health layer will show nothing');
+  }
+
+  function lastValueAt(rows, t) {
+    var val = null;
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      if (rows[i][0] <= t) val = rows[i][1]; else break;
+    }
+    return val;
+  }
+
+  // The one place every HUD stat (hp, ar, ...) turns a reading into text.
+  // A reading that was never recorded renders as an honest '?', NEVER as a
+  // number -- 0 is a real value several of these stats can legitimately
+  // hold, so defaulting a missing one to '0' would make "no data" look
+  // exactly like "confirmed zero", which is the one thing this whole page
+  // exists to make visible instead of hiding. One shared formatter, not
+  // one ternary written out per stat, so two stats handling the same
+  // "never recorded" case cannot again quietly drift apart the way hp and
+  // ar once did here.
+  function fmtStat(v) {
+    return v === null ? '?' : String(Math.round(v));
+  }
+
+  // Last sample at or before t: playback holds the last known position
+  // between rendered frames rather than interpolating one that was never
+  // recorded.
+  function sampleIndexAt(f, t) {
+    var times = f.times;
+    if (!times || times.length === 0) return -1;
+    var lo = 0, hi = times.length - 1, ans = -1, mid;
+    while (lo <= hi) {
+      mid = (lo + hi) >> 1;
+      if (times[mid] <= t) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return ans;
+  }
+
+  function colorFor(kind) {
+    if (kind === 'player') return '#39ff6a';
+    if (kind === 'postdeath') return '#ff9900';
+    if (kind === 'unknown') return '#ff2b6f';
+    return '#40c4ff'; // pawn
+  }
+
+  function drawMarker(ctx, x, y, angleDeg, kind, label) {
+    var color = colorFor(kind);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, kind === 'player' ? 5 : 3, 0, Math.PI * 2);
+    ctx.fill();
+    var rad = angleDeg * Math.PI / 180;
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(rad) * 10, y + Math.sin(rad) * 10);
+    ctx.stroke();
+    if (label) {
+      ctx.fillStyle = color;
+      ctx.font = '10px monospace';
+      ctx.fillText(String(label), x + 6, y - 6);
+    }
+  }
+
+  // Effects carry raw world spawn_x/spawn_y, not pre-projected coordinates
+  // the way frames do -- PAYLOAD needs a `constants` object
+  // (x_multiplier, y_multiplier, x_scalar, y_scalar, the same fields
+  // viewer_projection.MapConstants carries) for this page to place them on
+  // the minimap at all. If it is missing, say so on the page once rather
+  // than silently drawing nothing.
+  var warnedNoConstants = false;
+  function drawEffects(ctx, t) {
+    var k = PAYLOAD.constants;
+    if (!k) {
+      if (!warnedNoConstants) {
+        diag('effects layer disabled: PAYLOAD carries no constants (x_multiplier/y_multiplier/x_scalar/y_scalar) to project spawn_x/spawn_y');
+        warnedNoConstants = true;
+      }
+      return;
+    }
+    (PAYLOAD.effects || []).forEach(function (e) {
+      var closeMs = (e.close_ms === null || e.close_ms === undefined) ? Infinity : e.close_ms;
+      if (t < e.open_ms || t > closeMs) return;
+      var u = e.spawn_y * k.x_multiplier + k.x_scalar;
+      var v = e.spawn_x * k.y_multiplier + k.y_scalar;
+      var x = u * canvas.width, y = v * canvas.height;
+      ctx.fillStyle = 'rgba(255, 210, 0, 0.35)';
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffd200';
+      ctx.font = '9px monospace';
+      ctx.fillText(String(e.effect_type), x + 8, y + 3);
+    });
+  }
+
+  // Events (roundStarted, spikePlanted, spikeDefused, switchTeams,
+  // characterUltimateUsed, characterDeath) carry no position of their own,
+  // so they render as a short text ticker rather than a minimap blip --
+  // except characterDeath, which is marked at the victim's last known
+  // position when that position is resolvable.
+  function drawEvents(ctx, t) {
+    var windowMs = 1000;
+    var recent = (PAYLOAD.events || []).filter(function (e) {
+      return e.time_ms <= t && e.time_ms >= t - windowMs;
+    });
+    if (recent.length) {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(4, 4, 320, 14 * recent.length + 6);
+      ctx.fillStyle = '#ddd';
+      ctx.font = '10px monospace';
+      recent.forEach(function (e, i) {
+        ctx.fillText(e.time_ms + 'ms ' + e.group + ' w0=' + e.word0 + ' w1=' + e.word1, 8, 16 + i * 14);
+      });
+    }
+    recent.forEach(function (e) {
+      if (e.group !== 'characterDeath') return;
+      var victim = decoded[String(e.word1)];
+      if (!victim) return;
+      var idx = sampleIndexAt(victim, e.time_ms);
+      if (idx < 0) return;
+      var x = (victim.us[idx] / 65535) * canvas.width;
+      var y = (victim.vs[idx] / 65535) * canvas.height;
+      ctx.strokeStyle = '#ff2b6f';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 6, y - 6); ctx.lineTo(x + 6, y + 6);
+      ctx.moveTo(x + 6, y - 6); ctx.lineTo(x - 6, y + 6);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    });
+  }
+
+  function layerChecked(id) {
+    var el = document.getElementById(id);
+    return !!(el && el.checked);
+  }
+
+  function drawFrame(t) {
+    var clock = document.getElementById('clock');
+    if (clock) {
+      var r = rounds[currentRoundIdx];
+      clock.textContent = (r ? 'round ' + r.index : 'round -') + '  t=' + t + ' ms';
+    }
+    if (!canvas.getContext) return;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    var show = {
+      players: layerChecked('layer-players'),
+      pawns: layerChecked('layer-pawns'),
+      postdeath: layerChecked('layer-postdeath'),
+      effects: layerChecked('layer-effects'),
+      events: layerChecked('layer-events'),
+      health: layerChecked('layer-health')
+    };
+
+    Object.keys(decoded).forEach(function (guid) {
+      var f = decoded[guid];
+      // 'pawn' and 'unknown' (an unresolved GUID, already its own finding)
+      // share the pawns toggle -- there is no seventh checkbox for it -- but
+      // 'unknown' keeps its own alarm colour (see colorFor) so it still
+      // reads as different from an ordinary ability pawn.
+      var visible = f.kind === 'player' ? show.players
+                  : f.kind === 'postdeath' ? show.postdeath
+                  : show.pawns;
+      if (!visible) return;
+      var idx = sampleIndexAt(f, t);
+      if (idx < 0) return;
+      var x = (f.us[idx] / 65535) * canvas.width;
+      var y = (f.vs[idx] / 65535) * canvas.height;
+      var angleDeg = f.yaws[idx] * 360 / 256;
+      var label = null;
+      if (f.kind === 'player') {
+        label = (PAYLOAD.players && PAYLOAD.players[guid]) || guid;
+        if (show.health && healthIndex[guid]) {
+          var hp = lastValueAt(healthIndex[guid].HealthDamageSection, t);
+          var ar = lastValueAt(healthIndex[guid].AttachedDamageSection, t);
+          label += ' hp' + fmtStat(hp) + ' ar' + fmtStat(ar);
+        }
+      }
+      drawMarker(ctx, x, y, angleDeg, f.kind, label);
+    });
+
+    if (show.effects) drawEffects(ctx, t);
+    if (show.events) drawEvents(ctx, t);
+  }
+
+  var currentRoundIdx = 0;
+  var currentTimeMs = rounds.length ? rounds[0].start_ms : 0;
+  var playing = false;
+  var lastFrameWall = null;
+  var STEP_MS = 1000 / (PAYLOAD.playbackHz || 20);
+
+  function setRound(idx, timeMs) {
+    if (!rounds.length) { drawFrame(0); return; }
+    idx = Math.max(0, Math.min(rounds.length - 1, idx));
+    currentRoundIdx = idx;
+    var r = rounds[idx];
+    var lastMs = Math.max(r.start_ms, r.end_ms - 1);
+    var seek = document.getElementById('seek');
+    seek.min = String(r.start_ms);
+    seek.max = String(lastMs);
+    var t = (timeMs === undefined) ? r.start_ms
+          : Math.min(Math.max(timeMs, r.start_ms), lastMs);
+    currentTimeMs = t;
+    seek.value = String(t);
+    document.getElementById('round').value = String(idx);
+    drawFrame(t);
+  }
+
+  function roundIndexForTime(t) {
+    if (!rounds.length) return 0;
+    // rounds_from_events only creates a boundary at each roundStarted, so a
+    // finding timestamped before the FIRST one (pre-round warmup movement,
+    // for instance) falls before rounds[0].start_ms and matches no round in
+    // the loop below. Without this check that silently fell through to the
+    // LAST round instead of the first -- a click on an early finding would
+    // jump to the end of the match with no sign of why.
+    if (t < rounds[0].start_ms) return 0;
+    var i;
+    for (i = 0; i < rounds.length; i++) {
+      if (t >= rounds[i].start_ms && t < rounds[i].end_ms) return i;
+    }
+    return rounds.length - 1;
+  }
+
+  function stopPlayback() {
+    playing = false;
+    var btn = document.getElementById('play');
+    if (btn) btn.textContent = 'play';
+  }
+
+  // Every finding's onclick calls this. It may land in a different round
+  // than the one currently shown, so it re-picks the round before seeking.
+  function seekTo(t) {
+    stopPlayback();
+    setRound(roundIndexForTime(t), t);
+  }
+
+  function tick(now) {
+    if (!playing) return;
+    if (lastFrameWall === null) lastFrameWall = now;
+    if (now - lastFrameWall >= STEP_MS) {
+      lastFrameWall = now;
+      var r = rounds[currentRoundIdx];
+      var t = currentTimeMs + STEP_MS;
+      if (!r || t >= r.end_ms) {
+        stopPlayback();
+        return;
+      }
+      currentTimeMs = t;
+      document.getElementById('seek').value = String(t);
+      drawFrame(t);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  try {
+    var playBtn = document.getElementById('play');
+    playBtn.addEventListener('click', function () {
+      playing = !playing;
+      playBtn.textContent = playing ? 'pause' : 'play';
+      if (playing) { lastFrameWall = null; requestAnimationFrame(tick); }
+    });
+
+    document.getElementById('seek').addEventListener('input', function (e) {
+      stopPlayback();
+      currentTimeMs = Number(e.target.value);
+      drawFrame(currentTimeMs);
+    });
+
+    document.getElementById('round').addEventListener('change', function (e) {
+      stopPlayback();
+      setRound(Number(e.target.value));
+    });
+
+    ['layer-players', 'layer-pawns', 'layer-postdeath', 'layer-effects',
+     'layer-events', 'layer-health'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('change', function () { drawFrame(currentTimeMs); });
+    });
+  } catch (err) {
+    diag('control wiring failed: ' + err);
+  }
+
+  try {
+    if (rounds.length) { setRound(0); } else { drawFrame(0); }
+  } catch (err) {
+    diag('initial draw failed: ' + err);
+  }
+})();
+</script>

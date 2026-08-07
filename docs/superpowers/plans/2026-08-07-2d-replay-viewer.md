@@ -23,7 +23,8 @@ These apply to every task. Violating any of them fails CI.
 - **Verified constants, copied verbatim from the spec:**
   - Projection (the axes cross): `u = pos_y * xMultiplier + xScalarToAdd`, `v = pos_x * yMultiplier + yScalarToAdd`
   - Park slot: filter when `pos_x < -40000` **and** `pos_z < -40000`. Both axes. Filtering on z alone misclassifies real falls.
-  - Teleport threshold: **3000 cm/s**, measured from the reference replay's own distribution (p90 is 659 cm/s, matching VALORANT's 675 cm/s run speed; 3000 leaves 391 of 1,773,814 samples, 0.022%).
+  - Teleport threshold: **3000 cm/s**, measured from the reference replay's own distribution (p90 is 659 cm/s, matching VALORANT's 675 cm/s run speed; 3000 leaves 448 of 1,837,180 consecutive pairs on `out/rev_check`, 0.024%; the shipped
+    check reports 390 of those after the respawn-grace exclusion).
   - Respawn grace: a displacement within **3000 ms** after a `roundStarted` is a respawn, not a teleport.
   - Playback rate: **20 Hz** (50 ms). Measurement rate: full data, ~125 Hz.
 
@@ -32,7 +33,7 @@ These apply to every task. Violating any of them fails CI.
 | File | Responsibility |
 |---|---|
 | `tools/viewer_projection.py` | Map constants (fetch + cache), world-to-minimap projection, park-slot filter. Knows nothing about rounds or layers. |
-| `tools/viewer_data.py` | Round slicing, downsampling, the eight checks, layer assembly. Pure data; no HTML, no network. |
+| `tools/viewer_data.py` | Round slicing, downsampling, the nine checks, layer assembly. Pure data; no HTML, no network. |
 | `tools/viewer_template.html` | The page: canvas rendering, playback controls, layer toggles, findings list. Contains literal placeholder tokens the builder replaces. |
 | `tools/build_replay_viewer.py` | CLI and orchestration. Reads an export dir, calls the two modules, injects into the template, writes one `.html`. |
 | `tools/tests/test_viewer_projection.py` | Tests for projection and constants. |
@@ -516,7 +517,7 @@ Expected: PASS, 6 tests.
 Add to `docs/USAGE.md`:
 
 ```
-| `viewer_data.py` | Round slicing, playback downsampling, and the eight anomaly checks for `build_replay_viewer.py` |
+| `viewer_data.py` | Round slicing, playback downsampling, and the nine anomaly checks for `build_replay_viewer.py` |
 ```
 
 Run `python tools/check_docs.py`, fix the count, then:
@@ -528,7 +529,7 @@ git commit -m "feat(tools): round slicing, and downsampling that cannot hide a t
 
 ---
 
-### Task 4: The eight checks
+### Task 4: The nine checks
 
 **Files:**
 - Modify: `tools/viewer_data.py`
@@ -539,7 +540,7 @@ git commit -m "feat(tools): round slicing, and downsampling that cannot hide a t
 - Produces:
   - `class Finding(NamedTuple)` with `kind: str`, `time_ms: int`, `subject: str`, `detail: str`
   - `def run_checks(context: dict) -> tuple[list[Finding], dict[str, int]]` returning findings and a per-kind count that includes zeros for every kind
-  - `CHECK_KINDS: tuple[str, ...]` naming all eight
+  - `CHECK_KINDS: tuple[str, ...]` naming all nine
   - `TELEPORT_CM_PER_S: float = 3000.0`
   - `RESPAWN_GRACE_MS: int = 3000`
 
@@ -684,7 +685,7 @@ def _in_unit_square(u: float, v: float) -> bool:
 def run_checks(context: dict) -> tuple[list[Finding], dict[str, int]]:
     """Every check, over the FULL-RATE movement stream.
 
-    Returns the findings and a per-kind count that always carries all eight
+    Returns the findings and a per-kind count that always carries all nine
     keys, zeros included. A count that only appears when non-zero cannot
     distinguish a clean replay from a check that stopped running.
     """
@@ -1416,7 +1417,7 @@ Expected: PASS, 4 tests.
 python tools/build_replay_viewer.py --export out/rev_check --out out/replay_02d4d478.html
 ```
 
-Open the file. Confirm: players move, the round selector has 18 entries, the findings list is populated, and every one of the eight counts is printed including zeros. Record the teleport count. If it is wildly different from the 391 measured at build time, the check is wrong, not the data.
+Open the file. Confirm: players move, the round selector has 18 entries, the findings list is populated, and every one of the nine counts is printed including zeros. Record the teleport count. If it is wildly different from the 390 `run_checks` reports on `out/rev_check` (see the comment above `TELEPORT_CM_PER_S` in `viewer_data.py`), the check is wrong, not the data.
 
 - [ ] **Step 6: Documentation and gates**
 
