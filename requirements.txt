@@ -1,0 +1,10 @@
+# Python dependencies for tools/.
+#
+# The Rust workspace needs nothing from this file; it exists for the scripts in
+# tools/ and for CI's python-checks job.
+#
+# pyarrow is the only third-party import anywhere under tools/. It is not
+# optional: eleven test modules fail to import without it, and CI ran for
+# months with 288 of 376 tools tests silently not executing because nothing
+# installed it.
+pyarrow>=15

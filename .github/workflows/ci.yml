@@ -41,6 +41,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # Without this, eleven test modules fail to import and the suite runs 288
+      # of its 376 tests while still reporting a number -- which is how this job
+      # stayed red for months without anyone reading past the exit code.
+      - name: python dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
       - name: ASCII guard
         run: python tools/check_ascii.py --check
       - name: overlay corrections
