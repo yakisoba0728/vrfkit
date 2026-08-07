@@ -57,5 +57,29 @@ class PatternTests(unittest.TestCase):
             self.assertIn(key, guard.PATTERNS)
 
 
+class ArgParsingTests(unittest.TestCase):
+    """Defect 1 wiring: discovery now goes through corpus_scan.py, and the
+    recursion choice is an explicit, opt-in flag rather than a hardcoded glob.
+    """
+
+    def test_recursive_defaults_to_false(self):
+        args = guard.parse_args(["validate_corpus.py", "vrfkit.exe", "corpus"])
+        self.assertFalse(args.recursive)
+
+    def test_recursive_flag_is_readable(self):
+        args = guard.parse_args(
+            ["validate_corpus.py", "vrfkit.exe", "corpus", "--recursive"])
+        self.assertTrue(args.recursive)
+
+    def test_the_optional_limit_still_parses_positionally(self):
+        """Backward compatibility: `<exe> <corpus> [limit]` must keep working."""
+        args = guard.parse_args(["validate_corpus.py", "vrfkit.exe", "corpus", "5"])
+        self.assertEqual(args.limit, 5)
+
+    def test_limit_is_optional(self):
+        args = guard.parse_args(["validate_corpus.py", "vrfkit.exe", "corpus"])
+        self.assertIsNone(args.limit)
+
+
 if __name__ == "__main__":
     unittest.main()

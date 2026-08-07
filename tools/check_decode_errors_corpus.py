@@ -26,9 +26,18 @@ Exports run into a temporary directory that is deleted as soon as its counters
 have been read, so the peak disk cost is (jobs x one replay's Parquet output)
 rather than the whole corpus.
 
+Corpus discovery is shared with `validate_corpus.py` through `corpus_scan.py`
+-- read that module's docstring for why the default does not recurse into
+subdirectories (a `validate_corpus.py`/`check_decode_errors_corpus.py` run
+pointed at the same directory used to disagree by exactly this: 153 files
+against 126, a 27-file gap in a `Demos/old` subdirectory that this tool's
+narrower glob silently skipped, with nothing printed to say so) and why the
+excluded count always prints. Pass `--recursive` to walk subdirectories too.
+
 Usage:
     python tools/check_decode_errors_corpus.py <vrfkit.exe> <corpus dir>
     python tools/check_decode_errors_corpus.py <vrfkit.exe> <corpus dir> --jobs 8
+    python tools/check_decode_errors_corpus.py <vrfkit.exe> <corpus dir> --recursive
 
 The struct-blob decoders (RoundResults, TeamEconomy, RoundInfos) are checked
 here for the same reason and are, if anything, a worse case: they are additive,
@@ -71,6 +80,8 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import corpus_scan
 
 DECODE_ERRORS = re.compile(r"Decode errors:\s+(\d+)")
 DECODED_OK = re.compile(r"Decoded OK:\s+(\d+)")
@@ -168,20 +179,34 @@ def _export_one(exe: Path, replay: Path) -> tuple[str, dict[str, int] | None, st
         shutil.rmtree(out, ignore_errors=True)
 
 
-def main() -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """`argv=None` defers to `sys.argv[1:]` (argparse's own default); tests pass
+    an explicit list instead of monkeypatching `sys.argv`."""
     ap = argparse.ArgumentParser()
     ap.add_argument("exe", type=Path)
     ap.add_argument("corpus", type=Path)
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--limit", type=int, default=0, help="only the first N replays")
-    args = ap.parse_args()
+    ap.add_argument("--recursive", action="store_true",
+                    help="also walk subdirectories of <corpus> -- see "
+                         "corpus_scan.py for why this is opt-in")
+    return ap.parse_args(argv)
+
+
+def main() -> int:
+    args = parse_args()
 
     if not args.exe.is_file():
         print(f"executable not found: {args.exe}", file=sys.stderr)
         return 2
-    files = sorted(args.corpus.glob("*.vrf"))
+
+    scan = corpus_scan.discover(args.corpus, args.recursive)
+    # Unconditional, `excluded=0` included -- see corpus_scan.py's docstring.
+    print(corpus_scan.scope_line(scan))
+    files = scan.files
     if args.limit:
         files = files[: args.limit]
+        print(f"limited to the first {len(files)} of {len(scan.files)} discovered")
     if not files:
         print(f"no .vrf files under {args.corpus}", file=sys.stderr)
         return 2

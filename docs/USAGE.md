@@ -456,11 +456,12 @@ records the fields that failed the bar and why.
 
 | Script | What it watches |
 |---|---|
-| `validate_corpus.py` | Framing (full preserved corpus) |
+| `validate_corpus.py` | Framing (preserved corpus, top level; `--recursive` for subdirectories) |
 | `validate_metrics_corpus.py` | Metrics pipeline passes |
 | `check_corpus_baseline.py` | Per-build corpus baseline |
 | `check_export_baseline.py` | Export counters + per-file rows/bytes |
-| `check_decode_errors_corpus.py` | Overlay type errors + struct blob failures |
+| `check_decode_errors_corpus.py` | Overlay type errors + struct blob failures (top level; `--recursive` for subdirectories, `--checkpoints` to also decode Checkpoint chunks) |
+| `corpus_scan.py` | Not a check -- the `.vrf` discovery `validate_corpus.py` and `check_decode_errors_corpus.py` share, so the two can no longer glob a directory two different ways and disagree about what "the corpus" is without saying so. Non-recursive by default; read its docstring for why. |
 | `check_component_remaps.py` | Whether each Blueprint-component remap still matches. Needs only an export, so it works on a replay from a build that has no baseline -- which is the case a renamed component would otherwise slip through. |
 | `check_metrics_baseline.py` | **Semantics** -- rounds, score, K/D/A |
 | `compare_combat_report.py` | Metrics-input multiset |
@@ -469,6 +470,15 @@ records the fields that failed the bar and why.
 | `check_effect_decoder.py` | Effect decoder (12 cases) |
 | `check_ascii.py` | Rust source ASCII sweep (116 files) |
 | `check_docs.py` | This document itself (below) |
+
+Both `validate_corpus.py` and `check_decode_errors_corpus.py` print a
+`corpus scope:` line before doing any work, stating how many `.vrf` files were
+found, whether the scan was recursive, and how many more sit in subdirectories
+and were excluded -- `0 excluded` prints too, not just a nonzero count, so the
+line always answers "what did this run actually scan" without having to
+compare it against the other tool's output. Pass `--recursive` on either one
+to also walk subdirectories; pass it on both if you need them to agree on a
+wider corpus than the top level.
 
 `check_docs.py` checks this document -- that every `tools/` script is
 mentioned, every crate is in the table, every link resolves, and every quoted

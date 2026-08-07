@@ -106,5 +106,17 @@ class DeadCounterTests(unittest.TestCase):
         self.assertEqual(len(guard.dead_counters(totals)), 2)
 
 
+class ArgParsingTests(unittest.TestCase):
+    """Defect 1 wiring: discovery now goes through corpus_scan.py."""
+
+    def test_recursive_defaults_to_false(self):
+        args = guard.parse_args(["vrfkit.exe", "corpus"])
+        self.assertFalse(args.recursive)
+
+    def test_recursive_flag_is_readable(self):
+        args = guard.parse_args(["vrfkit.exe", "corpus", "--recursive"])
+        self.assertTrue(args.recursive)
+
+
 if __name__ == "__main__":
     unittest.main()

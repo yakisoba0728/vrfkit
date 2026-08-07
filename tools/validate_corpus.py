@@ -11,12 +11,19 @@ Set VRFKIT_JOBS to override the worker count (default: cores - 2, capped at
 nothing. Parallelising *inside* a replay is a different question, measured
 and closed in docs/archive/PROJECT_STATUS.md 7-F.
 
+Corpus discovery is shared with `check_decode_errors_corpus.py` through
+`corpus_scan.py` -- read that module's docstring for why the default does not
+recurse into subdirectories and why the excluded count always prints. Pass
+`--recursive` to walk subdirectories too.
+
 Usage:
     python tools/validate_corpus.py <vrfkit.exe> <dir-with-vrf-files> [limit]
+    python tools/validate_corpus.py <vrfkit.exe> <dir-with-vrf-files> --recursive
 """
 
 from __future__ import annotations
 
+import argparse
 import collections
 import os
 import re
@@ -25,6 +32,8 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import corpus_scan
 
 PATTERNS = {
     "branch": re.compile(r"Branch:\s+(\S+)"),
@@ -88,18 +97,39 @@ def _run_one(exe: Path, path: Path) -> tuple[str | None, str]:
     return None, out
 
 
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parsed as `argv[1:]` (not `sys.argv` directly) so this is testable
+    without monkeypatching -- pass a fake argv and read the Namespace back."""
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("exe", type=Path)
+    ap.add_argument("corpus", type=Path)
+    ap.add_argument("limit", type=int, nargs="?", default=None,
+                    help="only validate the first N discovered replays")
+    ap.add_argument("--recursive", action="store_true",
+                    help="also walk subdirectories of <corpus> -- see "
+                         "corpus_scan.py for why this is opt-in")
+    return ap.parse_args(argv[1:])
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) < 3:
-        raise SystemExit(__doc__)
-    exe, root = Path(argv[1]), Path(argv[2])
-    limit = int(argv[3]) if len(argv) > 3 else None
+    args = parse_args(argv)
+    exe, root = args.exe, args.corpus
     # Leave two cores for the OS; each worker is a whole vrfkit process.
     jobs = max(1, min(int(os.environ.get("VRFKIT_JOBS", "0")) or (os.cpu_count() or 2) - 2, 16))
-    files = sorted(root.rglob("*.vrf"))[:limit]
+
+    scan = corpus_scan.discover(root, args.recursive)
+    # Unconditional, `excluded=0` included -- see corpus_scan.py. A line that
+    # only appeared when something was left out could not be told apart from
+    # a scan that silently stopped discovering files at all.
+    print(corpus_scan.scope_line(scan))
+    files = scan.files
+    if args.limit is not None:
+        files = files[: args.limit]
+        print(f"limited to the first {len(files)} of {len(scan.files)} discovered")
     if not files:
         raise SystemExit(f"no .vrf under {root}")
 
-    print(f"validating {len(files)} replays with {exe} ({jobs} workers)\n")
+    print(f"\nvalidating {len(files)} replays with {exe} ({jobs} workers)\n")
     ok = 0
     failures: list[tuple[str, str]] = []
     branches: collections.Counter[str] = collections.Counter()
