@@ -198,31 +198,48 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(counts["effect_off_map"], 1)
 
     def test_health_rising_without_a_heal_is_reported(self):
-        """A genuine WITHIN-section rise (both rows the same section) with no
-        heal RPC still fires -- the fix for the cross-section artifact must
-        not blunt the check's actual job."""
-        hp = [(1000, 1, 50.0, False, "HealthDamageSection"),
-              (2000, 1, 90.0, False, "HealthDamageSection")]
+        """A genuine WITHIN-instance rise (both rows the same section AND the
+        same component instance) with no heal RPC still fires -- neither the
+        section split nor the instance split may blunt the check's actual
+        job."""
+        hp = [(1000, 1, 50.0, False, "HealthDamageSection", 10),
+              (2000, 1, 90.0, False, "HealthDamageSection", 10)]
         _, counts = vd.run_checks(context(health=hp))
         self.assertEqual(counts["unexplained_heal"], 1)
 
     def test_health_rising_with_a_heal_is_not_reported(self):
-        hp = [(1000, 1, 50.0, False, "HealthDamageSection"),
-              (2000, 1, 90.0, True, "HealthDamageSection")]
+        hp = [(1000, 1, 50.0, False, "HealthDamageSection", 10),
+              (2000, 1, 90.0, True, "HealthDamageSection", 10)]
         _, counts = vd.run_checks(context(health=hp))
         self.assertEqual(counts["unexplained_heal"], 0)
 
     def test_two_sections_at_the_same_millisecond_do_not_produce_unexplained_heal(self):
-        """The real defect this round fixes: one damage call reports the
-        always-zero ShieldDamageSection (0.0) alongside the real
-        HealthDamageSection reading (61.0) at the identical time_ms.
-        Flattening both into one series and sorting by value makes "0 -> 61"
-        look like a rise with no heal RPC; splitting per (player, section)
-        means the two never get adjacent-paired at all. Measured on the real
-        export: 100% of the 554 pre-fix firings were exactly this shape or
-        the round-boundary reset below."""
-        hp = [(210343, 1, 0.0, False, "ShieldDamageSection"),
-              (210343, 1, 61.0, False, "HealthDamageSection")]
+        """The real defect the section split fixes: one damage call reports
+        the always-zero ShieldDamageSection (0.0) alongside the real
+        HealthDamageSection reading (61.0) at the identical time_ms -- two
+        different component instances, not just two different section
+        classes. Flattening both into one series and sorting by value makes
+        "0 -> 61" look like a rise with no heal RPC; splitting per (player,
+        section, instance) means the two never get adjacent-paired at all."""
+        hp = [(210343, 1, 0.0, False, "ShieldDamageSection", 20),
+              (210343, 1, 61.0, False, "HealthDamageSection", 10)]
+        _, counts = vd.run_checks(context(health=hp))
+        self.assertEqual(counts["unexplained_heal"], 0)
+
+    def test_the_same_section_repurchased_as_a_new_instance_does_not_fire(self):
+        """The real defect fixed THIS round, found by re-review after the
+        section split alone left 60 firings on out/rev_check: a section
+        CLASS like "AttachedDamageSection" is reused across every armour
+        item a player ever owns. An old instance destroyed in combat (last
+        reading 0) followed by a fresh purchase of the same armour TYPE
+        (first reading 23, a different ChangedComponent NetGUID) is not a
+        rise -- it is two different physical components sharing one class
+        name. 57 of the 60 remaining firings on the real export were exactly
+        this shape. Grouping by (player, section, instance) instead of
+        (player, section) is what tells them apart; this is the test the
+        mutation (reverting to (player, section)) must fail."""
+        hp = [(100, 1, 0.0, False, "AttachedDamageSection", 30),
+              (200, 1, 23.0, False, "AttachedDamageSection", 40)]
         _, counts = vd.run_checks(context(health=hp))
         self.assertEqual(counts["unexplained_heal"], 0)
 
@@ -230,32 +247,31 @@ class CheckTests(unittest.TestCase):
         """A second real defect found by measuring the fix against
         out/rev_check, not anticipated by the section split alone: several
         hits landing in the SAME millisecond (e.g. automatic-weapon fire)
-        produce several calls to the same section, and health_series orders
-        same-millisecond rows by true call order (packet_id, a global wire
-        sequence number). run_checks must preserve that order rather than
-        re-sorting by life, or a real DECREASING damage sequence reads
-        backwards as an ascending "staircase" of unexplained rises. Given
-        here in true call order: 90 (first hit) then 50 (second, bigger
-        hit) -- a value-sort would flip these into 50 -> 90 and misreport
-        it as an unexplained heal. Measured live: this shape, not fixed
-        here, accounted for 42 of the 98 firings left after the section
-        split alone."""
-        hp = [(1000, 1, 90.0, False, "HealthDamageSection"),
-              (1000, 1, 50.0, False, "HealthDamageSection")]
+        produce several calls to the same section AND the same component
+        instance, and health_series orders same-millisecond rows by true
+        call order (packet_id, a global wire sequence number). run_checks
+        must preserve that order rather than re-sorting by life, or a real
+        DECREASING damage sequence reads backwards as an ascending
+        "staircase" of unexplained rises. Given here in true call order: 90
+        (first hit) then 50 (second, bigger hit) -- a value-sort would flip
+        these into 50 -> 90 and misreport it as an unexplained heal."""
+        hp = [(1000, 1, 90.0, False, "HealthDamageSection", 10),
+              (1000, 1, 50.0, False, "HealthDamageSection", 10)]
         _, counts = vd.run_checks(context(health=hp))
         self.assertEqual(counts["unexplained_heal"], 0)
 
     def test_a_round_boundary_reset_does_not_fire_unexplained_heal(self):
-        """The other half of the real defect: every player's health resets to
-        100 within a millisecond of every round start, and a dead player's
-        last recorded value is essentially never exactly 100, so the rise
-        condition (l1 > l0) was met unconditionally at every boundary.
-        Respawn grace, matching the teleport checks (RESPAWN_GRACE_MS after
-        an internal round start), excuses it -- the round-reset broadcast
-        moving a player to full health is not a defect, same as it moving
-        their position to spawn."""
-        hp = [(400, 1, 0.0, False, "HealthDamageSection"),
-              (501, 1, 100.0, False, "HealthDamageSection")]
+        """The other half of the section-split-era defect: every player's
+        health resets to 100 within a millisecond of every round start, on
+        the SAME component instance (a round reset does not spawn a new
+        HealthDamageSection), and a dead player's last recorded value is
+        essentially never exactly 100, so the rise condition (l1 > l0) was
+        met unconditionally at every boundary. Respawn grace, matching the
+        teleport checks (RESPAWN_GRACE_MS after an internal round start),
+        excuses it -- the round-reset broadcast moving a player to full
+        health is not a defect, same as it moving their position to spawn."""
+        hp = [(400, 1, 0.0, False, "HealthDamageSection", 10),
+              (501, 1, 100.0, False, "HealthDamageSection", 10)]
         rounds = [vd.Round(0, 0, 500), vd.Round(1, 500, 100000)]
         _, counts = vd.run_checks(context(health=hp, rounds=rounds))
         self.assertEqual(counts["unexplained_heal"], 0)
@@ -471,7 +487,8 @@ class ReadExportTests(unittest.TestCase):
         net_guids.parquet and resolve ChangedComponent to a section), so this
         fixture writes packet_id/channel_index/value_i64 too, and a
         net_guids.parquet, and pins the resolved section in the expected
-        tuple."""
+        tuple. Round 3: the tuple grew a 6th field, the raw ChangedComponent
+        instance GUID, pinned here too."""
         with tempfile.TemporaryDirectory() as tmp:
             export = self.write_export(
                 Path(tmp),
@@ -494,7 +511,7 @@ class ReadExportTests(unittest.TestCase):
                 "path": pa.array(["HealthDamageSection"], pa.string()),
             }), export / "net_guids.parquet")
             context = vd.read_export(export)
-        self.assertEqual(context["health"], [(500, 1, 80.0, False, "HealthDamageSection")])
+        self.assertEqual(context["health"], [(500, 1, 80.0, False, "HealthDamageSection", 10)])
 
     def test_manifest_is_returned_for_the_page_to_read(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -601,7 +618,7 @@ class HealthSeriesTests(unittest.TestCase):
                  arr="LifeChangeBySection", idx=0, life=100.0, cc=10),
         ], net_guids={10: "HealthDamageSection"})
         series = vd.health_series(export, {1: "p1"})
-        self.assertEqual([(t, g, life) for t, g, life, _, _ in series],
+        self.assertEqual([(t, g, life) for t, g, life, _, _, _ in series],
                          [(100, 1, 80.0), (200, 1, 100.0)])
 
     def test_a_heal_call_is_marked_as_a_heal(self):
@@ -628,6 +645,19 @@ class HealthSeriesTests(unittest.TestCase):
             dict(time_ms=100, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
                  life=61.0, cc=10)], net_guids={10: "HealthDamageSection"})
         self.assertEqual(vd.health_series(export, {1: "p1"})[0][4], "HealthDamageSection")
+
+    def test_instance_is_the_raw_changed_component_guid(self):
+        """`instance` is the SAME ChangedComponent value `section` was
+        resolved from -- not a fresh lookup, not the resolved class string.
+        A section CLASS like "AttachedDamageSection" is reused across every
+        armour item a player ever owns, so the class string alone cannot
+        tell two different physical components apart; the raw NetGUID can."""
+        export = self.write_calls([
+            dict(time_ms=100, guid=1, fn="MulticastNotifyDamage_Point", idx=0,
+                 life=61.0, cc=6944)], net_guids={6944: "AttachedDamageSection"})
+        row = vd.health_series(export, {1: "p1"})[0]
+        self.assertEqual(row[4], "AttachedDamageSection")
+        self.assertEqual(row[5], 6944)
 
     def test_the_shield_shell_and_real_armour_resolve_to_distinct_sections(self):
         """docs/DATA.md convention 2: armour is AttachedDamageSection, not
@@ -693,12 +723,12 @@ class HealthSeriesTests(unittest.TestCase):
         function, reusing the same array index, can land in the same
         millisecond -- the round-reset broadcast fires as two distinct RPCs,
         one per section, both at LifeChangeEvents[0]. A join key of (guid,
-        time_ms, fn, arr, idx) collides on this and silently drops or
-        corrupts a reading: measured as 514 real rows where a second call's
-        value overwrote a first call's DIFFERENT value at the identical key,
-        out of 5,170 total LifeResult rows on that export. packet_id +
-        channel_index (both present on every field row) disambiguate two
-        calls that merely happen to share a millisecond."""
+        time_ms, fn, arr, idx) would collide on this and silently drop or
+        corrupt a reading -- found and fixed before it shipped, during
+        design, not after a production incident; no committed version of
+        health_series ever used that key. packet_id + channel_index (both
+        present on every field row) disambiguate two calls that merely
+        happen to share a millisecond."""
         export = self.write_calls([
             dict(time_ms=92034, guid=1, fn="MulticastSectionLifeChange", idx=0,
                  life=100.0, cc=10, packet_id=28687, channel=77),
@@ -706,7 +736,7 @@ class HealthSeriesTests(unittest.TestCase):
                  life=0.0, cc=20, packet_id=28688, channel=77),
         ], net_guids={10: "HealthDamageSection", 20: "ShieldDamageSection"})
         series = vd.health_series(export, {1: "p1"})
-        got = sorted((life, section) for _, _, life, _, section in series)
+        got = sorted((life, section) for _, _, life, _, section, _ in series)
         self.assertEqual(got, [(0.0, "ShieldDamageSection"), (100.0, "HealthDamageSection")])
 
 

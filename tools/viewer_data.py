@@ -201,20 +201,29 @@ def run_checks(context: dict) -> tuple[list[Finding], dict[str, int]]:
             report("effect_off_map", effect["open_ms"], effect["effect_type"],
                    f"spawn projects to ({u:.3f}, {v:.3f})")
 
-    # Grouped by (guid, section), NOT by guid alone: one damage call can
-    # report several sections (e.g. the always-zero ShieldDamageSection
-    # alongside the real HealthDamageSection reading) in the same
-    # millisecond, and comparing across sections as if they were one
-    # quantity misreads "shield 0, health 61" as a 0 -> 61 rise. See
-    # health_series and docs/DATA.md, "Health is absolute, not a
+    # Grouped by (guid, section, instance), NOT (guid, section): a section
+    # CLASS like "AttachedDamageSection" is reused across every armour item a
+    # player ever owns, so grouping by class alone conflates an old instance
+    # destroyed in combat with a fresh purchase that replaced it -- "old
+    # armour ended at 0, new armour started at 23" is not a rise, it is two
+    # different physical components sharing one class name. `instance` (the
+    # raw ChangedComponent NetGUID) tells them apart. Section still matters
+    # on top of that: one damage call can report several sections (e.g. the
+    # always-zero ShieldDamageSection alongside the real HealthDamageSection
+    # reading) in the same millisecond, and comparing across sections as if
+    # they were one quantity misreads "shield 0, health 61" as a 0 -> 61
+    # rise. See health_series and docs/DATA.md, "Health is absolute, not a
     # subtraction". Respawn grace mirrors the teleport checks above: every
     # player's health resets to full within a millisecond of every round
     # start, and that reset is not a defect any more than the position reset
-    # at the same moment is.
-    by_player_section: dict[tuple[int, str], list[tuple]] = {}
-    for time_ms, guid, life, is_heal, section in context["health"]:
-        by_player_section.setdefault((guid, section), []).append((time_ms, life, is_heal))
-    for (guid, section), rows in by_player_section.items():
+    # at the same moment is -- but a reset can also happen mid-round (e.g. a
+    # revive), which is a genuine within-instance rise this check should
+    # still surface; grace only excuses rises near a round boundary.
+    by_player_section_instance: dict[tuple[int, str, object], list[tuple]] = {}
+    for time_ms, guid, life, is_heal, section, instance in context["health"]:
+        by_player_section_instance.setdefault(
+            (guid, section, instance), []).append((time_ms, life, is_heal))
+    for (guid, section, instance), rows in by_player_section_instance.items():
         # Stable sort keyed on time_ms ALONE, not the bare tuple: sorting the
         # bare (time_ms, life, is_heal) tuple breaks a time_ms tie on life
         # ascending, which is wrong -- several hits landing in the same
@@ -280,8 +289,8 @@ UNKNOWN_SECTION = "unknown"
 
 
 def health_series(export_dir: Path, players: dict) -> list[tuple]:
-    """`(time_ms, guid, life_result, is_heal, section)` for the manifest
-    players.
+    """`(time_ms, guid, life_result, is_heal, section, instance)` for the
+    manifest players.
 
     `LifeResult` is the ABSOLUTE value after the change, so nothing has to be
     accumulated (docs/DATA.md). `section` is the element's `ChangedComponent`
@@ -291,13 +300,22 @@ def health_series(export_dir: Path, players: dict) -> list[tuple]:
     convention 2), or others (OverhealDamageSection, ability-specific
     sections) -- reported as-is rather than normalized into a fixed enum,
     since docs/DATA.md is explicit that component names move with the game
-    and inventing a mapping here would need the same upkeep. A caller must
-    split per (player, section) before comparing values over time: one
-    damage call can report several sections (e.g. shield then health) in the
-    SAME element burst, and treating them as one flattened series makes an
-    always-zero shield reading look like a "rise" into the real health
-    value that landed beside it. See `docs/DATA.md`, "Health is absolute,
-    not a subtraction".
+    and inventing a mapping here would need the same upkeep.
+
+    `instance` is the raw `ChangedComponent` NetGUID itself -- the SAME value
+    `section` was resolved from, not a separate lookup -- or None when it
+    could not be read (see UNKNOWN_SECTION). A section CLASS like
+    "AttachedDamageSection" is reused across every armour item a player ever
+    owns: an old instance destroyed in one round and a fresh purchase next
+    round are different physical components sharing one class name, and
+    comparing across that reuse misreads "old armour ended at 0, new armour
+    started at 23" as a rise. A caller must split per (player, section,
+    instance) -- not (player, section) alone -- before comparing values over
+    time: one damage call can also report several sections for the SAME
+    actor in the SAME element burst (e.g. shield then health), and treating
+    those as one flattened series makes an always-zero shield reading look
+    like a "rise" into the real health value that landed beside it. See
+    `docs/DATA.md`, "Health is absolute, not a subtraction".
 
     Grouped by (actor_net_guid, packet_id, channel_index, fn, array, index),
     not by time_ms: measured on the real export, the SAME function can be
@@ -360,10 +378,11 @@ def health_series(export_dir: Path, players: dict) -> list[tuple]:
         section = (section_of.get(changed_component) or UNKNOWN_SECTION
                    if changed_component is not None else UNKNOWN_SECTION)
         packet_id = key[1]
-        ordered.append((time_ms, packet_id, guid, life, fn in HEAL_FUNCTIONS, section))
-    ordered.sort()
-    return [(time_ms, guid, life, is_heal, section)
-            for time_ms, packet_id, guid, life, is_heal, section in ordered]
+        ordered.append((time_ms, packet_id, guid, life, fn in HEAL_FUNCTIONS,
+                         section, changed_component))
+    ordered.sort(key=lambda r: r[:2])
+    return [(time_ms, guid, life, is_heal, section, instance)
+            for time_ms, packet_id, guid, life, is_heal, section, instance in ordered]
 
 
 _REQUIRED_EXPORT_FILES = ("movement.parquet", "actors.parquet", "events.parquet", "manifest.json")
