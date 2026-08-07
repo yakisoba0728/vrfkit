@@ -329,6 +329,11 @@ class DocCoverageTests(unittest.TestCase):
         self.assertIn("docs/DATA.md", guard.ALL_DOCS)
         self.assertIn("CONTRIBUTING.md", guard.ALL_DOCS)
 
+    def test_claude_md_is_covered(self):
+        """CLAUDE.md carries a relative link (to CONTRIBUTING.md) that
+        nothing was checking -- it just happens to be correct today."""
+        self.assertIn("CLAUDE.md", guard.ALL_DOCS)
+
     def test_every_covered_doc_has_resolving_links(self):
         for name in guard.ALL_DOCS:
             path = guard.REPO / name

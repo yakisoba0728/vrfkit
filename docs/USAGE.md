@@ -539,7 +539,7 @@ cargo clippy --all-targets -- -D warnings         # 0
 cargo fmt --check
 python tools/check_ascii.py --check               # 116 files, ASCII only
 python tools/check_effect_decoder.py --check      # 12 cases
-python -m unittest discover -s tools/tests -p "test_*.py"   # 376 passing
+python -m unittest discover -s tools/tests -p "test_*.py"   # 377 passing
 python tools/check_docs.py --fast                 # do the docs still describe this repo
 python tools/apply_type_corrections.py --check    # 94 corrections present
 ```

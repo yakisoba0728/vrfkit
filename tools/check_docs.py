@@ -23,7 +23,8 @@ and passes every test. So this reads the repo and the docs and compares:
   9. no quoted `check_ascii` file count or correction count is stale, in any
      of `ALL_DOCS` -- see `stale_measured_counts`, and a count that could not
      be MEASURED is reported rather than skipped
- 10. every relative link resolves in `docs/DATA.md` and `CONTRIBUTING.md` too
+ 10. every relative link resolves in `docs/DATA.md`, `CONTRIBUTING.md` and
+     `CLAUDE.md` too
 
 (6) is (5) upgraded the way (8) was: (5) asks only whether the live number
 appears somewhere in README and USAGE, so a stale size could sit one line from
@@ -258,8 +259,11 @@ def contradicting_test_counts(docs: dict[str, str]) -> list[str]:
 #: the rest only have to not contradict them. `docs/DATA.md` was outside this
 #: set entirely -- the most number-dense file in the repo, with no link check,
 #: no size check and no count check -- and `CONTRIBUTING.md` names the suites a
-#: contributor is told to run.
-ALL_DOCS = ("README.md", "docs/USAGE.md", "docs/DATA.md", "CONTRIBUTING.md")
+#: contributor is told to run. `CLAUDE.md` carries a relative link nothing was
+#: checking; it quotes no counts by design ("counts are omitted on purpose"),
+#: so joining this tier -- not the quote-it tier -- imposes no new obligation.
+ALL_DOCS = ("README.md", "docs/USAGE.md", "docs/DATA.md", "CONTRIBUTING.md",
+            "CLAUDE.md")
 
 #: Numbers that are quoted in prose *and* produced by something runnable, with
 #: the phrasing narrow enough that a match is always that claim. Both of these
