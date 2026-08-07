@@ -411,6 +411,9 @@ disabling it would produce files this crate could not explain.
 
 ## 5. `tools/` reference
 
+`pip install -r requirements.txt` first (pyarrow, numpy) -- everything below
+needs it.
+
 ### Generators
 
 **Never hand-edit the output.**

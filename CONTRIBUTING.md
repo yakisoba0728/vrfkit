@@ -13,6 +13,10 @@ cargo build --release -p vrfkit --no-default-features    # inspect / validate on
 
 Edition 2024. `#![forbid(unsafe_code)]` is in every crate — do not add `unsafe`.
 
+Python tooling under `tools/` needs `pip install -r requirements.txt`
+(pyarrow, numpy) — without it several checks below fail to import instead of
+running.
+
 **MSRV is 1.86, and CI pins exactly that.** A newer local toolchain accepts
 syntax 1.86 rejects — `let` chains are the one that has already broken a build —
 so a green `cargo test` on your machine is not evidence CI will pass. Install
