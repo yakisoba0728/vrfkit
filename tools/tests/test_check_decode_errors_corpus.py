@@ -187,6 +187,124 @@ class ArgParsingTests(unittest.TestCase):
         args = guard.parse_args(["vrfkit.exe", "corpus", "--recursive"])
         self.assertTrue(args.recursive)
 
+    def test_checkpoints_defaults_to_false(self):
+        """The existing invocation in docs/USAGE.md must keep working
+        unchanged -- checkpoints cost real time and disk, so opt-in only."""
+        args = guard.parse_args(["vrfkit.exe", "corpus"])
+        self.assertFalse(args.checkpoints)
+
+    def test_checkpoints_flag_is_readable(self):
+        args = guard.parse_args(["vrfkit.exe", "corpus", "--checkpoints"])
+        self.assertTrue(args.checkpoints)
+
+
+#: The `=== Checkpoints ===` block, appended to a healthy main summary, exactly
+#: as summary.rs's print_checkpoints prints it.
+CLEAN_WITH_CHECKPOINTS = LIVE_EXPORT + """
+=== Checkpoints ===
+  Checkpoints:      12
+  Overlay:          500 decoded / 0 errors / 20 raw-skip / 5 not-in-table / 2 unnamed / 1 effect blobs
+  Checkpoint blobs: 8 decoded / 0 failed
+  Checkpoint fails: 0 array / 0 truncated RPC / 0 movement
+  Checkpoint CNC:   3 RPC rows
+"""
+
+
+class ExportCommandTests(unittest.TestCase):
+    """The scope hole: `--checkpoints` must reach the `vrfkit export` argv,
+    not just this tool's own flag parsing."""
+
+    def test_without_the_flag_the_export_command_omits_checkpoints(self):
+        cmd = guard.export_command(Path("vrfkit.exe"), Path("a.vrf"), Path("out"),
+                                   with_checkpoints=False)
+        self.assertNotIn("--checkpoints", cmd)
+
+    def test_with_the_flag_the_export_command_carries_checkpoints(self):
+        cmd = guard.export_command(Path("vrfkit.exe"), Path("a.vrf"), Path("out"),
+                                   with_checkpoints=True)
+        self.assertIn("--checkpoints", cmd)
+
+
+class CheckpointCounterTests(unittest.TestCase):
+    """Follows the module's own discipline: a checkpoint counter that stops
+    being printed must be a failure, never read as a passing zero -- read the
+    module docstring's RoundResults/13.02 incident, now one level down for the
+    checkpoint pass specifically.
+    """
+
+    def test_default_call_does_not_require_checkpoint_counters(self):
+        """Backward compatible: a summary with no checkpoint block at all is
+        still readable when `--checkpoints` was not requested."""
+        counters, err = guard.read_counters(LIVE_EXPORT, 0)
+        self.assertEqual(err, "")
+        self.assertNotIn("checkpoint_decoded", counters)
+
+    def test_checkpoint_counters_are_read_when_required(self):
+        counters, err = guard.read_counters(
+            CLEAN_WITH_CHECKPOINTS, 0, require_checkpoints=True)
+        self.assertEqual(err, "")
+        self.assertEqual(counters["checkpoint_decoded"], 500)
+        self.assertEqual(counters["checkpoint_errors"], 0)
+        self.assertEqual(counters["checkpoint_blobs_decoded"], 8)
+        self.assertEqual(counters["checkpoint_blobs_failed"], 0)
+        self.assertEqual(counters["checkpoint_fail_array"], 0)
+        self.assertEqual(counters["checkpoint_fail_truncated_rpc"], 0)
+        self.assertEqual(counters["checkpoint_fail_movement"], 0)
+
+    def test_a_summary_missing_the_checkpoint_block_is_unreadable_when_required(self):
+        counters, err = guard.read_counters(
+            LIVE_EXPORT, 0, require_checkpoints=True)
+        self.assertIsNone(counters)
+
+    def test_a_summary_missing_just_checkpoint_fails_is_unreadable_when_required(self):
+        """Each of the three checkpoint lines packs several counters into one
+        regex (see CHECKPOINT_COUNTERS), so a line either supplies all of its
+        counters or none of them -- dropping just "Checkpoint fails" must
+        still make the whole replay unreadable, not just those three counters
+        silently absent from the total."""
+        text = "\n".join(
+            l for l in CLEAN_WITH_CHECKPOINTS.splitlines()
+            if "Checkpoint fails" not in l)
+        counters, err = guard.read_counters(text, 0, require_checkpoints=True)
+        self.assertIsNone(counters)
+        self.assertIn("Checkpoint fails", err)
+
+    def test_a_summary_missing_just_the_overlay_line_is_unreadable_when_required(self):
+        text = "\n".join(
+            l for l in CLEAN_WITH_CHECKPOINTS.splitlines()
+            if not l.strip().startswith("Overlay:"))
+        counters, err = guard.read_counters(text, 0, require_checkpoints=True)
+        self.assertIsNone(counters)
+
+    def test_a_summary_missing_just_checkpoint_blobs_is_unreadable_when_required(self):
+        text = "\n".join(
+            l for l in CLEAN_WITH_CHECKPOINTS.splitlines()
+            if "Checkpoint blobs" not in l)
+        counters, err = guard.read_counters(text, 0, require_checkpoints=True)
+        self.assertIsNone(counters)
+        self.assertIn("Checkpoint blobs", err)
+        self.assertIn("Checkpoint fails", err)
+
+
+class DeadCheckpointCounterTests(unittest.TestCase):
+    """Mirrors DeadCounterTests for the checkpoint pass: a corpus where the
+    checkpoint decoders never ran must not read as a clean checkpoint sweep.
+    """
+
+    def test_a_working_checkpoint_corpus_has_no_dead_counters(self):
+        totals = {"checkpoint_decoded": 500, "checkpoint_blobs_decoded": 8}
+        self.assertEqual(guard.dead_checkpoint_counters(totals), [])
+
+    def test_a_corpus_where_no_checkpoint_field_decoded_is_not_a_pass(self):
+        totals = {"checkpoint_decoded": 0, "checkpoint_blobs_decoded": 8}
+        dead = guard.dead_checkpoint_counters(totals)
+        self.assertTrue(dead)
+
+    def test_a_corpus_where_no_checkpoint_blob_decoded_is_not_a_pass(self):
+        totals = {"checkpoint_decoded": 500, "checkpoint_blobs_decoded": 0}
+        dead = guard.dead_checkpoint_counters(totals)
+        self.assertTrue(dead)
+
 
 if __name__ == "__main__":
     unittest.main()

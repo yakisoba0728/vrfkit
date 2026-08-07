@@ -569,6 +569,12 @@ python tools/validate_corpus.py ./target/release/vrfkit.exe <corpus>
 python tools/check_decode_errors_corpus.py ./target/release/vrfkit.exe <corpus>
 python tools/check_metrics_baseline.py
 python tools/compare_combat_report.py
+
+# Optional, opt-in: also decode every Checkpoint chunk and check its counters.
+# Checkpoint decoding was otherwise verified on exactly one pinned replay
+# (tools/baselines/checkpoint_02d4d478.json), never across a corpus. Costs
+# real extra time and disk per replay, so it is not part of the line above.
+python tools/check_decode_errors_corpus.py ./target/release/vrfkit.exe <corpus> --checkpoints
 ```
 
 These read their inputs from `VRFKIT_CORPUS_DIR`, `VRFKIT_CSHARP_DIR` and
@@ -581,9 +587,10 @@ rather than the exit code.
 
 | Check | Watches | Misses | Cost |
 |---|---|---|---|
-| `validate_corpus.py` | Framing (all 215) | Type errors, broken semantics | ~30 s |
+| `validate_corpus.py` | Framing (top level of the corpus dir; `--recursive` for subdirectories) | Type errors, broken semantics | ~30 s |
 | `check_export_baseline.py` | 25 export counters + per-file rows/bytes | Other builds | 1 s |
-| `check_decode_errors_corpus.py` | Overlay type errors + struct blob failures (all 215) | Broken semantics | ~50 s |
+| `check_decode_errors_corpus.py` | Overlay type errors + struct blob failures (top level; `--recursive` for subdirectories) | Broken semantics; Checkpoint chunks, unless `--checkpoints` | ~50 s |
+| `check_decode_errors_corpus.py --checkpoints` | The same, plus every Checkpoint chunk's overlay and struct-blob decode | Broken semantics | slower: `vrfkit export` also decodes every Checkpoint chunk per replay |
 | `check_metrics_baseline.py` | **Semantics** -- rounds, score, K/D/A (5 builds) | Errors in the metrics pipeline itself | ~46 s |
 | `compare_combat_report.py` | Metrics-input multiset | Framing | seconds |
 
