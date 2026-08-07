@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from pathlib import Path
 from typing import NamedTuple
 
@@ -236,6 +237,39 @@ def _column(table, name):
     return table.column(name).to_pylist()
 
 
+# Both spellings. `MulticastNotifyHeal` and `MulticastNotifyOverhealDecay` name
+# their array `LifeChangeBySection`; the damage RPCs name it
+# `LifeChangeEvents`. Filtering on one alone silently drops more than half the
+# calls, which is how this was found (docs/DATA.md, "Health is absolute, not
+# a subtraction").
+LIFE_RESULT_RE = re.compile(
+    r"^(?P<fn>[A-Za-z_]+)\.(LifeChangeEvents|LifeChangeBySection)\[\d+\]\.LifeResult$")
+HEAL_FUNCTIONS = ("MulticastNotifyHeal", "MulticastNotifyOverhealDecay")
+
+
+def health_series(fields_path: Path, players: dict) -> list[tuple]:
+    """`(time_ms, guid, life_result, is_heal)` for the manifest players.
+
+    `LifeResult` is the ABSOLUTE value after the change, so nothing has to be
+    accumulated (docs/DATA.md).
+    """
+    table = pq.read_table(
+        fields_path, columns=["time_ms", "actor_net_guid", "field_name", "value_f64"])
+    out = []
+    for time_ms, guid, name, value in zip(
+        _column(table, "time_ms"), _column(table, "actor_net_guid"),
+        _column(table, "field_name"), _column(table, "value_f64"),
+    ):
+        if guid not in players or value is None or not name:
+            continue
+        matched = LIFE_RESULT_RE.match(name)
+        if not matched:
+            continue
+        out.append((time_ms, guid, value, matched.group("fn") in HEAL_FUNCTIONS))
+    out.sort()
+    return out
+
+
 _REQUIRED_EXPORT_FILES = ("movement.parquet", "actors.parquet", "events.parquet", "manifest.json")
 
 
@@ -310,6 +344,7 @@ def read_export(export_dir: Path) -> dict:
         "events": list(zip(times, groups, word0s, word1s)),
         "effects": effects,
         "effect_tally": effect_tally,
-        "health": [],
+        "health": (health_series(export_dir / "fields.parquet", players)
+                   if (export_dir / "fields.parquet").is_file() else []),
         "match_end_ms": match_end_ms,
     }

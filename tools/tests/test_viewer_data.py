@@ -407,6 +407,28 @@ class ReadExportTests(unittest.TestCase):
             context = vd.read_export(export)
         self.assertEqual(context["health"], [])
 
+    def test_health_is_wired_from_fields_parquet_when_present(self):
+        """The Task 6 seam: `read_export` must call `health_series` and return
+        its rows under `context["health"]` when fields.parquet exists, not
+        leave the Task 5 placeholder `[]` in place forever. Asserted as the
+        exact tuple (not just non-empty) so a mutation that reverts the
+        wiring back to a bare `"health": []` cannot pass vacuously."""
+        with tempfile.TemporaryDirectory() as tmp:
+            export = self.write_export(
+                Path(tmp),
+                players=[{"actor_net_guid": 9, "subject": "11112222aaaa",
+                          "character_net_guid": 1}])
+            pq.write_table(pa.table({
+                "time_ms": pa.array([500], pa.uint32()),
+                "actor_net_guid": pa.array([1], pa.uint32()),
+                "field_name": pa.array(
+                    ["MulticastNotifyDamage_Point.LifeChangeEvents[0].LifeResult"],
+                    pa.string()),
+                "value_f64": pa.array([80.0], pa.float64()),
+            }), export / "fields.parquet")
+            context = vd.read_export(export)
+        self.assertEqual(context["health"], [(500, 1, 80.0, False)])
+
     def test_manifest_is_returned_for_the_page_to_read(self):
         with tempfile.TemporaryDirectory() as tmp:
             export = self.write_export(
@@ -433,6 +455,55 @@ class ReadExportTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 vd.read_export(export)
         self.assertIn("manifest.json", str(ctx.exception))
+
+
+class HealthSeriesTests(unittest.TestCase):
+    """docs/DATA.md "Health is absolute, not a subtraction": LifeResult is the
+    ABSOLUTE value after the change, and MulticastNotifyHeal /
+    MulticastNotifyOverhealDecay name their array LifeChangeBySection while
+    the damage RPCs call it LifeChangeEvents. Filtering on one alone silently
+    drops more than half the calls -- that is what test_both_array_names_are_read
+    pins."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def write(self, rows):
+        """rows: (time_ms, actor_net_guid, field_name, value_f64)"""
+        pq.write_table(pa.table({
+            "time_ms": pa.array([r[0] for r in rows], pa.uint32()),
+            "actor_net_guid": pa.array([r[1] for r in rows], pa.uint32()),
+            "field_name": pa.array([r[2] for r in rows], pa.string()),
+            "value_f64": pa.array([r[3] for r in rows], pa.float64()),
+        }), self.dir / "fields.parquet")
+        return self.dir / "fields.parquet"
+
+    def test_both_array_names_are_read(self):
+        """Filtering on LifeChangeEvents alone drops more than half the calls."""
+        path = self.write([
+            (100, 1, "MulticastNotifyDamage_Point.LifeChangeEvents[0].LifeResult", 80.0),
+            (200, 1, "MulticastNotifyHeal.LifeChangeBySection[0].LifeResult", 100.0),
+        ])
+        series = vd.health_series(path, {1: "p1"})
+        self.assertEqual([(t, g, life) for t, g, life, _ in series],
+                         [(100, 1, 80.0), (200, 1, 100.0)])
+
+    def test_a_heal_call_is_marked_as_a_heal(self):
+        path = self.write([
+            (200, 1, "MulticastNotifyHeal.LifeChangeBySection[0].LifeResult", 100.0)])
+        self.assertTrue(vd.health_series(path, {1: "p1"})[0][3])
+
+    def test_a_damage_call_is_not_marked_as_a_heal(self):
+        path = self.write([
+            (100, 1, "MulticastNotifyDamage_Point.LifeChangeEvents[0].LifeResult", 80.0)])
+        self.assertFalse(vd.health_series(path, {1: "p1"})[0][3])
+
+    def test_a_non_player_actor_is_skipped(self):
+        path = self.write([
+            (100, 77, "MulticastNotifyDamage_Point.LifeChangeEvents[0].LifeResult", 80.0)])
+        self.assertEqual(vd.health_series(path, {1: "p1"}), [])
 
 
 if __name__ == "__main__":
