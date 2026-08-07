@@ -9,9 +9,14 @@ would look correct while hiding the defect it exists to find.
 """
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 from typing import NamedTuple
 
+import pyarrow.parquet as pq
+
+import extract_active_effects
 import viewer_projection as vp
 
 PLAYBACK_HZ = 20
@@ -207,3 +212,104 @@ def run_checks(context: dict) -> tuple[list[Finding], dict[str, int]]:
 
     findings.sort(key=lambda f: (f.time_ms, f.kind))
     return findings, counts
+
+
+# Post-death spectator cameras replicate movement like a character does. They
+# are not positions: drawing one renders a dead player apparently walking
+# around the map. Classified apart so the page can default the layer off.
+POSTDEATH_MARKER = "_PostDeath_"
+
+
+def classify_guid(guid: int, players: dict, actor_classes: dict) -> str:
+    """One of "player", "pawn", "postdeath", "unknown"."""
+    if guid in players:
+        return "player"
+    class_path = actor_classes.get(guid)
+    if not class_path:
+        return "unknown"
+    if POSTDEATH_MARKER in class_path:
+        return "postdeath"
+    return "pawn"
+
+
+def _column(table, name):
+    return table.column(name).to_pylist()
+
+
+_REQUIRED_EXPORT_FILES = ("movement.parquet", "actors.parquet", "events.parquet", "manifest.json")
+
+
+def read_export(export_dir: Path) -> dict:
+    """Everything the viewer needs, read from one export directory.
+
+    A missing table fails by name rather than yielding an empty layer that
+    would look like a quiet match.
+    """
+    for name in _REQUIRED_EXPORT_FILES:
+        path = export_dir / name
+        if not path.is_file():
+            raise SystemExit(f"{path} is missing; run `vrfkit export` first")
+
+    manifest = json.loads((export_dir / "manifest.json").read_text(encoding="utf-8"))
+    players = {p["character_net_guid"]: p["subject"][:8]
+               for p in manifest.get("players") or []
+               if p.get("character_net_guid") is not None}
+
+    actors = pq.read_table(export_dir / "actors.parquet",
+                           columns=["actor_net_guid", "class_path"])
+    actor_classes = {}
+    for guid, path in zip(_column(actors, "actor_net_guid"), _column(actors, "class_path")):
+        # class_path is nullable (actors.rs writes null when the GUID cache had
+        # no mapping for that row, e.g. an orphan close for an actor opened
+        # before the export window). NetGUIDs are recycled across rounds, so
+        # the same numeric GUID can later carry a real, resolvable open. A
+        # plain setdefault would pin the first row's null forever and a real
+        # pawn or camera would classify as "unknown" for the whole match.
+        if path:
+            actor_classes.setdefault(guid, path)
+
+    mv = pq.read_table(export_dir / "movement.parquet",
+                       columns=["time_ms", "character_net_guid",
+                                "pos_x", "pos_y", "pos_z", "vel_z", "yaw"])
+    movement = list(zip(_column(mv, "time_ms"), _column(mv, "character_net_guid"),
+                        _column(mv, "pos_x"), _column(mv, "pos_y"),
+                        _column(mv, "pos_z"), _column(mv, "vel_z")))
+    yaws = _column(mv, "yaw")
+
+    ev = pq.read_table(export_dir / "events.parquet",
+                       columns=["time1", "group", "word0", "word1"])
+    times, groups = _column(ev, "time1"), _column(ev, "group")
+    word0s, word1s = _column(ev, "word0"), _column(ev, "word1")
+    # characterDeath carries (word0, word1) = (killer, killed) NetGUID (see
+    # vrf-export/src/record.rs and docs/USAGE.md); word1 is the victim.
+    deaths = [(t, w) for t, g, w in zip(times, groups, word1s) if g == "characterDeath"]
+
+    # The last timestamp seen anywhere in the export, not manifest duration_ms:
+    # if the manifest's stated duration outran the last real movement/event
+    # row, rounds_from_events would stretch the final round into a stretch
+    # with no data in it, and every player would report "absent" for time that
+    # was never recorded. The +1 keeps that last sample inside the half-open
+    # Round it belongs to; the trailing +[0] keeps max() from raising on an
+    # empty export.
+    match_end_ms = max([t for t, *_ in movement] + times + [0]) + 1
+    rounds = rounds_from_events(times, groups, match_end_ms)
+    effects, effect_tally = extract_active_effects.build_with_tally(export_dir)
+
+    pawn_classes = {g: c for g, c in actor_classes.items()
+                    if classify_guid(g, players, actor_classes) in ("pawn", "postdeath")}
+
+    return {
+        "manifest": manifest,
+        "movement": movement,
+        "yaws": yaws,
+        "rounds": rounds,
+        "players": players,
+        "actor_classes": actor_classes,
+        "pawn_classes": pawn_classes,
+        "deaths": deaths,
+        "events": list(zip(times, groups, word0s, word1s)),
+        "effects": effects,
+        "effect_tally": effect_tally,
+        "health": [],
+        "match_end_ms": match_end_ms,
+    }
