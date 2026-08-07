@@ -18,6 +18,14 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 by Michel Giehl; see [`NOTICE.md`](NOTICE.md). Not affiliated with, endorsed
 by, or approved by Riot Games.
 
+**Current state:** `cargo test --workspace` **496 passing**, `tools/tests`
+**376 passing** -- see [Status](#status) for the rest.
+
+- Run it: [`docs/USAGE.md`](docs/USAGE.md)
+- What's extractable: [`docs/DATA.md`](docs/DATA.md)
+- Build it, test it, open a PR: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Working conventions (for an AI agent): [`CLAUDE.md`](CLAUDE.md)
+
 ## Why this exists
 
 Most replay parsers export only the fields whose type they know. vrfkit's
