@@ -87,17 +87,25 @@ DECODE_ERRORS = re.compile(r"Decode errors:\s+(\d+)")
 DECODED_OK = re.compile(r"Decoded OK:\s+(\d+)")
 NOT_IN_TABLE = re.compile(r"Not in table:\s+(\d+)")
 RAW_SKIP = re.compile(r"Raw/Skip:\s+(\d+)")
+NO_FIELD_NAME = re.compile(r"No field name:\s+(\d+)")
 ROWS_OFFERED = re.compile(r"Rows offered:\s+(\d+)")
 STRUCT_DECODED = re.compile(r"Struct blobs:\s+(\d+) decoded")
 STRUCT_FAILED = re.compile(r"Struct blobs:\s+\d+ decoded / (\d+) failed")
 
 
-#: `(key, regex)` for every counter read off the export summary.
+#: `(key, regex)` for every counter read off the export summary. `no_field_name`
+#: is here -- and REQUIRED below -- because summary.rs defines
+#: `Rows offered = decoded_ok + decoded_err + raw_or_skip + not_in_table +
+#: no_field_name`; leaving it out (as this tool used to) means the four
+#: categories it prints sum to about 0.3% less than the `rows offered` line it
+#: also prints, and a reader has to go read Rust source to know why. See
+#: `reconcile`.
 COUNTERS = (
     ("decode_errors", DECODE_ERRORS),
     ("decoded_ok", DECODED_OK),
     ("raw_skip", RAW_SKIP),
     ("not_in_table", NOT_IN_TABLE),
+    ("no_field_name", NO_FIELD_NAME),
     ("rows_offered", ROWS_OFFERED),
     ("struct_blobs_decoded", STRUCT_DECODED),
     ("struct_blobs_failed", STRUCT_FAILED),
@@ -106,10 +114,15 @@ COUNTERS = (
 #: Counters a replay MUST report for its run to mean anything. `decoded_ok` and
 #: `struct_blobs_decoded` are here as well as the two error counters because a
 #: zero in an error counter is only evidence when the matching work counter
-#: proves the work happened.
+#: proves the work happened. `no_field_name` is required for the same reason
+#: every other line here is: `summary.rs` prints it unconditionally on a
+#: healthy export, so its absence means this run's summary cannot be trusted,
+#: not that the category was legitimately empty -- and `reconcile` depends on
+#: it being a real number, never a defaulted one.
 REQUIRED = (
     ("decode_errors", "Decode errors"),
     ("decoded_ok", "Decoded OK"),
+    ("no_field_name", "No field name"),
     ("struct_blobs_decoded", "Struct blobs ... decoded"),
     ("struct_blobs_failed", "Struct blobs ... failed"),
 )
@@ -156,6 +169,41 @@ def dead_counters(totals: dict[str, int]) -> list[str]:
     return [f"{label} totalled 0 across the corpus: nothing decoded, so the "
             f"zero in its error counter says nothing"
             for key, label in MUST_MOVE if not totals.get(key)]
+
+
+def reconcile(totals: dict[str, int]) -> str | None:
+    """None if the five overlay categories sum to `rows_offered`; else why not.
+
+    summary.rs defines `Rows offered = decoded_ok + decoded_err + raw_or_skip
+    + not_in_table + no_field_name`. This tool printed the first four for a
+    long time and never `no_field_name`, so its own printed categories summed
+    to about 0.3% less than its own `rows offered` line -- correct numbers,
+    illegible arithmetic, and a reader had to go read the Rust source to know
+    the fifth category existed at all.
+
+    `no_field_name` is indexed directly, never `totals.get("no_field_name",
+    0)`: a `.get` with a default would make an ABSENT counter reconcile
+    silently, which is the exact doctrine this function exists to enforce
+    against -- see `REQUIRED`, which is what keeps this KeyError from ever
+    firing on a real run.
+
+    `no_field_name` deliberately does NOT join `MUST_MOVE`/`dead_counters`
+    above: unlike `decoded_ok` and `struct_blobs_decoded`, which are large on
+    any real corpus and a corpus-wide zero for either means the decoder never
+    ran, a corpus where every handle happens to resolve to a name is a
+    legitimate (if unlikely) outcome for `no_field_name`, not evidence the
+    check never ran. Gating on it would be a false failure on a clean corpus.
+    """
+    reconciled = (totals["decoded_ok"] + totals["decode_errors"]
+                 + totals["raw_skip"] + totals["not_in_table"]
+                 + totals["no_field_name"])
+    offered = totals["rows_offered"]
+    if reconciled == offered:
+        return None
+    return (f"decoded OK + decode errors + raw/skip + not in table + no "
+            f"field name = {reconciled:,}, but rows offered = {offered:,} "
+            f"({reconciled - offered:+,}) -- summary.rs's five categories no "
+            f"longer sum to its own total")
 
 
 def _export_one(exe: Path, replay: Path) -> tuple[str, dict[str, int] | None, str]:
@@ -217,7 +265,7 @@ def main() -> int:
     offenders: list[tuple[str, int]] = []
     blob_offenders: list[tuple[str, int]] = []
     totals = {"decode_errors": 0, "decoded_ok": 0, "raw_skip": 0,
-              "not_in_table": 0, "rows_offered": 0,
+              "not_in_table": 0, "no_field_name": 0, "rows_offered": 0,
               "struct_blobs_decoded": 0, "struct_blobs_failed": 0}
     done = 0
 
@@ -247,6 +295,7 @@ def main() -> int:
     print(f"decoded OK        : {totals['decoded_ok']:,}")
     print(f"raw/skip          : {totals['raw_skip']:,}")
     print(f"not in table      : {totals['not_in_table']:,}")
+    print(f"no field name     : {totals['no_field_name']:,}")
     print(f"rows offered      : {totals['rows_offered']:,}")
     print(f"struct blobs      : {totals['struct_blobs_decoded']:,} decoded / "
           f"{totals['struct_blobs_failed']:,} failed")
@@ -280,6 +329,20 @@ def main() -> int:
         for line in dead:
             print(f"    {line}", file=sys.stderr)
         return 1
+
+    # Fails loudly rather than printing a plausible wrong subtotal: a
+    # mismatch here means summary.rs's five overlay categories no longer sum
+    # to its own `rows offered` line -- most likely a sixth category was added
+    # in Rust that this tool does not know to parse yet, which is exactly the
+    # kind of drift a passing sweep must not paper over. See `reconcile`.
+    mismatch = reconcile(totals)
+    if mismatch:
+        print(f"\nFAILED: the overlay categories do not reconcile: {mismatch}",
+              file=sys.stderr)
+        return 1
+    print(f"reconciles        : decoded OK + decode errors + raw/skip + not "
+          f"in table + no field name = rows offered "
+          f"({totals['rows_offered']:,})")
 
     print(f"\nOK: {len(files)} replays reported Decode errors: 0 and 0 "
           f"struct-blob failures, over {totals['decoded_ok']:,} decoded rows "
