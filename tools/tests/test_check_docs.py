@@ -322,7 +322,7 @@ class MeasuredCountTests(unittest.TestCase):
         self.assertEqual(guard.stale_measured_counts(docs, live), [])
 
     def test_live_correction_count_includes_dynamic_weapon_entries(self):
-        self.assertEqual(guard.measured_counts()["corrections"], 130)
+        self.assertEqual(guard.measured_counts()["corrections"], 133)
 
 
 class GeneratedInventoryTests(unittest.TestCase):

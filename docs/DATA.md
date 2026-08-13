@@ -36,7 +36,8 @@ replays joined all ten and the worst managed 7; after it, 71 of 71 do.
 | Total granted | `TotalMoneyGranted` | ✅ |
 | Team loadout value | `BaseTeamState.LoadoutValue` / `AverageLoadoutValue` | ✅ |
 | Per-round spend | `StartOfRoundMoney` − `EndOfRoundMoney` (OwnerExclusivePlayerInfo) | ◐ derivable |
-| ACS (combat score) | — | ❌ `PlayerScoreComponent` is not replicated |
+| K / D / A | `BasicCombatStatsComponent.Aggregate*` | ✅ Int32 cumulative counters |
+| ACS (combat score) | `PlayerScoreComponent.Score / rounds` | ✅ Int32 cumulative score |
 
 ## Purchases (full buy log)
 
@@ -485,7 +486,6 @@ guessing -- which is the only reason the failure was findable.
 ## Limitations (replay-format, not parser bugs)
 
 - **Display names** — the replay carries no player names, only account UUIDs.
-- **ACS** — `PlayerScoreComponent` is not replicated.
 - **InventoryComponent** — RESOLVED: it replicates under its Blueprint class
   name, but the replay declares the property layout under the native parent
   `AresInventory`. The `KNOWN_SUBOBJECT_CLASS_PATHS` remap (InventoryComponent

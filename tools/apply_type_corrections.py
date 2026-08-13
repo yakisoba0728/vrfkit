@@ -243,6 +243,12 @@ EXPECTED += [
 #: Int32 the values run 21..5833 with 415 distinct values, the exact shape of
 #: a cumulative combat score across a full match.
 #:
+#: `BasicCombatStatsComponent` carries the authoritative cumulative scoreboard
+#: K/D/A. On release-13.02 all 407 observed updates are exactly 32 bits. Read
+#: little-endian as Int32, the final counters for all ten players match the
+#: in-game scoreboard exactly, including two post-round objective-bomb deaths
+#: that the kill RPC stream exposes but the scoreboard deliberately excludes.
+#:
 #: `ZoomMultiplierComponent` drives the ADS/scope FOV transition. No descriptor
 #: declares the group. The five fields below are 32 bits on every row with zero
 #: NaN: SourceFov/TargetFov run 20.6..103.0 and 103.0 is Valorant's documented
@@ -346,6 +352,12 @@ ADDITIONS = [
     ("/Script/ShooterGame.MoneyManagementComponent", "TotalMoneyGranted", "FieldType::Int32"),
     ("/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C",
      "Ping", "FieldType::SerializedInt { max: 65536 }"),
+    ("/Script/ShooterGame.BasicCombatStatsComponent",
+     "AggregateKills", "FieldType::Int32"),
+    ("/Script/ShooterGame.BasicCombatStatsComponent",
+     "AggregateDeaths", "FieldType::Int32"),
+    ("/Script/ShooterGame.BasicCombatStatsComponent",
+     "AggregateAssists", "FieldType::Int32"),
     ("/Script/ShooterGame.PlayerScoreComponent", "Score", "FieldType::Int32"),
     ("/Game/Characters/Components/Comp_Actor_Concussable.Comp_Actor_Concussable_C",
      "ConcussStartTime", "FieldType::Float"),

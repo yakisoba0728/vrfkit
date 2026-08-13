@@ -173,6 +173,13 @@ class UpdateScopeTests(unittest.TestCase):
 
 
 class WiringTests(unittest.TestCase):
+    def test_pipeline_uses_separate_export_and_bundle_trees(self):
+        self.assertTrue(hasattr(guard, "pipeline_paths"))
+        export_dir, bundle_dir, metrics_path = guard.pipeline_paths(Path("scratch"))
+        self.assertEqual(export_dir, Path("scratch/export"))
+        self.assertEqual(bundle_dir, Path("scratch/bundle"))
+        self.assertEqual(metrics_path, Path("scratch/metrics.json"))
+
     def test_every_build_has_a_replay_path(self):
         self.assertEqual(sorted(guard.REPLAYS),
                          ["12.10", "12.11", "13.00", "13.01", "13.02"])

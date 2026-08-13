@@ -425,7 +425,7 @@ needs it.
 
 | Script | Produces |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,255 + 84 handles) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,258 + 84 handles) |
 | `apply_type_corrections.py` | Applies verified corrections/additions to that file and recomputes the two-line generation header |
 | `extract_checksum_types.py` | `crates/vrf-decode/src/checksum_table.rs` -- `compatible_checksum` -> `FieldType`, learned from the fields the overlay table already declares. Needs an export directory rather than the C# tree, since checksums come from the replay. Checksums whose donors disagree are dropped, which is the safety property. Repeat `--export` to widen the basis; the run **merges** into the committed table rather than replacing it, because a checksum this basis did not happen to see is still correct. `--check` asks whether the two agree *where they overlap* -- not whether they are byte-identical, which a content-addressed table cannot be across different sets of replays. |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
@@ -439,11 +439,11 @@ the script does not trust its own apply count -- it **re-verifies the final
 state after applying** and fails if it disagrees.
 
 ```bash
-python tools/apply_type_corrections.py           # apply, then verify (130 corrections)
+python tools/apply_type_corrections.py           # apply, then verify (133 corrections)
 python tools/apply_type_corrections.py --check   # verify only
 ```
 
-Those 130 corrections are the whole live expectation set the script re-verifies; `ADDITIONS` is the
+Those 133 corrections are the whole live expectation set the script re-verifies; `ADDITIONS` is the
 subset of it that has no C# descriptor behind it at all.
 
 The `ADDITIONS` pass inserts items the C# descriptor is **silent on**. There are
@@ -551,14 +551,14 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo +1.86.0 test --workspace --locked                              # 554 passing
+cargo +1.86.0 test --workspace --locked                              # 555 passing
 cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.86.0 fmt --check
 python -W error tools/check_ascii.py --check                         # 117 files
 python -W error tools/check_effect_decoder.py --check                # 12 cases
-python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 466 passing
+python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 467 passing
 python -W error tools/check_docs.py --fast
-python -W error tools/apply_type_corrections.py --check              # 130 corrections
+python -W error tools/apply_type_corrections.py --check              # 133 corrections
 python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
 python -W error tools/check_baseline_schemas.py
 ```
@@ -673,8 +673,10 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
 - **`AbilitiesAndBuffsComponent`** -- the replay declares no ClassNetCache group
   for that class at all. Confirmed across all 4,024 checkpoints. This is the
   attribution gap that keeps the `validate` pass rate below 100%.
-- **ACS** -- `PlayerScoreComponent` is not replicated. There is nothing to
-  compute from.
+- **Scoreboard stats** -- release-13.02 replicates cumulative K/D/A through
+  `BasicCombatStatsComponent` and cumulative combat score through
+  `PlayerScoreComponent`. vrfkit types all four as `Int32`; valplay computes
+  ACS as final Score divided by played rounds.
 - **`economy.per_round` (13.02)** -- team economy moved to `BaseTeamState` and
   the values decode, but valplay's `compute_economy` looks at the old path.
   valplay is out of scope to fix.
@@ -684,6 +686,7 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
   that remains is that valplay's `compute_metrics.py` hardcodes class names in
   five places; the patch is in `docs/swiftplay-metrics.patch`. valplay is out of
   scope, so applying it is their call.
-- **ADR is 0.1-0.2 higher than the tracker.** This is not a bug -- wire damage
-  is fractional, while the Riot API reports integers. **Do not "fix" it by
-  adding truncation** (archive/PROJECT_STATUS.md 27-B).
+- **Damage precision** -- vrfkit preserves the exact fractional wire damage.
+  valplay additionally floors each final engagement segment before summing its
+  scoreboard damage, which reproduces Tracker ADR without discarding the exact
+  float total.

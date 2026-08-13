@@ -194,18 +194,24 @@ def invariants(v: dict) -> list[str]:
 # pipeline
 # ---------------------------------------------------------------------------
 
+def pipeline_paths(root: Path) -> tuple[Path, Path, Path]:
+    """Return sibling paths so the adapter input and output never overlap."""
+    return root / "export", root / "bundle", root / "metrics.json"
+
+
 def run_one(build: str, replay: Path, exe: Path) -> tuple[str, dict | None, str]:
     """export -> bundle -> compute_metrics, into a scratch dir that is removed."""
     if not replay.is_file():
         return build, None, f"replay not found: {replay}"
     out = Path(tempfile.mkdtemp(prefix=f"vrfkit-metrics-{build.replace('.', '_')}-"))
     try:
+        export_dir, bundle_dir, metrics_path = pipeline_paths(out)
         steps = (
-            ("export", [str(exe), "export", str(replay), "--out", str(out)]),
-            ("bundle", [sys.executable, str(BUNDLE_TOOL), str(out),
-                        "-o", str(out / "bundle")]),
-            ("metrics", [sys.executable, str(COMPUTE_METRICS), str(out / "bundle"),
-                         "-o", str(out / "metrics.json")]),
+            ("export", [str(exe), "export", str(replay), "--out", str(export_dir)]),
+            ("bundle", [sys.executable, str(BUNDLE_TOOL), str(export_dir),
+                        "-o", str(bundle_dir)]),
+            ("metrics", [sys.executable, str(COMPUTE_METRICS), str(bundle_dir),
+                         "-o", str(metrics_path)]),
         )
         for name, cmd in steps:
             r = subprocess.run(cmd, capture_output=True, text=True,
@@ -214,7 +220,7 @@ def run_one(build: str, replay: Path, exe: Path) -> tuple[str, dict | None, str]
                 tail = ((r.stderr or "") + (r.stdout or "")).strip().splitlines()
                 return build, None, f"{name} failed rc={r.returncode}: " + (
                     " | ".join(tail[-3:])[:300] if tail else "no output")
-        mj = out / "metrics.json"
+        mj = metrics_path
         if not mj.exists():
             return build, None, "metrics.json was not written"
         return build, extract(json.loads(mj.read_text(encoding="utf-8"))), ""

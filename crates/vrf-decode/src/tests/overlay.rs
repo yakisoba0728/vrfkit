@@ -790,6 +790,23 @@ fn player_score_is_typed() {
     );
 }
 
+/// The replay scoreboard publishes authoritative cumulative K/D/A counters
+/// through this component. Each value is a 32-bit little-endian integer; if
+/// these remain Raw, downstream consumers are forced to reconstruct the
+/// scoreboard from lossy kill RPCs instead of using the server totals.
+#[test]
+fn basic_combat_stats_are_typed() {
+    let table = OverlayTable::new(&OVERLAY_TABLE);
+    let group = "/Script/ShooterGame.BasicCombatStatsComponent";
+    for field in ["AggregateKills", "AggregateDeaths", "AggregateAssists"] {
+        assert_eq!(
+            table.lookup(group, field),
+            Some(FieldType::Int32),
+            "{field}"
+        );
+    }
+}
+
 /// `ZoomMultiplierComponent` drives the ADS/scope FOV transition. No C#
 /// descriptor declares the group, so its properties ship raw even though the
 /// values are textbook floats. On 98605b1b all five fields below are 32 bits
