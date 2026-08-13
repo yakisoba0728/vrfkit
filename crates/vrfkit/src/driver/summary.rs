@@ -66,7 +66,21 @@ pub(super) fn print(
     eprintln!("  Actor closes:     {}", net_stats.actor_closes);
     eprintln!("  Bunches:          {}", net_stats.bunches);
     eprintln!("  Malformed pkts:   {}", net_stats.malformed_packets);
+    eprintln!(
+        "  Partial bunches:  {} errors / {} fragments / {} completed",
+        net_stats.partial_errors, net_stats.partial_fragments, net_stats.partial_completed
+    );
     eprintln!("  Bunch header fails: {}", net_stats.bunch_header_failures);
+    eprintln!(
+        "  Content failures: {} malformed / {} transform / {} field / {} RPC loss / {} unresolved RPC raw",
+        net_stats.malformed_content_blocks,
+        net_stats.transform_failures,
+        net_stats.field_stream_failures,
+        net_stats
+            .rpc_stream_failures
+            .saturating_sub(net_stats.unresolved_rpc_payloads_preserved),
+        net_stats.unresolved_rpc_payloads_preserved
+    );
     eprintln!("  Skipped bits:     {}", net_stats.skipped_bits);
     // Unconditional, zeros included, for the reason spelled out on the struct
     // blob line below: a line that only appears when non-zero cannot tell
@@ -90,18 +104,25 @@ pub(super) fn print(
         net_stats.rep_layout_export_bunches
     );
     eprintln!(
+        "  GUID mapping:     {} package maps / {} exported / {} required",
+        net_stats.package_map_exports, net_stats.exported_guids, net_stats.must_be_mapped_guids
+    );
+    eprintln!(
+        "  Diagnostics:      {} retained / {} dropped",
+        net_stats.diagnostics.len(),
+        net_stats.diagnostics_dropped
+    );
+    eprintln!(
         "  ReplayData unread: {} bytes",
         totals.replay_data_trailing_bytes
     );
     eprintln!("  Movement rows:    {}", totals.movement_rows);
     eprintln!("  NetGUID rows:     {}", totals.net_guid_rows);
     eprintln!("  Event rows:       {}", totals.event_rows);
-    if totals.event_trailing_bytes > 0 {
-        eprintln!(
-            "  Event unread:     {} payload bytes",
-            totals.event_trailing_bytes
-        );
-    }
+    eprintln!(
+        "  Event unread:     {} payload bytes",
+        totals.event_trailing_bytes
+    );
     // Printed unconditionally, including the zero. A conditional line cannot
     // distinguish "no failures" from "this build stopped reaching the decoder
     // at all", and that second case is exactly what went unnoticed on 13.02.
@@ -136,18 +157,12 @@ pub(super) fn print(
         "  Array leaf errs:  {}",
         totals.sink.array_leaf_decode_errors
     );
-    if totals.sink.truncated_rpcs > 0 {
-        eprintln!("  Truncated RPCs:   {}", totals.sink.truncated_rpcs);
-    }
-    if totals.sink.rpc_suffix_bits_dropped > 0 {
-        eprintln!(
-            "  RPC suffix bits:  {}",
-            totals.sink.rpc_suffix_bits_dropped
-        );
-    }
-    if totals.event_layout_mismatches > 0 {
-        eprintln!("  Event layout err: {}", totals.event_layout_mismatches);
-    }
+    eprintln!("  Truncated RPCs:   {}", totals.sink.truncated_rpcs);
+    eprintln!(
+        "  RPC suffix bits:  {}",
+        totals.sink.rpc_suffix_bits_dropped
+    );
+    eprintln!("  Event layout err: {}", totals.event_layout_mismatches);
     if let Some(err) = &totals.event_first_layout_mismatch {
         eprintln!("  Event layout msg: {err}");
     }
@@ -190,6 +205,10 @@ fn print_checkpoints(cp: &CheckpointStats) {
         cp.net.bunches, cp.net.content_blocks, cp.net.fields, cp.net.rpcs
     );
     eprintln!(
+        "  Checkpoint partial:{} errors / {} fragments / {} completed",
+        cp.net.partial_errors, cp.net.partial_fragments, cp.net.partial_completed
+    );
+    eprintln!(
         "  Checkpoint loss:  {} malformed packets / {} bunch headers / {} malformed blocks / {} transform / {} field / {} RPC / {} unfinished partials ({} bits) / {} skipped bits",
         cp.net.malformed_packets,
         cp.net.bunch_header_failures,
@@ -205,6 +224,26 @@ fn print_checkpoints(cp: &CheckpointStats) {
         "  Checkpoint raw:   {} unresolved RPC payloads preserved whole",
         cp.net.unresolved_rpc_payloads_preserved
     );
+    eprintln!(
+        "  Checkpoint life:  {} deleted / {} opens / {} closes / {} live reopens / {} opens without spawn",
+        cp.net.deleted_blocks,
+        cp.net.actor_opens,
+        cp.net.actor_closes,
+        cp.net.channel_reopens_while_open,
+        cp.net.actor_opens_missing_spawn
+    );
+    eprintln!(
+        "  Checkpoint GUIDs: {} package maps / {} RepLayout exports / {} exported / {} required",
+        cp.net.package_map_exports,
+        cp.net.rep_layout_export_bunches,
+        cp.net.exported_guids,
+        cp.net.must_be_mapped_guids
+    );
+    eprintln!(
+        "  Checkpoint diag:  {} retained / {} dropped",
+        cp.net.diagnostics.len(),
+        cp.net.diagnostics_dropped
+    );
     // Printed, not silent: a checkpoint re-opens every live actor and replays
     // its state, so these two would corrupt the tables they would otherwise
     // land in. See CheckpointStats.
@@ -213,12 +252,13 @@ fn print_checkpoints(cp: &CheckpointStats) {
         cp.actor_rows_dropped, cp.movement_rows_dropped
     );
     eprintln!(
-        "  Overlay:          {} decoded / {} errors / {} raw-skip / {} not-in-table / {} unnamed / {} effect blobs",
+        "  Overlay:          {} decoded / {} errors / {} raw-skip / {} not-in-table / {} unnamed / {} conflicts / {} effect blobs",
         cp.sink.overlay.decoded_ok,
         cp.sink.overlay.decoded_err,
         cp.sink.overlay.raw_or_skip,
         cp.sink.overlay.not_in_table,
         cp.sink.overlay.no_field_name,
+        cp.sink.overlay.handle_conflicts_refused,
         cp.sink.effect_blobs_decoded
     );
     // NOT "Struct blobs", which the main block already uses: every label here
@@ -228,6 +268,9 @@ fn print_checkpoints(cp: &CheckpointStats) {
         "  Checkpoint blobs: {} decoded / {} failed",
         cp.sink.struct_blobs_decoded, cp.sink.struct_blobs_failed
     );
+    if let Some(error) = &cp.sink.struct_blob_first_error {
+        eprintln!("  Checkpoint blob error: {error}");
+    }
     // The three failure counters the checkpoint pass used to drop on the floor.
     // Printed unconditionally, zero included: a conditional line here could not
     // tell "the checkpoint decoders ran clean" from "the checkpoint decoders
@@ -249,12 +292,21 @@ fn print_checkpoints(cp: &CheckpointStats) {
         "  Checkpoint leaf:  {} typed decode errors",
         cp.sink.array_leaf_decode_errors
     );
-    if cp.sink.rpc_suffix_bits_dropped > 0 {
-        eprintln!(
-            "  Checkpoint suffix:{} RPC bits",
-            cp.sink.rpc_suffix_bits_dropped
-        );
+    eprintln!(
+        "  Checkpoint movement: {} failures",
+        cp.sink.movement_rpc_errors
+    );
+    if let Some(error) = &cp.sink.movement_first_error {
+        eprintln!("  Checkpoint movement error: {error}");
     }
+    eprintln!(
+        "  Checkpoint suffix:{} RPC bits",
+        cp.sink.rpc_suffix_bits_dropped
+    );
+    eprintln!(
+        "  Checkpoint MultiContents: {} items",
+        cp.sink.multi_contents_items_emitted
+    );
     eprintln!("  Checkpoint CNC:   {} RPC rows", cp.sink.cnc_rpcs_emitted);
 }
 
@@ -373,11 +425,7 @@ fn print_decode_errors(overlay: &OverlayStats, error_report: &OverlayErrorReport
     );
     for row in &error_report.top_n(15) {
         // Truncate group_path for display (show last 60 chars).
-        let gp_display = if row.group_path.len() > 60 {
-            format!("...{}", &row.group_path[row.group_path.len() - 57..])
-        } else {
-            row.group_path.clone()
-        };
+        let gp_display = display_tail(&row.group_path, 60);
         eprintln!(
             "  {:>7}  {:<6}  {:>5}  {:<20}  {:<30}  {}",
             row.count, row.error_kind, row.bit_count, row.declared_type, row.field_name, gp_display
@@ -385,9 +433,22 @@ fn print_decode_errors(overlay: &OverlayStats, error_report: &OverlayErrorReport
     }
 }
 
+/// Keep the last `width - 3` Unicode scalar values and prefix an ellipsis.
+/// Byte slicing could panic when a player-authored/path string crossed the
+/// boundary inside a multi-byte UTF-8 character.
+fn display_tail(value: &str, width: usize) -> String {
+    let count = value.chars().count();
+    if count <= width {
+        return value.to_owned();
+    }
+    let tail = width.saturating_sub(3);
+    let skip = count.saturating_sub(tail);
+    format!("...{}", value.chars().skip(skip).collect::<String>())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CHECKPOINT_TABLE, stale_checkpoint_note};
+    use super::{CHECKPOINT_TABLE, display_tail, stale_checkpoint_note};
     use std::fs;
 
     fn temp_dir(tag: &str) -> std::path::PathBuf {
@@ -427,5 +488,14 @@ mod tests {
         // With the flag, the file is this run's own output and says nothing.
         assert_eq!(stale_checkpoint_note(&dir, true), None);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn diagnostic_path_truncation_never_slices_inside_unicode() {
+        let path = format!("{}{}", "a".repeat(59), "\u{d55c}\u{ad6d}");
+        let displayed = display_tail(&path, 60);
+        assert!(displayed.starts_with("..."));
+        assert!(displayed.ends_with("\u{d55c}\u{ad6d}"));
+        assert_eq!(displayed.chars().count(), 60);
     }
 }

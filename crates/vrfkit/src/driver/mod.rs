@@ -14,10 +14,10 @@
 //! - [`checkpoints`] -- the optional full-state snapshot pass.
 //! - [`summary`] -- the stderr report, whose every line a Python harness pins.
 
-mod checkpoints;
+pub(crate) mod checkpoints;
 mod publish;
 mod summary;
-mod totals;
+pub(crate) mod totals;
 mod writers;
 
 use std::fs;
@@ -39,7 +39,7 @@ use vrf_net::pipeline::ReplicationReader;
 use vrf_schema::NetGuidCache;
 
 use crate::error::CliError;
-use crate::manifest;
+use crate::manifest::{self, ManifestQuality};
 use crate::sink::{ChannelState, ExportSink, RecordBuffers};
 use checkpoints::{CheckpointStats, ReplayContext};
 use publish::OutputTransaction;
@@ -384,6 +384,21 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
         total_packets,
         elapsed,
         &players,
+        &ManifestQuality {
+            chunks_processed,
+            export_groups: cache.group_count(),
+            movement_rows,
+            net_guid_rows,
+            event_rows,
+            event_trailing_bytes,
+            replay_data_trailing_bytes,
+            event_layout_mismatches,
+            event_first_layout_mismatch: event_first_layout_mismatch.as_deref(),
+            net: net_stats,
+            sink: &sink_totals,
+            error_report: &error_report,
+            checkpoints: with_checkpoints.then_some(&cp_stats),
+        },
     )?;
 
     // No handle remains open in staging at this point. Replace the destination

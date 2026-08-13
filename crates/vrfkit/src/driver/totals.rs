@@ -24,7 +24,7 @@ use crate::sink::ExportStats;
 
 /// Everything a packet's sink counted, summed across packets.
 #[derive(Debug, Default)]
-pub(super) struct SinkTotals {
+pub(crate) struct SinkTotals {
     pub overlay: OverlayStats,
     pub effect_blobs_decoded: u64,
     pub struct_blobs_decoded: u64,

@@ -32,7 +32,7 @@ use crate::sink::{ChannelState, ExportSink, RecordBuffers};
 /// Counters for the optional checkpoint pass. Kept together so the summary
 /// cannot report one and quietly omit another.
 #[derive(Debug, Default)]
-pub(super) struct CheckpointStats {
+pub(crate) struct CheckpointStats {
     pub chunks: u64,
     pub guid_entries: u64,
     pub group_records: u64,
