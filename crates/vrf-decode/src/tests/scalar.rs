@@ -115,6 +115,19 @@ fn fname_inline_numbers_do_not_collide() {
 }
 
 #[test]
+fn fname_negative_instance_numbers_are_rejected() {
+    for number in [-1, i32::MIN] {
+        let (bits, bit_count) = inline_fname_bits("Source", number);
+        let err = decode_field(FieldType::FName, &bits, bit_count)
+            .expect_err("a negative FName number has no valid display spelling");
+        assert!(
+            matches!(err, DecodeError::InvalidFNameNumber { number: n } if n == number),
+            "got {err:?} for {number}"
+        );
+    }
+}
+
+#[test]
 fn byte_array_reads_packed_count_and_bytes() {
     // IntPacked 3 = byte (3 << 1) = 0x06
     let data = vec![0x06u8, 0x10, 0x20, 0x30];

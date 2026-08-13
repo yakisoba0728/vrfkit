@@ -48,13 +48,33 @@ pub fn run(args: &[String]) -> Result<u8, CliError> {
             let file = args
                 .get(2)
                 .ok_or_else(|| CliError::Usage("inspect requires <file.vrf>".to_string()))?;
+            if args.len() != 3 {
+                return Err(CliError::Usage(
+                    "inspect accepts exactly one <file.vrf> argument".to_string(),
+                ));
+            }
             inspect::run(file).map(|()| 0)
         }
         "validate" => {
             let file = args
                 .get(2)
                 .ok_or_else(|| CliError::Usage("validate requires <file.vrf>".to_string()))?;
-            let diagnostics = args.iter().skip(3).any(|a| a == "--diagnostics");
+            let mut diagnostics = false;
+            for arg in args.iter().skip(3) {
+                match arg.as_str() {
+                    "--diagnostics" if !diagnostics => diagnostics = true,
+                    "--diagnostics" => {
+                        return Err(CliError::Usage(
+                            "duplicate option: --diagnostics".to_string(),
+                        ));
+                    }
+                    other => {
+                        return Err(CliError::Usage(format!(
+                            "unknown validate option or surplus argument: {other}"
+                        )));
+                    }
+                }
+            }
             oracle::run(file, diagnostics).map(oracle::Verdict::exit_code)
         }
         "export" => export(args).map(|()| 0),
@@ -103,4 +123,34 @@ fn export(_args: &[String]) -> Result<(), CliError> {
     Err(CliError::Usage(
         "export is not available: this binary was built without the `export` feature".to_string(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn owned(args: &[&str]) -> Vec<String> {
+        args.iter().map(|arg| (*arg).to_owned()).collect()
+    }
+
+    #[test]
+    fn inspect_rejects_surplus_arguments_before_opening_the_file() {
+        let err = run(&owned(&["vrfkit", "inspect", "missing.vrf", "extra"]))
+            .expect_err("inspect must not ignore a surplus positional argument");
+        assert!(matches!(err, CliError::Usage(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn validate_rejects_unknown_options_before_opening_the_file() {
+        let err = run(&owned(&["vrfkit", "validate", "missing.vrf", "--unknown"]))
+            .expect_err("validate must not ignore an unknown option");
+        assert!(matches!(err, CliError::Usage(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn validate_rejects_surplus_positional_arguments() {
+        let err = run(&owned(&["vrfkit", "validate", "missing.vrf", "other.vrf"]))
+            .expect_err("validate must not ignore another input path");
+        assert!(matches!(err, CliError::Usage(_)), "got {err:?}");
+    }
 }

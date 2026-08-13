@@ -21,6 +21,9 @@ pub(super) fn decode_vector_net_quantize(
     r: &mut BitReader<'_>,
     scale: u32,
 ) -> Result<DecodedValue, DecodeError> {
+    if scale == 0 {
+        return Err(DecodeError::InvalidQuantizationScale { scale });
+    }
     Ok(render(read_quantized_vector(r, scale)?))
 }
 
@@ -84,9 +87,10 @@ fn read_double_vector(r: &mut BitReader<'_>) -> Result<FVector, vrf_bitio::BitEr
 /// # Why the fallback checks finiteness and the packed path does not
 ///
 /// The packed path is an integer sign-extended from `componentBitCount` bits
-/// and divided by an integer scale, so every component it can produce is
-/// finite. The fallback reads raw IEEE-754 words and can produce anything the
-/// 32 or 64 bits spell -- including `NaN` from `0x7fc00000`.
+/// and divided by a non-zero integer scale (validated by the public dispatch),
+/// so every component it can produce is finite. The fallback reads raw
+/// IEEE-754 words and can produce anything the 32 or 64 bits spell -- including
+/// `NaN` from `0x7fc00000`.
 ///
 /// That mattered because [`FRepMovement`] renders as a JSON object, and `NaN`
 /// is not a JSON literal: such a payload emitted `"x":NaN` into `value_str`

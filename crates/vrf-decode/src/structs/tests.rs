@@ -513,6 +513,51 @@ fn round_results_known_enum_values_still_decode() {
     assert_eq!(results[0].winning_team_role, Some(AresTeamRole::Defender));
 }
 
+#[test]
+fn round_results_zero_width_enum_is_an_error_not_an_absent_field() {
+    let (data, bit_len) = round_results_one_member(94, 0, 0);
+    let mut r = BitReader::with_bit_len(&data, bit_len).unwrap();
+    let err = decode_round_results(&mut r, &bomb_game_state_1301())
+        .expect_err("a declared enum field with no payload cannot become absent");
+    assert!(
+        matches!(
+            err,
+            StructBlobError::InvalidEnumWidth {
+                bits: 0,
+                context: "RoundResults",
+                ..
+            }
+        ),
+        "got {err:?}"
+    );
+}
+
+#[test]
+fn struct_fname_rejects_a_negative_instance_number() {
+    let mut bits = vec![false]; // inline, not hardcoded
+    for byte in 5i32
+        .to_le_bytes()
+        .into_iter()
+        .chain(*b"Blue\0")
+        .chain((-1i32).to_le_bytes())
+    {
+        for bit in 0..8 {
+            bits.push((byte >> bit) & 1 != 0);
+        }
+    }
+    let (data, bit_len) = pack_bits(&bits);
+    let mut reader = BitReader::with_bit_len(&data, bit_len).unwrap();
+    let err = super::framing::read_fname(&mut reader)
+        .expect_err("the struct decoder must propagate invalid FName numbers");
+    assert!(
+        matches!(
+            err,
+            StructBlobError::Decode(crate::DecodeError::InvalidFNameNumber { number: -1 })
+        ),
+        "got {err:?}"
+    );
+}
+
 // -- Field windows the member did not consume -----------------------------
 
 /// One `RoundInfos` element carrying a single member at `handle`, whose payload

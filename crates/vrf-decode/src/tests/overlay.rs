@@ -1369,6 +1369,7 @@ fn the_random_number_generator_seed_is_typed() {
 /// than `LifeChangeEvents`, so a dispatch keyed on the array's name alone
 /// would miss two of the five functions entirely.
 #[test]
+#[cfg(feature = "array")]
 fn the_life_change_array_walks_into_its_members() {
     use crate::{
         ArrayDecodeStats, LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA,

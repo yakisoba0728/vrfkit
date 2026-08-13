@@ -70,7 +70,7 @@
 //! ```text
 //! [1 bit: is_hardcoded]
 //! if hardcoded: [IntPacked: name_index]  -> returned as decimal string
-//! else:        [FString: name] [Int32: number_suffix (ignored)]
+//! else:        [FString: name] [Int32: number_suffix]
 //! ```
 //!
 //! # Volume
@@ -97,6 +97,10 @@ pub enum StructBlobError {
     /// The underlying bit reader hit EOF or produced a malformed primitive.
     #[error("bit read: {0}")]
     BitIo(#[from] vrf_bitio::BitError),
+
+    /// A primitive nested in the blob was structurally invalid.
+    #[error("field decode: {0}")]
+    Decode(#[from] crate::DecodeError),
 
     /// The declared array element count exceeds a sane maximum.
     #[error("array count {count} exceeds maximum {max}")]
@@ -145,6 +149,14 @@ pub enum StructBlobError {
     UnknownEnumValue {
         enum_name: &'static str,
         value: u8,
+        context: &'static str,
+    },
+
+    /// An enum member declared no bits or more than a byte of payload.
+    #[error("{name} enum width {bits} is invalid in {context}")]
+    InvalidEnumWidth {
+        name: String,
+        bits: u64,
         context: &'static str,
     },
 

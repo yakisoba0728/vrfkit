@@ -48,15 +48,29 @@ use vrf_export::{
 ///
 /// `CARGO_MANIFEST_DIR` is the discriminator because it differs per worktree
 /// and is fixed at compile time, so every test in one binary agrees on it.
+/// CI may set `VRFKIT_INTEROP_DIR`; that exact root is used so a following
+/// language interop step can consume `<root>/interop` without guessing a hash.
 fn test_dir() -> PathBuf {
+    let dir = test_dir_from_override(std::env::var_os("VRFKIT_INTEROP_DIR").map(PathBuf::from));
+    fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn test_dir_from_override(override_root: Option<PathBuf>) -> PathBuf {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
-    let mut hasher = DefaultHasher::new();
-    env!("CARGO_MANIFEST_DIR").hash(&mut hasher);
-    let dir = std::env::temp_dir().join(format!("vrf_export_tests_{:016x}", hasher.finish()));
-    fs::create_dir_all(&dir).unwrap();
-    dir
+    override_root.unwrap_or_else(|| {
+        let mut hasher = DefaultHasher::new();
+        env!("CARGO_MANIFEST_DIR").hash(&mut hasher);
+        std::env::temp_dir().join(format!("vrf_export_tests_{:016x}", hasher.finish()))
+    })
+}
+
+#[test]
+fn an_explicit_interop_root_is_used_verbatim() {
+    let root = PathBuf::from("ci-owned-exact-root");
+    assert_eq!(test_dir_from_override(Some(root.clone())), root);
 }
 
 /// Helper: build a FieldRecord with predictable values based on an index.

@@ -730,6 +730,8 @@ fn apply_overlay_inner(
                 // spell cannot be rendered as JSON. Same bucket for the same
                 // reason -- a value-range rejection, not a framing failure.
                 DecodeError::NonFiniteComponent { .. } => DecodeErrorKind::Residual,
+                DecodeError::InvalidQuantizationScale { .. }
+                | DecodeError::InvalidFNameNumber { .. } => DecodeErrorKind::Residual,
             };
             stats
                 .error_report

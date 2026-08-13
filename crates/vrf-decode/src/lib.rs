@@ -102,6 +102,7 @@ pub mod effect;
 mod overlay;
 #[cfg(feature = "structs")]
 pub mod structs;
+#[cfg(feature = "overlay")]
 mod table;
 #[cfg(test)]
 mod tests;

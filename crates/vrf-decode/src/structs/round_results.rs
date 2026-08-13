@@ -159,11 +159,9 @@ pub fn decode_round_results(
             let member = member_name(declared, handle, CONTEXT)?;
             match member {
                 "WinningTeam" => winning_team = Some(read_fname(&mut sub)?),
-                // A payload of no usable width leaves the slot ALONE rather
-                // than clearing it: if a handle repeats within one element, an
-                // unreadable second copy must not erase the value the first one
-                // established. `if let` and not `= read(..).and_then(..)` for
-                // exactly that reason.
+                // A payload of no usable width is an error. Returning `None`
+                // would make a member explicitly sent by the wire look exactly
+                // like one absent from this update.
                 // A value the enum has no variant for is REPORTED, not folded
                 // back into `None`. `None` already means "this update did not
                 // send the member", so reusing it for "sent, unrecognised" made
@@ -171,26 +169,24 @@ pub fn decode_round_results(
                 // field -- the column simply starts going null after a patch,
                 // with no counter moving.
                 "WinningTeamRole" => {
-                    if let Some(v) = read_narrow_byte(&mut sub)? {
-                        winning_team_role = Some(AresTeamRole::from_byte(v).ok_or(
-                            StructBlobError::UnknownEnumValue {
-                                enum_name: "AresTeamRole",
-                                value: v,
-                                context: CONTEXT,
-                            },
-                        )?);
-                    }
+                    let v = read_narrow_byte(&mut sub, member, CONTEXT)?;
+                    winning_team_role = Some(AresTeamRole::from_byte(v).ok_or(
+                        StructBlobError::UnknownEnumValue {
+                            enum_name: "AresTeamRole",
+                            value: v,
+                            context: CONTEXT,
+                        },
+                    )?);
                 }
                 "RoundResult" => {
-                    if let Some(v) = read_narrow_byte(&mut sub)? {
-                        round_result = Some(AresRoundOutcome::from_byte(v).ok_or(
-                            StructBlobError::UnknownEnumValue {
-                                enum_name: "AresRoundOutcome",
-                                value: v,
-                                context: CONTEXT,
-                            },
-                        )?);
-                    }
+                    let v = read_narrow_byte(&mut sub, member, CONTEXT)?;
+                    round_result = Some(AresRoundOutcome::from_byte(v).ok_or(
+                        StructBlobError::UnknownEnumValue {
+                            enum_name: "AresRoundOutcome",
+                            value: v,
+                            context: CONTEXT,
+                        },
+                    )?);
                 }
                 // Opaque nested array, skipped. Declared at two consecutive
                 // handles in both builds; one arm covers both because the
@@ -213,8 +209,7 @@ pub fn decode_round_results(
             // `read_fname` is self-delimiting and `read_narrow_byte` takes the
             // window's full width, so an interpreted member here consumes
             // exactly. A leftover means the payload was not the shape the name
-            // promised -- an over-wide enum, say, which `read_narrow_byte`
-            // declines to read at all and used to leave as a silent absence.
+            // promised; invalid enum widths are rejected at their reader.
             ensure_member_consumed(&sub, member, handle, bit_count, CONTEXT)?;
         }
 

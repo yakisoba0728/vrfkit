@@ -182,6 +182,17 @@ fn quantized_vector_scale100() {
 }
 
 #[test]
+fn quantized_vector_rejects_a_zero_scale() {
+    let (data, bit_count) = write_quantized_vector(1.0, -2.0, 3.0, 1, 4);
+    let err = decode_field(FieldType::VectorNetQuantize { scale: 0 }, &data, bit_count)
+        .expect_err("a zero divisor must not decode to infinite components");
+    assert!(
+        matches!(err, DecodeError::InvalidQuantizationScale { scale: 0 }),
+        "got {err:?}"
+    );
+}
+
+#[test]
 fn rep_movement_decodes_required_fields() {
     let mut bits: Vec<bool> = Vec::new();
     // 4 flag bits: all false
