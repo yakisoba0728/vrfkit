@@ -22,6 +22,7 @@ use vrf_decode::OverlayErrorReport;
 use vrf_export::FieldWriter;
 use vrf_frame::iter_demo_frames;
 use vrf_net::pipeline::ReplicationReader;
+use vrf_net::stats::NetStats;
 use vrf_schema::{NetGuidCache, read_checkpoint_tables};
 
 use super::totals::SinkTotals;
@@ -63,6 +64,8 @@ pub(super) struct CheckpointStats {
     /// anywhere. Sharing [`SinkTotals`] with the main pass is what stops the
     /// two from drifting again.
     pub sink: SinkTotals,
+    /// Replication/framing counters from every finalized checkpoint reader.
+    pub net: NetStats,
 }
 
 /// Everything about the replay that the checkpoint pass needs and cannot
@@ -130,6 +133,9 @@ pub(super) fn process_chunk<W: Write + Send>(
     if let Some(error) = packet_error {
         return Err(error);
     }
+    reader.finish();
+    let mut chunk_net = reader.stats().clone();
+    stats.net.absorb(&mut chunk_net);
 
     stats.chunks += 1;
     stats.guid_entries += u64::from(tables.guid_count);

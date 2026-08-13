@@ -280,6 +280,7 @@ pub(super) fn decode_and_parse_class_net_cache(
             };
             if matches!(error, NetError::UnresolvedFunctionCount) {
                 sink.on_unresolved_class_net_cache_payload(failure, &stage.scratch[..byte_count]);
+                stage.stats.unresolved_rpc_payloads_preserved += 1;
             }
             sink.on_stream_failure(failure);
             stage.stats.rpc_stream_failures += 1;

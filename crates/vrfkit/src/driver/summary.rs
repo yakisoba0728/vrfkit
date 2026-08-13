@@ -172,6 +172,10 @@ pub(super) fn print(
 }
 
 fn print_checkpoints(cp: &CheckpointStats) {
+    let rpc_payloads_lost = cp
+        .net
+        .rpc_stream_failures
+        .saturating_sub(cp.net.unresolved_rpc_payloads_preserved);
     eprintln!();
     eprintln!("=== Checkpoints ===");
     eprintln!("  Checkpoints:      {}", cp.chunks);
@@ -181,6 +185,26 @@ fn print_checkpoints(cp: &CheckpointStats) {
     eprintln!("  Frames:           {}", cp.frames);
     eprintln!("  Frame packets:    {}", cp.packets);
     eprintln!("  Checkpoint rows:  {}", cp.field_rows);
+    eprintln!(
+        "  Checkpoint net:   {} bunches / {} blocks / {} fields / {} RPCs",
+        cp.net.bunches, cp.net.content_blocks, cp.net.fields, cp.net.rpcs
+    );
+    eprintln!(
+        "  Checkpoint loss:  {} malformed packets / {} bunch headers / {} malformed blocks / {} transform / {} field / {} RPC / {} unfinished partials ({} bits) / {} skipped bits",
+        cp.net.malformed_packets,
+        cp.net.bunch_header_failures,
+        cp.net.malformed_content_blocks,
+        cp.net.transform_failures,
+        cp.net.field_stream_failures,
+        rpc_payloads_lost,
+        cp.net.unfinished_partials,
+        cp.net.unfinished_partial_bits,
+        cp.net.skipped_bits
+    );
+    eprintln!(
+        "  Checkpoint raw:   {} unresolved RPC payloads preserved whole",
+        cp.net.unresolved_rpc_payloads_preserved
+    );
     // Printed, not silent: a checkpoint re-opens every live actor and replays
     // its state, so these two would corrupt the tables they would otherwise
     // land in. See CheckpointStats.

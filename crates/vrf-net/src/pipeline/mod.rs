@@ -1391,6 +1391,7 @@ mod tests {
         assert_eq!(decoded[0] >> 7, 0, "high padding bit must stay zero");
         assert_eq!(stats.rpcs, 0);
         assert_eq!(stats.rpc_stream_failures, 1);
+        assert_eq!(stats.unresolved_rpc_payloads_preserved, 1);
         assert_eq!(stats.skipped_bits, 7);
     }
 
@@ -1433,6 +1434,7 @@ mod tests {
 
         assert_eq!(payload.position(), 7);
         assert_eq!(stats.rpc_stream_failures, 1);
+        assert_eq!(stats.unresolved_rpc_payloads_preserved, 0);
         assert_eq!(stats.rpcs, 0);
         // The 6 abandoned bits must be counted, not silently dropped.
         assert!(

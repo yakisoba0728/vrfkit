@@ -104,6 +104,14 @@ pub struct NetStats {
     pub field_stream_failures: u64,
     /// Content blocks whose decoded ClassNetCache (RPC) stream failed to parse.
     pub rpc_stream_failures: u64,
+    /// RPC stream failures whose complete decoded payload was handed to the
+    /// sink because the replay did not provide a usable function count.
+    ///
+    /// This is an inclusive subset of [`Self::rpc_stream_failures`], not an
+    /// additional failure. It distinguishes an unsupported attribution whose
+    /// raw payload remains available from an abandoned, truncated, or otherwise
+    /// malformed stream that actually lost structure.
+    pub unresolved_rpc_payloads_preserved: u64,
     /// Actor channels opened.
     pub actor_opens: u64,
     /// Actor channels closed.
@@ -158,6 +166,51 @@ pub struct NetStats {
 }
 
 impl NetStats {
+    /// Add every counter from a completed independent replication pass.
+    ///
+    /// Diagnostics are appended up to the ordinary cap and any excess is
+    /// folded into `diagnostics_dropped`, so the detailed list remains bounded
+    /// while all scalar totals remain exact.
+    pub fn absorb(&mut self, other: &mut Self) {
+        self.packets += other.packets;
+        self.malformed_packets += other.malformed_packets;
+        self.bunches += other.bunches;
+        self.partial_errors += other.partial_errors;
+        self.partial_fragments += other.partial_fragments;
+        self.partial_completed += other.partial_completed;
+        self.unfinished_partials += other.unfinished_partials;
+        self.unfinished_partial_bits += other.unfinished_partial_bits;
+        self.bunch_header_failures += other.bunch_header_failures;
+        self.content_blocks += other.content_blocks;
+        self.rep_layout_blocks += other.rep_layout_blocks;
+        self.class_net_cache_blocks += other.class_net_cache_blocks;
+        self.deleted_blocks += other.deleted_blocks;
+        self.fields += other.fields;
+        self.rpcs += other.rpcs;
+        self.skipped_bits += other.skipped_bits;
+        self.malformed_content_blocks += other.malformed_content_blocks;
+        self.transform_failures += other.transform_failures;
+        self.field_stream_failures += other.field_stream_failures;
+        self.rpc_stream_failures += other.rpc_stream_failures;
+        self.unresolved_rpc_payloads_preserved += other.unresolved_rpc_payloads_preserved;
+        self.actor_opens += other.actor_opens;
+        self.actor_closes += other.actor_closes;
+        self.channel_reopens_while_open += other.channel_reopens_while_open;
+        self.actor_opens_missing_spawn += other.actor_opens_missing_spawn;
+        self.package_map_exports += other.package_map_exports;
+        self.rep_layout_export_bunches += other.rep_layout_export_bunches;
+        self.exported_guids += other.exported_guids;
+        self.must_be_mapped_guids += other.must_be_mapped_guids;
+        #[cfg(feature = "diagnostics")]
+        {
+            let available = MAX_DIAGNOSTIC_EVENTS.saturating_sub(self.diagnostics.len());
+            let keep = available.min(other.diagnostics.len());
+            self.diagnostics.extend(other.diagnostics.drain(..keep));
+            self.diagnostics_dropped += other.diagnostics_dropped + other.diagnostics.len() as u64;
+            other.diagnostics.clear();
+        }
+    }
+
     /// Record one diagnostic event, or count it as dropped if the log is full.
     ///
     /// The event is built by the closure so that a full log costs a length
@@ -350,5 +403,78 @@ mod tests {
         let stats = NetStats::default();
         assert!(stats.diagnostics.is_empty());
         assert_eq!(stats.diagnostics_dropped, 0);
+    }
+
+    #[test]
+    fn absorbing_checkpoint_stats_keeps_every_counter() {
+        let source = NetStats {
+            packets: 1,
+            malformed_packets: 2,
+            bunches: 3,
+            partial_errors: 4,
+            partial_fragments: 5,
+            partial_completed: 6,
+            unfinished_partials: 7,
+            unfinished_partial_bits: 8,
+            bunch_header_failures: 9,
+            content_blocks: 10,
+            rep_layout_blocks: 11,
+            class_net_cache_blocks: 12,
+            deleted_blocks: 13,
+            fields: 14,
+            rpcs: 15,
+            skipped_bits: 16,
+            malformed_content_blocks: 17,
+            transform_failures: 18,
+            field_stream_failures: 19,
+            rpc_stream_failures: 20,
+            unresolved_rpc_payloads_preserved: 21,
+            actor_opens: 22,
+            actor_closes: 23,
+            channel_reopens_while_open: 24,
+            actor_opens_missing_spawn: 25,
+            package_map_exports: 26,
+            rep_layout_export_bunches: 27,
+            exported_guids: 28,
+            must_be_mapped_guids: 29,
+            diagnostics: vec![dummy_event(30)],
+            diagnostics_dropped: 31,
+        };
+        let mut totals = NetStats::default();
+        for _ in 0..2 {
+            totals.absorb(&mut source.clone());
+        }
+
+        assert_eq!(totals.packets, 2);
+        assert_eq!(totals.malformed_packets, 4);
+        assert_eq!(totals.bunches, 6);
+        assert_eq!(totals.partial_errors, 8);
+        assert_eq!(totals.partial_fragments, 10);
+        assert_eq!(totals.partial_completed, 12);
+        assert_eq!(totals.unfinished_partials, 14);
+        assert_eq!(totals.unfinished_partial_bits, 16);
+        assert_eq!(totals.bunch_header_failures, 18);
+        assert_eq!(totals.content_blocks, 20);
+        assert_eq!(totals.rep_layout_blocks, 22);
+        assert_eq!(totals.class_net_cache_blocks, 24);
+        assert_eq!(totals.deleted_blocks, 26);
+        assert_eq!(totals.fields, 28);
+        assert_eq!(totals.rpcs, 30);
+        assert_eq!(totals.skipped_bits, 32);
+        assert_eq!(totals.malformed_content_blocks, 34);
+        assert_eq!(totals.transform_failures, 36);
+        assert_eq!(totals.field_stream_failures, 38);
+        assert_eq!(totals.rpc_stream_failures, 40);
+        assert_eq!(totals.unresolved_rpc_payloads_preserved, 42);
+        assert_eq!(totals.actor_opens, 44);
+        assert_eq!(totals.actor_closes, 46);
+        assert_eq!(totals.channel_reopens_while_open, 48);
+        assert_eq!(totals.actor_opens_missing_spawn, 50);
+        assert_eq!(totals.package_map_exports, 52);
+        assert_eq!(totals.rep_layout_export_bunches, 54);
+        assert_eq!(totals.exported_guids, 56);
+        assert_eq!(totals.must_be_mapped_guids, 58);
+        assert_eq!(totals.diagnostics.len(), 2);
+        assert_eq!(totals.diagnostics_dropped, 62);
     }
 }
