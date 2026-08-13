@@ -181,7 +181,7 @@ struct Walk<'a, 'd> {
 /// or `None` where the replay declares nothing there. Pass `&[]` when no
 /// declaration is available; the schema's own names are then the only source.
 /// A LEAF label is resolved declaration -> schema -> `_h{handle}`; container
-/// segments come from the schema alone. See [`push_leaf_label`].
+/// segments come from the schema alone. See the internal `push_leaf_label` helper.
 pub fn decode_struct_array(
     data: &[u8],
     bit_count: u32,

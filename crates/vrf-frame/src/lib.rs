@@ -57,7 +57,7 @@
 //!
 //! # Flag semantics
 //!
-//! The header `flags` field (from [`vrf_container::ReplayHeader::flags`]) controls
+//! The header `flags` field (from `vrf_container::ReplayHeader::flags`) controls
 //! two optional steps:
 //!
 //! | Bit | Name | Effect |

@@ -392,7 +392,7 @@ pub struct ExportSink<'a> {
     /// group path for every field in it, and the group path is long
     /// (`/Game/Characters/.../AggroBot_PC.AggroBot_PC_C`) while the field names
     /// are short. Caching the group-path fold and finishing only the field-name
-    /// half per probe is the saving. Refreshed by [`set_current_group_path`].
+    /// half per probe is the saving. Refreshed by `set_current_group_path`.
     ///
     /// A stale value is a performance and typing regression, not a wrong-value
     /// bug: the slot tag and the full string equality check still reject a

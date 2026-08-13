@@ -5,6 +5,9 @@
 //! field and the byte counts involved.
 
 use thiserror::Error;
+use vrf_bitio::BitError;
+
+use crate::chunk::ChunkType;
 
 /// All errors the container parser can produce.
 ///
@@ -60,6 +63,12 @@ pub enum ContainerError {
     #[error("replay data encountered before header chunk")]
     DataBeforeHeader,
 
+    /// A chunk other than ReplayData appeared before the mandatory Header
+    /// chunk. Unknown discriminants are included: the public container layout
+    /// promises that Header is first, so no pre-header payload may disappear.
+    #[error("{chunk_type:?} chunk encountered before header chunk")]
+    ChunkBeforeHeader { chunk_type: ChunkType },
+
     /// No Header chunk was found in the chunk stream.
     #[error("no header chunk found in chunk stream")]
     MissingHeaderChunk,
@@ -106,10 +115,10 @@ pub enum ContainerError {
 
     /// A compressed archive was met in a build with the `oodle` feature off.
     ///
-    /// Only exists in that configuration, so a default build's match arms are
-    /// unaffected. Reported rather than returning an empty buffer: a zero-length
-    /// "success" is indistinguishable downstream from a genuinely empty chunk.
-    #[cfg(not(feature = "oodle"))]
+    /// This variant is part of the public error shape in every feature build;
+    /// it is only constructed when the `oodle` feature is disabled. Reported
+    /// rather than returning an empty buffer: a zero-length "success" is
+    /// indistinguishable downstream from a genuinely empty chunk.
     #[error(
         "compressed chunk needs {needed} bytes of Oodle output, but this build \
          has the `oodle` feature disabled"
@@ -130,6 +139,14 @@ pub enum ContainerError {
         context: &'static str,
         needed: usize,
         available: usize,
+    },
+
+    /// An FString had a malformed length or encoding.
+    #[error("{context}: FString decode error: {source}")]
+    FString {
+        context: &'static str,
+        #[source]
+        source: BitError,
     },
 
     /// A lower-level bit-IO error propagated up.

@@ -32,32 +32,30 @@ pub struct Preamble {
 pub fn parse_preamble(data: &[u8]) -> Result<Preamble, ContainerError> {
     let (replay_info, info_end) = info::parse_replay_info(data)?;
 
-    // The first chunk must be Header. Anything else before it is skipped,
-    // except ReplayData -- packets that arrive before the schema-bearing header
-    // cannot be interpreted, so that ordering is an error rather than a skip.
+    // Header must be the first chunk. Even an unknown discriminant owns a
+    // declared payload, and skipping it here would make bytes before Header
+    // disappear despite the public container-order contract.
     let mut iter = ChunkIterator::new(data, info_end);
-    loop {
-        let chunk = iter
-            .next_chunk()?
-            .ok_or(ContainerError::MissingHeaderChunk)?;
+    let chunk = iter
+        .next_chunk()?
+        .ok_or(ContainerError::MissingHeaderChunk)?;
 
-        match chunk.chunk_type {
-            ChunkType::Header => {
-                let payload =
-                    &data[chunk.data_offset..chunk.data_offset + chunk.size_in_bytes as usize];
-                let replay_header = header::parse_replay_header(payload)?;
-                return Ok(Preamble {
-                    info: replay_info,
-                    header: replay_header,
-                    remaining_offset: iter.position(),
-                });
-            }
-            ChunkType::ReplayData => {
-                return Err(ContainerError::DataBeforeHeader);
-            }
-            _ => {
-                // Skip non-header, non-data chunks before the header (e.g. Unknown).
-            }
+    match chunk.chunk_type {
+        ChunkType::Header => {
+            let payload =
+                &data[chunk.data_offset..chunk.data_offset + chunk.size_in_bytes as usize];
+            let replay_header = header::parse_replay_header(payload)?;
+            Ok(Preamble {
+                info: replay_info,
+                header: replay_header,
+                remaining_offset: iter.position(),
+            })
+        }
+        ChunkType::ReplayData => Err(ContainerError::DataBeforeHeader),
+        ChunkType::Checkpoint | ChunkType::Event | ChunkType::Unknown(_) => {
+            Err(ContainerError::ChunkBeforeHeader {
+                chunk_type: chunk.chunk_type,
+            })
         }
     }
 }

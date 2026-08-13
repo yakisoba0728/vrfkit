@@ -28,6 +28,7 @@
 //! | Float | 32 | `value_f64` |
 //! | Double | 64 | `value_f64` |
 //! | FString | variable | `value_str` |
+//! | FText | variable | `value_str` |
 //! | FName | variable | `value_str` |
 //! | ObjectNetGuid | variable (IntPacked) | `value_i64` |
 //! | Guid | 128 | `value_str` (hex) |
@@ -43,12 +44,13 @@
 //! | RotationByte | 3 x (1+8) max | `value_str` (compact) |
 //! | Transform | 4 x 32 + 3 x 32 + 3 x 32 = 320 | `value_str` (compact) |
 //! | RepMovement | variable | `value_str` (JSON object, 8 members) |
-//! | RepLayoutDynamicArray | variable | *Raw* (not decoded) |
+//! | RepLayoutDynamicArray | variable | flattened child rows plus raw parent |
 //!
-//! Two decoders sit outside that table because they key off the field's name
-//! rather than a declared type: [`structs`] for the named struct blobs, and
-//! [`effect`] for the `EffectContainer` arrays, which fill `value_str` with a
-//! JSON array. Both are additive in the same sense -- raw bits survive.
+//! Three decoders sit outside that table because they key off the field's name
+//! or array shape rather than a scalar declared type: [`decode_struct_array`]
+//! for RepLayout arrays, [`structs`] for named struct blobs, and [`effect`] for
+//! the `EffectContainer` arrays, which fill `value_str` with a JSON array. All
+//! are additive in the same sense -- the parent raw bits survive.
 //!
 //! # Module map
 //!
@@ -64,21 +66,21 @@
 //!
 //! # Feature flags
 //!
-//! `decode_field` and the model types in [`types`] are the crate's core and are
+//! [`decode_field`] and the exported model types are the crate's core and are
 //! always compiled: everything else is expressed in terms of them, so there is
 //! no flag for them. The four decoders layered on top are independent of each
 //! other and each can be left out:
 //!
 //! | Feature | Brings in | Notes |
 //! |---------|-----------|-------|
-//! | `overlay` | [`OverlayTable`], [`apply_overlay_with_handle`], `OVERLAY_TABLE` | Also compiles the 1,255-entry generated table |
+//! | `overlay` | [`OverlayTable`], [`apply_overlay_with_handle`], `OVERLAY_TABLE` | Also compiles the generated table |
 //! | `array` | [`decode_struct_array`] and [`COMBAT_ROUNDS_SCHEMA`] | |
 //! | `structs` | [`structs`] | |
 //! | `effect` | [`effect`] | |
 //!
 //! All four are on by default, so a consumer that does nothing gets the whole
 //! crate. `overlay` is the one worth dropping if the primitive decoders are all
-//! you want: it is what pulls in the 1,255-entry generated table.
+//! you want: it is what pulls in the generated table.
 
 #![forbid(unsafe_code)]
 

@@ -637,6 +637,43 @@ mod tests {
         assert_eq!(object_guid_for(false, 99), Some(99), "subobject block");
     }
 
+    #[test]
+    fn on_field_keeps_exact_parent_raw_bits_for_unknown_and_typed_failures() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        let payload = [0b1110_1101];
+
+        sink.on_field(
+            999,
+            5,
+            BitReader::with_bit_len(&payload, 5).expect("bounded field reader"),
+        );
+
+        sink.set_current_group_path(Arc::from(
+            "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Base",
+        ));
+        sink.on_field(
+            0,
+            5,
+            BitReader::with_bit_len(&payload, 5).expect("bounded field reader"),
+        );
+
+        assert_eq!(sink.records.fields.len(), 2);
+        for row in &sink.records.fields {
+            assert_eq!(row.bit_count, 5);
+            assert_eq!(row.raw_bits.as_deref(), Some(&[0b0000_1101][..]));
+        }
+        assert_eq!(sink.records.fields[0].field_name, None);
+        assert_eq!(
+            sink.records.fields[1].field_name.as_deref(),
+            Some("DamageTaken")
+        );
+        assert!(sink.records.fields[1].value_f64.is_none());
+        assert_eq!(sink.stats.overlay.decoded_err, 1);
+    }
+
     /// A whole unresolved block is one preservation row, not an RPC or a set
     /// of invented fields. The reserved field name is its sole discriminator.
     #[test]

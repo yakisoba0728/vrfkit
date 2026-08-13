@@ -13,7 +13,7 @@ pub enum MovementError {
     #[error("invalid movement magic: 0x{0:02X} (expected 0x52)")]
     InvalidMagic(u8),
 
-    /// Movement marker sequence violated (markers must follow 1->2->3->4->5->6->7->2->3...).
+    /// Movement marker sequence violated (markers must follow 1->2->3->4->5->6->7->1->2...).
     #[error("movement marker mismatch: expected {expected}, got {actual}")]
     MarkerMismatch { expected: u8, actual: u8 },
 

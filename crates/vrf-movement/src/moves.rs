@@ -6,8 +6,8 @@
 //!
 //! # The marker sequence
 //!
-//! Moves are separated by a 3-bit marker that counts 1, 2, 3, 4, 5, 6, 7, 2, 3,
-//! ... -- it wraps at 7 back to 2, so 1 appears only once, at the start. A
+//! Moves are separated by a 3-bit marker that counts 1, 2, 3, 4, 5, 6, 7, 1, 2,
+//! ... -- it wraps at 7 back to 1. A
 //! marker that does not match the expected next value means the cursor has
 //! drifted, and is reported rather than skipped: continuing from a desynced
 //! position yields well-formed nonsense.
@@ -72,9 +72,9 @@ pub(crate) fn parse_movement_section(
     Ok(())
 }
 
-/// Compute the next expected marker in the sequence 1->2->3->4->5->6->7->2->3->...
+/// Compute the next expected marker in the sequence 1->2->3->4->5->6->7->1->2->...
 ///
-/// The sequence wraps at 7 and skips 0 and 1 (except the initial 1).
+/// The sequence wraps at 7 and skips only 0.
 #[inline]
 pub(crate) fn next_marker(marker: u8) -> u8 {
     let next = (marker + 1) & 7;

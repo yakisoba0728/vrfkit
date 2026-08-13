@@ -181,7 +181,7 @@ pub(super) fn handle_hash(group_path: &str, handle: u32) -> u64 {
 /// Published because the sink lives in another crate; opaque because its fields
 /// are an internal detail of the mix. A stale state turns overlay hits into
 /// misses (fields degrade to `raw_bits`), never a wrong value -- the slot tag and
-/// the full string equality check in [`OverlayIndex::find_name`] still guard
+/// the full string equality check in `OverlayIndex::find_name` still guard
 /// every hit.
 #[derive(Debug, Clone, Copy)]
 pub struct GroupHashState {
@@ -194,7 +194,7 @@ pub struct GroupHashState {
 /// Compute the cacheable half of a `(group_path, ...)` key hash.
 ///
 /// This is the part the export sink amasses once per content block. Pair it with
-/// [`name_hash_from_group`] or [`handle_hash_from_group`] to finish the key for a
+/// `name_hash_from_group` or `handle_hash_from_group` to finish the key for a
 /// single probe.
 #[inline]
 #[must_use]
@@ -225,8 +225,10 @@ pub(super) fn handle_hash_from_group(group: GroupHashState, handle: u32) -> u64 
 /// The three probe tables an [`OverlayTable`](super::OverlayTable) needs.
 ///
 /// Built once per table on first lookup. For the generated table that is
-/// 1,191 + 139 + 84 insertions and about 40 KB of slots -- paid once, against
-/// two million lookups.
+/// one direct-name insertion per overlay entry, additional stripped-name
+/// aliases, and one insertion per handle entry -- paid once against millions
+/// of lookups. The counts intentionally follow the generated slices rather
+/// than being duplicated here.
 #[derive(Debug, Clone)]
 pub(super) struct OverlayIndex {
     by_name: SlotTable,

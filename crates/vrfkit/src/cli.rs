@@ -1,9 +1,9 @@
 //! Argument parsing -- hand-rolled, no external dependencies.
 //!
 //! Three subcommands:
-//!   inspect <file>
-//!   validate <file>
-//!   export <file> --out <dir>      (feature `export`)
+//!   inspect `<file>`
+//!   validate `<file>`
+//!   export `<file>` --out `<dir>`      (feature `export`)
 
 use crate::error::CliError;
 use crate::inspect;
@@ -98,12 +98,20 @@ fn export(args: &[String]) -> Result<(), CliError> {
     let mut i = 3;
     while i < args.len() {
         if args[i] == "--out" {
+            if out_dir.is_some() {
+                return Err(CliError::Usage("duplicate option: --out".to_string()));
+            }
             i += 1;
             out_dir =
                 Some(args.get(i).map(String::as_str).ok_or_else(|| {
                     CliError::Usage("--out requires a directory path".to_string())
                 })?);
         } else if args[i] == "--checkpoints" {
+            if with_checkpoints {
+                return Err(CliError::Usage(
+                    "duplicate option: --checkpoints".to_string(),
+                ));
+            }
             with_checkpoints = true;
         } else {
             return Err(CliError::Usage(format!("unknown option: {}", args[i])));
@@ -151,6 +159,38 @@ mod tests {
     fn validate_rejects_surplus_positional_arguments() {
         let err = run(&owned(&["vrfkit", "validate", "missing.vrf", "other.vrf"]))
             .expect_err("validate must not ignore another input path");
+        assert!(matches!(err, CliError::Usage(_)), "got {err:?}");
+    }
+
+    #[cfg(feature = "export")]
+    #[test]
+    fn export_rejects_duplicate_out_before_opening_the_file() {
+        let err = run(&owned(&[
+            "vrfkit",
+            "export",
+            "missing.vrf",
+            "--out",
+            "first",
+            "--out",
+            "second",
+        ]))
+        .expect_err("export must reject a duplicate --out");
+        assert!(matches!(err, CliError::Usage(_)), "got {err:?}");
+    }
+
+    #[cfg(feature = "export")]
+    #[test]
+    fn export_rejects_duplicate_checkpoints_before_opening_the_file() {
+        let err = run(&owned(&[
+            "vrfkit",
+            "export",
+            "missing.vrf",
+            "--out",
+            "out",
+            "--checkpoints",
+            "--checkpoints",
+        ]))
+        .expect_err("export must reject a duplicate --checkpoints");
         assert!(matches!(err, CliError::Usage(_)), "got {err:?}");
     }
 }

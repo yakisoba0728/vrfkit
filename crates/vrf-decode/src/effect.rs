@@ -41,7 +41,7 @@
 //! they could differ" half of the claim is exactly what the changes put back in
 //! question. The reasoning says these fire on nothing well-formed -- an
 //! `IntPacked` is self-delimiting, and every pinned wire vector in
-//! [`tests`] still passes -- but that is an argument and a fixture set, not the
+//! the module's test fixtures still pass -- but that is an argument and a fixture set, not the
 //! census. Re-run `tools/check_effect_decoder.py` over the corpus to restore
 //! the claim to a measurement.
 //!
@@ -115,10 +115,10 @@
 //!
 //! # Module layout
 //!
-//! - [`framing`]: the shared array framing and [`scan_element_handles`], which
+//! - `framing`: the shared array framing and [`crate::effect::scan_element_handles`], which
 //!   is what makes the element handle pair a measurement rather than a guess.
-//! - [`elements`]: the three element types and their decoders.
-//! - [`json`]: the export path's blob-to-JSON rendering.
+//! - `elements`: the three element types and their decoders.
+//! - `json`: the export path's blob-to-JSON rendering.
 
 mod elements;
 mod framing;

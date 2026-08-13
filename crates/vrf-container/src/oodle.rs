@@ -5,7 +5,7 @@
 //! inside the Oodle archive header -- and the parser requires them to agree. A
 //! Checkpoint chunk (see [`crate::checkpoint`]) reuses the archive half only,
 //! and has no outer statement to check against, which is why
-//! [`decompress_oodle_archive`] takes the expected length as an `Option`.
+//! `decompress_oodle_archive` takes the expected length as an `Option`.
 //!
 //! # Compression is optional at the crate level
 //!
@@ -155,7 +155,7 @@ pub fn decompress_replay_data(
 ///
 /// The count is [`ReplayDataMeta::trailing_bytes`], computed once from the
 /// prologue. The inner `compressed_data[..compressed_size]` slice in
-/// [`decompress_oodle_archive`] discards exactly the same bytes -- for a
+/// `decompress_oodle_archive` discards exactly the same bytes -- for a
 /// ReplayData chunk `compressed_size` is pinned to `SizeInBytes - 8` and the
 /// archive slice runs to the end of the payload, so the two residuals are one
 /// residual -- and a checkpoint archive has none at all, because its declared

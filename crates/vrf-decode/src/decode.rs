@@ -29,7 +29,7 @@ pub enum FieldType {
     Float,
     Double,
     FString,
-    /// See [`scalar::decode_ftext`].
+    /// See the internal `scalar::decode_ftext` reader.
     FText,
     FName,
     ObjectNetGuid,
