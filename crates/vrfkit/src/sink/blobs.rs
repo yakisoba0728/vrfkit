@@ -302,7 +302,9 @@ impl ExportSink<'_> {
     fn decode_round_results_blob(&mut self, raw: &[u8], bit_count: u32) -> bool {
         use vrf_decode::structs::decode_round_results;
 
-        let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count));
+        let Ok(mut reader) = BitReader::with_bit_len(raw, u64::from(bit_count)) else {
+            return self.record_blob_failure(&"declared bit length exceeds buffer");
+        };
         // Scoped so the borrow of `self.cache` ends before the emit loop needs
         // `&mut self`. The decoded elements own their strings, so nothing
         // outlives the declaration.
@@ -353,7 +355,9 @@ impl ExportSink<'_> {
     fn decode_team_economy_blob(&mut self, raw: &[u8], bit_count: u32) -> bool {
         use vrf_decode::structs::decode_team_economy;
 
-        let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count));
+        let Ok(mut reader) = BitReader::with_bit_len(raw, u64::from(bit_count)) else {
+            return self.record_blob_failure(&"declared bit length exceeds buffer");
+        };
         let results = match decode_team_economy(&mut reader) {
             Ok(results) => results,
             Err(err) => return self.record_blob_failure(&err),
@@ -393,7 +397,9 @@ impl ExportSink<'_> {
     fn decode_round_infos_blob(&mut self, raw: &[u8], bit_count: u32) -> bool {
         use vrf_decode::structs::decode_round_infos;
 
-        let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count));
+        let Ok(mut reader) = BitReader::with_bit_len(raw, u64::from(bit_count)) else {
+            return self.record_blob_failure(&"declared bit length exceeds buffer");
+        };
         let decoded = {
             let declared = Self::declared_handle_names(self.cache, &self.current_group_path);
             decode_round_infos(&mut reader, &declared)

@@ -177,7 +177,7 @@ pub fn decode_cnc_payload(
 /// instead of driving a sink, and returns `None` when the walk is not clean
 /// (residual bits or malformed reads) rather than partial results.
 fn walk_cnc(payload: &[u8], bit_count: u32, function_count: u32) -> Option<Vec<CncRpc>> {
-    let mut reader = BitReader::with_bit_len(payload, u64::from(bit_count));
+    let mut reader = BitReader::with_bit_len(payload, u64::from(bit_count)).ok()?;
     let handle_max = function_count.max(2);
     let mut rpcs = Vec::new();
 
@@ -284,7 +284,7 @@ pub fn decode_abilities_and_buffs_inner(
     payload: &[u8],
     bit_count: u32,
 ) -> Option<AbilitiesActivation> {
-    let mut reader = BitReader::with_bit_len(payload, u64::from(bit_count));
+    let mut reader = BitReader::with_bit_len(payload, u64::from(bit_count)).ok()?;
     if reader.bits_remaining() == 0 {
         return None;
     }

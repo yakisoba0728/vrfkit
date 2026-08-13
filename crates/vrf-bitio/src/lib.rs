@@ -103,6 +103,13 @@ pub enum BitError {
         /// The rejected length.
         length: i64,
     },
+    /// A requested reader window exceeds the supplied byte slice.
+    InvalidBitLength {
+        /// Requested window size in bits.
+        requested: u64,
+        /// Bits available in the supplied slice.
+        available: u64,
+    },
     /// A string's bytes were not valid UTF-8 / UTF-16.
     InvalidString {
         /// Bit position at which the string started.
@@ -135,6 +142,13 @@ impl fmt::Display for BitError {
             Self::InvalidLength { position, length } => {
                 write!(f, "invalid length {length} at position {position}")
             }
+            Self::InvalidBitLength {
+                requested,
+                available,
+            } => write!(
+                f,
+                "requested bit length {requested} exceeds {available} available bits"
+            ),
             Self::InvalidString { position } => {
                 write!(f, "malformed string at position {position}")
             }
@@ -184,19 +198,22 @@ impl<'a> BitReader<'a> {
     /// header, a content block header) and whose final byte therefore carries
     /// padding that must not be read as data.
     ///
-    /// # Panics
-    ///
-    /// Panics if `bit_len` exceeds the bits available in `data`; that is a
-    /// programming error at the call site, not malformed input.
-    #[must_use]
-    pub fn with_bit_len(data: &'a [u8], bit_len: u64) -> Self {
-        assert!(bit_len <= (data.len() as u64) * 8, "bit_len exceeds data");
-        Self {
+    /// Returns [`BitError::InvalidBitLength`] when `bit_len` exceeds the bits
+    /// available in `data`.
+    pub fn with_bit_len(data: &'a [u8], bit_len: u64) -> Result<Self> {
+        let available = (data.len() as u64).saturating_mul(8);
+        if bit_len > available {
+            return Err(BitError::InvalidBitLength {
+                requested: bit_len,
+                available,
+            });
+        }
+        Ok(Self {
             data,
             start_bit: 0,
             pos: 0,
             len: bit_len,
-        }
+        })
     }
 
     /// Bits consumed so far.
@@ -466,6 +483,12 @@ impl<'a> BitReader<'a> {
     pub fn read_fstring(&mut self, max_bytes: i64) -> Result<String> {
         let start = self.pos;
         let raw = i64::from(self.read_i32()?);
+        if max_bytes < 0 {
+            return Err(BitError::InvalidLength {
+                position: start,
+                length: raw,
+            });
+        }
         if raw == 0 {
             return Ok(String::new());
         }
@@ -479,7 +502,11 @@ impl<'a> BitReader<'a> {
         } else {
             units
         };
-        if byte_len > max_bytes.unsigned_abs() {
+        if byte_len > max_bytes as u64
+            || byte_len
+                .checked_mul(8)
+                .is_none_or(|bits| bits > self.bits_remaining())
+        {
             return Err(BitError::InvalidLength {
                 position: start,
                 length: raw,
@@ -525,10 +552,12 @@ impl<'a> BitReader<'a> {
                 position: self.pos,
                 length: count as i64,
             })?;
-        assert!(
-            dst.len() >= byte_count,
-            "destination too small for {count} bits"
-        );
+        if dst.len() < byte_count {
+            return Err(BitError::InvalidBitLength {
+                requested: count,
+                available: (dst.len() as u64).saturating_mul(8),
+            });
+        }
         self.need(count)?;
         if count == 0 {
             return Ok(());
@@ -736,7 +765,7 @@ mod tests {
         for bit_len in 1..=24u64 {
             for off in 0..8u64.min(bit_len) {
                 let width = (bit_len - off) as u32;
-                let mut r = BitReader::with_bit_len(&data, bit_len);
+                let mut r = BitReader::with_bit_len(&data, bit_len).unwrap();
                 r.skip_bits(off).unwrap();
                 assert_eq!(
                     r.read_bits(width).unwrap(),
@@ -816,15 +845,21 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "destination too small")]
-    fn copy_bits_to_checks_the_destination_before_the_stream() {
+    fn copy_bits_to_reports_a_small_destination_before_the_stream() {
         // Order matters and is load-bearing: a caller that sized `dst` wrong has
         // a bug at the call site and must hear about it, rather than getting a
         // recoverable Eof back because the stream happened to be short too.
         let data = [0xFFu8];
         let mut r = BitReader::new(&data);
         let mut dst = [0u8; 1];
-        let _ = r.copy_bits_to(&mut dst, 64);
+        assert_eq!(
+            r.copy_bits_to(&mut dst, 64).unwrap_err(),
+            BitError::InvalidBitLength {
+                requested: 64,
+                available: 8,
+            }
+        );
+        assert_eq!(r.position(), 0);
     }
 
     #[test]
@@ -1050,6 +1085,37 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn fstring_rejects_declared_bytes_beyond_remaining_input_before_allocation() {
+        let data = 1_000_000i32.to_le_bytes();
+        let mut r = BitReader::new(&data);
+
+        assert_eq!(
+            r.read_fstring(1_000_000).unwrap_err(),
+            BitError::InvalidLength {
+                position: 0,
+                length: 1_000_000,
+            }
+        );
+        assert_eq!(r.position(), 32);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn fstring_rejects_negative_maximum_even_for_empty_string() {
+        let data = 0i32.to_le_bytes();
+        let mut r = BitReader::new(&data);
+
+        assert_eq!(
+            r.read_fstring(-1).unwrap_err(),
+            BitError::InvalidLength {
+                position: 0,
+                length: 0,
+            }
+        );
+    }
+
     #[test]
     fn copy_bits_masks_padding() {
         // 0xBF = 0b1011_1111. Copying 1 bit must yield 0x01, not 0xBF: the
@@ -1106,9 +1172,20 @@ mod tests {
     #[test]
     fn with_bit_len_hides_trailing_padding() {
         let data = [0xFFu8, 0xFF];
-        let mut r = BitReader::with_bit_len(&data, 12);
+        let mut r = BitReader::with_bit_len(&data, 12).unwrap();
         assert_eq!(r.bits_remaining(), 12);
         r.skip_bits(12).unwrap();
         assert!(r.read_bit().is_err());
+    }
+
+    #[test]
+    fn with_bit_len_does_not_panic_when_length_exceeds_input() {
+        assert_eq!(
+            BitReader::with_bit_len(&[0u8], 9).unwrap_err(),
+            BitError::InvalidBitLength {
+                requested: 9,
+                available: 8,
+            }
+        );
     }
 }

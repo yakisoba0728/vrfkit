@@ -335,7 +335,7 @@ impl ExportSink<'_> {
             // fail on well-formed input; on a malformed tail the payload is
             // dropped (the preservation row still carries the full blob).
             let raw_bits = (|| {
-                let mut reader = vrf_bitio::BitReader::with_bit_len(payload, total_len);
+                let mut reader = vrf_bitio::BitReader::with_bit_len(payload, total_len).ok()?;
                 reader.skip_bits(rpc.payload_offset).ok()?;
                 let byte_count = (rpc.payload_bits as usize).div_ceil(8);
                 let mut buf = SmallVec::with_capacity(byte_count);
@@ -728,7 +728,7 @@ mod tests {
         write_int_packed(&mut bits, 100); // payload_bits = 100 (exceeds remaining)
         // No payload data follows: the walker breaks here.
         let data = bits_to_bytes(&bits);
-        let reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
 
         let mut cache = NetGuidCache::new();
         let mut channel_state = ChannelState::new();
@@ -752,7 +752,7 @@ mod tests {
         bits.extend(std::iter::repeat_n(false, 8)); // 8 bits of payload data
         write_int_packed(&mut bits, 0); // terminator handle
         let data = bits_to_bytes(&bits);
-        let reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
 
         let mut cache = NetGuidCache::new();
         let mut channel_state = ChannelState::new();
@@ -794,7 +794,7 @@ mod tests {
     fn bits_after_the_rpc_terminator_are_counted_not_discarded() {
         let bits = rpc_payload_with_suffix(16);
         let data = bits_to_bytes(&bits);
-        let reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
 
         let mut cache = NetGuidCache::new();
         let mut channel_state = ChannelState::new();
@@ -822,7 +822,7 @@ mod tests {
         for suffix in [0, 1] {
             let bits = rpc_payload_with_suffix(suffix);
             let data = bits_to_bytes(&bits);
-            let reader = BitReader::with_bit_len(&data, bits.len() as u64);
+            let reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
 
             let mut cache = NetGuidCache::new();
             let mut channel_state = ChannelState::new();

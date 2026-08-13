@@ -97,7 +97,13 @@ impl RawPacketReader {
         }
 
         let bit_size = compute_bit_size(packet_data, last_byte);
-        let mut reader = BitReader::with_bit_len(packet_data, bit_size as u64);
+        let Ok(mut reader) = BitReader::with_bit_len(packet_data, bit_size as u64) else {
+            return PacketReadResult {
+                bunch_count: 0,
+                is_malformed: true,
+                partial_error_count: 0,
+            };
+        };
 
         let mut bunch_count = 0u32;
         let mut partial_error_count = 0u32;

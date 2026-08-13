@@ -75,7 +75,7 @@ pub mod sbox;
 pub mod versions;
 
 use versions::{SeededTransform, V12_10, V12_11, V13_00, V13_01, V13_02};
-use vrf_bitio::{BitReader, Result as BitResult};
+use vrf_bitio::{BitError, BitReader, Result as BitResult};
 
 /// Derive the transform seed for a content block.
 ///
@@ -98,15 +98,21 @@ pub const fn seed_for(bit_count: usize, actor_net_guid: u32) -> u32 {
 /// 1..7 bits, advancing the PRNG once per stage iteration. The staging order is
 /// part of the format: the keystream position depends on how many words of each
 /// width came before.
-pub fn transform_in_place<T: SeededTransform>(buf: &mut [u8], bit_count: usize, seed: u32) {
+pub fn transform_in_place<T: SeededTransform>(
+    buf: &mut [u8],
+    bit_count: usize,
+    seed: u32,
+) -> BitResult<()> {
     if bit_count == 0 {
-        return;
+        return Ok(());
     }
-    debug_assert!(
-        buf.len() >= bit_count.div_ceil(8),
-        "buffer must hold {bit_count} bits, got {} bytes",
-        buf.len()
-    );
+    let available = (buf.len() as u64).saturating_mul(8);
+    if bit_count as u64 > available {
+        return Err(BitError::InvalidBitLength {
+            requested: bit_count as u64,
+            available,
+        });
+    }
 
     let mut state = seed;
     // Before the first PRNG advance the keystream byte is just the low seed byte.
@@ -144,6 +150,7 @@ pub fn transform_in_place<T: SeededTransform>(buf: &mut [u8], bit_count: usize, 
         let mask = 0xffu8 >> (7 - ((bit_count - 1) & 7));
         buf[offset] ^= mask & (stream_byte ^ T::TAIL_XOR);
     }
+    Ok(())
 }
 
 /// A game build's payload transform, selected by replay branch string.
@@ -231,7 +238,7 @@ impl TransformVersion {
     }
 
     /// Transform `buf` in place.
-    pub fn apply(self, buf: &mut [u8], bit_count: usize, seed: u32) {
+    pub fn apply(self, buf: &mut [u8], bit_count: usize, seed: u32) -> BitResult<()> {
         match self {
             Self::V1210 => transform_in_place::<V12_10>(buf, bit_count, seed),
             Self::V1211 => transform_in_place::<V12_11>(buf, bit_count, seed),
@@ -257,7 +264,7 @@ impl TransformVersion {
             &mut out[..Self::output_byte_count(bit_count)],
             bit_count,
             seed,
-        );
+        )?;
         Ok(())
     }
 }
@@ -292,7 +299,7 @@ mod tests {
     fn zero_bits_is_a_noop() {
         let mut buf = [0xAAu8; 4];
         for v in ALL_VERSIONS {
-            v.apply(&mut buf, 0, 1234);
+            v.apply(&mut buf, 0, 1234).unwrap();
             assert_eq!(buf, [0xAAu8; 4]);
         }
     }
@@ -304,6 +311,18 @@ mod tests {
         assert_eq!(TransformVersion::output_byte_count(8), 1);
         assert_eq!(TransformVersion::output_byte_count(9), 2);
         assert_eq!(TransformVersion::output_byte_count(287), 36);
+    }
+
+    #[test]
+    fn apply_does_not_panic_on_an_undersized_buffer() {
+        let mut buf = [0u8; 1];
+        assert_eq!(
+            TransformVersion::V1301.apply(&mut buf, 65, 0).unwrap_err(),
+            BitError::InvalidBitLength {
+                requested: 65,
+                available: 8,
+            }
+        );
     }
 
     #[test]

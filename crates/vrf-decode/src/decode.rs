@@ -123,7 +123,7 @@ pub fn decode_field(
     if matches!(field_type, FieldType::Raw | FieldType::Skip) {
         return Err(DecodeError::RawOrSkip);
     }
-    let mut reader = BitReader::with_bit_len(data, u64::from(bit_count));
+    let mut reader = BitReader::with_bit_len(data, u64::from(bit_count))?;
     let value = dispatch_decode(field_type, &mut reader, bit_count)?;
     let remaining = reader.bits_remaining();
     // No exemption. `EnumRemainingBits` used to have one, because its decoder

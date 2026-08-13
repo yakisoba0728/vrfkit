@@ -359,7 +359,7 @@ mod tests {
         let data = bits_to_bytes(&bits);
         // Bound the reader to exactly the meaningful bit count so we can
         // verify consumption without byte-padding interference.
-        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
         let mut sink = RecordingSink::default();
         let (count, _) = parse_class_net_cache(&mut reader, 1, &mut sink).unwrap();
 
@@ -436,7 +436,7 @@ mod tests {
         // Bound to the exact bit count, the way the framing layer does: the
         // byte-padded tail must not be counted as abandoned stream data.
         let data = bits_to_bytes(&bits);
-        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
         let mut sink = RecordingSink::default();
         let (count, abandoned) = parse_rep_layout(&mut reader, &mut sink).unwrap();
 
@@ -478,7 +478,7 @@ mod tests {
         bits.extend(std::iter::repeat_n(false, 3)); // 3 stray bits
 
         let data = bits_to_bytes(&bits);
-        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
         let mut sink = RecordingSink::default();
         let (count, abandoned) = parse_class_net_cache(&mut reader, 2, &mut sink).unwrap();
 
@@ -501,7 +501,7 @@ mod tests {
         assert_eq!(bits.len(), 1);
 
         let data = bits_to_bytes(&bits);
-        let mut reader = BitReader::with_bit_len(&data, 1);
+        let mut reader = BitReader::with_bit_len(&data, 1).unwrap();
         let mut sink = RecordingSink::default();
         let (count, abandoned) = parse_class_net_cache(&mut reader, 2, &mut sink).unwrap();
 

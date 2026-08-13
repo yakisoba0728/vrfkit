@@ -235,7 +235,7 @@ fn decode(
     Vec<crate::types::MovementMove>,
 ) {
     let bytes = rpc.to_bytes();
-    let mut reader = BitReader::with_bit_len(&bytes, u64::from(rpc.bit_count()));
+    let mut reader = BitReader::with_bit_len(&bytes, u64::from(rpc.bit_count())).unwrap();
     let mut moves = Vec::new();
     let result = decode_movement_rpc(&mut reader, |m| moves.push(m)).unwrap();
     (result, moves)
@@ -380,7 +380,7 @@ fn decodes_single_variant0_move() {
     let stream = build_component_data_stream(&[mv]);
     let rpc = build_rpc_payload(1234, &stream);
     let bytes = rpc.to_bytes();
-    let mut reader = BitReader::with_bit_len(&bytes, rpc.bit_count() as u64);
+    let mut reader = BitReader::with_bit_len(&bytes, rpc.bit_count() as u64).unwrap();
 
     let mut moves = Vec::new();
     let result = decode_movement_rpc(&mut reader, |m| moves.push(m)).unwrap();
@@ -406,7 +406,7 @@ fn decodes_single_variant1_move_with_velocity() {
     let stream = build_component_data_stream(&[mv]);
     let rpc = build_rpc_payload(5678, &stream);
     let bytes = rpc.to_bytes();
-    let mut reader = BitReader::with_bit_len(&bytes, rpc.bit_count() as u64);
+    let mut reader = BitReader::with_bit_len(&bytes, rpc.bit_count() as u64).unwrap();
 
     let mut moves = Vec::new();
     let result = decode_movement_rpc(&mut reader, |m| moves.push(m)).unwrap();
@@ -425,7 +425,7 @@ fn decodes_two_moves_in_one_update() {
     let stream = build_component_data_stream(&[mv1, mv2]);
     let rpc = build_rpc_payload(9999, &stream);
     let bytes = rpc.to_bytes();
-    let mut reader = BitReader::with_bit_len(&bytes, rpc.bit_count() as u64);
+    let mut reader = BitReader::with_bit_len(&bytes, rpc.bit_count() as u64).unwrap();
 
     let mut moves = Vec::new();
     let result = decode_movement_rpc(&mut reader, |m| moves.push(m)).unwrap();
@@ -442,7 +442,7 @@ fn decodes_two_moves_in_one_update() {
 fn empty_rpc_returns_zero() {
     // Zero bits -> empty
     let data = [0u8; 0];
-    let mut reader = BitReader::with_bit_len(&data, 0);
+    let mut reader = BitReader::with_bit_len(&data, 0).unwrap();
 
     let mut moves = Vec::new();
     let result = decode_movement_rpc(&mut reader, |m| moves.push(m)).unwrap();
@@ -462,7 +462,7 @@ fn invalid_magic_returns_error() {
 
     let rpc = build_rpc_payload(1234, &payload);
     let bytes = rpc.to_bytes();
-    let mut reader = BitReader::with_bit_len(&bytes, rpc.bit_count() as u64);
+    let mut reader = BitReader::with_bit_len(&bytes, rpc.bit_count() as u64).unwrap();
 
     let mut moves = Vec::new();
     let result = decode_movement_rpc(&mut reader, |m| moves.push(m));

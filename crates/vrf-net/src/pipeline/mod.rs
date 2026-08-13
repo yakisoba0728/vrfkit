@@ -418,7 +418,11 @@ impl ReplicationReader {
 
             // Take completed payload
             if let Some((buf, total_bits, stored_header)) = accumulator.take_completed(ch_index) {
-                let mut payload_reader = BitReader::with_bit_len(&buf, total_bits as u64);
+                let Ok(mut payload_reader) = BitReader::with_bit_len(&buf, total_bits as u64)
+                else {
+                    stage.stats.partial_errors += 1;
+                    return;
+                };
                 Self::process_complete_payload(
                     &stored_header,
                     &mut payload_reader,
@@ -648,14 +652,14 @@ mod tests {
         let mut buffer = Vec::new();
 
         let long = [0xFFu8; 4];
-        let byte_count = stage_fragment(BitReader::with_bit_len(&long, 32), &mut buffer);
+        let byte_count = stage_fragment(BitReader::with_bit_len(&long, 32).unwrap(), &mut buffer);
         assert_eq!(byte_count, 4);
         assert_eq!(&buffer[..byte_count], &[0xFF, 0xFF, 0xFF, 0xFF]);
 
         // Five zero bits: one byte, and the three padding bits above them must
         // be cleared even though the buffer still holds 0xFF underneath.
         let short = [0x00u8];
-        let byte_count = stage_fragment(BitReader::with_bit_len(&short, 5), &mut buffer);
+        let byte_count = stage_fragment(BitReader::with_bit_len(&short, 5).unwrap(), &mut buffer);
         assert_eq!(byte_count, 1);
         assert_eq!(&buffer[..byte_count], &[0x00]);
         assert_eq!(
@@ -666,7 +670,7 @@ mod tests {
 
         // A zero-bit fragment stages nothing and must report zero bytes.
         assert_eq!(
-            stage_fragment(BitReader::with_bit_len(&short, 0), &mut buffer),
+            stage_fragment(BitReader::with_bit_len(&short, 0).unwrap(), &mut buffer,),
             0
         );
     }
@@ -1348,7 +1352,7 @@ mod tests {
     #[test]
     fn unresolved_class_net_cache_exposes_the_decoded_whole_payload() {
         let wire = [0xBF];
-        let mut payload = BitReader::with_bit_len(&wire, 7);
+        let mut payload = BitReader::with_bit_len(&wire, 7).unwrap();
         let mut scratch = vec![0xFF; 16];
         let mut stats = NetStats::default();
         let mut channels = ChannelTable::default();
@@ -1400,7 +1404,7 @@ mod tests {
     #[test]
     fn class_net_cache_overrun_ok_path_counts_skipped_bits() {
         let wire = [0xBF];
-        let mut payload = BitReader::with_bit_len(&wire, 7);
+        let mut payload = BitReader::with_bit_len(&wire, 7).unwrap();
         let mut scratch = vec![0xFF; 16];
         let mut stats = NetStats::default();
         let mut channels = ChannelTable::default();
@@ -1477,7 +1481,7 @@ mod tests {
             }
         }
 
-        let mut payload_reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let mut payload_reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
         let mut stats = NetStats::default();
         let mut channels = ChannelTable::default();
         let header = RawBunchHeader {

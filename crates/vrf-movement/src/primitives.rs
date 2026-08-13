@@ -226,7 +226,7 @@ mod tests {
         let minus_one = (1u64 << 63) - 1; // all 63 bits set
         let w = quantized(63, 0, [1, minus_one, most_negative]);
         let bytes = w.to_bytes();
-        let mut r = BitReader::with_bit_len(&bytes, w.bit_len());
+        let mut r = BitReader::with_bit_len(&bytes, w.bit_len()).unwrap();
 
         let (x, y, z) = read_quantized_vector(&mut r, 100).unwrap();
 
@@ -244,7 +244,7 @@ mod tests {
         // bound change has to break a test rather than a corpus.
         let w = quantized(62, 0, [7, (1u64 << 62) - 1, 1u64 << 61]);
         let bytes = w.to_bytes();
-        let mut r = BitReader::with_bit_len(&bytes, w.bit_len());
+        let mut r = BitReader::with_bit_len(&bytes, w.bit_len()).unwrap();
 
         let (x, y, z) = read_quantized_vector(&mut r, 100).unwrap();
 
@@ -271,7 +271,7 @@ mod tests {
         // a programming error and not malformed input. Run this file with
         // `-C debug-assertions=off` to see the guard actually hold.
         let data = [0xFFu8; 32];
-        let mut r = BitReader::with_bit_len(&data, 256);
+        let mut r = BitReader::with_bit_len(&data, 256).unwrap();
         let _ = read_signed_quantized_components(&mut r, 64);
     }
 
@@ -282,7 +282,7 @@ mod tests {
         let mut w = quantized(63, 0, [1, 1, 1]);
         w.bits.truncate(7 + 100);
         let bytes = w.to_bytes();
-        let mut r = BitReader::with_bit_len(&bytes, w.bit_len());
+        let mut r = BitReader::with_bit_len(&bytes, w.bit_len()).unwrap();
 
         assert!(matches!(
             read_quantized_vector(&mut r, 100),

@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn absent_vector_takes_the_callers_default() {
         let data = bits_to_bytes(&[false]);
-        let mut reader = BitReader::with_bit_len(&data, 1);
+        let mut reader = BitReader::with_bit_len(&data, 1).unwrap();
         assert_eq!(
             read_optional_quantized_vector(&mut reader, SPAWN_SCALE_FACTOR, UNIT_SCALE).unwrap(),
             Some(UNIT_SCALE)
@@ -233,7 +233,7 @@ mod tests {
             }
         }
         let data = bits_to_bytes(&bits);
-        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
         let v = read_optional_quantized_vector(&mut reader, SPAWN_SCALE_FACTOR, ORIGIN)
             .unwrap()
             .unwrap();
@@ -252,7 +252,7 @@ mod tests {
         bits.push(false);
         bits.push(false);
         let data = bits_to_bytes(&bits);
-        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
         let r = read_rotation_short(&mut reader).unwrap();
         assert_eq!(r.pitch, 90.0);
         assert_eq!(r.yaw, 0.0);
