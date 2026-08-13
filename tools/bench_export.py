@@ -37,6 +37,11 @@ import tempfile
 import time
 from pathlib import Path
 
+if __package__:
+    from .atomic_io import atomic_write_text
+else:  # direct script execution
+    from atomic_io import atomic_write_text
+
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_BASELINE = REPO / "tools" / "baselines" / "bench.json"
 
@@ -126,8 +131,7 @@ def main() -> int:
             data = json.loads(args.baseline.read_text(encoding="utf-8"))
         data[key] = round(seconds, 3)
         data["replay"] = args.replay.name
-        args.baseline.parent.mkdir(parents=True, exist_ok=True)
-        args.baseline.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        atomic_write_text(args.baseline, json.dumps(data, indent=2) + "\n")
         print(f"wrote {args.baseline}")
         return 0
 
