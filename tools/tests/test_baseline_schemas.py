@@ -49,6 +49,40 @@ class BaselineSchemaTests(unittest.TestCase):
 
         self.assertTrue(any("sha256" in problem for problem in problems), problems)
 
+    def test_unknown_baseline_json_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "unvalidated.json").write_text("{}", encoding="utf-8")
+            problems = schemas.validate_repository(root, require_hashes=False)
+        self.assertTrue(any("unvalidated.json" in p and "unknown" in p for p in problems),
+                        problems)
+
+    def test_bench_rejects_boolean_timing_and_non_replay_name(self):
+        problems = schemas.validate_bench_baseline(
+            Path("bench.json"), {"export": True, "replay": 7}
+        )
+        self.assertTrue(any("export" in p for p in problems), problems)
+        self.assertTrue(any("replay" in p for p in problems), problems)
+
+    def test_metrics_reject_wrong_replay_and_negative_or_wrong_typed_values(self):
+        metrics = json.loads(
+            (schemas.BASELINES / "metrics_builds.json").read_text(encoding="utf-8")
+        )
+        metrics["replays"]["12.10"] = 12
+        metrics["metrics"]["12.11"]["kills"] = -1
+        metrics["metrics"]["13.00"]["players"] = 1.5
+        metrics["metrics"]["13.01"]["damage_dealt"] = "24139.22"
+        metrics["metrics"]["13.02"]["team_score"] = {"Blue": 13, "Red": True}
+
+        problems = schemas.validate_metrics_baseline(
+            Path("metrics_builds.json"), metrics
+        )
+
+        joined = "\n".join(problems)
+        for expected in ("replays.12.10", "kills", "players", "damage_dealt",
+                         "team_score.Red"):
+            self.assertIn(expected, joined)
+
 
 if __name__ == "__main__":
     unittest.main()

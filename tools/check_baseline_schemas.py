@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from collections import Counter
@@ -23,6 +24,19 @@ MAIN_PARQUET = tuple(PARQUET_FILES)
 CORPUS_TOTALS = ("blocks", "fields", "rpcs", "malformed", "skipped")
 BUILDS = ("12.10", "12.11", "13.00", "13.01", "13.02")
 SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+KNOWN_BASELINES = {
+    "bench.json", "metrics_builds.json", "export_02d4d478.json",
+    "checkpoint_02d4d478.json", "build_1210.json", "build_1211.json",
+    "build_1300.json", "build_1302.json",
+}
+METRIC_INT_FIELDS = {
+    "ability_spawns", "assists", "client_round_starts", "combat_players",
+    "deaths", "defuses", "distinct_weapons", "economy_rounds",
+    "first_bloods", "headshots", "kast_rounds", "kills", "movement_samples",
+    "plants", "players", "rounds_objective", "rounds_rpc", "shot_rays",
+    "shots", "trade_kills", "ultimate_casts",
+}
+METRIC_FIELDS = METRIC_INT_FIELDS | {"damage_dealt", "team_score"}
 
 
 def _keys(path: Path, value: dict, expected: set[str], problems: list[str]) -> None:
@@ -35,6 +49,69 @@ def _keys(path: Path, value: dict, expected: set[str], problems: list[str]) -> N
 
 def _nonnegative_int(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def validate_bench_baseline(path: Path, data: dict) -> list[str]:
+    problems: list[str] = []
+    _keys(path, data, {"export", "replay"}, problems)
+    replay = data.get("replay")
+    if not isinstance(replay, str) or not replay.endswith(".vrf"):
+        problems.append(f"{path.name}: replay must name a .vrf file")
+    elapsed = data.get("export")
+    if (
+        not isinstance(elapsed, float)
+        or not math.isfinite(elapsed)
+        or elapsed <= 0
+    ):
+        problems.append(f"{path.name}: export must be a positive finite float")
+    return problems
+
+
+def validate_metrics_baseline(path: Path, data: dict) -> list[str]:
+    problems: list[str] = []
+    _keys(path, data, {"note", "replays", "metrics"}, problems)
+    if not isinstance(data.get("note"), str) or not data.get("note"):
+        problems.append(f"{path.name}: note must be a non-empty string")
+    replays = data.get("replays") if isinstance(data.get("replays"), dict) else {}
+    metrics = data.get("metrics") if isinstance(data.get("metrics"), dict) else {}
+    _keys(path, replays, set(BUILDS), problems)
+    _keys(path, metrics, set(BUILDS), problems)
+    for build, replay in replays.items():
+        if not isinstance(replay, str) or not replay.endswith(".vrf"):
+            problems.append(f"{path.name}: replays.{build} must name a .vrf file")
+    for build, values in metrics.items():
+        if not isinstance(values, dict):
+            problems.append(f"{path.name}: metrics.{build} must be an object")
+            continue
+        _keys(path, values, METRIC_FIELDS, problems)
+        for field in METRIC_INT_FIELDS:
+            if not _nonnegative_int(values.get(field)):
+                problems.append(
+                    f"{path.name}: metrics.{build}.{field} must be a "
+                    "non-negative integer"
+                )
+        damage = values.get("damage_dealt")
+        if (
+            not isinstance(damage, float)
+            or not math.isfinite(damage)
+            or damage < 0
+        ):
+            problems.append(
+                f"{path.name}: metrics.{build}.damage_dealt must be a "
+                "non-negative finite float"
+            )
+        score = values.get("team_score")
+        if not isinstance(score, dict):
+            problems.append(f"{path.name}: metrics.{build}.team_score must be an object")
+            continue
+        _keys(path, score, {"Blue", "Red"}, problems)
+        for team in ("Blue", "Red"):
+            if not _nonnegative_int(score.get(team)):
+                problems.append(
+                    f"{path.name}: metrics.{build}.team_score.{team} must be a "
+                    "non-negative integer"
+                )
+    return problems
 
 
 def validate_export_baseline(
@@ -144,19 +221,20 @@ def validate_repository(
             problems.append(f"{path.name}: top level must be an object")
             continue
         loaded[path.name] = value
-        if path.name.startswith(("export_", "checkpoint_")):
+        if path.name not in KNOWN_BASELINES:
+            problems.append(f"{path.name}: unknown baseline schema; refusing to skip")
+        elif path.name.startswith(("export_", "checkpoint_")):
             problems.extend(
                 validate_export_baseline(path, value, require_hashes=require_hashes)
             )
         elif path.name.startswith("build_"):
             problems.extend(validate_corpus_baseline(path, value))
+        elif path.name == "bench.json":
+            problems.extend(validate_bench_baseline(path, value))
+        elif path.name == "metrics_builds.json":
+            problems.extend(validate_metrics_baseline(path, value))
 
-    required = {
-        "bench.json", "metrics_builds.json", "export_02d4d478.json",
-        "checkpoint_02d4d478.json", "build_1210.json", "build_1211.json",
-        "build_1300.json", "build_1302.json",
-    }
-    missing = sorted(required - set(loaded))
+    missing = sorted(KNOWN_BASELINES - set(loaded))
     if missing:
         problems.append("missing committed baselines: " + ", ".join(missing))
         return problems
@@ -173,21 +251,12 @@ def validate_repository(
             problems.append(f"export/checkpoint {name}.parquet disagrees")
 
     bench = loaded["bench.json"]
-    _keys(root / "bench.json", bench, {"export", "replay"}, problems)
     if bench.get("replay") != export.get("replay"):
         problems.append("bench/export baselines name different replays")
-    if not isinstance(bench.get("export"), (int, float)) or bench.get("export", 0) <= 0:
-        problems.append("bench.json: export must be positive")
 
     metrics = loaded["metrics_builds.json"]
-    _keys(root / "metrics_builds.json", metrics, {"note", "replays", "metrics"}, problems)
     replays = metrics.get("replays") if isinstance(metrics.get("replays"), dict) else {}
     values = metrics.get("metrics") if isinstance(metrics.get("metrics"), dict) else {}
-    if set(replays) != set(BUILDS) or set(values) != set(BUILDS):
-        problems.append("metrics_builds.json: replay/metric build keys must be the five supported builds")
-    metric_keys = {frozenset(v) for v in values.values() if isinstance(v, dict)}
-    if len(metric_keys) != 1:
-        problems.append("metrics_builds.json: per-build metric schemas disagree")
 
     corpus_files = {
         "12.10": "build_1210.json", "12.11": "build_1211.json",
