@@ -7,8 +7,8 @@ before opening a PR.
 ## Build
 
 ```bash
-cargo build --release -p vrfkit                          # inspect / validate / export
-cargo build --release -p vrfkit --no-default-features    # inspect / validate only
+cargo +1.86.0 build --release -p vrfkit --locked                       # inspect / validate / export
+cargo +1.86.0 build --release -p vrfkit --no-default-features --locked # inspect / validate only
 ```
 
 Edition 2024. `#![forbid(unsafe_code)]` is in every crate — do not add `unsafe`.
@@ -24,7 +24,7 @@ the pinned toolchain once and run the sweep through it:
 
 ```bash
 rustup toolchain install 1.86.0 --component clippy,rustfmt
-cargo +1.86.0 clippy --all-targets -- -D warnings
+cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
 ```
 
 ## Before you open a PR
@@ -33,14 +33,57 @@ Run the full sweep. Every one of these must be green:
 
 ```bash
 cargo +1.86.0 fmt --check
-cargo +1.86.0 clippy --all-targets -- -D warnings
-cargo +1.86.0 test --workspace
-RUSTFLAGS=-D warnings cargo +1.86.0 build -p vrfkit --no-default-features
-python tools/check_ascii.py --check
-python tools/apply_type_corrections.py --check
-python tools/check_effect_decoder.py --check
+cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo +1.86.0 test --workspace --locked
+cargo +1.86.0 check --workspace --all-targets --all-features --locked
+RUSTDOCFLAGS="-D warnings" cargo +1.86.0 doc --workspace --all-features --no-deps --locked
+cargo +1.86.0 check --manifest-path tools/probe_offset/Cargo.toml --locked
+VRFKIT_INTEROP_DIR="<private-root>" cargo +1.86.0 test -p vrf-export --test roundtrip write_interop_files --locked -- --exact
+python -W error crates/vrf-export/tests/python_interop.py "<private-root>/interop"
+python -W error tools/check_ascii.py --check
+python -W error tools/apply_type_corrections.py --check
+python -W error tools/check_effect_decoder.py --check
+python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
+python -W error tools/check_baseline_schemas.py --allow-missing-hashes
 python tools/check_docs.py            # not --fast: that skips the count check
-python -m unittest discover -s tools/tests -p "test_*.py"
+python -W error -m unittest discover -s tools/tests -p "test_*.py"
+```
+
+For the interop lines, point `VRFKIT_INTEROP_DIR` at a private root; the Rust
+test writes its files to that root's `interop` child, which is passed exactly
+to Python. The script refuses to search the system temp directory, because
+“newest” can be a stale fixture from another checkout.
+
+Run every advertised core-only and singleton feature, not just the default
+workspace. These are the commands CI executes; each singleton intentionally
+starts from `--no-default-features`:
+
+```bash
+cargo +1.86.0 check -p vrfkit --no-default-features --locked
+cargo +1.86.0 check -p vrfkit --no-default-features --features export --locked
+cargo +1.86.0 check -p vrf-bitio --no-default-features --locked
+cargo +1.86.0 check -p vrf-bitio --no-default-features --features alloc --locked
+cargo +1.86.0 check -p vrf-container --no-default-features --locked
+cargo +1.86.0 check -p vrf-container --no-default-features --features oodle --locked
+cargo +1.86.0 check -p vrf-container --no-default-features --features event --locked
+cargo +1.86.0 check -p vrf-container --no-default-features --features checkpoint --locked
+cargo +1.86.0 check -p vrf-decode --no-default-features --locked
+cargo +1.86.0 check -p vrf-decode --no-default-features --features array --locked
+cargo +1.86.0 check -p vrf-decode --no-default-features --features effect --locked
+cargo +1.86.0 check -p vrf-decode --no-default-features --features overlay --locked
+cargo +1.86.0 check -p vrf-decode --no-default-features --features structs --locked
+cargo +1.86.0 check -p vrf-export --no-default-features --locked
+cargo +1.86.0 check -p vrf-export --no-default-features --features parquet --locked
+cargo +1.86.0 check -p vrf-export --no-default-features --features fields --locked
+cargo +1.86.0 check -p vrf-export --no-default-features --features movement --locked
+cargo +1.86.0 check -p vrf-export --no-default-features --features actors --locked
+cargo +1.86.0 check -p vrf-export --no-default-features --features net-guids --locked
+cargo +1.86.0 check -p vrf-export --no-default-features --features events --locked
+cargo +1.86.0 check -p vrf-export --no-default-features --features snappy --locked
+cargo +1.86.0 check -p vrf-net --no-default-features --locked
+cargo +1.86.0 check -p vrf-net --no-default-features --features diagnostics --locked
+cargo +1.86.0 check -p vrf-schema --no-default-features --locked
+cargo +1.86.0 check -p vrf-schema --no-default-features --features checkpoint --locked
 ```
 
 `check_docs.py` without `--fast` runs the suites so it can compare the numbers
@@ -110,6 +153,7 @@ These corrupt downstream consumers silently — no test fails when they break.
 | File | Generator |
 |---|---|
 | `crates/vrf-decode/src/table.rs` | `tools/extract_descriptors.py` then `tools/apply_type_corrections.py` |
+| `crates/vrf-decode/src/checksum_table.rs` | `tools/extract_checksum_types.py` against one or more fresh exports |
 | `crates/vrf-transform/src/sbox.rs` | `tools/extract_sboxes.py` |
 | `crates/vrf-transform/tests/data/golden_vectors.rs` | `tools/extract_golden.py` |
 | `tools/equippable_table.py` | `tools/extract_equippables.py` |

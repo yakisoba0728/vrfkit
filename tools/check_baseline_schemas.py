@@ -11,9 +11,9 @@ import sys
 from collections import Counter
 from pathlib import Path, PureWindowsPath
 
-try:
+if __package__:
     from .check_export_baseline import CHECKPOINT_COUNTERS, COUNTERS, PARQUET_FILES
-except ImportError:  # direct script execution
+else:  # direct script execution
     from check_export_baseline import CHECKPOINT_COUNTERS, COUNTERS, PARQUET_FILES
 
 REPO = Path(__file__).resolve().parent.parent

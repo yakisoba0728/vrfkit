@@ -10,7 +10,6 @@ Validates:
 import json
 import os
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -20,27 +19,21 @@ sys.stdout.reconfigure(encoding='utf-8')
 import pyarrow
 import pyarrow.parquet as pq
 
-# Find the interop files written by Rust tests.
-#
-# roundtrip.rs keys its output directory by CARGO_MANIFEST_DIR so that two
-# checkouts (a git worktree and the main tree) cannot overwrite each other's
-# fixtures, which means the name is not predictable from here. Pass the
-# directory explicitly, or let this pick the most recently written one -- a
-# stale match is exactly the failure the Rust-side change removes, so verify
-# the path this prints is the tree you meant.
+# Accept only the exact directory written by the Rust test. Picking the newest
+# matching system-temp directory can silently validate another checkout's
+# stale fixture, so CI captures INTEROP_FIELDS/INTEROP_MOVEMENT from the test,
+# verifies their common parent, then sets VRFKIT_INTEROP_DIR to that directory.
 def _find_interop_dir() -> Path:
     if len(sys.argv) > 1:
-        return Path(sys.argv[1])
-    tmp = Path(tempfile.gettempdir())
-    candidates = [p / "interop" for p in tmp.glob("vrf_export_tests_*")]
-    candidates = [p for p in candidates if (p / "fields_interop.parquet").is_file()]
-    if not candidates:
-        sys.exit(
-            "no interop fixtures found under %s.\n"
-            "Run `cargo test -p vrf-export` first, or pass the directory as argv[1]."
-            % tmp
-        )
-    return max(candidates, key=lambda p: (p / "fields_interop.parquet").stat().st_mtime)
+        return Path(sys.argv[1]).resolve()
+    configured = os.environ.get("VRFKIT_INTEROP_DIR")
+    if configured:
+        return Path(configured).resolve()
+    sys.exit(
+        "explicit interop directory required: pass argv[1] or set "
+        "VRFKIT_INTEROP_DIR to the exact fixture directory printed by the "
+        "Rust write_interop_files test"
+    )
 
 
 INTEROP_DIR = _find_interop_dir()

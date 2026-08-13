@@ -1,0 +1,14 @@
+{
+  "net_field_export_groups": [
+    {
+      "path": "/Game/Equippables/Guns/Sidearms/BasePistol/BasePistol.BasePistol_C",
+      "fields": [
+        {
+          "handle": 18,
+          "name": "SkinLevelDataAsset",
+          "compatible_checksum": 24357661
+        }
+      ]
+    }
+  ]
+}

@@ -26,15 +26,15 @@ record, not things to run.
 ## 1. Build
 
 ```bash
-cargo build --release -p vrfkit                          # inspect / validate / export
-cargo build --release -p vrfkit --no-default-features    # inspect / validate only
+cargo +1.86.0 build --release -p vrfkit --locked                       # inspect / validate / export
+cargo +1.86.0 build --release -p vrfkit --no-default-features --locked # inspect / validate only
 ```
 
 `export` is a default feature. Drop it with `--no-default-features` and
 `arrow`/`parquet`/`zstd` never enter the dependency tree at all.
 
 ```bash
-cargo tree -p vrfkit --no-default-features | grep -E "arrow|parquet|zstd"   # no output
+cargo +1.86.0 tree -p vrfkit --no-default-features --locked | grep -E "arrow|parquet|zstd"   # no output
 ```
 
 A binary built without `export` **refuses the subcommand rather than succeeding
@@ -154,12 +154,12 @@ Measured on `02d4d478` (48,215,213 bytes):
 
 | File | Rows | Bytes | Notes |
 |---|---|---|---|
-| `fields.parquet` | 1,256,947 | 14,878,464 | |
+| `fields.parquet` | 1,277,627 | 15,884,671 | |
 | `movement.parquet` | 1,839,607 | 31,835,557 | |
 | `actors.parquet` | 3,827 | 87,281 | |
 | `net_guids.parquet` | 16,167 | 153,606 | |
 | `events.parquet` | 195 | 11,136 | |
-| `checkpoint_fields.parquet` | 78,850 | 202,960 | requires `--checkpoints` |
+| `checkpoint_fields.parquet` | 78,850 | 231,256 | requires `--checkpoints` |
 | `manifest.json` | -- | ~660,030 | varies: it records `elapsed_ms` |
 
 `export` takes 0.79 s (median of 5; re-measure with
@@ -407,6 +407,11 @@ Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 ZSTD is deliberately *not* feature-gated out -- every writer picks it, so
 disabling it would produce files this crate could not explain.
 
+CI compiles every core-only and singleton feature listed in this table, plus
+workspace all-features/all-targets, the standalone probe tool, and strict
+rustdoc. The exact copy-paste matrix is in
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#before-you-open-a-pr).
+
 ---
 
 ## 5. `tools/` reference
@@ -434,11 +439,11 @@ the script does not trust its own apply count -- it **re-verifies the final
 state after applying** and fails if it disagrees.
 
 ```bash
-python tools/apply_type_corrections.py           # apply, then verify (94 corrections)
+python tools/apply_type_corrections.py           # apply, then verify (130 corrections)
 python tools/apply_type_corrections.py --check   # verify only
 ```
 
-Those 94 corrections are the whole `EXPECTED` set the script re-verifies; `ADDITIONS` is the
+Those 130 corrections are the whole live expectation set the script re-verifies; `ADDITIONS` is the
 subset of it that has no C# descriptor behind it at all.
 
 The `ADDITIONS` pass inserts items the C# descriptor is **silent on**. There are
@@ -459,7 +464,8 @@ records the fields that failed the bar and why.
 | `validate_corpus.py` | Framing (preserved corpus, top level; `--recursive` for subdirectories) |
 | `validate_metrics_corpus.py` | Metrics pipeline passes |
 | `check_corpus_baseline.py` | Per-build corpus baseline |
-| `check_export_baseline.py` | Export counters + per-file rows/bytes |
+| `check_export_baseline.py` | Export counters + per-file rows/bytes/SHA-256 content identity |
+| `check_baseline_schemas.py` | All committed baseline schemas and cross-file replay/counter/table identities. Strict mode requires measured SHA-256; `--allow-missing-hashes` is only a migration aid. |
 | `check_decode_errors_corpus.py` | Overlay type errors + struct blob failures (top level; `--recursive` for subdirectories, `--checkpoints` to also decode Checkpoint chunks) |
 | `corpus_scan.py` | Not a check -- the `.vrf` discovery `validate_corpus.py` and `check_decode_errors_corpus.py` share, so the two can no longer glob a directory two different ways and disagree about what "the corpus" is without saying so. Non-recursive by default; read its docstring for why. |
 | `check_component_remaps.py` | Whether each Blueprint-component remap still matches. Needs only an export, so it works on a replay from a build that has no baseline -- which is the case a renamed component would otherwise slip through. |
@@ -468,8 +474,9 @@ records the fields that failed the bar and why.
 | `compare_rpc_params.py` | RPC parameter comparison |
 | `compare_with_csharp.py` | Diff against the C# parser |
 | `check_effect_decoder.py` | Effect decoder (12 cases) |
-| `check_ascii.py` | Rust source ASCII sweep (116 files) |
+| `check_ascii.py` | Rust source ASCII sweep (117 files) |
 | `check_docs.py` | This document itself (below) |
+| `atomic_io.py` | Internal containment, recursive-removal and atomic-replacement helpers shared by mutating tools |
 
 Both `validate_corpus.py` and `check_decode_errors_corpus.py` print a
 `corpus scope:` line before doing any work, stating how many `.vrf` files were
@@ -544,15 +551,22 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo test                                        # 496 passing
-cargo clippy --all-targets -- -D warnings         # 0
-cargo fmt --check
-python tools/check_ascii.py --check               # 116 files, ASCII only
-python tools/check_effect_decoder.py --check      # 12 cases
-python -m unittest discover -s tools/tests -p "test_*.py"   # 410 passing
-python tools/check_docs.py --fast                 # do the docs still describe this repo
-python tools/apply_type_corrections.py --check    # 94 corrections present
+cargo +1.86.0 test --workspace --locked                              # 525 passing
+cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo +1.86.0 fmt --check
+python -W error tools/check_ascii.py --check                         # 117 files
+python -W error tools/check_effect_decoder.py --check                # 12 cases
+python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 456 passing
+python -W error tools/check_docs.py --fast
+python -W error tools/apply_type_corrections.py --check              # 130 corrections
+python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
+python -W error tools/check_baseline_schemas.py --allow-missing-hashes
 ```
+
+The CI interop gate sets `VRFKIT_INTEROP_DIR` to a private root before Rust's
+`write_interop_files` test, then passes that root's exact `interop` child to
+`crates/vrf-export/tests/python_interop.py`. The script never selects a
+“newest” temp fixture from a different checkout.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
@@ -561,7 +575,7 @@ Rust sources are ASCII down to the comments.
 ### Regression guards -- after non-trivial changes
 
 ```bash
-cargo build --release -p vrfkit --features export
+cargo +1.86.0 build --release -p vrfkit --features export --locked
 
 python tools/check_export_baseline.py --baseline tools/baselines/export_02d4d478.json
 python tools/check_corpus_baseline.py --baseline tools/baselines/build_1302.json

@@ -18,8 +18,8 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 by Michel Giehl; see [`NOTICE.md`](NOTICE.md). Not affiliated with, endorsed
 by, or approved by Riot Games.
 
-**Current state:** `cargo test --workspace` **496 passing**, `tools/tests`
-**410 passing** -- see [Status](#status) for the rest.
+**Current state:** `cargo +1.86.0 test --workspace --locked` **525 passing**,
+`tools/tests` **456 passing** -- see [Status](#status) for the rest.
 
 - Run it: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable: [`docs/DATA.md`](docs/DATA.md)
@@ -92,7 +92,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **496 tests** plus a layered validation suite (framing / bytes / decode
+- **525 tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -117,7 +117,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 ## Quick start
 
 ```bash
-cargo build --release -p vrfkit --features export
+cargo +1.86.0 build --release -p vrfkit --features export --locked
 
 vrfkit inspect  <file.vrf>                          # header / branch / chunk summary
 vrfkit validate <file.vrf> [--diagnostics]          # grammar oracle, writes nothing
@@ -133,7 +133,7 @@ writes the Parquet tables and manifest described under [Output](#output).
 `arrow`/`parquet`/`zstd` never enter the dependency tree:
 
 ```bash
-cargo tree -p vrfkit --no-default-features | grep -E "arrow|parquet|zstd"
+cargo +1.86.0 tree -p vrfkit --no-default-features --locked | grep -E "arrow|parquet|zstd"
 # (no output)
 ```
 
@@ -146,12 +146,12 @@ produces seven files:
 
 | File | Rows | Bytes |
 |---|---|---|
-| `fields.parquet` | 1,256,947 | 15,585,129 |
+| `fields.parquet` | 1,277,627 | 15,884,671 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
 | `events.parquet` | 195 | 11,136 |
-| `checkpoint_fields.parquet` | 78,850 | 202,960 |
+| `checkpoint_fields.parquet` | 78,850 | 231,256 |
 | `manifest.json` |  | ~660,030 |
 
 `checkpoint_fields.parquet` requires `--checkpoints`; with or without it, **the
@@ -279,9 +279,9 @@ it as one gives the year 3626.
 
 ## Status
 
-Work in progress. Currently verified: `cargo test --workspace` **496 passing**,
-`clippy -D warnings` **0**, `cargo fmt` clean, `check_ascii` on 116 files. The
-Python suite in `tools/tests` has 410 tests.
+Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
+**525 passing**, strict workspace `clippy -D warnings` **0**, `cargo fmt` clean,
+and `check_ascii` on 117 files. The Python suite in `tools/tests` has 456 tests.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.
@@ -308,6 +308,12 @@ cargo tree -p vrfkit --no-default-features | grep -E "arrow|parquet|zstd"
 
 ZSTD is deliberately *not* feature-gated out -- every writer picks it, so
 disabling it would produce files this crate could not explain.
+
+CI also compiles every advertised core-only and singleton feature from
+`--no-default-features`, checks all workspace targets/all features, builds the
+standalone probe tool, and runs strict rustdoc. Copy the exact executable
+matrix from [`CONTRIBUTING.md`](CONTRIBUTING.md#before-you-open-a-pr); it is the
+same list in `.github/workflows/ci.yml`.
 
 ## Performance
 
@@ -574,7 +580,7 @@ bucket is supposed to be empty. The recipe is in
 does not print overlay counters, so `validate_corpus.py` alone cannot see a
 wrong type. Reaching zero found three places where the wire disagreed with the
 C# declarations; they are recorded with evidence in
-`tools/apply_type_corrections.py` (94 corrections, verified with `--check`).
+`tools/apply_type_corrections.py` (130 corrections, verified with `--check`).
 
 | Symptom | Actual | Evidence |
 |---|---|---|
@@ -720,11 +726,12 @@ that way is a trap:
 
 ## Generated files
 
-Four files in the tree are generated and must never be edited by hand:
+Five files in the tree are generated and must never be edited by hand:
 
 | Generated file | Generator | Notes |
 |---|---|---|
 | `crates/vrf-decode/src/table.rs` | `tools/extract_descriptors.py` then `tools/apply_type_corrections.py` | The overlay table (1,255 entries, 198 groups, 84 handles) and handle table |
+| `crates/vrf-decode/src/checksum_table.rs` | `tools/extract_checksum_types.py` | Replay-observed checksum-to-type propagation table; conflicting donors are omitted |
 | `crates/vrf-transform/src/sbox.rs` | `tools/extract_sboxes.py` | 768-byte S-box, shared across builds |
 | `crates/vrf-transform/tests/data/golden_vectors.rs` | `tools/extract_golden.py` | Per-build golden test vectors |
 | `tools/equippable_table.py` | `tools/extract_equippables.py` | Weapon class path to display name |

@@ -32,9 +32,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from validate_corpus import parse_oracle_output  # noqa: E402
 
-try:
+if __package__:
     from .atomic_io import atomic_write_text
-except ImportError:  # direct script execution
+else:  # direct script execution
     from atomic_io import atomic_write_text
 
 REPO = Path(__file__).resolve().parent.parent

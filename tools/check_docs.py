@@ -25,6 +25,8 @@ and passes every test. So this reads the repo and the docs and compares:
      be MEASURED is reported rather than skipped
  10. every relative link resolves in `docs/DATA.md`, `CONTRIBUTING.md` and
      `CLAUDE.md` too
+ 11. generated-file inventories include every live target and generator
+ 12. README and USAGE export rows/bytes match the committed baseline JSON
 
 (6) is (5) upgraded the way (8) was: (5) asks only whether the live number
 appears somewhere in README and USAGE, so a stale size could sit one line from
@@ -61,6 +63,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import importlib.util
 import subprocess
@@ -71,8 +74,21 @@ REPO = Path(__file__).resolve().parent.parent
 README = REPO / "README.md"
 USAGE = REPO / "docs" / "USAGE.md"
 
+GENERATED_INVENTORY = {
+    "crates/vrf-decode/src/table.rs": "tools/extract_descriptors.py",
+    "crates/vrf-decode/src/checksum_table.rs": "tools/extract_checksum_types.py",
+    "crates/vrf-transform/src/sbox.rs": "tools/extract_sboxes.py",
+    "crates/vrf-transform/tests/data/golden_vectors.rs": "tools/extract_golden.py",
+    "tools/equippable_table.py": "tools/extract_equippables.py",
+}
+GENERATED_INVENTORY_DOCS = (
+    "README.md",
+    "CONTRIBUTING.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+)
+
 #: Named in the docs but not shipped here.
-EXTERNAL_SCRIPTS = {"compute_metrics.py"}
+EXTERNAL_SCRIPTS = {"compute_metrics.py", "python_interop.py"}
 
 LINK_RE = re.compile(r"\[`?([^\]]+?)`?\]\(([^)]+)\)")
 SCRIPT_RE = re.compile(r"`?([a-z_][a-z0-9_]*\.py)`?")
@@ -278,6 +294,77 @@ MEASURED_RE = {
 }
 
 
+def check_generated_inventory(docs: dict[str, str]) -> list[str]:
+    """Every live generated target is named wherever contributors check it."""
+    problems = []
+    for name, text in docs.items():
+        for target, generator in GENERATED_INVENTORY.items():
+            target_claim = Path(target).name if name.endswith("PULL_REQUEST_TEMPLATE.md") else target
+            if f"`{target_claim}`" not in text:
+                problems.append(f"{name}: generated inventory is missing `{target_claim}`")
+            if (
+                not name.endswith("PULL_REQUEST_TEMPLATE.md")
+                and f"`{generator}`" not in text
+            ):
+                problems.append(f"{name}: generated inventory is missing `{generator}`")
+    return problems
+
+
+def baseline_table_figures() -> dict[str, tuple[int, int]]:
+    """Rows and bytes promised by the committed reference export baselines."""
+    export = json.loads(read(REPO / "tools" / "baselines" / "export_02d4d478.json"))
+    checkpoint = json.loads(
+        read(REPO / "tools" / "baselines" / "checkpoint_02d4d478.json")
+    )
+    figures = {
+        f"{name}.parquet": (int(values["rows"]), int(values["bytes"]))
+        for name, values in export["parquet"].items()
+    }
+    cp = checkpoint["parquet"]["checkpoint_fields"]
+    figures["checkpoint_fields.parquet"] = (int(cp["rows"]), int(cp["bytes"]))
+    return figures
+
+
+def format_baseline_table(figures: dict[str, tuple[int, int]]) -> str:
+    """Canonical Markdown rows, also useful to migration/error tooling."""
+    return "\n".join(
+        f"| `{name}` | {rows:,} | {size:,} |"
+        for name, (rows, size) in figures.items()
+    )
+
+
+def check_baseline_figures(
+    docs: dict[str, str], figures: dict[str, tuple[int, int]]
+) -> list[str]:
+    """Every measured export row in active docs must match the live baseline."""
+    problems = []
+    for doc_name, text in docs.items():
+        for table_name, expected in figures.items():
+            pattern = re.compile(
+                rf"^\|\s*`?{re.escape(table_name)}`?\s*\|"
+                rf"\s*([\d,]+)\s*\|\s*([\d,]+)\s*\|",
+                re.MULTILINE,
+            )
+            matches = pattern.findall(text)
+            if not matches:
+                problems.append(
+                    f"{doc_name}: measured export table is missing {table_name}"
+                )
+                continue
+            for quoted_rows, quoted_bytes in matches:
+                actual = (
+                    int(quoted_rows.replace(",", "")),
+                    int(quoted_bytes.replace(",", "")),
+                )
+                if actual != expected:
+                    problems.append(
+                        f"{doc_name}: {table_name} says {actual[0]:,} rows / "
+                        f"{actual[1]:,} bytes, baseline says {expected[0]:,} / "
+                        f"{expected[1]:,}"
+                    )
+    return problems
+
+
 def measured_counts(problems: list[str] | None = None) -> dict[str, int]:
     """The live values, read from the things that produce them.
 
@@ -302,7 +389,7 @@ def measured_counts(problems: list[str] | None = None) -> dict[str, int]:
         "_atc", REPO / "tools" / "apply_type_corrections.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    counts["corrections"] = len(module.EXPECTED)
+    counts["corrections"] = module.expectation_count(read(module.TABLE_RS))
     return counts
 
 
@@ -359,6 +446,9 @@ def main() -> int:
     #: `docs` stays README+USAGE for the ones that require a number to be
     #: *present*: DATA.md has no reason to quote the suite sizes.
     every = {name: read(REPO / name) for name in ALL_DOCS}
+    generated_docs = {
+        name: read(REPO / name) for name in GENERATED_INVENTORY_DOCS
+    }
 
     measurement_problems: list[str] = []
     live_counts = measured_counts(measurement_problems)
@@ -374,12 +464,14 @@ def main() -> int:
         + contradicting_test_counts(every)
         + measurement_problems
         + stale_measured_counts(every, live_counts)
+        + check_generated_inventory(generated_docs)
+        + check_baseline_figures(docs, baseline_table_figures())
         + [p for name in ALL_DOCS
            for p in check_links(REPO / name, every[name])
            if name not in ("README.md", "docs/USAGE.md")]
     )
 
-    checked = 10
+    checked = 12
     if not args.fast:
         rust, tools_n, run_problems = measure_tests()
         problems += run_problems

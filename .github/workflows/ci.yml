@@ -19,20 +19,62 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: rustfmt
-        run: cargo fmt --check
+        run: cargo +1.86.0 fmt --check
       - name: clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: test
-        run: cargo test --workspace
-      - name: build with export
-        run: cargo build -p vrfkit --features export
-      # The export-less build is a supported configuration but nothing else
-      # compiles it, so code that only the export path uses went dead there
-      # unnoticed. `-D warnings` makes the next one fail here instead.
-      - name: build without export
-        run: cargo build -p vrfkit --no-default-features
+        run: cargo +1.86.0 test --workspace --locked
+      - name: all features and targets
+        run: cargo +1.86.0 check --workspace --all-targets --all-features --locked
+      - name: advertised core and singleton feature matrix
+        shell: pwsh
+        run: |
+          $matrix = @(
+            @("vrfkit", ""), @("vrfkit", "export"),
+            @("vrf-bitio", ""), @("vrf-bitio", "alloc"),
+            @("vrf-container", ""), @("vrf-container", "oodle"),
+            @("vrf-container", "event"), @("vrf-container", "checkpoint"),
+            @("vrf-decode", ""), @("vrf-decode", "array"),
+            @("vrf-decode", "effect"), @("vrf-decode", "overlay"),
+            @("vrf-decode", "structs"),
+            @("vrf-export", ""), @("vrf-export", "parquet"),
+            @("vrf-export", "fields"), @("vrf-export", "movement"),
+            @("vrf-export", "actors"), @("vrf-export", "net-guids"),
+            @("vrf-export", "events"), @("vrf-export", "snappy"),
+            @("vrf-net", ""), @("vrf-net", "diagnostics"),
+            @("vrf-schema", ""), @("vrf-schema", "checkpoint")
+          )
+          foreach ($case in $matrix) {
+            $cargoArgs = @(
+              "+1.86.0", "check", "-p", $case[0],
+              "--no-default-features", "--locked"
+            )
+            if ($case[1]) { $cargoArgs += @("--features", $case[1]) }
+            Write-Host "cargo $($cargoArgs -join ' ')"
+            & cargo @cargoArgs
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: standalone probe tool
+        run: cargo +1.86.0 check --manifest-path tools/probe_offset/Cargo.toml --locked
+      - name: strict rustdoc
+        run: cargo +1.86.0 doc --workspace --all-features --no-deps --locked
         env:
-          RUSTFLAGS: -D warnings
+          RUSTDOCFLAGS: -D warnings
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python interop dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - name: Rust Parquet to PyArrow interoperability
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'vrfkit-python-interop'
+          $env:VRFKIT_INTEROP_DIR = $root
+          cargo +1.86.0 test -p vrf-export --test roundtrip write_interop_files --locked -- --exact
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $interopDir = Join-Path $root 'interop'
+          python -W error crates/vrf-export/tests/python_interop.py $interopDir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   python-checks:
     runs-on: ubuntu-latest
@@ -47,16 +89,20 @@ jobs:
       - name: python dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
       - name: ASCII guard
-        run: python tools/check_ascii.py --check
+        run: python -W error tools/check_ascii.py --check
       - name: overlay corrections
-        run: python tools/apply_type_corrections.py --check
+        run: python -W error tools/apply_type_corrections.py --check
+      - name: generated checksum guard
+        run: python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
+      - name: baseline schemas
+        run: python -W error tools/check_baseline_schemas.py --allow-missing-hashes
       - name: docs self-check
-        run: python tools/check_docs.py --fast
+        run: python -W error tools/check_docs.py --fast
       # CONTRIBUTING calls these two required before a PR and CI did not run
       # either, so a PR could break them and still go green. Both are pure
       # Python over committed fixtures -- no corpus, no game install, no Oodle
       # -- which is why they belong in this job and the corpus guards do not.
       - name: tools test suite
-        run: python -m unittest discover -s tools/tests -p "test_*.py"
+        run: python -W error -m unittest discover -s tools/tests -p "test_*.py"
       - name: effect decoder
-        run: python tools/check_effect_decoder.py --check
+        run: python -W error tools/check_effect_decoder.py --check
