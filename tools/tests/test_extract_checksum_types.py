@@ -89,13 +89,8 @@ class ConflictTests(unittest.TestCase):
         self.assertIn(1, verdict.contradicted)
         self.assertFalse(verdict.ok)
 
-    def test_a_committed_type_still_among_the_candidates_is_not_fatal(self):
-        """Ambiguity is not contradiction.
-
-        A committed entry learned from a narrower basis, where only one donor
-        was visible, is exactly the "a narrower basis teaches less" case this
-        module is built to tolerate. It is reported, not failed.
-        """
+    def test_a_committed_type_among_conflicting_donors_fails_closed(self):
+        """Once donors disagree, no candidate remains safe to publish."""
         verdict = gen.reconcile(
             committed={1: "FieldType::Int32"},
             learned={},
@@ -103,7 +98,7 @@ class ConflictTests(unittest.TestCase):
         )
         self.assertEqual(verdict.contradicted, {})
         self.assertIn(1, verdict.ambiguous)
-        self.assertTrue(verdict.ok)
+        self.assertFalse(verdict.ok)
 
     def test_a_conflict_the_file_never_committed_is_not_a_problem(self):
         """The safety property stays: an unwritten checksum stays unwritten."""
@@ -115,14 +110,14 @@ class ConflictTests(unittest.TestCase):
         self.assertTrue(verdict.ok)
         self.assertEqual(verdict.ambiguous, {})
 
-    def test_merge_refuses_to_carry_a_contradicted_entry_forward(self):
-        """The write path never consults the verdict, so `merge` has to."""
-        with self.assertRaises(ValueError):
-            gen.merge(
-                {1: "FieldType::Float"},
-                {},
-                conflicts={1: (["FieldType::Int32", "FieldType::UInt32"], ["Foo"])},
-            )
+    def test_merge_drops_an_existing_mapping_when_widened_donors_conflict(self):
+        """Write mode heals the file by omitting the unsafe checksum."""
+        merged = gen.merge(
+            {1: "FieldType::Int32", 2: "FieldType::Float"},
+            {},
+            conflicts={1: (["FieldType::Int32", "FieldType::UInt32"], ["Foo"])},
+        )
+        self.assertEqual(merged, {2: "FieldType::Float"})
 
 
 class ParseTests(unittest.TestCase):

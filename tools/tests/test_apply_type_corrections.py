@@ -467,6 +467,26 @@ class MainOnDiskTests(unittest.TestCase):
         self.run_main(source, "--check")
         self.assertEqual(self.path.read_text(encoding="utf-8"), source)
 
+    def test_unknown_flag_is_rejected_and_cannot_fall_into_write_mode(self):
+        source = whole_table(UNCORRECTED_SMOKESCREEN)
+        self.path.write_text(source, encoding="utf-8")
+        sys.argv = ["apply_type_corrections.py", "--chekc"]
+        with contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                atc.main()
+        self.assertEqual(raised.exception.code, 2)
+        self.assertEqual(self.path.read_text(encoding="utf-8"), source)
+
+    def test_final_verification_failure_leaves_the_file_byte_identical(self):
+        """A partially correctable run must not publish before verify passes."""
+        source = whole_table(
+            {**UNCORRECTED_SMOKESCREEN, **DEAD_FLOAT_TO_DOUBLE}
+        )
+        code, _out, _err = self.run_main(source)
+        self.assertEqual(code, 1)
+        self.assertEqual(self.path.read_text(encoding="utf-8"), source)
+
     def test_applying_then_checking_passes(self):
         """The documented cure: run without --check, and --check goes green."""
         code, _out, err = self.run_main(whole_table(UNCORRECTED_SMOKESCREEN))

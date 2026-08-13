@@ -56,6 +56,19 @@ class PatternTests(unittest.TestCase):
         for key in ("blocks", "malformed", "skipped", "fields", "rpcs"):
             self.assertIn(key, guard.PATTERNS)
 
+    def test_missing_branch_is_a_controlled_parse_failure(self):
+        text = """
+Total content blocks: 10
+Fields emitted: 20
+RPCs emitted: 5
+Malformed framing: 0
+Skipped bits: 0
+ORACLE PASS RATE: 100.000000%
+"""
+        parsed, error = guard.parse_oracle_output(text)
+        self.assertIsNone(parsed)
+        self.assertIn("Branch", error)
+
 
 class ArgParsingTests(unittest.TestCase):
     """Defect 1 wiring: discovery now goes through corpus_scan.py, and the

@@ -24,12 +24,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
+import re
 import subprocess
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+
+try:
+    from .atomic_io import atomic_write_text, remove_tree, require_descendant
+except ImportError:  # direct script execution
+    from atomic_io import atomic_write_text, remove_tree, require_descendant
 
 REPO = Path(__file__).resolve().parent.parent
 VALPLAY = Path(os.environ.get("VRFKIT_VALPLAY_DIR", ""))
@@ -42,6 +47,10 @@ ADAPTER = REPO / "tools" / "to_valplay_bundle.py"
 # Present in metrics.json but not a metric: provenance that necessarily differs
 # because the two bundles live at different paths.
 NON_METRIC_KEYS = {"source"}
+REPLAY_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+EXPORT_TIMEOUT_SECONDS = 1800
+ADAPTER_TIMEOUT_SECONDS = 600
+METRICS_TIMEOUT_SECONDS = 600
 
 
 def discover():
@@ -67,7 +76,17 @@ def run(cmd, **kw):
                           errors="replace", **kw)
 
 
-def fresh_dir(path: Path) -> Path:
+def run_stage(cmd: list[str], *, timeout: float):
+    """Run one pipeline stage and turn process failures into readable errors."""
+    try:
+        return run(cmd, timeout=timeout), None
+    except subprocess.TimeoutExpired:
+        return None, f"timeout after {timeout:g} seconds"
+    except OSError as exc:
+        return None, f"could not start process: {exc}"
+
+
+def fresh_dir(path: Path, root: Path | None = None) -> Path:
     """Delete `path` and recreate it empty.
 
     These output directories persist between runs, and `compute_metrics.py` is
@@ -80,7 +99,9 @@ def fresh_dir(path: Path) -> Path:
 
     `check_export_baseline.py` already states the rule for its own output.
     """
-    shutil.rmtree(path, ignore_errors=True)
+    root = root or path.parent
+    require_descendant(path, root)
+    remove_tree(path, root)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -99,19 +120,58 @@ def failures(results: list[dict]) -> list[str]:
 def process(replay_id: str) -> dict:
     """Export, adapt and compute metrics for one replay. Returns a result dict."""
     t0 = time.time()
-    export_dir = fresh_dir(REPO / "out" / "xval" / replay_id)
-    bundle_root = fresh_dir(REPO / "out" / "xval_bundle" / replay_id)
+    if not isinstance(replay_id, str) or not REPLAY_ID_RE.fullmatch(replay_id):
+        return {"id": str(replay_id), "stage": "input", "error": "invalid replay id"}
 
-    r = run([str(VRFKIT), "export", str(VRF_DIR / f"{replay_id}.vrf"),
-             "--out", str(export_dir)])
+    source = VRF_DIR / f"{replay_id}.vrf"
+    reference = EXPORTS / replay_id / "metrics.json"
+    if not source.is_file():
+        return {"id": replay_id, "stage": "input", "error": f"missing replay: {source}"}
+    if not reference.is_file():
+        return {"id": replay_id, "stage": "input", "error": f"missing reference: {reference}"}
+    try:
+        ref = json.loads(reference.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return {"id": replay_id, "stage": "input", "error": f"invalid reference: {exc}"}
+    if not isinstance(ref, dict):
+        return {"id": replay_id, "stage": "input", "error": "reference is not an object"}
+
+    export_root = REPO / "out" / "xval"
+    bundle_parent = REPO / "out" / "xval_bundle"
+    export_dir = export_root / replay_id
+    bundle_root = bundle_parent / replay_id
+    try:
+        require_descendant(export_dir, export_root)
+        require_descendant(bundle_root, bundle_parent)
+        fresh_dir(export_dir, export_root)
+        fresh_dir(bundle_root, bundle_parent)
+    except (OSError, ValueError) as exc:
+        return {"id": replay_id, "stage": "input", "error": str(exc)}
+
+    r, error = run_stage(
+        [str(VRFKIT), "export", str(source), "--out", str(export_dir)],
+        timeout=EXPORT_TIMEOUT_SECONDS,
+    )
+    if r is None:
+        return {"id": replay_id, "stage": "export", "error": error}
     if r.returncode != 0:
         return {"id": replay_id, "stage": "export", "error": r.stderr[-400:]}
 
-    r = run([sys.executable, str(ADAPTER), str(export_dir), "-o", str(bundle_root)])
+    r, error = run_stage(
+        [sys.executable, str(ADAPTER), str(export_dir), "-o", str(bundle_root)],
+        timeout=ADAPTER_TIMEOUT_SECONDS,
+    )
+    if r is None:
+        return {"id": replay_id, "stage": "adapter", "error": error}
     if r.returncode != 0:
         return {"id": replay_id, "stage": "adapter", "error": r.stderr[-400:]}
 
-    r = run([sys.executable, str(COMPUTE), str(bundle_root)])
+    r, error = run_stage(
+        [sys.executable, str(COMPUTE), str(bundle_root)],
+        timeout=METRICS_TIMEOUT_SECONDS,
+    )
+    if r is None:
+        return {"id": replay_id, "stage": "metrics", "error": error}
     if r.returncode != 0:
         return {"id": replay_id, "stage": "metrics", "error": r.stderr[-400:]}
 
@@ -120,8 +180,6 @@ def process(replay_id: str) -> dict:
         return {"id": replay_id, "stage": "metrics", "error": "no metrics.json written"}
 
     ours = json.loads(ours_path.read_text(encoding="utf-8"))
-    ref = json.loads((EXPORTS / replay_id / "metrics.json").read_text(encoding="utf-8"))
-
     sections = sorted((set(ours) | set(ref)) - NON_METRIC_KEYS)
     status = {s: ("EXACT" if ours.get(s) == ref.get(s) else "differs") for s in sections}
     return {
@@ -199,8 +257,8 @@ def main() -> int:
               "claim this run was supposed to generalise.")
 
     summary = REPO / "out" / "xval_summary.json"
-    summary.write_text(json.dumps(
-        {"replays": order, "always_exact": always}, indent=1), encoding="utf-8")
+    atomic_write_text(summary, json.dumps(
+        {"replays": order, "always_exact": always}, indent=1))
     print(f"\nwrote {summary}")
 
     dead = failures(results)

@@ -9,7 +9,9 @@ in exactly the same way then MATCHED the baseline and reported OK.
 updated -- refusing to pin a broken run"). This is the same rule for the
 validate path.
 """
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -69,6 +71,62 @@ class DiffTests(unittest.TestCase):
         before = measurement({"a.vrf": CLEAN_ENTRY, "b.vrf": CLEAN_ENTRY})
         after = measurement({"a.vrf": CLEAN_ENTRY})
         self.assertTrue(any("missing replay: b.vrf" in d for d in guard.diff(before, after)))
+
+
+class CorpusMeasurementTests(unittest.TestCase):
+    SUMMARY = """
+Branch: ++Ares-Core+release-13.02
+Total content blocks: 10
+Fields emitted: 20
+RPCs emitted: 5
+Malformed framing: 0
+Skipped bits: 0
+ORACLE PASS RATE: 100.000000%
+"""
+
+    def run_measure(self, script: str, relative_files: list[str]):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            corpus = root / "corpus"
+            corpus.mkdir()
+            for relative in relative_files:
+                path = corpus / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"replay")
+            (root / "validate").write_text(script, encoding="utf-8")
+            previous = Path.cwd()
+            os.chdir(root)
+            try:
+                return guard.measure(Path(sys.executable), corpus)
+            finally:
+                os.chdir(previous)
+
+    def test_duplicate_basenames_are_keyed_by_relative_path(self):
+        script = (
+            "from pathlib import Path\nimport sys\n"
+            f"summary = {self.SUMMARY!r}\n"
+            "if 'bad' in Path(sys.argv[1]).parts:\n"
+            "    print('deliberate failure', file=sys.stderr)\n"
+            "    raise SystemExit(7)\n"
+            "print(summary)\n"
+        )
+        result = self.run_measure(script, ["good/same.vrf", "bad/same.vrf"])
+
+        self.assertEqual(
+            set(result["per_file"]), {"good/same.vrf", "bad/same.vrf"}
+        )
+        self.assertNotIn("error", result["per_file"]["good/same.vrf"])
+        self.assertIn("error", result["per_file"]["bad/same.vrf"])
+        self.assertTrue(any("bad/same.vrf" in r for r in guard.unpinnable(result)))
+
+    def test_missing_branch_is_a_controlled_unpinnable_failure(self):
+        script = f"print({self.SUMMARY.replace('Branch: ++Ares-Core+release-13.02', '')!r})\n"
+        result = self.run_measure(script, ["nested/replay.vrf"])
+
+        entry = result["per_file"]["nested/replay.vrf"]
+        self.assertIn("error", entry)
+        self.assertIn("Branch", entry["error"])
+        self.assertTrue(guard.unpinnable(result))
 
 
 if __name__ == "__main__":

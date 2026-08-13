@@ -109,6 +109,17 @@ class ReadCountersTests(unittest.TestCase):
         self.assertIsNone(counters)
         self.assertIn("No field name", err)
 
+    def test_every_overlay_summary_counter_is_required_even_when_zero(self):
+        """Omitting a zero line must not be indistinguishable from printing 0."""
+        for label in ("Raw/Skip", "Not in table", "Rows offered"):
+            with self.subTest(label=label):
+                text = "\n".join(
+                    line for line in CLEAN.splitlines() if label not in line
+                )
+                counters, err = guard.read_counters(text, 0)
+                self.assertIsNone(counters)
+                self.assertIn(label, err)
+
 
 class DeadCounterTests(unittest.TestCase):
     """The counters that are summed for the whole corpus and must have moved."""

@@ -18,8 +18,9 @@ supported builds: `Scale3D` is 2983776962 on 12.10, 12.11, 13.00, 13.01 and
 of *groups* would have been a snapshot of whichever match was exported.
 
 **Conflicts are dropped, and that is the safety property.** A checksum whose
-donors disagree on the type is not written, so the mechanism refuses exactly the
-cases that would mistype. On the reference corpus that drops two:
+donors disagree on the type is not written, and an older committed answer is
+removed as soon as a wider donor set makes it ambiguous. On the reference
+corpus that drops two:
 `AllianceFilter` (`EnumByte` vs `EnumRemainingBits`, equivalent at these widths
 -- an inconsistency in the table, not on the wire) and `ReplicatedMovement`
 (`ByteComponents` vs `ShortComponents`, genuinely different and different in
@@ -27,9 +28,8 @@ width). The second is the case a name-based rule would have got wrong.
 
 Dropping decides what gets WRITTEN. It used to also end the story: the dropped
 set never reached `reconcile`, so a checksum the file already commits and the
-manifests now rule out passed `--check` and survived `merge`'s union. Conflicts
-are now compared against the committed file -- ruled out is a failure, merely
-ambiguous is reported.
+manifests now make unsafe passed `--check` and survived `merge`'s union. Every
+committed conflict now fails checking and is omitted by write mode.
 
 Usage:
     python tools/extract_checksum_types.py --export out/probe [--export out/other]
@@ -44,6 +44,11 @@ import json
 import re
 import sys
 from pathlib import Path
+
+try:
+    from .atomic_io import atomic_write_text
+except ImportError:  # direct script execution
+    from atomic_io import atomic_write_text
 
 REPO = Path(__file__).resolve().parents[1]
 TABLE_RS = REPO / "crates" / "vrf-decode" / "src" / "table.rs"
@@ -142,11 +147,8 @@ class Verdict:
 
       `contradicted` the committed type is not among the candidate types at
                      all, so the new evidence rules it out. A problem.
-      `ambiguous`    the committed type IS one of the candidates. That is a
-                     narrower-basis entry, learned when only one donor was
-                     visible -- the same case `unseen` is tolerated for.
-                     Reported, not failed: a guard that cannot pass is not a
-                     guard, and this file already learned that once.
+      `ambiguous`    the committed type IS one of the candidates, but donors
+                     disagree. No candidate remains safe, so this also fails.
     """
 
     def __init__(self, disagreed, new, unseen, contradicted=None, ambiguous=None):
@@ -156,7 +158,7 @@ class Verdict:
 
     @property
     def ok(self) -> bool:
-        return not self.disagreed and not self.contradicted
+        return not self.disagreed and not self.contradicted and not self.ambiguous
 
 
 def _committed_vs_conflicts(committed: dict[int, str], conflicts: dict):
@@ -192,11 +194,9 @@ def merge(committed: dict[int, str], learned: dict[int, str],
     Widening the basis must not narrow the table: an entry a smaller run cannot
     re-derive is still correct, and a plain regeneration would silently drop it.
 
-    `conflicts` is refused for the same reason `clash` is. The write path never
-    consults the verdict -- it reconciles, prints, then merges -- so without
-    this a checksum the manifests rule out would be carried forward into the
-    freshly written file by the very `{**committed, ...}` that protects the
-    entries this basis merely did not see.
+    Every key in `conflicts` is dropped from the old mapping. The write path
+    heals an unsafe narrower-basis entry while preserving unrelated checksums
+    this particular manifest set did not see.
     """
     clash = [c for c in committed.keys() & learned.keys()
              if committed[c] != learned[c]]
@@ -206,15 +206,9 @@ def merge(committed: dict[int, str], learned: dict[int, str],
             + ", ".join(f"{c} {committed[c]} vs {learned[c]}"
                         for c in sorted(clash)[:5])
         )
-    contradicted, _ambiguous = _committed_vs_conflicts(committed, conflicts)
-    if contradicted:
-        raise ValueError(
-            f"{len(contradicted)} committed checksum(s) are ruled out by these "
-            f"manifests, refusing to merge: "
-            + ", ".join(f"{c} {was} not in {types}"
-                        for c, (was, types, _n) in sorted(contradicted.items())[:5])
-        )
-    return {**committed, **learned}
+    conflicted = set(conflicts or {})
+    safe_committed = {c: t for c, t in committed.items() if c not in conflicted}
+    return {**safe_committed, **learned}
 
 
 def render(resolved: dict[int, str]) -> str:
@@ -259,8 +253,8 @@ def main() -> int:
     for checksum, (was, now) in sorted(verdict.disagreed.items())[:10]:
         print(f"  DISAGREE {checksum}: committed {was}, learned {now}")
     for checksum, (was, types, names) in sorted(verdict.ambiguous.items())[:10]:
-        print(f"  ambiguous {checksum} ({names}): committed {was}, donors now "
-              f"disagree over {types} -- still one of them, so not a failure")
+        print(f"  AMBIGUOUS {checksum} ({names}): committed {was}, donors now "
+              f"disagree over {types} -- no candidate is safe")
 
     if args.check:
         if not verdict.ok:
@@ -270,7 +264,8 @@ def main() -> int:
                       f"donors declare {types}", file=sys.stderr)
             print(f"FAILED: {len(verdict.disagreed)} checksum(s) map two ways, "
                   f"{len(verdict.contradicted)} committed checksum(s) are ruled "
-                  f"out by these manifests", file=sys.stderr)
+                  f"out, and {len(verdict.ambiguous)} are ambiguous under these "
+                  f"manifests", file=sys.stderr)
             return 1
         print(f"\nOK: {OUT_RS.name} agrees with these manifests wherever they "
               f"overlap")
@@ -283,7 +278,7 @@ def main() -> int:
     # table, and demanding it is what made `--check` fail for every basis and
     # stop meaning anything.
     widened = merge(committed, resolved, conflicts)
-    OUT_RS.write_text(render(widened), encoding="utf-8")
+    atomic_write_text(OUT_RS, render(widened))
     print(f"wrote {OUT_RS} ({len(widened)} checksums, +{len(verdict.new)})")
     return 0
 

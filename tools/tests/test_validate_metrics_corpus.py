@@ -14,6 +14,7 @@ already states the rule: "Exporting over a previous run would leave a file the
 exporter has stopped writing sitting there with last run's contents".
 """
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -45,6 +46,72 @@ class FreshDirTests(unittest.TestCase):
             target = Path(parent) / "never" / "existed"
             guard.fresh_dir(target)
             self.assertTrue(target.is_dir())
+
+
+class UnsafeReplayIdTests(unittest.TestCase):
+    """An untrusted --only value must never become an rmtree target."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.saved = {
+            name: getattr(guard, name)
+            for name in ("REPO", "EXPORTS", "VRF_DIR", "COMPUTE", "VRFKIT", "ADAPTER")
+        }
+        guard.REPO = self.root / "repo"
+        guard.EXPORTS = self.root / "references"
+        guard.VRF_DIR = self.root / "replays"
+        guard.COMPUTE = self.root / "compute_metrics.py"
+        guard.VRFKIT = Path(sys.executable)
+        guard.ADAPTER = self.root / "to_valplay_bundle.py"
+        for directory in (guard.REPO, guard.EXPORTS, guard.VRF_DIR):
+            directory.mkdir(parents=True)
+
+    def tearDown(self):
+        for name, value in self.saved.items():
+            setattr(guard, name, value)
+        self.temp.cleanup()
+
+    def _assert_rejected_without_deleting(self, replay_id: str, victim: Path):
+        victim.mkdir(parents=True)
+        sentinel = victim / "keep.txt"
+        sentinel.write_text("owned by someone else", encoding="utf-8")
+
+        result = guard.process(replay_id)
+
+        self.assertEqual(result["stage"], "input", result)
+        self.assertTrue(sentinel.is_file(), f"unsafe id deleted {sentinel}")
+
+    def test_parent_traversal_is_rejected_before_output_cleanup(self):
+        victim = guard.REPO / "out" / "outside"
+        self._assert_rejected_without_deleting("../outside", victim)
+
+    def test_absolute_replay_id_is_rejected_before_output_cleanup(self):
+        victim = self.root / "absolute-victim"
+        self._assert_rejected_without_deleting(str(victim.resolve()), victim)
+
+    def test_missing_replay_and_reference_preserve_previous_outputs(self):
+        export = guard.REPO / "out" / "xval" / "missing"
+        bundle = guard.REPO / "out" / "xval_bundle" / "missing"
+        for directory in (export, bundle):
+            directory.mkdir(parents=True)
+            (directory / "keep.txt").write_text("old complete run", encoding="utf-8")
+
+        result = guard.process("missing")
+
+        self.assertEqual(result["stage"], "input", result)
+        self.assertTrue((export / "keep.txt").is_file())
+        self.assertTrue((bundle / "keep.txt").is_file())
+
+
+class SubprocessTimeoutTests(unittest.TestCase):
+    def test_timeout_is_returned_as_a_controlled_stage_error(self):
+        result, error = guard.run_stage(
+            [sys.executable, "-c", "import time; time.sleep(1)"],
+            timeout=0.01,
+        )
+        self.assertIsNone(result)
+        self.assertIn("timeout", error.lower())
 
 
 class FailureTests(unittest.TestCase):

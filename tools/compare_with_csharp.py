@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 import sys
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Iterator
 
@@ -347,7 +347,7 @@ def compare_movement(cs_movement_path: Path, vk_movement_path: Path) -> str:
     lines.append(f"\nSampling first {SAMPLE_SIZE:,} C# rows for value comparison...")
 
     # Read C# sample
-    cs_sample: dict[tuple[int, int], dict] = {}
+    cs_sample: list[tuple[int, int, dict]] = []
     cs_read = 0
     for obj in iter_ndjson(cs_movement_path):
         if cs_read >= SAMPLE_SIZE:
@@ -355,13 +355,13 @@ def compare_movement(cs_movement_path: Path, vk_movement_path: Path) -> str:
         time_ms = obj.get("time_ms")
         char_guid = obj.get("shooter_character_net_guid")
         if time_ms is not None and char_guid is not None:
-            cs_sample[(time_ms, char_guid)] = obj
+            cs_sample.append((time_ms, char_guid, obj))
         cs_read += 1
 
     # Read vrfkit sample (same time range)
     if cs_sample:
-        min_time = min(k[0] for k in cs_sample)
-        max_time = max(k[0] for k in cs_sample)
+        min_time = min(row[0] for row in cs_sample)
+        max_time = max(row[0] for row in cs_sample)
     else:
         lines.append("No C# samples found.")
         return "\n".join(lines)
@@ -376,7 +376,7 @@ def compare_movement(cs_movement_path: Path, vk_movement_path: Path) -> str:
     vk_cols = [f.name for f in vk_tbl.schema]
 
     # Build vrfkit lookup — (time_ms, character_net_guid)
-    vk_sample: dict[tuple[int, int], dict] = {}
+    vk_sample: defaultdict[tuple[int, int], deque[int]] = defaultdict(deque)
     # Determine the character GUID column name in vrfkit
     char_col = None
     for candidate in ["character_net_guid", "shooter_character_net_guid", "char_net_guid"]:
@@ -390,9 +390,8 @@ def compare_movement(cs_movement_path: Path, vk_movement_path: Path) -> str:
     time_col = vk_tbl.column("time_ms").to_pylist()
     guid_col = vk_tbl.column(char_col).to_pylist()
     # Collect all columns into row dicts for joined entries
-    vk_row_dicts = []
     for i in range(vk_tbl.num_rows):
-        vk_sample[(time_col[i], guid_col[i])] = i
+        vk_sample[(time_col[i], guid_col[i])].append(i)
     # Precompute column arrays
     vk_columns_data = {}
     for col_name in vk_cols:
@@ -406,13 +405,13 @@ def compare_movement(cs_movement_path: Path, vk_movement_path: Path) -> str:
     errors_pitch = []
     errors_vel = []
 
-    for (t, g), cs_row in cs_sample.items():
-        vk_idx = vk_sample.get((t, g))
-        if vk_idx is None:
-            # ±1ms fallback
-            vk_idx = vk_sample.get((t - 1, g))
-            if vk_idx is None:
-                vk_idx = vk_sample.get((t + 1, g))
+    for t, g, cs_row in cs_sample:
+        vk_idx = None
+        for key in ((t, g), (t - 1, g), (t + 1, g)):
+            candidates = vk_sample.get(key)
+            if candidates:
+                vk_idx = candidates.popleft()
+                break
         if vk_idx is None:
             missed += 1
             continue

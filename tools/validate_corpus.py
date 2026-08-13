@@ -50,6 +50,16 @@ PATTERNS = {
 }
 
 
+def parse_oracle_output(output: str):
+    """Parse one oracle summary, requiring identity and pass-rate lines."""
+    matches = {key: pattern.search(output) for key, pattern in PATTERNS.items()}
+    if matches["branch"] is None:
+        return None, "the oracle did not print Branch"
+    if matches["rate"] is None:
+        return None, "the oracle did not print ORACLE PASS RATE"
+    return matches, None
+
+
 def problems(failures, missing) -> list[str]:
     """Everything that makes this sweep a failure rather than a measurement.
 
@@ -150,10 +160,10 @@ def main(argv: list[str]) -> int:
             if err is not None:
                 failures.append((f.name, err))
                 continue
-            got = {k: p.search(out) for k, p in PATTERNS.items()}
-            if not got["rate"]:
+            got, parse_error = parse_oracle_output(out)
+            if parse_error is not None:
                 tail = " | ".join(l for l in out.splitlines()[-3:] if l.strip())
-                failures.append((f.name, f"no pass rate: {tail[:160]}"))
+                failures.append((f.name, f"{parse_error}: {tail[:160]}"))
                 continue
             ok += 1
             branches[got["branch"].group(1)] += 1

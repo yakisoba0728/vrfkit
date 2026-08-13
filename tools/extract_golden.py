@@ -15,6 +15,21 @@ import re
 import sys
 from pathlib import Path
 
+try:
+    from .atomic_io import atomic_write_text
+except ImportError:  # direct script execution
+    from atomic_io import atomic_write_text
+
+EXPECTED_BRANCHES = (
+    "++Ares-Core+release-12.10",
+    "++Ares-Core+release-12.11",
+    "++Ares-Core+release-13.00",
+    "++Ares-Core+release-13.01",
+    "++Ares-Core+release-13.02",
+)
+EXPECTED_BOUNDARIES = (0, 1, 7, 8, 31, 32, 63, 64, 65, 287, 288)
+EXPECTED_CASE_COUNT = len(EXPECTED_BRANCHES) * len(EXPECTED_BOUNDARIES)
+
 # Vectors are written either with an inline hex literal or with a reference to a
 # `private const string` declared at the top of the fixture.
 CONST_RE = re.compile(r'private\s+const\s+string\s+(\w+)\s*=\s*"([0-9A-Fa-f]*)"\s*;')
@@ -55,8 +70,31 @@ def main(argv: list[str]) -> int:
             )
         cases.append((m.group("branch"), bits, hexstr.upper()))
 
-    if not cases:
-        raise SystemExit("no vectors found -- fixture format changed?")
+    if len(cases) != EXPECTED_CASE_COUNT:
+        raise SystemExit(
+            f"expected exactly {EXPECTED_CASE_COUNT} golden vectors, found {len(cases)}"
+        )
+
+    pairs = {(branch, bits) for branch, bits, _ in cases}
+    expected_pairs = {
+        (branch, bits)
+        for branch in EXPECTED_BRANCHES
+        for bits in EXPECTED_BOUNDARIES
+    }
+    if pairs != expected_pairs or len(pairs) != len(cases):
+        missing = sorted(expected_pairs - pairs)
+        unexpected = sorted(pairs - expected_pairs)
+        duplicate_count = len(cases) - len(pairs)
+        details = []
+        if missing:
+            details.append("missing " + ", ".join(f"{b} @ {n}" for b, n in missing))
+        if unexpected:
+            details.append(
+                "unexpected " + ", ".join(f"{b} @ {n}" for b, n in unexpected)
+            )
+        if duplicate_count:
+            details.append(f"{duplicate_count} duplicate vector(s)")
+        raise SystemExit("invalid golden oracle: " + "; ".join(details))
 
     branches = sorted({c[0] for c in cases})
     # Regular `//` comments, not `//!`: this file is pulled in with `include!`,
@@ -86,7 +124,7 @@ def main(argv: list[str]) -> int:
     lines.append("];")
     lines.append("")
 
-    Path(argv[2]).write_text("\n".join(lines), encoding="utf-8")
+    atomic_write_text(Path(argv[2]), "\n".join(lines))
     per_branch = {b: sum(1 for c in cases if c[0] == b) for b in branches}
     for b in branches:
         print(f"  {b}: {per_branch[b]} vectors")

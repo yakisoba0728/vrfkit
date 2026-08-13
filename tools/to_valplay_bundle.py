@@ -39,9 +39,11 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import re
 import struct as _struct
 import sys
+import tempfile
 import time
 from collections import defaultdict
 from itertools import islice
@@ -58,6 +60,7 @@ except ImportError:
 
 sys.path.insert(0, str(Path(__file__).parent))
 from equippable_table import EQUIPPABLE_BY_PATH  # noqa: E402
+from atomic_io import remove_tree, require_descendant  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -2290,7 +2293,7 @@ def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> int
 # ---------------------------------------------------------------------------
 # Main conversion
 # ---------------------------------------------------------------------------
-def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
+def _convert_into(export_dir: Path, output_dir: Path, *, verbose: bool = False):
     """Read vrfkit Parquet export and write valplay-compatible bundle."""
     fields_path = export_dir / "fields.parquet"
     movement_path = export_dir / "movement.parquet"
@@ -2404,6 +2407,70 @@ def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
         "movement_written": movement_written,
         "tally": tally,
     }
+
+
+def _validate_separate_trees(export_dir: Path, output_dir: Path) -> tuple[Path, Path]:
+    """Reject equal, nested, and aliased input/output trees before any write."""
+    source = export_dir.resolve()
+    destination = output_dir.resolve()
+    if (
+        source == destination
+        or source.is_relative_to(destination)
+        or destination.is_relative_to(source)
+    ):
+        raise ValueError(
+            f"export and output directories must not overlap: {source} / {destination}"
+        )
+    return source, destination
+
+
+def _publish_bundle(staging: Path, output_dir: Path) -> None:
+    """Publish a verified staged bundle, rolling back an existing bundle."""
+    parent = output_dir.parent.resolve()
+    require_descendant(staging, parent)
+    require_descendant(output_dir, parent)
+    backup = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.backup.", dir=parent))
+    # mkdtemp reserves a collision-free name; os.replace requires it absent.
+    backup.rmdir()
+    moved_old = False
+    try:
+        if output_dir.exists():
+            os.replace(output_dir, backup)
+            moved_old = True
+        os.replace(staging, output_dir)
+    except BaseException:
+        if moved_old and backup.exists() and not output_dir.exists():
+            os.replace(backup, output_dir)
+        raise
+    if backup.exists():
+        remove_tree(backup, parent)
+
+
+def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
+    """Transactionally convert one export without modifying either old tree."""
+    export_dir, output_dir = _validate_separate_trees(export_dir, output_dir)
+    fields_path = export_dir / "fields.parquet"
+    if not fields_path.is_file():
+        raise FileNotFoundError(f"fields.parquet not found in {export_dir}")
+
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    parent = output_dir.parent.resolve()
+    require_descendant(output_dir, parent)
+    staging = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=parent))
+    try:
+        result = _convert_into(export_dir, staging, verbose=verbose)
+        manifest = json.loads((staging / "manifest.json").read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            raise ValueError("generated manifest.json is not a JSON object")
+        for required in ("events.ndjson", "movement.ndjson"):
+            if not (staging / required).is_file():
+                raise ValueError(f"generated bundle is missing {required}")
+        _publish_bundle(staging, output_dir)
+        return result
+    except BaseException:
+        if staging.exists():
+            remove_tree(staging, parent)
+        raise
 
 
 # ---------------------------------------------------------------------------

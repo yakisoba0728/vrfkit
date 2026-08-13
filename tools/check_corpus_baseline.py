@@ -30,7 +30,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from validate_corpus import PATTERNS  # noqa: E402  (shared so regexes cannot drift)
+from validate_corpus import parse_oracle_output  # noqa: E402
+
+try:
+    from .atomic_io import atomic_write_text
+except ImportError:  # direct script execution
+    from atomic_io import atomic_write_text
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_EXE = REPO / "target" / "release" / "vrfkit.exe"
@@ -44,15 +49,26 @@ def measure(exe: Path, root: Path) -> dict:
     branches = {}
 
     for f in files:
-        r = subprocess.run(
-            [str(exe), "validate", str(f)],
-            capture_output=True, text=True, encoding="utf-8",
-            errors="replace", timeout=300,
-        )
+        name = f.relative_to(root).as_posix()
+        try:
+            r = subprocess.run(
+                [str(exe), "validate", str(f)],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            per_file[name] = {"error": "timeout"}
+            continue
+        except OSError as exc:
+            per_file[name] = {"error": f"could not start oracle: {exc}"}
+            continue
         out = (r.stdout or "") + (r.stderr or "")
-        got = {k: p.search(out) for k, p in PATTERNS.items()}
-        if r.returncode != 0 or not got["rate"]:
-            per_file[f.name] = {"error": f"exit {r.returncode}"}
+        if r.returncode != 0:
+            per_file[name] = {"error": f"exit {r.returncode}"}
+            continue
+        got, parse_error = parse_oracle_output(out)
+        if parse_error is not None:
+            per_file[name] = {"error": parse_error}
             continue
         branch = got["branch"].group(1)
         branches[branch] = branches.get(branch, 0) + 1
@@ -68,7 +84,7 @@ def measure(exe: Path, root: Path) -> dict:
             value = int(match.group(1))
             entry[key] = value
             totals[key] += value
-        per_file[f.name] = entry
+        per_file[name] = entry
 
     return {"branches": branches, "totals": totals, "per_file": per_file}
 
@@ -164,9 +180,7 @@ def main() -> int:
                   "same failure next time.", file=sys.stderr)
             return 1
         payload = {"corpus": stored.get("corpus") or str(corpus), **current}
-        args.baseline.parent.mkdir(parents=True, exist_ok=True)
-        args.baseline.write_text(json.dumps(payload, indent=1) + "\n",
-                                 encoding="utf-8")
+        atomic_write_text(args.baseline, json.dumps(payload, indent=1) + "\n")
         n = len(current["per_file"])
         print(f"wrote {args.baseline} ({n} replays, "
               f"branches {current['branches']})")
