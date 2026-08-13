@@ -15,13 +15,14 @@
 //! - [`summary`] -- the stderr report, whose every line a Python harness pins.
 
 mod checkpoints;
+mod publish;
 mod summary;
 mod totals;
 mod writers;
 
 use std::fs;
 use std::io::BufWriter;
-use std::path::Path;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use vrf_container::{
@@ -41,6 +42,7 @@ use crate::error::CliError;
 use crate::manifest;
 use crate::sink::{ChannelState, ExportSink, RecordBuffers};
 use checkpoints::{CheckpointStats, ReplayContext};
+use publish::OutputTransaction;
 use summary::RunTotals;
 use totals::SinkTotals;
 use writers::WriterThread;
@@ -126,8 +128,9 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     );
 
     // -- Setup output ------------------------------------------------------
-    let out_path = Path::new(out_dir);
-    fs::create_dir_all(out_path)?;
+    let destination = PathBuf::from(out_dir);
+    let output = OutputTransaction::begin(&destination)?;
+    let out_path = output.path();
 
     let create = |name: &str| -> Result<BufWriter<fs::File>, CliError> {
         Ok(BufWriter::new(fs::File::create(out_path.join(name))?))
@@ -361,7 +364,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     //
     // Before the summary so the path the summary prints names a file that
     // exists by the time it is read.
-    let manifest_path = out_path.join("manifest.json");
+    let staged_manifest_path = out_path.join("manifest.json");
     // Drain per-PlayerState identity (Subject + SpawnedCharacter) captured
     // during the walk into a sorted players list for the manifest.
     let mut players: Vec<(u32, Option<String>, Option<u32>)> = channel_state
@@ -372,7 +375,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
         .collect();
     players.sort_unstable_by_key(|(g, _, _)| *g);
     manifest::write_manifest(
-        &manifest_path,
+        &staged_manifest_path,
         vrf_path,
         file_size,
         &preamble,
@@ -383,8 +386,14 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
         &players,
     )?;
 
+    // No handle remains open in staging at this point. Replace the destination
+    // only after every table and the manifest are complete; a failed run before
+    // here drops the guard and removes staging without touching the prior run.
+    output.publish()?;
+    let manifest_path = destination.join("manifest.json");
+
     summary::print(
-        out_path,
+        &destination,
         net_stats,
         &RunTotals {
             chunks_processed,
