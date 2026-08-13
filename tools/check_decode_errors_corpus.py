@@ -137,7 +137,10 @@ COUNTERS = (
 REQUIRED = (
     ("decode_errors", "Decode errors"),
     ("decoded_ok", "Decoded OK"),
+    ("raw_skip", "Raw/Skip"),
+    ("not_in_table", "Not in table"),
     ("no_field_name", "No field name"),
+    ("rows_offered", "Rows offered"),
     ("struct_blobs_decoded", "Struct blobs ... decoded"),
     ("struct_blobs_failed", "Struct blobs ... failed"),
 )

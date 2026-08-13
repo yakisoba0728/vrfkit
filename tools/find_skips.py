@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 SKIPPED = re.compile(r"Skipped bits:\s+(\d+)")
-MALFORMED = re.compile(r"Malformed:\s+(\d+)")
+MALFORMED = re.compile(r"Malformed framing:\s+(\d+)")
 RATE = re.compile(r"ORACLE PASS RATE:\s+([\d.]+)%")
 
 

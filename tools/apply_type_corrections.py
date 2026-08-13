@@ -32,10 +32,16 @@ Usage:
     python tools/apply_type_corrections.py            # apply, then verify
     python tools/apply_type_corrections.py --check    # verify the file, no write
 """
+import argparse
 import re
 import sys
 from collections import Counter
 from pathlib import Path
+
+try:
+    from .atomic_io import atomic_write_text
+except ImportError:  # direct script execution
+    from atomic_io import atomic_write_text
 
 TABLE_RS = Path(__file__).parent.parent / "crates" / "vrf-decode" / "src" / "table.rs"
 
@@ -933,8 +939,14 @@ def rewrite_header(content: str) -> tuple[str, tuple[str, ...]]:
     return content, lines
 
 
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="verify without writing")
+    return parser.parse_args(argv)
+
+
 def main():
-    check_only = "--check" in sys.argv[1:]
+    check_only = parse_args().check
     content = TABLE_RS.read_text(encoding="utf-8")
     # The file exactly as committed. Every pass below rewrites `content`, so by
     # the end it is the CORRECTED COPY -- and verifying that copy is what made
@@ -1155,10 +1167,6 @@ def main():
 
     content, header_lines = rewrite_header(content)
 
-    if not check_only:
-        TABLE_RS.write_text(content, encoding="utf-8")
-        on_disk = content
-
     # The operation count is a diagnostic, not the verdict. 0 is correct when
     # the table was already corrected and wrong when the patterns are dead;
     # only the end state distinguishes them.
@@ -1179,7 +1187,10 @@ def main():
     # the rustfmt'd layout while the block-based ones apply fine in memory), so
     # both sections print rather than one hiding the other.
     dead = verify(content)
-    uncorrected = [p for p in verify(on_disk) if p not in dead]
+    uncorrected = (
+        [p for p in verify(on_disk) if p not in dead]
+        if check_only else []
+    )
     checked = expectation_count(content)
     if dead or uncorrected:
         if dead:
@@ -1207,6 +1218,8 @@ def main():
                       f"  file says {stale.group(0)}\n"
                       f"  counted   {line}", file=sys.stderr)
                 return 1
+    else:
+        atomic_write_text(TABLE_RS, content)
 
     verb = "verified" if check_only else "applied"
     summary = "; ".join(line.lstrip("/ ").rstrip(".") for line in header_lines)

@@ -52,6 +52,11 @@ import sys
 from pathlib import Path
 from collections import Counter
 
+try:
+    from .atomic_io import atomic_write_text
+except ImportError:  # direct script execution
+    from atomic_io import atomic_write_text
+
 CSHARP_IDENTIFIER = r'[A-Za-z_]\w*'
 CSHARP_IDENTIFIER_TOKEN = rf'@?{CSHARP_IDENTIFIER}'
 
@@ -1253,6 +1258,8 @@ def main(argv: list[str]) -> int:
     rejected_types: set[tuple[str, str]] = set()
 
     cs_files = sorted(src_dir.rglob("*.cs"))
+    if not cs_files:
+        raise SystemExit(f"no .cs source files found under: {src_dir}")
     sources = []
     for cs_file in cs_files:
         source = cs_file.read_text(encoding="utf-8-sig")
@@ -1817,8 +1824,7 @@ def main(argv: list[str]) -> int:
     lines.append("];")
     lines.append("")
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text("\n".join(lines), encoding="utf-8")
+    atomic_write_text(out_path, "\n".join(lines))
     print(f"\nwrote {out_path} ({len(entries)} entries)")
     return 0
 

@@ -175,6 +175,97 @@ class MovementTruncationTests(unittest.TestCase):
             )
 
 
+class TransactionalConversionTests(unittest.TestCase):
+    @staticmethod
+    def snapshot(path: Path) -> dict[str, bytes]:
+        return {
+            item.relative_to(path).as_posix(): item.read_bytes()
+            for item in sorted(path.rglob("*"))
+            if item.is_file()
+        }
+
+    @staticmethod
+    def make_export(path: Path) -> bytes:
+        path.mkdir(parents=True)
+        write_fields_parquet(path / "fields.parquet", MINIMAL_FIELD_ROWS)
+        manifest = b'{"replay_version":"source","source_file":"match.vrf"}\n'
+        (path / "manifest.json").write_bytes(manifest)
+        return manifest
+
+    def test_input_and_output_may_not_be_the_same_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            export = Path(temp) / "export"
+            source_manifest = self.make_export(export)
+            before = self.snapshot(export)
+
+            with self.assertRaises(ValueError):
+                bundle.convert(export, export)
+
+            self.assertEqual(self.snapshot(export), before)
+            self.assertEqual((export / "manifest.json").read_bytes(), source_manifest)
+
+    def test_output_nested_inside_input_is_rejected_before_writing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            export = Path(temp) / "export"
+            self.make_export(export)
+            output = export / "bundle"
+
+            with self.assertRaises(ValueError):
+                bundle.convert(export, output)
+
+            self.assertFalse(output.exists())
+
+    def test_input_nested_inside_output_is_rejected_before_writing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "output"
+            export = output / "export"
+            self.make_export(export)
+            before = self.snapshot(output)
+
+            with self.assertRaises(ValueError):
+                bundle.convert(export, output)
+
+            self.assertEqual(self.snapshot(output), before)
+
+    def test_conversion_failure_preserves_an_existing_complete_bundle(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            export = root / "export"
+            export.mkdir()
+            (export / "fields.parquet").write_bytes(b"not parquet")
+            (export / "manifest.json").write_text(
+                '{"replay_version":"new"}', encoding="utf-8"
+            )
+            output = root / "bundle"
+            output.mkdir()
+            for name, content in {
+                "manifest.json": "{\"replay_version\":\"old\"}",
+                "events.ndjson": "{\"type\":\"old\"}\n",
+                "movement.ndjson": "",
+                ".complete": "old marker",
+            }.items():
+                (output / name).write_text(content, encoding="utf-8")
+            before = self.snapshot(output)
+
+            with self.assertRaises(Exception):
+                bundle.convert(export, output)
+
+            self.assertEqual(self.snapshot(output), before)
+            self.assertEqual(
+                [p for p in root.iterdir() if p.name.startswith(".bundle.")], []
+            )
+
+    def test_success_never_modifies_the_source_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            export = root / "export"
+            original = self.make_export(export)
+
+            bundle.convert(export, root / "bundle")
+
+            self.assertEqual((export / "manifest.json").read_bytes(), original)
+
+
 class ShotEventTests(unittest.TestCase):
     def build_shot(self, scalar_params: dict) -> dict:
         return bundle._build_shot_event(

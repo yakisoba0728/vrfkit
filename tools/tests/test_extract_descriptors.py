@@ -79,6 +79,31 @@ class ExtractDescriptorsTests(unittest.TestCase):
             if group.endswith("_ClassNetCache")
         }
 
+    def test_source_tree_with_no_csharp_files_is_rejected(self):
+        """A missing checkout must not regenerate the overlay as an empty table."""
+        result, output = self.run_generator_process({})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIsNone(output)
+        self.assertIn("no .cs source files", result.stderr)
+
+    def test_sources_that_legitimately_emit_no_entries_still_succeed(self):
+        output = self.run_generator(
+            {
+                "OnlyFastArray.cs": r'''
+public sealed class OnlyFastArray : ExportGroupDescriptor<OnlyFastArray>
+{
+    public override string Path => "/Script/ShooterGame.OnlyFastArray";
+    public override ExportGroupKind Kind => ExportGroupKind.FastArray;
+    protected override void Configure()
+    {
+        AddProperty(x => x.Value).Float();
+    }
+}
+'''
+            }
+        )
+        self.assertIn("0 entries from 0 groups", output)
+
     def test_named_payload_decoders_carry_their_type_through_decode(self):
         """`.Decode(ValorantPayloadDecoders.X(...))` must not collapse to Raw
         when X names a wire type.
