@@ -198,7 +198,11 @@ pub(super) fn decode_and_parse_rep_layout(
         return;
     }
 
-    let mut field_reader = BitReader::with_bit_len(stage.scratch, bit_count as u64);
+    let Ok(mut field_reader) = BitReader::with_bit_len(stage.scratch, bit_count as u64) else {
+        stage.stats.field_stream_failures += 1;
+        stage.stats.skipped_bits += bit_count as u64;
+        return;
+    };
     match field::parse_rep_layout(&mut field_reader, sink) {
         Ok((count, abandoned_bits)) => {
             stage.stats.fields += u64::from(count);
@@ -236,7 +240,11 @@ pub(super) fn decode_and_parse_class_net_cache(
         return;
     };
 
-    let mut rpc_reader = BitReader::with_bit_len(stage.scratch, bit_count as u64);
+    let Ok(mut rpc_reader) = BitReader::with_bit_len(stage.scratch, bit_count as u64) else {
+        stage.stats.rpc_stream_failures += 1;
+        stage.stats.skipped_bits += bit_count as u64;
+        return;
+    };
     match field::parse_class_net_cache(&mut rpc_reader, function_count, sink) {
         Ok((count, abandoned_bits)) => {
             stage.stats.rpcs += u64::from(count);

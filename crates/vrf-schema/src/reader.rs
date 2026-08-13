@@ -49,6 +49,12 @@ const MAX_FSTRING_BYTES: i64 = 1024 * 1024; // 1 MiB
 /// Maximum recursion depth for nested NetGUID objects.
 const MAX_NET_GUID_RECURSION: u32 = 16;
 
+/// Maximum slots in a live export group. Checkpoint archives carry the same
+/// `NumNetFieldExports` concept and are already bounded at 65,536; no corpus
+/// group reaches that ceiling. Keeping both wire forms at the same limit stops
+/// a five-byte IntPacked count from becoming an attacker-sized allocation.
+const MAX_FIELDS_PER_GROUP: u32 = 65_536;
+
 /// Read an FName from a **byte-aligned** archive.
 ///
 /// FName on the wire (FBinaryArchive variant):
@@ -89,7 +95,14 @@ pub fn read_net_field_exports(reader: &mut BitReader<'_>, cache: &mut NetGuidCac
             let path_name = reader.read_fstring(MAX_FSTRING_BYTES)?;
             let num_fields = reader.read_int_packed()?;
 
-            let group = NetFieldExportGroup::new(path_name, path_name_index, num_fields);
+            if num_fields > MAX_FIELDS_PER_GROUP {
+                return Err(SchemaError::FieldCountOverflow {
+                    count: num_fields,
+                    max: MAX_FIELDS_PER_GROUP,
+                });
+            }
+
+            let group = NetFieldExportGroup::try_new(path_name, path_name_index, num_fields)?;
             cache.add_export_group(group);
         } else {
             // Reference to an existing group by index -- it must already be known.
@@ -330,6 +343,24 @@ mod tests {
         assert_eq!(group.path_name_index, 11);
         assert_eq!(group.len(), 3);
         assert!(cache.get_group_by_path("/Game/Test.Test_C").is_some());
+    }
+
+    #[test]
+    fn live_group_rejects_field_count_above_checkpoint_protocol_limit() {
+        let mut data = Vec::new();
+        data.extend(encode_int_packed(1));
+        data.extend(build_new_group(11, "/Game/Test.Test_C", 65_537, None));
+
+        let mut reader = BitReader::new(&data);
+        let mut cache = NetGuidCache::new();
+        assert!(matches!(
+            read_net_field_exports(&mut reader, &mut cache).unwrap_err(),
+            SchemaError::FieldCountOverflow {
+                count: 65_537,
+                max: 65_536
+            }
+        ));
+        assert_eq!(cache.group_count(), 0);
     }
 
     #[test]

@@ -123,6 +123,14 @@ fn make_movement_record(i: u32) -> MovementRecord {
     }
 }
 
+#[test]
+fn zero_row_group_size_returns_a_controlled_error() {
+    let path = test_dir().join("zero_row_group_size.parquet");
+    let file = fs::File::create(path).unwrap();
+
+    assert!(FieldWriter::with_row_group_size(file, 0).is_err());
+}
+
 /// Read all record batches from a Parquet file.
 fn read_all_batches(path: &std::path::Path) -> Vec<RecordBatch> {
     let file = fs::File::open(path).unwrap();

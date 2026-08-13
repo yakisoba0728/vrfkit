@@ -80,6 +80,27 @@ impl NetFieldExportGroup {
         }
     }
 
+    /// Create a group while reporting allocation failure to an untrusted-wire
+    /// caller instead of relying on infallible `vec!` growth.
+    pub(crate) fn try_new(
+        path: String,
+        path_name_index: u32,
+        capacity: u32,
+    ) -> crate::error::Result<Self> {
+        let capacity_usize = usize::try_from(capacity)
+            .map_err(|_| crate::error::SchemaError::FieldAllocationFailed { count: capacity })?;
+        let mut fields = Vec::new();
+        fields
+            .try_reserve_exact(capacity_usize)
+            .map_err(|_| crate::error::SchemaError::FieldAllocationFailed { count: capacity })?;
+        fields.resize_with(capacity_usize, || None);
+        Ok(Self {
+            path,
+            path_name_index,
+            fields,
+        })
+    }
+
     /// Number of declared field slots (including unfilled ones).
     #[must_use]
     pub fn len(&self) -> u32 {

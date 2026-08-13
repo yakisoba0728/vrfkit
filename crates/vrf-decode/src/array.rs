@@ -182,7 +182,10 @@ pub fn decode_struct_array(
     declared: &[Option<&str>],
     stats: &mut ArrayDecodeStats,
 ) -> Vec<FlattenedField> {
-    let mut reader = BitReader::with_bit_len(data, u64::from(bit_count));
+    let Ok(mut reader) = BitReader::with_bit_len(data, u64::from(bit_count)) else {
+        stats.errors += 1;
+        return Vec::new();
+    };
     let mut walk = Walk {
         declared,
         path: String::with_capacity(64),
@@ -209,7 +212,9 @@ pub fn decode_struct_array(
 /// whatever was decoded so far: the caller still emits the parent row from its
 /// own `raw_bits`, so a short `Vec` costs the typed leaves, not the bits.
 pub fn decode_object_ref_array(data: &[u8], bit_count: u32) -> Vec<u32> {
-    let mut reader = BitReader::with_bit_len(data, u64::from(bit_count));
+    let Ok(mut reader) = BitReader::with_bit_len(data, u64::from(bit_count)) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
 
     let Ok(element_count) = reader.read_int_packed() else {

@@ -172,12 +172,15 @@ impl<T: Table, W: Write + Send> TableWriter<T, W> {
     /// and row groups were separated -- there is no partial batch inside a row
     /// group for a page boundary to land differently in.
     pub fn with_row_group_size(sink: W, row_group_size: usize) -> Result<Self, ExportError> {
+        if row_group_size == 0 {
+            return Err(ExportError::Usage(
+                "row group size must be greater than zero".into(),
+            ));
+        }
         let schema = T::schema();
         let props = Self::writer_properties(row_group_size);
         let writer = ArrowWriter::try_new(sink, schema, Some(props))?;
-        // Floored at 1 so `with_row_group_size(sink, 0)` cannot make `push`
-        // buffer forever without ever flushing.
-        let batch_rows = row_group_size.clamp(1, MAX_BUFFERED_ROWS);
+        let batch_rows = row_group_size.min(MAX_BUFFERED_ROWS);
         Ok(Self {
             writer,
             buffer: Vec::with_capacity(T::initial_capacity(batch_rows)),

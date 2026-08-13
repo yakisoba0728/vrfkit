@@ -17,18 +17,16 @@ pub(super) const MAX_FIELDS_PER_ELEMENT: u32 = 8;
 /// Maximum bits in a single field payload. Prevents runaway on corrupt data.
 const MAX_FIELD_PAYLOAD_BITS: u32 = 64 * 1024;
 
-/// Build a reader over an exact bit window, without the panic.
+/// Build a reader over an exact bit window.
 pub(super) fn new_blob_reader(raw: &[u8], bit_count: u32) -> Result<BitReader<'_>> {
     let available = (raw.len() as u64) * 8;
     if u64::from(bit_count) > available {
-        // `BitReader::with_bit_len` asserts on this, and a panic in the export
-        // path would take the whole run down over one malformed row.
         return Err(EffectBlobError::BitLengthExceedsBuffer {
             bits: bit_count,
             available,
         });
     }
-    Ok(BitReader::with_bit_len(raw, u64::from(bit_count)))
+    Ok(BitReader::with_bit_len(raw, u64::from(bit_count))?)
 }
 
 /// Read the declared element count from the stream.

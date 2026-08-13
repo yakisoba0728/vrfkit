@@ -63,7 +63,7 @@ fn owner_exclusive_player_info() -> Vec<Option<&'static str>> {
 #[test]
 fn round_results_row0_red_attacker_elimination() {
     let data = hex_to_bytes("0202bcc208000000a4cac800000000007c0d028c00c2800202c420250400000000");
-    let mut r = BitReader::with_bit_len(&data, 264);
+    let mut r = BitReader::with_bit_len(&data, 264).unwrap();
     let results = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].round_number, 0);
@@ -77,7 +77,7 @@ fn round_results_row0_red_attacker_elimination() {
 #[test]
 fn round_results_row4_blue_defender_time_expired() {
     let data = hex_to_bytes("0a0abcd20a00000084d8eaca00000000007c0d048c300000");
-    let mut r = BitReader::with_bit_len(&data, 192);
+    let mut r = BitReader::with_bit_len(&data, 192).unwrap();
     let results = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].round_number, 4);
@@ -91,7 +91,7 @@ fn round_results_row4_blue_defender_time_expired() {
 #[test]
 fn round_results_row6_blue_defender_defuse() {
     let data = hex_to_bytes("0e0ebcd20a00000084d8eaca00000000007c0d048c100000");
-    let mut r = BitReader::with_bit_len(&data, 192);
+    let mut r = BitReader::with_bit_len(&data, 192).unwrap();
     let results = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].round_number, 6);
@@ -104,7 +104,7 @@ fn round_results_row6_blue_defender_defuse() {
 #[test]
 fn round_results_empty() {
     let data = [];
-    let mut r = BitReader::with_bit_len(&data, 0);
+    let mut r = BitReader::with_bit_len(&data, 0).unwrap();
     let results = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap();
     assert!(results.is_empty());
 }
@@ -116,7 +116,7 @@ fn round_results_empty() {
 #[test]
 fn round_results_1302_round0() {
     let data = hex_to_bytes("0202a4d20a00000084d8eaca00000000004c0d848a00aa800202ac20f50200000000");
-    let mut r = BitReader::with_bit_len(&data, 272);
+    let mut r = BitReader::with_bit_len(&data, 272).unwrap();
     let results = decode_round_results(&mut r, &bomb_game_state_1302()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].round_number, 0);
@@ -135,7 +135,7 @@ fn round_results_1302_round0() {
 #[test]
 fn round_results_1302_bytes_under_1301_declaration_is_an_error() {
     let data = hex_to_bytes("0202a4d20a00000084d8eaca00000000004c0d848a00aa800202ac20f50200000000");
-    let mut r = BitReader::with_bit_len(&data, 272);
+    let mut r = BitReader::with_bit_len(&data, 272).unwrap();
     let err = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap_err();
     assert!(
         matches!(
@@ -156,7 +156,7 @@ fn round_results_1302_bytes_under_1301_declaration_is_an_error() {
 #[test]
 fn round_results_1301_bytes_under_1302_declaration_is_an_error() {
     let data = hex_to_bytes("0202bcc208000000a4cac800000000007c0d028c00c2800202c420250400000000");
-    let mut r = BitReader::with_bit_len(&data, 264);
+    let mut r = BitReader::with_bit_len(&data, 264).unwrap();
     let err = decode_round_results(&mut r, &bomb_game_state_1302()).unwrap_err();
     assert!(
         matches!(err, StructBlobError::UndeclaredHandle { handle: 93, .. }),
@@ -169,7 +169,7 @@ fn round_results_1301_bytes_under_1302_declaration_is_an_error() {
 #[test]
 fn round_results_with_no_declaration_is_an_error() {
     let data = hex_to_bytes("0202bcc208000000a4cac800000000007c0d028c00c2800202c420250400000000");
-    let mut r = BitReader::with_bit_len(&data, 264);
+    let mut r = BitReader::with_bit_len(&data, 264).unwrap();
     assert!(decode_round_results(&mut r, &[]).is_err());
 }
 
@@ -178,7 +178,7 @@ fn round_results_with_no_declaration_is_an_error() {
 #[test]
 fn round_results_unknown_member_name_is_reported_by_name() {
     let data = hex_to_bytes("0202bcc208000000a4cac800000000007c0d028c00c2800202c420250400000000");
-    let mut r = BitReader::with_bit_len(&data, 264);
+    let mut r = BitReader::with_bit_len(&data, 264).unwrap();
     let mut declared = bomb_game_state_1301();
     declared[93] = Some("WinningTeamV2");
     let err = decode_round_results(&mut r, &declared).unwrap_err();
@@ -200,7 +200,7 @@ fn team_economy_row0_initial_spawn() {
     let data = hex_to_bytes(
         "0402722021047440000000007640000000000004722025047440000000007640000000000000",
     );
-    let mut r = BitReader::with_bit_len(&data, 304);
+    let mut r = BitReader::with_bit_len(&data, 304).unwrap();
     let results = decode_team_economy(&mut r).unwrap();
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].index, 0);
@@ -218,7 +218,7 @@ fn team_economy_row0_initial_spawn() {
 #[test]
 fn team_economy_row1_round_start() {
     let data = hex_to_bytes("04027440fe100000764066030000000474403610000076403e0300000000");
-    let mut r = BitReader::with_bit_len(&data, 240);
+    let mut r = BitReader::with_bit_len(&data, 240).unwrap();
     let results = decode_team_economy(&mut r).unwrap();
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].index, 0);
@@ -236,7 +236,7 @@ fn team_economy_row1_round_start() {
 #[test]
 fn team_economy_row2_midgame() {
     let data = hex_to_bytes("04027440d052000076409010000000047440502d00007640100900000000");
-    let mut r = BitReader::with_bit_len(&data, 240);
+    let mut r = BitReader::with_bit_len(&data, 240).unwrap();
     let results = decode_team_economy(&mut r).unwrap();
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].index, 0);
@@ -255,7 +255,7 @@ fn team_economy_row2_midgame() {
 #[test]
 fn round_infos_row0_end_of_round1() {
     let data = hex_to_bytes("020252400000000054400000000056400000000058406c0700005a40000000000000");
-    let mut r = BitReader::with_bit_len(&data, 272);
+    let mut r = BitReader::with_bit_len(&data, 272).unwrap();
     let results = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].index, 0);
@@ -272,7 +272,7 @@ fn round_infos_row0_end_of_round1() {
 #[test]
 fn round_infos_row1_different_player() {
     let data = base64_to_bytes("AgJSQAAAAABUQAAAAABWQAAAAABYQNAHAABaQMgAAAAAAA==");
-    let mut r = BitReader::with_bit_len(&data, 272);
+    let mut r = BitReader::with_bit_len(&data, 272).unwrap();
     let results = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].index, 0);
@@ -289,7 +289,7 @@ fn round_infos_row1_different_player() {
 #[test]
 fn round_infos_row2_another_player() {
     let data = base64_to_bytes("AgJSQAAAAABUQAAAAABWQAAAAABYQDQIAABaQFgCAAAAAA==");
-    let mut r = BitReader::with_bit_len(&data, 272);
+    let mut r = BitReader::with_bit_len(&data, 272).unwrap();
     let results = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].index, 0);
@@ -337,7 +337,7 @@ fn round_infos_with_n_fields(n: u32) -> (Vec<u8>, u64) {
 #[test]
 fn round_infos_accepts_max_fields_per_element() {
     let (bytes, bits) = round_infos_with_n_fields(MAX_FIELDS_PER_ELEMENT);
-    let mut r = BitReader::with_bit_len(&bytes, bits);
+    let mut r = BitReader::with_bit_len(&bytes, bits).unwrap();
     let results = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].round_number, Some(0));
@@ -348,7 +348,7 @@ fn round_infos_accepts_max_fields_per_element() {
 #[test]
 fn round_infos_rejects_one_more_than_max_fields() {
     let (bytes, bits) = round_infos_with_n_fields(MAX_FIELDS_PER_ELEMENT + 1);
-    let mut r = BitReader::with_bit_len(&bytes, bits);
+    let mut r = BitReader::with_bit_len(&bytes, bits).unwrap();
     let err = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap_err();
     assert!(
         matches!(
@@ -465,7 +465,7 @@ fn round_results_one_member(handle: u32, value: u32, width: u32) -> (Vec<u8>, u6
 fn round_results_unknown_team_role_is_an_error_not_an_absent_field() {
     // Handle 94 is WinningTeamRole on 13.01. Role 7 is past RoleCount (5).
     let (data, bit_len) = round_results_one_member(94, 7, 3);
-    let mut r = BitReader::with_bit_len(&data, bit_len);
+    let mut r = BitReader::with_bit_len(&data, bit_len).unwrap();
     let err = decode_round_results(&mut r, &bomb_game_state_1301())
         .expect_err("an unknown role must not decode as an absent field");
     assert!(
@@ -487,7 +487,7 @@ fn round_results_unknown_team_role_is_an_error_not_an_absent_field() {
 fn round_results_unknown_outcome_is_an_error_not_an_absent_field() {
     // Handle 95 is RoundResult on 13.01. Outcome 8 is past Invalid (7).
     let (data, bit_len) = round_results_one_member(95, 8, 4);
-    let mut r = BitReader::with_bit_len(&data, bit_len);
+    let mut r = BitReader::with_bit_len(&data, bit_len).unwrap();
     let err = decode_round_results(&mut r, &bomb_game_state_1301())
         .expect_err("an unknown outcome must not decode as an absent field");
     assert!(
@@ -508,7 +508,7 @@ fn round_results_unknown_outcome_is_an_error_not_an_absent_field() {
 #[test]
 fn round_results_known_enum_values_still_decode() {
     let (data, bit_len) = round_results_one_member(94, 2, 3);
-    let mut r = BitReader::with_bit_len(&data, bit_len);
+    let mut r = BitReader::with_bit_len(&data, bit_len).unwrap();
     let results = decode_round_results(&mut r, &bomb_game_state_1301()).unwrap();
     assert_eq!(results[0].winning_team_role, Some(AresTeamRole::Defender));
 }
@@ -543,7 +543,7 @@ fn round_infos_one_member(handle: u32, value: i32, width: u32) -> (Vec<u8>, u64)
 fn round_infos_member_that_underreads_its_window_is_an_error() {
     // Handle 43 is EndOfRoundMoney; 64 declared bits against a 32-bit Int32.
     let (data, bit_len) = round_infos_one_member(43, 1900, 64);
-    let mut r = BitReader::with_bit_len(&data, bit_len);
+    let mut r = BitReader::with_bit_len(&data, bit_len).unwrap();
     let err = decode_round_infos(&mut r, &owner_exclusive_player_info())
         .expect_err("half-read money must not export as a value");
     match &err {
@@ -566,7 +566,7 @@ fn round_infos_member_that_underreads_its_window_is_an_error() {
 #[test]
 fn round_infos_member_with_an_exact_window_still_decodes() {
     let (data, bit_len) = round_infos_one_member(43, 1900, 32);
-    let mut r = BitReader::with_bit_len(&data, bit_len);
+    let mut r = BitReader::with_bit_len(&data, bit_len).unwrap();
     let results = decode_round_infos(&mut r, &owner_exclusive_player_info()).unwrap();
     assert_eq!(results[0].end_of_round_money, Some(1900));
 }

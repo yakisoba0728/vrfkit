@@ -23,7 +23,7 @@ fn decode_hex(hex: &str) -> Vec<u8> {
 fn reader_from_hex(hex: &str, bit_count: u64) -> BitReader<'static> {
     let data = decode_hex(hex);
     let leaked: &'static [u8] = Box::leak(data.into_boxed_slice());
-    BitReader::with_bit_len(leaked, bit_count)
+    BitReader::with_bit_len(leaked, bit_count).unwrap()
 }
 
 // ---- FloatValues tests ----
@@ -182,7 +182,7 @@ fn decode_vector_values_shotgun_12_pellets() {
 fn decode_empty_float_array() {
     // IntPacked 0 = byte 0x00
     let data = [0u8; 1];
-    let mut reader = BitReader::with_bit_len(&data, 8);
+    let mut reader = BitReader::with_bit_len(&data, 8).unwrap();
     let result = decode_effect_floats(&mut reader).unwrap();
     assert!(result.is_empty());
 }
@@ -191,7 +191,7 @@ fn decode_empty_float_array() {
 #[test]
 fn decode_empty_object_array() {
     let data = [0u8; 1];
-    let mut reader = BitReader::with_bit_len(&data, 8);
+    let mut reader = BitReader::with_bit_len(&data, 8).unwrap();
     let result = decode_effect_objects(&mut reader).unwrap();
     assert!(result.is_empty());
 }
@@ -200,7 +200,7 @@ fn decode_empty_object_array() {
 #[test]
 fn decode_empty_vector_array() {
     let data = [0u8; 1];
-    let mut reader = BitReader::with_bit_len(&data, 8);
+    let mut reader = BitReader::with_bit_len(&data, 8).unwrap();
     let result = decode_effect_vectors(&mut reader).unwrap();
     assert!(result.is_empty());
 }
@@ -296,8 +296,8 @@ fn a_tail_after_the_terminator_is_an_error() {
     );
 }
 
-/// `BitReader::with_bit_len` asserts rather than returning an error, and a
-/// panic in the export path would take the whole run down over one row.
+/// A bad public bit length must stay a row-level error rather than taking the
+/// export path down over one malformed row.
 #[test]
 fn a_bit_length_past_the_buffer_is_an_error_not_a_panic() {
     let err = decode_effect_blob_json(EffectArrayKind::Float, &[0u8], 4096).unwrap_err();
@@ -389,7 +389,7 @@ fn a_rebased_blob_decodes_through_derivation_and_not_through_the_constants() {
 
     // Through the constants: every field is an unknown handle, so the
     // elements come back empty. This is what shipped before derivation.
-    let mut reader = BitReader::with_bit_len(&raw, 400);
+    let mut reader = BitReader::with_bit_len(&raw, 400).unwrap();
     let blind = decode_effect_floats(&mut reader).unwrap();
     assert_eq!(blind.len(), 4);
     assert!(

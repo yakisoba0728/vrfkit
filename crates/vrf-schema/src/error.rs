@@ -20,6 +20,23 @@ pub enum SchemaError {
         index: u32,
     },
 
+    /// A live export group declared more field slots than the protocol's
+    /// checkpoint form permits.
+    #[error("net-field export declares {count} field slots, maximum is {max}")]
+    FieldCountOverflow {
+        /// The rejected slot count.
+        count: u32,
+        /// The configured maximum.
+        max: u32,
+    },
+
+    /// Reserving storage for a bounded live export group failed.
+    #[error("could not reserve {count} net-field export slots")]
+    FieldAllocationFailed {
+        /// The requested, already-bounded slot count.
+        count: u32,
+    },
+
     /// An export GUID payload declared a negative size.
     #[error("export GUID payload size is negative: {size}")]
     NegativePayloadSize {
