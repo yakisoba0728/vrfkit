@@ -50,15 +50,20 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pyarrow.parquet as pq
+
+if __package__:
+    from .atomic_io import atomic_write_text
+else:  # direct script execution
+    from atomic_io import atomic_write_text
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_EXE = REPO / "target" / "release" / "vrfkit.exe"
@@ -127,6 +132,15 @@ CHECKPOINT_COUNTERS = {
 PARQUET_FILES = ("fields", "movement", "actors", "net_guids", "events")
 
 
+def sha256_file(path: Path) -> str:
+    """Return a measured content digest without loading a Parquet file whole."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def cross_check_identities(counters: dict, parquet: dict) -> list:
     """The printed counters that ARE Parquet row counts.
 
@@ -185,19 +199,16 @@ def unpinnable(current: dict) -> list[str]:
 def measure(exe: Path, replay: Path, out_dir: Path, checkpoints: bool = False) -> dict:
     """Export one replay and collect the summary counters and Parquet shape.
 
-    The output directory is deleted first. Exporting over a previous run would
-    leave a file the exporter has stopped writing sitting there with last
-    run's contents, and both checks below would then read it and pass -- the
-    exact way "a stale file makes a matching hash meaningless" applies here.
+    The exporter transactionally replaces the complete output directory.  Do
+    not delete it here first: on export failure the previous complete result
+    must remain available, while a successful replacement removes stale files
+    by construction.
 
     `checkpoints` runs the optional Checkpoint pass and pins its counters and
     its table too. That path is off by default in the exporter, and an
     unguarded optional path is the shape of every silent change this script
     exists to prevent -- so it gets a baseline of its own rather than none.
     """
-    shutil.rmtree(out_dir, ignore_errors=True)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
     cmd = [str(exe), "export", str(replay), "--out", str(out_dir)]
     if checkpoints:
         cmd.append("--checkpoints")
@@ -229,6 +240,7 @@ def measure(exe: Path, replay: Path, out_dir: Path, checkpoints: bool = False) -
         parquet[name] = {
             "rows": pq.ParquetFile(path).metadata.num_rows,
             "bytes": path.stat().st_size,
+            "sha256": sha256_file(path),
         }
 
     return {"counters": counters, "parquet": parquet}
@@ -245,7 +257,7 @@ def diff(baseline: dict, current: dict) -> list[str]:
     for name in sorted(set(baseline["parquet"]) | set(current["parquet"])):
         want = baseline["parquet"].get(name, {})
         got = current["parquet"].get(name, {})
-        for field in ("rows", "bytes"):
+        for field in ("rows", "bytes", "sha256"):
             if want.get(field) != got.get(field):
                 out.append(
                     f"{name}.parquet {field}: {got.get(field)} "
@@ -261,12 +273,15 @@ def main() -> int:
     ap.add_argument("--replay", type=Path, default=None,
                     help="overrides the replay path stored in the baseline")
     ap.add_argument("--out", type=Path, default=None,
-                    help="export directory, DELETED first (default: out/export_check)")
+                    help="transactionally replaced export directory "
+                         "(default: out/export_check)")
     ap.add_argument("--update", action="store_true",
                     help="rewrite the baseline from the current numbers")
     ap.add_argument("--checkpoints", action="store_true",
                     help="run the optional Checkpoint pass and pin its counters "
                          "and checkpoint_fields.parquet too")
+    ap.add_argument("--require-input", action="store_true",
+                    help="fail instead of skipping when the replay is absent")
     args = ap.parse_args()
 
     if not args.exe.exists():
@@ -284,6 +299,10 @@ def main() -> int:
         if corpus_dir:
             replay = Path(corpus_dir) / replay
     if not replay.name or not replay.exists():
+        if args.require_input or os.environ.get("VRFKIT_REQUIRE_CORPUS"):
+            print(f"REQUIRED INPUT MISSING: replay not present ({replay})",
+                  file=sys.stderr)
+            return 2
         print(f"SKIP: replay not present ({replay})")
         print("      the corpus lives outside this repo; nothing to guard here.")
         return 0
@@ -314,9 +333,7 @@ def main() -> int:
                   "catch.")
             return 1
         payload = {"replay": stored.get("replay") or str(replay), **current}
-        args.baseline.parent.mkdir(parents=True, exist_ok=True)
-        args.baseline.write_text(json.dumps(payload, indent=1) + "\n",
-                                 encoding="utf-8")
+        atomic_write_text(args.baseline, json.dumps(payload, indent=1) + "\n")
         print(f"wrote {args.baseline} (NetGUID rows "
               f"{current['counters']['net_guid_rows']})")
         return 0

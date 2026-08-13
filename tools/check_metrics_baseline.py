@@ -68,6 +68,11 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+if __package__:
+    from .atomic_io import atomic_write_text
+else:  # direct script execution
+    from atomic_io import atomic_write_text
+
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_EXE = REPO / "target" / "release" / "vrfkit.exe"
 BUNDLE_TOOL = REPO / "tools" / "to_valplay_bundle.py"
@@ -325,8 +330,8 @@ def main() -> int:
             "replays": REPLAYS,
             "metrics": metrics,
         }
-        args.baseline.write_text(
-            json.dumps(payload, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        atomic_write_text(
+            args.baseline, json.dumps(payload, indent=1, sort_keys=True) + "\n")
         kept = sorted(set(metrics) - set(results))
         print(f"\nwrote {args.baseline}: re-pinned {len(results)} build(s)"
               + (f", kept {len(kept)} not looked at ({', '.join(kept)})"

@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -264,6 +266,39 @@ class TransactionalConversionTests(unittest.TestCase):
             bundle.convert(export, root / "bundle")
 
             self.assertEqual((export / "manifest.json").read_bytes(), original)
+
+    def test_backup_cleanup_failure_does_not_turn_a_committed_publish_into_failure(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            staging = root / ".bundle.staging"
+            output = root / "bundle"
+            staging.mkdir()
+            output.mkdir()
+            (staging / "manifest.json").write_text("new", encoding="utf-8")
+            (output / "manifest.json").write_text("old", encoding="utf-8")
+
+            real_remove_tree = bundle.remove_tree
+
+            def fail_cleanup(path, parent):
+                raise OSError(f"cannot remove {path} under {parent}")
+
+            bundle.remove_tree = fail_cleanup
+            stderr = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(stderr):
+                    bundle._publish_bundle(staging, output)
+            finally:
+                bundle.remove_tree = real_remove_tree
+
+            self.assertEqual(
+                (output / "manifest.json").read_text(encoding="utf-8"), "new"
+            )
+            backups = list(root.glob(".bundle.backup.*"))
+            self.assertEqual(len(backups), 1, backups)
+            self.assertEqual(
+                (backups[0] / "manifest.json").read_text(encoding="utf-8"), "old"
+            )
+            self.assertIn("backup", stderr.getvalue().lower())
 
 
 class ShotEventTests(unittest.TestCase):

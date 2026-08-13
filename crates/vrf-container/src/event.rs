@@ -148,9 +148,5 @@ fn read_fstring(
 ) -> Result<String, ContainerError> {
     reader
         .read_fstring(MAX_FSTRING_BYTES)
-        .map_err(|_| ContainerError::Truncated {
-            context,
-            needed: 4,
-            available: (reader.bits_remaining() / 8) as usize,
-        })
+        .map_err(|source| ContainerError::FString { context, source })
 }

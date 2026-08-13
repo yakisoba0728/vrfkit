@@ -13,7 +13,7 @@
   "actor_closes": 1799,
   "bunches": 530401,
   "malformed_packets": 0,
-  "skipped_bits": 17506923,
+  "skipped_bits": 19135006,
   "movement_rows": 1839607,
   "net_guid_rows": 16167,
   "event_rows": 195,
@@ -38,28 +38,34 @@
  },
  "parquet": {
   "fields": {
-   "rows": 1277627,
-   "bytes": 15884671
+   "rows": 1277658,
+   "bytes": 15880542,
+   "sha256": "e3f9857602b9a0228367826e6cc2fcf7ac6ae72d9fd7b30d2c6f652ce36a1dbc"
   },
   "movement": {
    "rows": 1839607,
-   "bytes": 31835557
+   "bytes": 31835557,
+   "sha256": "106249a8e34348edc1d3ff2f180e1b324b2cbb49fe456411568000d53d3231d0"
   },
   "actors": {
    "rows": 3827,
-   "bytes": 87281
+   "bytes": 87281,
+   "sha256": "84076cf7ca398c957c3e67148d0622f72e809cb4e2157f66cd4f18b197e65d7b"
   },
   "net_guids": {
    "rows": 16167,
-   "bytes": 153606
+   "bytes": 153606,
+   "sha256": "501cabc678770431d0fec9c37c4e21ed06193bb93263313959e87865625bba0f"
   },
   "events": {
    "rows": 195,
-   "bytes": 11136
+   "bytes": 11136,
+   "sha256": "d5d057517b19aa5d07dfdfcf219b038421c67035d17ae53d92322922c8c58317"
   },
   "checkpoint_fields": {
    "rows": 78850,
-   "bytes": 231256
+   "bytes": 231256,
+   "sha256": "e2b6470d3aebc4204effba26511641a3aa1ec12959ae61280002e3f45ae07791"
   }
  }
 }

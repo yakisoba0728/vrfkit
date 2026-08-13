@@ -22,6 +22,7 @@ use vrf_decode::OverlayErrorReport;
 use vrf_export::FieldWriter;
 use vrf_frame::iter_demo_frames;
 use vrf_net::pipeline::ReplicationReader;
+use vrf_net::stats::NetStats;
 use vrf_schema::{NetGuidCache, read_checkpoint_tables};
 
 use super::totals::SinkTotals;
@@ -31,7 +32,7 @@ use crate::sink::{ChannelState, ExportSink, RecordBuffers};
 /// Counters for the optional checkpoint pass. Kept together so the summary
 /// cannot report one and quietly omit another.
 #[derive(Debug, Default)]
-pub(super) struct CheckpointStats {
+pub(crate) struct CheckpointStats {
     pub chunks: u64,
     pub guid_entries: u64,
     pub group_records: u64,
@@ -63,6 +64,8 @@ pub(super) struct CheckpointStats {
     /// anywhere. Sharing [`SinkTotals`] with the main pass is what stops the
     /// two from drifting again.
     pub sink: SinkTotals,
+    /// Replication/framing counters from every finalized checkpoint reader.
+    pub net: NetStats,
 }
 
 /// Everything about the replay that the checkpoint pass needs and cannot
@@ -94,43 +97,51 @@ pub(super) fn process_chunk<W: Write + Send>(
         .map_err(|e| CliError::Usage(format!("checkpoint {}: {e}", cp.id)))?;
 
     let frame = &plain[tables.frame_offset..];
-    let mut packets: Vec<(u32, usize, usize)> = Vec::new();
-    iter_demo_frames(frame, ctx.flags, &mut cache, |pkt| {
-        let base = frame.as_ptr() as usize;
-        packets.push((
-            pkt.time_ms,
-            pkt.data.as_ptr() as usize - base,
-            pkt.data.len(),
-        ));
-    })?;
-
     let mut reader = ReplicationReader::new(ctx.branch)
         .map_err(|e| CliError::Usage(format!("unsupported branch: {e}")))?;
     let mut channels = ChannelState::new();
     let mut buffers = RecordBuffers::default();
-    for (i, (time_ms, off, len)) in packets.iter().enumerate() {
+    let mut packet_count = 0u64;
+    let mut packet_error = None;
+    iter_demo_frames(frame, ctx.flags, &mut cache, |pkt, packet_cache| {
+        if packet_error.is_some() {
+            return;
+        }
         {
-            let mut sink = ExportSink::new(&mut cache, &mut channels, &mut buffers);
-            sink.time_ms = *time_ms;
-            sink.packet_id = i as u32;
-            reader.process_packet(&frame[*off..*off + *len], i as i32, &mut sink);
+            let mut sink = ExportSink::new(packet_cache, &mut channels, &mut buffers);
+            sink.time_ms = pkt.time_ms;
+            sink.packet_id = packet_count as u32;
+            reader.process_packet(pkt.data, packet_count as i32, &mut sink);
             // Same aggregation the ReplayData pass uses, so the two cannot
             // diverge on which counters they bother to read. See `totals`.
             stats.sink.absorb(&mut sink.stats, error_report);
         }
-        stats.field_rows += buffers.fields.len() as u64;
-        writer.push_batch(buffers.fields.drain(..))?;
-        stats.actor_rows_dropped += buffers.actors.len() as u64;
-        stats.movement_rows_dropped += buffers.movement.len() as u64;
-        buffers.actors.clear();
-        buffers.movement.clear();
+        let result = (|| -> Result<(), CliError> {
+            stats.field_rows += buffers.fields.len() as u64;
+            writer.push_batch(buffers.fields.drain(..))?;
+            stats.actor_rows_dropped += buffers.actors.len() as u64;
+            stats.movement_rows_dropped += buffers.movement.len() as u64;
+            buffers.actors.clear();
+            buffers.movement.clear();
+            Ok(())
+        })();
+        if let Err(error) = result {
+            packet_error = Some(error);
+        }
+        packet_count += 1;
+    })?;
+    if let Some(error) = packet_error {
+        return Err(error);
     }
+    reader.finish();
+    let mut chunk_net = reader.stats().clone();
+    stats.net.absorb(&mut chunk_net);
 
     stats.chunks += 1;
     stats.guid_entries += u64::from(tables.guid_count);
     stats.group_records += u64::from(tables.group_count);
     stats.exported_fields += u64::from(tables.exported_fields);
     stats.frames += 1;
-    stats.packets += packets.len() as u64;
+    stats.packets += packet_count;
     Ok(())
 }

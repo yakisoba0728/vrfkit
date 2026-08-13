@@ -178,8 +178,8 @@ pub static COMBAT_ROUNDS_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
 //   handle 12: DestroyedCount
 //   handle 13: Effects[] (sub-array)
 //     handle 14: Statistic (the stat enum -- EnemiesSuppressed, EnemiesSlowed, ...)
-//     handle 15: LocalizedStat (an FText, so deliberately untyped -- see
-//                    the note in tools/apply_type_corrections.py)
+//     handle 15: LocalizedStat (FText, decoded for the observed string-table
+//                    history form and rejected for unknown history forms)
 //     handle 16: Value         handle 17: Time
 //     handle 18: AffectedTargetsArray[] (sub-array)
 //       handle 19: AffectedPlayer (packed-int NetGUID -> BombPlayerState actor)

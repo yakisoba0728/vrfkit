@@ -18,13 +18,13 @@
 //! Both passes now go through [`SinkTotals::absorb`]. One function, one test,
 //! and a counter added to `ExportStats` has exactly one place to be wired in.
 
-use vrf_decode::{OverlayErrorReport, OverlayStats};
+use vrf_decode::{ArrayDecodeStats, OverlayErrorReport, OverlayStats};
 
 use crate::sink::ExportStats;
 
 /// Everything a packet's sink counted, summed across packets.
 #[derive(Debug, Default)]
-pub(super) struct SinkTotals {
+pub(crate) struct SinkTotals {
     pub overlay: OverlayStats,
     pub effect_blobs_decoded: u64,
     pub struct_blobs_decoded: u64,
@@ -35,7 +35,8 @@ pub(super) struct SinkTotals {
     pub multi_contents_items_emitted: u64,
     pub movement_rpc_errors: u64,
     pub movement_first_error: Option<String>,
-    pub array_decode_errors: u64,
+    pub array: ArrayDecodeStats,
+    pub array_leaf_decode_errors: u64,
     pub truncated_rpcs: u64,
     pub rpc_suffix_bits_dropped: u64,
     pub cnc_rpcs_emitted: u64,
@@ -61,6 +62,7 @@ impl SinkTotals {
         self.overlay.raw_or_skip += stats.overlay.raw_or_skip;
         self.overlay.not_in_table += stats.overlay.not_in_table;
         self.overlay.no_field_name += stats.overlay.no_field_name;
+        self.overlay.handle_conflicts_refused += stats.overlay.handle_conflicts_refused;
         self.effect_blobs_decoded += stats.effect_blobs_decoded;
         self.struct_blobs_decoded += stats.struct_blobs_decoded;
         self.struct_blobs_failed += stats.struct_blobs_failed;
@@ -72,7 +74,14 @@ impl SinkTotals {
         if self.movement_first_error.is_none() {
             self.movement_first_error = stats.movement_first_error.take();
         }
-        self.array_decode_errors += stats.array.errors;
+        self.array.elements_decoded += stats.array.elements_decoded;
+        self.array.fields_emitted += stats.array.fields_emitted;
+        self.array.truncations += stats.array.truncations;
+        self.array.errors += stats.array.errors;
+        self.array.unconsumed_nested_bits += stats.array.unconsumed_nested_bits;
+        self.array.implicit_terminations += stats.array.implicit_terminations;
+        self.array.unconsumed_root_bits += stats.array.unconsumed_root_bits;
+        self.array_leaf_decode_errors += stats.array_leaf_decode_errors;
         self.truncated_rpcs += stats.truncated_rpcs;
         self.rpc_suffix_bits_dropped += stats.rpc_suffix_bits_dropped;
         self.cnc_rpcs_emitted += stats.cnc_rpcs_emitted;

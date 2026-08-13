@@ -4,14 +4,14 @@
 //!
 //! | Field | Export group | Purpose | Module |
 //! |-------|-------------|---------|--------|
-//! | `RoundResults` | `BombGameState` | Per-round winning team and outcome | [`round_results`] |
-//! | `TeamEconomy` | `BombGameState` | Team loadout value per round | [`team_economy`] |
-//! | `RoundInfos` | `OwnerExclusivePlayerInfo` | Per-player per-round credit | [`round_infos`] |
+//! | `RoundResults` | `BombGameState` | Per-round winning team and outcome | `round_results` |
+//! | `TeamEconomy` | `BombGameState` | Team loadout value per round | `team_economy` |
+//! | `RoundInfos` | `OwnerExclusivePlayerInfo` | Per-player per-round credit | `round_infos` |
 //!
 //! # Wire layout (established from C# reference parser + corpus validation)
 //!
 //! All three use the same UE RepLayout dynamic-array serialization, which
-//! [`framing`] reads:
+//! the internal `framing` module reads:
 //!
 //! ```text
 //! [IntPacked: declared_count]
@@ -33,7 +33,7 @@
 //! moved from 92 and its members from 93..=96 to 80 and 81..=84. Decoders
 //! pinned to the old numbers produced NOTHING on that build -- not a wrong
 //! value, no value -- and because the failure was discarded without a counter
-//! it read as a clean parse for a whole build. See [`framing::member_name`]
+//! it read as a clean parse for a whole build. See `framing::member_name`
 //! for why resolution runs handle -> name and never the reverse.
 //!
 //! Members and payload types per blob, with the handles each build happens to
@@ -70,7 +70,7 @@
 //! ```text
 //! [1 bit: is_hardcoded]
 //! if hardcoded: [IntPacked: name_index]  -> returned as decimal string
-//! else:        [FString: name] [Int32: number_suffix (ignored)]
+//! else:        [FString: name] [Int32: number_suffix]
 //! ```
 //!
 //! # Volume
@@ -98,6 +98,10 @@ pub enum StructBlobError {
     #[error("bit read: {0}")]
     BitIo(#[from] vrf_bitio::BitError),
 
+    /// A primitive nested in the blob was structurally invalid.
+    #[error("field decode: {0}")]
+    Decode(#[from] crate::DecodeError),
+
     /// The declared array element count exceeds a sane maximum.
     #[error("array count {count} exceeds maximum {max}")]
     ArrayCountTooLarge { count: u32, max: u32 },
@@ -110,7 +114,7 @@ pub enum StructBlobError {
     #[error("field payload {bits} bits exceeds remaining {remaining}")]
     PayloadTooLarge { bits: u32, remaining: u64 },
 
-    /// An unexpected field handle was encountered. Only [`team_economy`] can
+    /// An unexpected field handle was encountered. Only `team_economy` can
     /// raise this; the other two select members by declared name.
     #[error("unsupported field handle {handle} in {context}")]
     UnsupportedHandle { handle: u32, context: &'static str },
@@ -145,6 +149,14 @@ pub enum StructBlobError {
     UnknownEnumValue {
         enum_name: &'static str,
         value: u8,
+        context: &'static str,
+    },
+
+    /// An enum member declared no bits or more than a byte of payload.
+    #[error("{name} enum width {bits} is invalid in {context}")]
+    InvalidEnumWidth {
+        name: String,
+        bits: u64,
         context: &'static str,
     },
 

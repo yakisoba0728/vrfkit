@@ -321,6 +321,61 @@ class MeasuredCountTests(unittest.TestCase):
         docs = {name: guard.read(guard.REPO / name) for name in guard.ALL_DOCS}
         self.assertEqual(guard.stale_measured_counts(docs, live), [])
 
+    def test_live_correction_count_includes_dynamic_weapon_entries(self):
+        self.assertEqual(guard.measured_counts()["corrections"], 130)
+
+
+class GeneratedInventoryTests(unittest.TestCase):
+    def test_a_missing_checksum_table_is_reported(self):
+        docs = {
+            name: " ".join(
+                value
+                for target, generator in guard.GENERATED_INVENTORY.items()
+                if not target.endswith("checksum_table.rs")
+                for value in (target, generator)
+            )
+            for name in guard.GENERATED_INVENTORY_DOCS
+        }
+        problems = guard.check_generated_inventory(docs)
+        self.assertTrue(any("checksum_table.rs" in p for p in problems), problems)
+
+    def test_the_shipped_generated_file_inventories_are_complete(self):
+        docs = {
+            name: guard.read(guard.REPO / name)
+            for name in guard.GENERATED_INVENTORY_DOCS
+        }
+        self.assertEqual(guard.check_generated_inventory(docs), [])
+
+
+class BaselineFigureTests(unittest.TestCase):
+    def test_a_stale_export_measurement_is_reported(self):
+        tables = guard.baseline_table_figures()
+        live = f"{tables['fields.parquet'][0]:,}"
+        stale = f"{tables['fields.parquet'][0] + 1:,}"
+        docs = {
+            "README.md": guard.format_baseline_table(tables).replace(
+                live, stale, 1
+            )
+        }
+        problems = guard.check_baseline_figures(docs, tables)
+        self.assertTrue(any("fields.parquet" in p for p in problems), problems)
+
+    def test_a_missing_baseline_table_is_reported(self):
+        tables = guard.baseline_table_figures()
+        problems = guard.check_baseline_figures(
+            {"README.md": "No measured export table here."}, tables
+        )
+        self.assertEqual(len(problems), len(tables), problems)
+
+    def test_the_shipped_docs_quote_every_live_baseline_figure(self):
+        docs = {
+            "README.md": guard.read(guard.README),
+            "docs/USAGE.md": guard.read(guard.USAGE),
+        }
+        self.assertEqual(
+            guard.check_baseline_figures(docs, guard.baseline_table_figures()), []
+        )
+
 
 class DocCoverageTests(unittest.TestCase):
     """DATA.md and CONTRIBUTING.md were read by nothing at all."""

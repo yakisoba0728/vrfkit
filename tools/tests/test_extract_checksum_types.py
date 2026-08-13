@@ -12,6 +12,8 @@ manifests know, mapped to two different types. That is portable, because it
 only ever compares the overlap.
 """
 import sys
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -127,6 +129,38 @@ class ParseTests(unittest.TestCase):
         for checksum, ftype in committed.items():
             self.assertIsInstance(checksum, int)
             self.assertTrue(ftype.startswith("FieldType::"), ftype)
+
+
+class CliGuardTests(unittest.TestCase):
+    def test_missing_manifest_is_a_failure_not_a_successful_skip(self):
+        with tempfile.TemporaryDirectory() as temp:
+            export = Path(temp) / "missing-export"
+            result = subprocess.run(
+                [sys.executable, str(Path(gen.__file__)), "--export", str(export),
+                 "--check"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+            )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("SKIP:", result.stdout + result.stderr)
+
+    def test_committed_ci_fixture_exercises_the_generator_guard(self):
+        export = Path(__file__).resolve().parents[1] / "fixtures" / "checksum_export"
+        result = subprocess.run(
+            [sys.executable, str(Path(gen.__file__)), "--export", str(export),
+             "--check"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("OK:", result.stdout)
+        self.assertNotIn("SKIP:", result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

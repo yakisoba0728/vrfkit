@@ -31,6 +31,11 @@ from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Iterator
 
+if __package__:
+    from .atomic_io import atomic_write_text
+else:  # direct script execution
+    from atomic_io import atomic_write_text
+
 import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -592,7 +597,7 @@ def main():
 
     # Also write to file
     out_path = vk_dir / "comparison_report.txt"
-    out_path.write_text(full_report, encoding="utf-8")
+    atomic_write_text(out_path, full_report)
     print(f"\n[Report written to {out_path}]")
 
     # This stays a report -- see `coverage_problems` for why nothing else in it

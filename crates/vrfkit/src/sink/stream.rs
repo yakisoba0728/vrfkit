@@ -18,7 +18,7 @@ use vrf_net::pipeline::{ActorChannelState, ReplicationSink, StreamFailure};
 use vrf_net::types::NetworkGuid;
 
 use super::intern::put;
-use super::paths::{channel_archetype, set_channel_archetype};
+use super::paths::{channel_archetype, retire_channel_archetype, set_channel_archetype};
 use super::rpc::copy_raw_bits;
 use super::{ExportSink, FieldValues, TABLE};
 
@@ -144,14 +144,18 @@ impl FieldSink for ExportSink<'_> {
         let field_name = self.resolve_field_name(handle);
 
         if field_name.as_deref() == Some(MOVEMENT_RPC) && bit_count > 0 {
-            self.decode_movement_rpc(reader);
-            // Raw bits are deliberately not stored for movement RPCs: the
-            // payload is already in movement.parquet, row for row, and keeping
-            // it here as well would add a blob column entry per batch.
+            let fallback_reader = reader.clone();
+            let failed = self.decode_movement_rpc(reader);
+            // Clean batches are represented row-for-row in movement.parquet.
+            // A failed or partial batch is different: its missing rows cannot
+            // reproduce the input, so retain the entire RPC payload here.
             self.push_field(FieldValues {
                 handle,
                 field_name,
                 bit_count,
+                raw_bits: failed
+                    .then(|| copy_raw_bits(fallback_reader, bit_count))
+                    .flatten(),
                 ..FieldValues::default()
             });
         } else if bit_count > 0 {
@@ -201,7 +205,7 @@ const ABILITIES_AND_BUFFS_FC: u32 = 34;
 
 impl ExportSink<'_> {
     /// Decode a movement RPC payload into `movement.parquet` rows.
-    fn decode_movement_rpc(&mut self, reader: BitReader<'_>) {
+    fn decode_movement_rpc(&mut self, reader: BitReader<'_>) -> bool {
         let mut rpc_reader = reader;
         let time_ms = self.time_ms;
         let packet_id = self.packet_id;
@@ -227,7 +231,12 @@ impl ExportSink<'_> {
                 move_type: mv.move_type,
             });
         });
+        let failed = match &result {
+            Ok(decoded) => decoded.error_count != 0,
+            Err(_) => true,
+        };
         self.stats.record_movement_decode(result.as_ref());
+        failed
     }
 
     /// Resolve the class path an actor channel should be labelled with.
@@ -483,6 +492,9 @@ impl ReplicationSink for ExportSink<'_> {
             spawn_yaw: None,
             spawn_roll: None,
         });
+        if !dormant {
+            retire_channel_archetype(self.channel_state, channel_index);
+        }
     }
 
     fn on_content_block(
@@ -623,6 +635,43 @@ mod tests {
             "an actor block ignores the GUID"
         );
         assert_eq!(object_guid_for(false, 99), Some(99), "subobject block");
+    }
+
+    #[test]
+    fn on_field_keeps_exact_parent_raw_bits_for_unknown_and_typed_failures() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        let payload = [0b1110_1101];
+
+        sink.on_field(
+            999,
+            5,
+            BitReader::with_bit_len(&payload, 5).expect("bounded field reader"),
+        );
+
+        sink.set_current_group_path(Arc::from(
+            "/Script/ShooterGame.DamageableComponent:MulticastNotifyDamage_Base",
+        ));
+        sink.on_field(
+            0,
+            5,
+            BitReader::with_bit_len(&payload, 5).expect("bounded field reader"),
+        );
+
+        assert_eq!(sink.records.fields.len(), 2);
+        for row in &sink.records.fields {
+            assert_eq!(row.bit_count, 5);
+            assert_eq!(row.raw_bits.as_deref(), Some(&[0b0000_1101][..]));
+        }
+        assert_eq!(sink.records.fields[0].field_name, None);
+        assert_eq!(
+            sink.records.fields[1].field_name.as_deref(),
+            Some("DamageTaken")
+        );
+        assert!(sink.records.fields[1].value_f64.is_none());
+        assert_eq!(sink.stats.overlay.decoded_err, 1);
     }
 
     /// A whole unresolved block is one preservation row, not an RPC or a set
@@ -809,6 +858,91 @@ mod tests {
         );
         // Not a truncation: the walk ended where the wire told it to.
         assert_eq!(sink.stats.truncated_rpcs, 0);
+        drop(sink);
+        assert_eq!(records.fields.len(), 2, "parameter plus whole raw fallback");
+        let fallback = records.fields.last().unwrap();
+        assert_eq!(fallback.bit_count, bits.len() as u32);
+        assert_eq!(fallback.raw_bits.as_deref(), Some(data.as_slice()));
+    }
+
+    #[test]
+    fn a_partially_parsed_truncated_rpc_retains_the_whole_payload() {
+        let mut bits = Vec::new();
+        bits.push(false); // property checksum
+        write_int_packed(&mut bits, 1);
+        write_int_packed(&mut bits, 8);
+        bits.extend(std::iter::repeat_n(false, 8)); // one complete parameter
+        write_int_packed(&mut bits, 2);
+        write_int_packed(&mut bits, 100); // second parameter overruns
+        bits.extend(std::iter::repeat_n(true, 8));
+        let data = bits_to_bytes(&bits);
+        let reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        assert!(sink.try_parse_rpc_params(7, reader, Some("SomeFunction")));
+        assert_eq!(sink.stats.truncated_rpcs, 1);
+        drop(sink);
+        assert_eq!(records.fields.len(), 2, "parameter plus whole raw fallback");
+        let fallback = records.fields.last().unwrap();
+        assert_eq!(fallback.bit_count, bits.len() as u32);
+        assert_eq!(fallback.raw_bits.as_deref(), Some(data.as_slice()));
+    }
+
+    #[test]
+    fn a_failed_movement_decode_retains_the_whole_rpc_payload() {
+        let mut update = Vec::new();
+        write_int_packed(&mut update, 3); // shooter GUID handle 2
+        write_int_packed(&mut update, 32);
+        for bit in 0..32 {
+            update.push((4321u32 & (1 << bit)) != 0);
+        }
+        write_int_packed(&mut update, 4); // component stream handle 3
+        write_int_packed(&mut update, 8);
+        update.extend(std::iter::repeat_n(false, 8)); // short u16 header
+        write_int_packed(&mut update, 0);
+
+        let mut array = Vec::new();
+        write_int_packed(&mut array, 1);
+        write_int_packed(&mut array, 1);
+        array.extend(update);
+        write_int_packed(&mut array, 0);
+
+        let mut bits = vec![false]; // top-level ignored bit
+        write_int_packed(&mut bits, 2); // updates-array handle 1
+        write_int_packed(&mut bits, array.len() as u32);
+        bits.extend(array);
+        write_int_packed(&mut bits, 0);
+        let data = bits_to_bytes(&bits);
+
+        let path = "/Script/Test.Movement_ClassNetCache";
+        let mut cache = NetGuidCache::new();
+        cache
+            .add_export_group(vrf_schema::NetFieldExportGroup::new(path.into(), 7, 1))
+            .unwrap();
+        assert!(cache.set_field_on_group(
+            7,
+            vrf_schema::NetFieldExport {
+                handle: 0,
+                compatible_checksum: 0,
+                name: MOVEMENT_RPC.into(),
+            },
+        ));
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        sink.set_current_group_path(Arc::from(path));
+        let reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
+
+        sink.on_rpc(0, bits.len() as u32, reader);
+
+        assert_eq!(sink.stats.movement_rpc_errors, 1);
+        drop(sink);
+        assert_eq!(records.fields.len(), 1);
+        assert_eq!(records.fields[0].bit_count, bits.len() as u32);
+        assert_eq!(records.fields[0].raw_bits.as_deref(), Some(data.as_slice()));
     }
 
     /// The one permitted leftover stays silent.
@@ -1018,6 +1152,42 @@ mod tests {
         );
         // Both still count as closes: the actor channel did close.
         assert_eq!(sink.stats.actor_closes, 2);
+    }
+
+    #[test]
+    fn destroyed_channel_archetypes_are_retired_but_dormant_ones_survive() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        let opened = |channel_index, actor, archetype| ActorChannelState {
+            channel_index,
+            is_open: true,
+            is_dormant: false,
+            actor_net_guid: NetworkGuid(actor),
+            archetype_net_guid: NetworkGuid(archetype),
+            level_guid: NetworkGuid(0),
+            spawn_location: None,
+            spawn_rotation: None,
+            spawn_scale: None,
+            spawn_velocity: None,
+            open_packet_id: 0,
+        };
+
+        sink.on_actor_open(&opened(3, 42, 8));
+        sink.on_actor_open(&opened(4, 43, 9));
+        sink.on_actor_close(3, NetworkGuid(42), false);
+        sink.on_actor_close(4, NetworkGuid(43), true);
+
+        assert!(
+            channel_archetype(sink.channel_state, 3, NetworkGuid(42)).is_none(),
+            "destroyed channels must not accumulate sink-side archetypes"
+        );
+        assert_eq!(
+            channel_archetype(sink.channel_state, 4, NetworkGuid(43)),
+            Some(NetworkGuid(9)),
+            "dormancy preserves the class needed when the same actor wakes"
+        );
     }
 
     /// Player identity has to survive a game mode that is not Bomb.

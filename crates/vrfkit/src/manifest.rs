@@ -20,10 +20,31 @@ use std::path::Path;
 use std::time::Duration;
 
 use vrf_container::Preamble;
+use vrf_decode::OverlayErrorReport;
 use vrf_net::stats::NetStats;
 use vrf_schema::NetGuidCache;
 
+use crate::driver::checkpoints::CheckpointStats;
+use crate::driver::totals::SinkTotals;
 use crate::error::CliError;
+
+/// Every run-level value needed to judge whether the published tables are
+/// complete and how much typed decoding fell back to preserved raw data.
+pub(crate) struct ManifestQuality<'a> {
+    pub chunks_processed: u32,
+    pub export_groups: usize,
+    pub movement_rows: u64,
+    pub net_guid_rows: usize,
+    pub event_rows: u64,
+    pub event_trailing_bytes: u64,
+    pub replay_data_trailing_bytes: u64,
+    pub event_layout_mismatches: u64,
+    pub event_first_layout_mismatch: Option<&'a str>,
+    pub net: &'a NetStats,
+    pub sink: &'a SinkTotals,
+    pub error_report: &'a OverlayErrorReport,
+    pub checkpoints: Option<&'a CheckpointStats>,
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn write_manifest(
@@ -36,6 +57,7 @@ pub fn write_manifest(
     total_packets: u32,
     elapsed: Duration,
     players: &[(u32, Option<String>, Option<u32>)],
+    quality: &ManifestQuality<'_>,
 ) -> Result<(), CliError> {
     let header = &preamble.header;
     let ver = &header.replay_version;
@@ -254,6 +276,13 @@ pub fn write_manifest(
     );
     out.push_str("  },\n");
 
+    // Complete quality accounting. The older `stats` and `counts` objects are
+    // retained unchanged for consumers that already read them; this additive
+    // section carries every loss/fallback counter, including the independent
+    // checkpoint pass when requested.
+    out.push_str(&quality_json(quality));
+    out.push_str(",\n");
+
     // Player identity: each BombPlayerState actor's account `subject` UUID and
     // `SpawnedCharacter` (== movement.character_net_guid). Bridges the wire
     // actor GUIDs to the account identities in game_specific_data's
@@ -330,6 +359,292 @@ pub fn write_manifest(
     let mut file = fs::File::create(path)?;
     file.write_all(out.as_bytes())?;
     Ok(())
+}
+
+fn quality_json(quality: &ManifestQuality<'_>) -> String {
+    let mut out = String::with_capacity(8 * 1024);
+    out.push_str("  \"quality\": {\n");
+    wkv(
+        &mut out,
+        "chunks_processed",
+        &quality.chunks_processed.to_string(),
+        2,
+    );
+    wkv(
+        &mut out,
+        "export_groups",
+        &quality.export_groups.to_string(),
+        2,
+    );
+    wkv(
+        &mut out,
+        "movement_rows",
+        &quality.movement_rows.to_string(),
+        2,
+    );
+    wkv(
+        &mut out,
+        "net_guid_rows",
+        &quality.net_guid_rows.to_string(),
+        2,
+    );
+    wkv(&mut out, "event_rows", &quality.event_rows.to_string(), 2);
+    wkv(
+        &mut out,
+        "event_trailing_bytes",
+        &quality.event_trailing_bytes.to_string(),
+        2,
+    );
+    wkv(
+        &mut out,
+        "replay_data_trailing_bytes",
+        &quality.replay_data_trailing_bytes.to_string(),
+        2,
+    );
+    wkv(
+        &mut out,
+        "event_layout_mismatches",
+        &quality.event_layout_mismatches.to_string(),
+        2,
+    );
+    wkv(
+        &mut out,
+        "event_first_layout_mismatch",
+        &json_option(quality.event_first_layout_mismatch),
+        2,
+    );
+    wkv(
+        &mut out,
+        "overlay_error_buckets",
+        &quality.error_report.bucket_count().to_string(),
+        2,
+    );
+    wkv(
+        &mut out,
+        "overlay_errors_reported",
+        &quality.error_report.total_errors().to_string(),
+        2,
+    );
+    wkv(
+        &mut out,
+        "checkpoints_enabled",
+        json_bool(quality.checkpoints.is_some()),
+        2,
+    );
+    write_net_quality(&mut out, "net", quality.net, 2, true);
+    write_sink_quality(&mut out, "sink", quality.sink, 2, true);
+
+    match quality.checkpoints {
+        Some(checkpoints) => {
+            out.push_str("    \"checkpoints\": {\n");
+            wkv(
+                &mut out,
+                "checkpoint_chunks",
+                &checkpoints.chunks.to_string(),
+                3,
+            );
+            wkv(
+                &mut out,
+                "checkpoint_guid_entries",
+                &checkpoints.guid_entries.to_string(),
+                3,
+            );
+            wkv(
+                &mut out,
+                "checkpoint_group_records",
+                &checkpoints.group_records.to_string(),
+                3,
+            );
+            wkv(
+                &mut out,
+                "checkpoint_exported_fields",
+                &checkpoints.exported_fields.to_string(),
+                3,
+            );
+            wkv(
+                &mut out,
+                "checkpoint_frames",
+                &checkpoints.frames.to_string(),
+                3,
+            );
+            wkv(
+                &mut out,
+                "checkpoint_packets",
+                &checkpoints.packets.to_string(),
+                3,
+            );
+            wkv(
+                &mut out,
+                "checkpoint_field_rows",
+                &checkpoints.field_rows.to_string(),
+                3,
+            );
+            wkv(
+                &mut out,
+                "checkpoint_actor_rows_dropped",
+                &checkpoints.actor_rows_dropped.to_string(),
+                3,
+            );
+            wkv(
+                &mut out,
+                "checkpoint_movement_rows_dropped",
+                &checkpoints.movement_rows_dropped.to_string(),
+                3,
+            );
+            write_net_quality(&mut out, "net", &checkpoints.net, 3, true);
+            write_sink_quality(&mut out, "sink", &checkpoints.sink, 3, false);
+            out.push_str("    }\n");
+        }
+        None => wkvl(&mut out, "checkpoints", "null", 2),
+    }
+    out.push_str("  }");
+    out
+}
+
+fn write_net_quality(
+    out: &mut String,
+    key: &str,
+    stats: &NetStats,
+    indent: usize,
+    trailing_comma: bool,
+) {
+    push_indent(out, indent);
+    out.push_str(&format!("\"{key}\": {{\n"));
+    let inner = indent + 1;
+    for (key, value) in [
+        ("packets", stats.packets),
+        ("malformed_packets", stats.malformed_packets),
+        ("bunches", stats.bunches),
+        ("partial_errors", stats.partial_errors),
+        ("partial_fragments", stats.partial_fragments),
+        ("partial_completed", stats.partial_completed),
+        ("unfinished_partials", stats.unfinished_partials),
+        ("unfinished_partial_bits", stats.unfinished_partial_bits),
+        ("bunch_header_failures", stats.bunch_header_failures),
+        ("content_blocks", stats.content_blocks),
+        ("rep_layout_blocks", stats.rep_layout_blocks),
+        ("class_net_cache_blocks", stats.class_net_cache_blocks),
+        ("deleted_blocks", stats.deleted_blocks),
+        ("fields", stats.fields),
+        ("rpcs", stats.rpcs),
+        ("skipped_bits", stats.skipped_bits),
+        ("malformed_content_blocks", stats.malformed_content_blocks),
+        ("transform_failures", stats.transform_failures),
+        ("field_stream_failures", stats.field_stream_failures),
+        ("rpc_stream_failures", stats.rpc_stream_failures),
+        (
+            "unresolved_rpc_payloads_preserved",
+            stats.unresolved_rpc_payloads_preserved,
+        ),
+        ("actor_opens", stats.actor_opens),
+        ("actor_closes", stats.actor_closes),
+        (
+            "channel_reopens_while_open",
+            stats.channel_reopens_while_open,
+        ),
+        ("actor_opens_missing_spawn", stats.actor_opens_missing_spawn),
+        (
+            "channel_state_limit_failures",
+            stats.channel_state_limit_failures,
+        ),
+        (
+            "partial_resource_limit_failures",
+            stats.partial_resource_limit_failures,
+        ),
+        ("package_map_exports", stats.package_map_exports),
+        ("rep_layout_export_bunches", stats.rep_layout_export_bunches),
+        ("exported_guids", stats.exported_guids),
+        ("must_be_mapped_guids", stats.must_be_mapped_guids),
+        ("diagnostics_retained", stats.diagnostics.len() as u64),
+    ] {
+        wkv(out, key, &value.to_string(), inner);
+    }
+    wkvl(
+        out,
+        "diagnostics_dropped",
+        &stats.diagnostics_dropped.to_string(),
+        inner,
+    );
+    close_object(out, indent, trailing_comma);
+}
+
+fn write_sink_quality(
+    out: &mut String,
+    key: &str,
+    sink: &SinkTotals,
+    indent: usize,
+    trailing_comma: bool,
+) {
+    push_indent(out, indent);
+    out.push_str(&format!("\"{key}\": {{\n"));
+    let inner = indent + 1;
+    for (key, value) in [
+        ("overlay_decoded_ok", sink.overlay.decoded_ok),
+        ("overlay_decoded_err", sink.overlay.decoded_err),
+        ("overlay_raw_or_skip", sink.overlay.raw_or_skip),
+        ("overlay_not_in_table", sink.overlay.not_in_table),
+        ("overlay_no_field_name", sink.overlay.no_field_name),
+        (
+            "overlay_handle_conflicts_refused",
+            sink.overlay.handle_conflicts_refused,
+        ),
+        ("effect_blobs_decoded", sink.effect_blobs_decoded),
+        ("struct_blobs_decoded", sink.struct_blobs_decoded),
+        ("struct_blobs_failed", sink.struct_blobs_failed),
+        (
+            "multi_contents_items_emitted",
+            sink.multi_contents_items_emitted,
+        ),
+        ("movement_rpc_errors", sink.movement_rpc_errors),
+        ("array_elements_decoded", sink.array.elements_decoded),
+        ("array_fields_emitted", sink.array.fields_emitted),
+        ("array_truncations", sink.array.truncations),
+        ("array_errors", sink.array.errors),
+        (
+            "array_unconsumed_nested_bits",
+            sink.array.unconsumed_nested_bits,
+        ),
+        (
+            "array_unconsumed_root_bits",
+            sink.array.unconsumed_root_bits,
+        ),
+        (
+            "array_implicit_terminations",
+            sink.array.implicit_terminations,
+        ),
+        ("array_leaf_decode_errors", sink.array_leaf_decode_errors),
+        ("truncated_rpcs", sink.truncated_rpcs),
+        ("rpc_suffix_bits_dropped", sink.rpc_suffix_bits_dropped),
+        ("cnc_rpcs_emitted", sink.cnc_rpcs_emitted),
+    ] {
+        wkv(out, key, &value.to_string(), inner);
+    }
+    wkv(
+        out,
+        "struct_blob_first_error",
+        &json_option(sink.struct_blob_first_error.as_deref()),
+        inner,
+    );
+    wkvl(
+        out,
+        "movement_first_error",
+        &json_option(sink.movement_first_error.as_deref()),
+        inner,
+    );
+    close_object(out, indent, trailing_comma);
+}
+
+fn close_object(out: &mut String, indent: usize, trailing_comma: bool) {
+    push_indent(out, indent);
+    out.push('}');
+    if trailing_comma {
+        out.push(',');
+    }
+    out.push('\n');
+}
+
+fn json_option(value: Option<&str>) -> String {
+    value.map(json_str).unwrap_or_else(|| "null".to_string())
 }
 
 /// Push `indent` levels of two-space indentation.
@@ -431,6 +746,188 @@ fn json_str(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::driver::checkpoints::CheckpointStats;
+    use crate::driver::totals::SinkTotals;
+    use vrf_decode::OverlayErrorReport;
+    use vrf_net::stats::NetStats;
+
+    #[test]
+    fn quality_json_names_every_load_bearing_counter() {
+        let net = NetStats::default();
+        let sink = SinkTotals::default();
+        let checkpoints = CheckpointStats::default();
+        let errors = OverlayErrorReport::default();
+        let json = quality_json(&ManifestQuality {
+            chunks_processed: 0,
+            export_groups: 0,
+            movement_rows: 0,
+            net_guid_rows: 0,
+            event_rows: 0,
+            event_trailing_bytes: 0,
+            replay_data_trailing_bytes: 0,
+            event_layout_mismatches: 0,
+            event_first_layout_mismatch: None,
+            net: &net,
+            sink: &sink,
+            error_report: &errors,
+            checkpoints: Some(&checkpoints),
+        });
+
+        for key in [
+            // Every NetStats scalar and bounded-diagnostic size.
+            "packets",
+            "malformed_packets",
+            "bunches",
+            "partial_errors",
+            "partial_fragments",
+            "partial_completed",
+            "unfinished_partials",
+            "unfinished_partial_bits",
+            "bunch_header_failures",
+            "content_blocks",
+            "rep_layout_blocks",
+            "class_net_cache_blocks",
+            "deleted_blocks",
+            "fields",
+            "rpcs",
+            "skipped_bits",
+            "malformed_content_blocks",
+            "transform_failures",
+            "field_stream_failures",
+            "rpc_stream_failures",
+            "unresolved_rpc_payloads_preserved",
+            "actor_opens",
+            "actor_closes",
+            "channel_reopens_while_open",
+            "actor_opens_missing_spawn",
+            "channel_state_limit_failures",
+            "partial_resource_limit_failures",
+            "package_map_exports",
+            "rep_layout_export_bunches",
+            "exported_guids",
+            "must_be_mapped_guids",
+            "diagnostics_retained",
+            "diagnostics_dropped",
+            // Every SinkTotals/OverlayStats/ArrayDecodeStats counter.
+            "overlay_decoded_ok",
+            "overlay_decoded_err",
+            "overlay_raw_or_skip",
+            "overlay_not_in_table",
+            "overlay_no_field_name",
+            "overlay_handle_conflicts_refused",
+            "overlay_error_buckets",
+            "overlay_errors_reported",
+            "effect_blobs_decoded",
+            "struct_blobs_decoded",
+            "struct_blobs_failed",
+            "struct_blob_first_error",
+            "multi_contents_items_emitted",
+            "movement_rpc_errors",
+            "movement_first_error",
+            "array_elements_decoded",
+            "array_fields_emitted",
+            "array_truncations",
+            "array_errors",
+            "array_unconsumed_nested_bits",
+            "array_unconsumed_root_bits",
+            "array_implicit_terminations",
+            "array_leaf_decode_errors",
+            "truncated_rpcs",
+            "rpc_suffix_bits_dropped",
+            "cnc_rpcs_emitted",
+            // Run-level completeness and checkpoint-only accounting.
+            "chunks_processed",
+            "export_groups",
+            "movement_rows",
+            "net_guid_rows",
+            "event_rows",
+            "event_trailing_bytes",
+            "replay_data_trailing_bytes",
+            "event_layout_mismatches",
+            "event_first_layout_mismatch",
+            "checkpoint_chunks",
+            "checkpoint_guid_entries",
+            "checkpoint_group_records",
+            "checkpoint_exported_fields",
+            "checkpoint_frames",
+            "checkpoint_packets",
+            "checkpoint_field_rows",
+            "checkpoint_actor_rows_dropped",
+            "checkpoint_movement_rows_dropped",
+        ] {
+            let needle = format!("\"{key}\":");
+            let expected = if [
+                "packets",
+                "malformed_packets",
+                "bunches",
+                "partial_errors",
+                "partial_fragments",
+                "partial_completed",
+                "unfinished_partials",
+                "unfinished_partial_bits",
+                "bunch_header_failures",
+                "content_blocks",
+                "rep_layout_blocks",
+                "class_net_cache_blocks",
+                "deleted_blocks",
+                "fields",
+                "rpcs",
+                "skipped_bits",
+                "malformed_content_blocks",
+                "transform_failures",
+                "field_stream_failures",
+                "rpc_stream_failures",
+                "unresolved_rpc_payloads_preserved",
+                "actor_opens",
+                "actor_closes",
+                "channel_reopens_while_open",
+                "actor_opens_missing_spawn",
+                "channel_state_limit_failures",
+                "partial_resource_limit_failures",
+                "package_map_exports",
+                "rep_layout_export_bunches",
+                "exported_guids",
+                "must_be_mapped_guids",
+                "diagnostics_retained",
+                "diagnostics_dropped",
+                "overlay_decoded_ok",
+                "overlay_decoded_err",
+                "overlay_raw_or_skip",
+                "overlay_not_in_table",
+                "overlay_no_field_name",
+                "overlay_handle_conflicts_refused",
+                "effect_blobs_decoded",
+                "struct_blobs_decoded",
+                "struct_blobs_failed",
+                "struct_blob_first_error",
+                "multi_contents_items_emitted",
+                "movement_rpc_errors",
+                "movement_first_error",
+                "array_elements_decoded",
+                "array_fields_emitted",
+                "array_truncations",
+                "array_errors",
+                "array_unconsumed_nested_bits",
+                "array_unconsumed_root_bits",
+                "array_implicit_terminations",
+                "array_leaf_decode_errors",
+                "truncated_rpcs",
+                "rpc_suffix_bits_dropped",
+                "cnc_rpcs_emitted",
+            ]
+            .contains(&key)
+            {
+                2
+            } else {
+                1
+            };
+            assert_eq!(
+                json.matches(&needle).count(),
+                expected,
+                "quality manifest omitted or duplicated {key}: {json}"
+            );
+        }
+    }
 
     #[test]
     fn json_str_escapes_only_what_rfc_8259_requires() {

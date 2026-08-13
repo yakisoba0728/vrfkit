@@ -45,9 +45,9 @@ import re
 import sys
 from pathlib import Path
 
-try:
+if __package__:
     from .atomic_io import atomic_write_text
-except ImportError:  # direct script execution
+else:  # direct script execution
     from atomic_io import atomic_write_text
 
 REPO = Path(__file__).resolve().parents[1]
@@ -229,8 +229,8 @@ def main() -> int:
     manifests = [d / "manifest.json" for d in args.export]
     missing = [m for m in manifests if not m.is_file()]
     if missing:
-        print(f"SKIP: no manifest at {missing[0]}", file=sys.stderr)
-        return 0
+        print(f"FAILED: no manifest at {missing[0]}", file=sys.stderr)
+        return 2
 
     table = load_overlay_table()
     if not table:

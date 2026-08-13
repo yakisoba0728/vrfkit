@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,6 +13,18 @@ class SummaryPatternTests(unittest.TestCase):
         match = guard.MALFORMED.search("Malformed framing:  17")
         self.assertIsNotNone(match)
         self.assertEqual(match.group(1), "17")
+
+
+class DiscoveryTests(unittest.TestCase):
+    def test_uppercase_vrf_extension_is_discovered(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "lower.vrf").write_bytes(b"")
+            (root / "UPPER.VRF").write_bytes(b"")
+
+            files = guard.find_replays(root, limit=None)
+
+        self.assertEqual({path.name for path in files}, {"UPPER.VRF", "lower.vrf"})
 
 
 if __name__ == "__main__":

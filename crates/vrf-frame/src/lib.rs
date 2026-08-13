@@ -57,7 +57,7 @@
 //!
 //! # Flag semantics
 //!
-//! The header `flags` field (from [`vrf_container::ReplayHeader::flags`]) controls
+//! The header `flags` field (from `vrf_container::ReplayHeader::flags`) controls
 //! two optional steps:
 //!
 //! | Bit | Name | Effect |
@@ -139,15 +139,17 @@ pub struct DemoPacket<'a> {
 /// that arrive in the ExportData section of each frame.
 ///
 /// The callback `on_packet` is invoked for every packet in the stream, with
-/// the frame's time and the packet's raw bytes. This is allocation-free for
-/// the packet data (slices into `data`).
+/// the frame's time, the packet's raw bytes, and the cache state at that exact
+/// wire position. Packet-side cache mutations made through that reference are
+/// visible to the next packet before a later frame's ExportData is applied.
+/// This is allocation-free for the packet data (slices into `data`).
 ///
 /// Returns the total number of packets yielded.
 pub fn iter_demo_frames(
     data: &[u8],
     flags: u32,
     cache: &mut NetGuidCache,
-    mut on_packet: impl FnMut(DemoPacket<'_>),
+    mut on_packet: impl FnMut(DemoPacket<'_>, &mut NetGuidCache),
 ) -> Result<u32, FrameError> {
     let has_streaming_fixes = (flags & FLAG_HAS_STREAMING_FIXES) != 0;
     let has_game_specific = (flags & FLAG_GAME_SPECIFIC_FRAME_DATA) != 0;
@@ -250,11 +252,14 @@ pub fn iter_demo_frames(
             let packet_data = &data[byte_offset..byte_offset + packet_size_usize];
             reader.skip_bits(bit_count).map_err(FrameError::bit)?;
 
-            on_packet(DemoPacket {
-                time_ms,
-                packet_index,
-                data: packet_data,
-            });
+            on_packet(
+                DemoPacket {
+                    time_ms,
+                    packet_index,
+                    data: packet_data,
+                },
+                cache,
+            );
             packet_index += 1;
         }
     }
@@ -312,6 +317,68 @@ mod tests {
         data
     }
 
+    fn push_int_packed(data: &mut Vec<u8>, mut value: u32) {
+        loop {
+            let mut byte = ((value & 0x7f) << 1) as u8;
+            value >>= 7;
+            if value != 0 {
+                byte |= 1;
+            }
+            data.push(byte);
+            if value == 0 {
+                return;
+            }
+        }
+    }
+
+    fn build_frame_with_group(time_secs: f32, packet: u8, field_count: u32) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(&0i32.to_le_bytes());
+        data.extend_from_slice(&time_secs.to_le_bytes());
+        push_int_packed(&mut data, 1); // one layout export
+        push_int_packed(&mut data, 7); // path-name index
+        push_int_packed(&mut data, 1); // path is exported
+        let path = b"/Script/G.Thing";
+        data.extend_from_slice(&((path.len() + 1) as i32).to_le_bytes());
+        data.extend_from_slice(path);
+        data.push(0);
+        push_int_packed(&mut data, field_count);
+        data.push(0); // no field exported
+        push_int_packed(&mut data, 0); // no export GUIDs
+        push_int_packed(&mut data, 0); // no streaming levels
+        data.extend_from_slice(&0u64.to_le_bytes());
+        push_int_packed(&mut data, 0); // no external data
+        push_int_packed(&mut data, 0); // seen level
+        data.extend_from_slice(&1i32.to_le_bytes());
+        data.push(packet);
+        push_int_packed(&mut data, 0); // seen level before frame terminator
+        data.extend_from_slice(&0i32.to_le_bytes());
+        data
+    }
+
+    #[test]
+    fn each_packet_observes_only_schema_exports_that_precede_it() {
+        let mut data = build_frame_with_group(1.0, 1, 1);
+        data.extend(build_frame_with_group(2.0, 2, 2));
+        let mut cache = NetGuidCache::new();
+        let mut seen = Vec::new();
+
+        iter_demo_frames(
+            &data,
+            FLAG_HAS_STREAMING_FIXES,
+            &mut cache,
+            |packet, packet_cache| {
+                seen.push((
+                    packet.data[0],
+                    packet_cache.get_group_by_index(7).unwrap().len(),
+                ));
+            },
+        )
+        .unwrap();
+
+        assert_eq!(seen, [(1, 1), (2, 2)]);
+    }
+
     #[test]
     fn minimal_frame_yields_one_packet() {
         let flags = FLAG_HAS_STREAMING_FIXES | FLAG_GAME_SPECIFIC_FRAME_DATA;
@@ -320,7 +387,7 @@ mod tests {
         let mut cache = NetGuidCache::new();
         let mut received = Vec::new();
 
-        let count = iter_demo_frames(&data, flags, &mut cache, |pkt| {
+        let count = iter_demo_frames(&data, flags, &mut cache, |pkt, _| {
             received.push((pkt.time_ms, pkt.data.to_vec()));
         })
         .unwrap();
@@ -337,7 +404,7 @@ mod tests {
         let data = build_minimal_frame(time_secs, &[0x00], flags);
         let mut cache = NetGuidCache::new();
         let mut out = 0;
-        iter_demo_frames(&data, flags, &mut cache, |pkt| out = pkt.time_ms).unwrap();
+        iter_demo_frames(&data, flags, &mut cache, |pkt, _| out = pkt.time_ms).unwrap();
         out
     }
 
@@ -397,7 +464,7 @@ mod tests {
         let flags = FLAG_HAS_STREAMING_FIXES | FLAG_GAME_SPECIFIC_FRAME_DATA;
         let data = build_minimal_frame(time_secs, &[0x00], flags);
         let mut cache = NetGuidCache::new();
-        iter_demo_frames(&data, flags, &mut cache, |_| {})
+        iter_demo_frames(&data, flags, &mut cache, |_, _| {})
     }
 
     #[test]
@@ -454,7 +521,7 @@ mod tests {
             &[],
             FLAG_HAS_STREAMING_FIXES | FLAG_GAME_SPECIFIC_FRAME_DATA,
             &mut cache,
-            |_| {},
+            |_, _| {},
         )
         .unwrap();
         assert_eq!(count, 0);
@@ -476,7 +543,7 @@ mod tests {
         data.extend_from_slice(&(-1i32).to_le_bytes()); // negative size!
 
         let mut cache = NetGuidCache::new();
-        let err = iter_demo_frames(&data, flags, &mut cache, |_| {}).unwrap_err();
+        let err = iter_demo_frames(&data, flags, &mut cache, |_, _| {}).unwrap_err();
         assert!(matches!(err, FrameError::NegativePacketSize { size: -1 }));
     }
 }

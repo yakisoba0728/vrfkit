@@ -81,21 +81,28 @@ pub(super) fn read_fname(reader: &mut BitReader<'_>) -> Result<String> {
     } else {
         let name = reader.read_fstring(1024)?;
         let number = reader.read_i32()?;
-        Ok(crate::decode::scalar::render_fname(name, number))
+        Ok(crate::decode::scalar::render_fname(name, number)?)
     }
 }
 
 /// Read a byte-width enum whose payload carries only its significant bits.
 ///
-/// Returns `None` for a zero-width or over-wide payload rather than a value:
-/// those are not byte enums, and a truncated low byte would be a plausible
-/// wrong answer where no answer is the honest one.
-pub(super) fn read_narrow_byte(reader: &mut BitReader<'_>) -> Result<Option<u8>> {
+/// Zero-width and over-wide payloads are malformed: returning no value would
+/// make a field the wire explicitly sent indistinguishable from an absent one.
+pub(super) fn read_narrow_byte(
+    reader: &mut BitReader<'_>,
+    name: &str,
+    context: &'static str,
+) -> Result<u8> {
     let bits = reader.bits_remaining();
     if bits == 0 || bits > 8 {
-        return Ok(None);
+        return Err(StructBlobError::InvalidEnumWidth {
+            name: name.to_owned(),
+            bits,
+            context,
+        });
     }
-    Ok(Some(reader.read_bits(bits as u32)? as u8))
+    Ok(reader.read_bits(bits as u32)? as u8)
 }
 
 /// The name the REPLAY declares for `handle`, which is what selects a member.

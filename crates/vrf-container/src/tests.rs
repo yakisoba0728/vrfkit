@@ -643,19 +643,17 @@ fn preamble_valid_file() {
 }
 
 #[test]
-fn preamble_unknown_chunk_before_header_skipped() {
+fn preamble_unknown_chunk_before_header_rejected() {
     let mut data = helpers::default_replay_info();
-    // Unknown chunk first
-    data.extend_from_slice(&helpers::build_chunk(0xFFFF_FFFF, &[0x01, 0x02]));
-    // Then the real header
+    let unknown = ChunkType::Unknown(0xFFFF_FFFF);
+    data.extend_from_slice(&helpers::build_chunk(unknown.to_raw(), &[0x01, 0x02]));
     let header_payload = helpers::build_header_payload();
     data.extend_from_slice(&helpers::build_chunk(0, &header_payload));
 
-    let preamble = parse_preamble(&data).unwrap();
-    assert_eq!(
-        preamble.header.replay_version.branch,
-        "++Ares-Core+release-12.10"
-    );
+    assert!(matches!(
+        parse_preamble(&data).unwrap_err(),
+        ContainerError::ChunkBeforeHeader { chunk_type } if chunk_type == unknown
+    ));
 }
 
 #[test]
@@ -669,6 +667,62 @@ fn preamble_data_before_header_rejected() {
         result.unwrap_err(),
         ContainerError::DataBeforeHeader
     ));
+}
+
+#[test]
+fn preamble_recognized_non_header_chunks_are_not_silently_skipped() {
+    for chunk_type in [ChunkType::Checkpoint, ChunkType::Event] {
+        let mut data = helpers::default_replay_info();
+        data.extend_from_slice(&helpers::build_chunk(chunk_type.to_raw(), &[0xAB]));
+        data.extend_from_slice(&helpers::build_chunk(
+            ChunkType::Header.to_raw(),
+            &helpers::build_header_payload(),
+        ));
+
+        assert!(matches!(
+            parse_preamble(&data).unwrap_err(),
+            ContainerError::ChunkBeforeHeader { chunk_type: actual }
+                if actual == chunk_type
+        ));
+    }
+}
+
+#[test]
+fn fstring_length_and_encoding_errors_keep_their_typed_source() {
+    let valid = helpers::default_replay_info();
+    let name_offset = valid
+        .windows(b"Match\0".len())
+        .position(|window| window == b"Match\0")
+        .expect("friendly name fixture");
+
+    let mut oversized = valid.clone();
+    oversized[name_offset - 4..name_offset].copy_from_slice(&i32::MAX.to_le_bytes());
+    assert!(matches!(
+        info::parse_replay_info(&oversized).unwrap_err(),
+        ContainerError::FString {
+            context: "friendly name",
+            source: vrf_bitio::BitError::InvalidLength {
+                length: value,
+                ..
+            },
+        } if value == i64::from(i32::MAX)
+    ));
+
+    let mut invalid_utf8 = valid;
+    invalid_utf8[name_offset] = 0xFF;
+    assert!(matches!(
+        info::parse_replay_info(&invalid_utf8).unwrap_err(),
+        ContainerError::FString {
+            context: "friendly name",
+            source: vrf_bitio::BitError::InvalidString { .. },
+        }
+    ));
+}
+
+#[test]
+fn oodle_unsupported_error_is_available_in_every_feature_build() {
+    let error = ContainerError::OodleUnsupported { needed: 17 };
+    assert!(error.to_string().contains("17"));
 }
 
 #[test]
@@ -978,7 +1032,10 @@ mod event_chunks {
         helpers::add_fstring(&mut payload, "id");
         assert!(matches!(
             parse_event_chunk(&payload).unwrap_err(),
-            ContainerError::Truncated { .. }
+            ContainerError::FString {
+                context: "event group",
+                source: vrf_bitio::BitError::Eof { .. },
+            }
         ));
     }
 

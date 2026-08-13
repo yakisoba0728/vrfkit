@@ -32,6 +32,11 @@ import re
 import sys
 from pathlib import Path
 
+if __package__:
+    from .atomic_io import atomic_write_text
+else:  # direct script execution
+    from atomic_io import atomic_write_text
+
 DEFAULT_CSHARP_ROOT = Path(os.environ.get("VRFKIT_CSHARP_DIR", ""))
 RESOLVER_RELPATH = Path("src/Replay.Valorant/Combat/ValorantEquippableResolver.cs")
 OUTPUT_PATH = Path(__file__).parent / "equippable_table.py"
@@ -140,7 +145,7 @@ def main() -> int:
         print(f"{OUTPUT_PATH.name} up to date ({len(definitions)} definitions)")
         return 0
 
-    OUTPUT_PATH.write_text(rendered, encoding="utf-8")
+    atomic_write_text(OUTPUT_PATH, rendered)
     print(f"wrote {OUTPUT_PATH} ({len(definitions)} definitions)")
     return 0
 

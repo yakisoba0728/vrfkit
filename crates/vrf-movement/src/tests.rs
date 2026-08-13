@@ -354,6 +354,29 @@ fn a_component_stream_ahead_of_its_guid_is_counted() {
 }
 
 #[test]
+fn a_component_stream_shorter_than_its_u16_header_is_not_a_valid_empty_update() {
+    let mut update = BitWriter::new();
+    update.write_int_packed(SHOOTER_CHARACTER_NET_GUID_HANDLE + 1);
+    update.write_int_packed(32);
+    update.write_u32(4321);
+    update.write_int_packed(COMPONENT_DATA_STREAM_HANDLE + 1);
+    update.write_int_packed(8);
+    update.write_u8(0x52); // fewer than the mandatory 16 header bits
+    update.write_int_packed(0);
+
+    let mut array = BitWriter::new();
+    array.write_int_packed(1);
+    array.write_int_packed(1);
+    array.write_other(&update);
+    array.write_int_packed(0);
+
+    let (result, moves) = decode(&wrap_updates_array(&array));
+
+    assert!(moves.is_empty());
+    assert_eq!(result.error_count, 1, "short component must be a loss");
+}
+
+#[test]
 fn a_malformed_trailing_padding_byte_is_counted() {
     // After the array terminator exactly 8 bits remain, so the decoder spends
     // them on an IntPacked. This one's continuation bit demands a sixth byte

@@ -18,6 +18,11 @@ import re
 import sys
 from pathlib import Path
 
+if __package__:
+    from .atomic_io import atomic_write_text
+else:  # direct script execution
+    from atomic_io import atomic_write_text
+
 TABLES = ("SubstituteTable32", "SubstituteTable64", "SubstituteTable8")
 
 
@@ -75,7 +80,7 @@ def main(argv: list[str]) -> int:
         rust_name = "SBOX_" + name.replace("SubstituteTable", "")
         out.append(render(rust_name, data))
         print(f"{name}: 256 bytes, permutation verified -> SBOX_{name.replace('SubstituteTable', '')}")
-    Path(argv[2]).write_text("\n".join(out), encoding="utf-8")
+    atomic_write_text(Path(argv[2]), "\n".join(out))
     print(f"wrote {argv[2]}")
     return 0
 

@@ -36,7 +36,7 @@ pub struct ReplayInfo {
     pub length_in_ms: i32,
     /// Network version as the info section declares it.
     ///
-    /// NOT the 19 that [`crate::EXPECTED_NETWORK_VERSION`] pins, and nothing
+    /// NOT the 19 that `EXPECTED_NETWORK_VERSION` pins, and nothing
     /// here validates it: `02d4d478` carries 480767974. The 19 is checked in
     /// the *header* chunk, which is a different field in a different section.
     /// This doc comment used to say "always 19 for supported replays", which
@@ -228,11 +228,7 @@ fn read_fstring(
 ) -> Result<String, ContainerError> {
     reader
         .read_fstring(max_bytes)
-        .map_err(|_| ContainerError::Truncated {
-            context,
-            needed: 4,
-            available: (reader.bits_remaining() / 8) as usize,
-        })
+        .map_err(|source| ContainerError::FString { context, source })
 }
 
 /// Read an Unreal GUID: four u32 values stored as 16 little-endian bytes.

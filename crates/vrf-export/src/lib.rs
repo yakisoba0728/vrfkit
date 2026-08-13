@@ -11,10 +11,10 @@
 //! # Layout
 //!
 //! - [`record`] -- the input structs. No Arrow types, never feature-gated.
-//! - [`schema`] -- the Arrow schema for each table, defined once so writer and
+//! - `schema` -- the Arrow schema for each table, defined once so writer and
 //!   reader agree.
-//! - [`writer`] -- the buffer-and-flush row-group machinery, written once.
-//! - [`tables`] -- one module per table, supplying the three things that
+//! - `writer` -- the buffer-and-flush row-group machinery, written once.
+//! - `tables` -- one module per table, supplying the three things that
 //!   actually differ between them.
 //!
 //! # Schema design choices
@@ -51,7 +51,7 @@
 //! column chunks are big enough for efficient compression and predicate
 //! pushdown. Memory is bounded separately, by converting a much smaller batch
 //! of records to Arrow at a time; `ArrowWriter` accumulates those into row
-//! groups. See [`writer::MAX_BUFFERED_ROWS`] for the one constraint that ties
+//! groups. See `writer::MAX_BUFFERED_ROWS` for the one constraint that ties
 //! the two together, which is not the one it looks like.
 //!
 //! # Feature flags

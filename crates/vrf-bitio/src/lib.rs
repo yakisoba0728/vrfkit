@@ -79,7 +79,7 @@ pub enum BitError {
         /// Bits the read needed.
         requested: u64,
     },
-    /// An `IntPacked` value did not terminate within [`MAX_INT_PACKED_BYTES`].
+    /// An `IntPacked` value did not terminate within `MAX_INT_PACKED_BYTES`.
     MalformedIntPacked {
         /// Bit position at which the value started.
         position: u64,

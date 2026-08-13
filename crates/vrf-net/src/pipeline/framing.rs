@@ -206,10 +206,17 @@ pub(super) fn decode_and_parse_rep_layout(
     match field::parse_rep_layout(&mut field_reader, sink) {
         Ok((count, abandoned_bits)) => {
             stage.stats.fields += u64::from(count);
-            // The field stream returned Ok but abandoned bits mid-block (a
-            // declared payload overran the remainder). The framing layer only
-            // counts `skipped_bits` on Err, so without this those bits would
-            // vanish from every counter. Mirrors the Err path's accounting.
+            if abandoned_bits != 0 {
+                sink.on_stream_failure(StreamFailure {
+                    kind: StreamKind::RepLayout,
+                    actor_net_guid,
+                    bit_count: bit_count as u32,
+                    function_count: 0,
+                    consumed_bits: (bit_count as u64).saturating_sub(abandoned_bits),
+                    remaining_bits: abandoned_bits,
+                });
+                stage.stats.field_stream_failures += 1;
+            }
             stage.stats.skipped_bits += abandoned_bits;
         }
         Err(_) => {
@@ -248,8 +255,17 @@ pub(super) fn decode_and_parse_class_net_cache(
     match field::parse_class_net_cache(&mut rpc_reader, function_count, sink) {
         Ok((count, abandoned_bits)) => {
             stage.stats.rpcs += u64::from(count);
-            // See the RepLayout match above: Ok-but-abandoned bits must reach
-            // `skipped_bits`, not vanish.
+            if abandoned_bits != 0 {
+                sink.on_stream_failure(StreamFailure {
+                    kind: StreamKind::Rpc,
+                    actor_net_guid,
+                    bit_count: bit_count as u32,
+                    function_count,
+                    consumed_bits: (bit_count as u64).saturating_sub(abandoned_bits),
+                    remaining_bits: abandoned_bits,
+                });
+                stage.stats.rpc_stream_failures += 1;
+            }
             stage.stats.skipped_bits += abandoned_bits;
         }
         Err(error) => {
@@ -264,6 +280,7 @@ pub(super) fn decode_and_parse_class_net_cache(
             };
             if matches!(error, NetError::UnresolvedFunctionCount) {
                 sink.on_unresolved_class_net_cache_payload(failure, &stage.scratch[..byte_count]);
+                stage.stats.unresolved_rpc_payloads_preserved += 1;
             }
             sink.on_stream_failure(failure);
             stage.stats.rpc_stream_failures += 1;

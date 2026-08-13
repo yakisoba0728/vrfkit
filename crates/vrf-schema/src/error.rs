@@ -37,6 +37,22 @@ pub enum SchemaError {
         count: u32,
     },
 
+    /// An incoming export group's path and index identify two different
+    /// canonical groups.
+    #[error(
+        "net-field export path '{path}' identifies '{path_group}', but index {path_name_index} identifies '{index_group}'"
+    )]
+    CrossedExportGroupIdentity {
+        /// Incoming path.
+        path: String,
+        /// Incoming path-name index.
+        path_name_index: u32,
+        /// Canonical path selected by the incoming path.
+        path_group: String,
+        /// Canonical path selected by the incoming index.
+        index_group: String,
+    },
+
     /// An export GUID payload declared a negative size.
     #[error("export GUID payload size is negative: {size}")]
     NegativePayloadSize {
@@ -124,6 +140,15 @@ pub enum SchemaError {
         count: u32,
         /// The configured maximum.
         max: u32,
+    },
+
+    /// A checkpoint declared an export-group path or index more than once.
+    #[error("checkpoint export group '{path}' collides at path-name index {path_name_index}")]
+    CheckpointGroupCollision {
+        /// The later declaration's path.
+        path: String,
+        /// The later declaration's path-name index.
+        path_name_index: u32,
     },
 }
 

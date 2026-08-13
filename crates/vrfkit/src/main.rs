@@ -3,7 +3,7 @@
 //! Subcommands:
 //!   inspect <file.vrf>           -- print replay info, header, and chunk summary
 //!   validate <file.vrf>          -- run the transform-validation oracle
-//!   export <file.vrf> --out <dir> -- emit five Parquet tables + manifest.json
+//!   export `<file.vrf>` --out `<dir>` -- emit five Parquet tables + manifest.json
 //!
 //! `export` is behind the `export` feature (on by default). With it off the
 //! binary still inspects and validates -- both drive the whole decode pipeline

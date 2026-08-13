@@ -143,19 +143,21 @@ pub(super) fn decode_fname(r: &mut BitReader<'_>) -> Result<DecodedValue, Decode
     }
     let name = r.read_fstring(64 * 1024)?;
     let number = r.read_i32()?;
-    Ok(DecodedValue::Str(render_fname(name, number)))
+    render_fname(name, number).map(DecodedValue::Str)
 }
 
 /// Apply an `FName`'s instance number to its string, Unreal's way.
 ///
 /// `number == 0` is the bare name; otherwise the displayed suffix is
-/// `number - 1`. A negative number cannot come off a well-formed wire and has
-/// no display form, so it is appended verbatim rather than wrapped into a
-/// plausible-looking positive suffix.
-pub(crate) fn render_fname(name: String, number: i32) -> String {
+/// `number - 1`. A negative number has no valid display form and is rejected;
+/// in particular, `i32::MIN - 1` must not wrap into a plausible positive name.
+pub(crate) fn render_fname(name: String, number: i32) -> Result<String, DecodeError> {
+    if number < 0 {
+        return Err(DecodeError::InvalidFNameNumber { number });
+    }
     match number {
-        0 => name,
-        n => format!("{name}_{}", n.wrapping_sub(1)),
+        0 => Ok(name),
+        n => Ok(format!("{name}_{}", n - 1)),
     }
 }
 

@@ -250,6 +250,11 @@ pub struct ExportStats {
     /// a point. Zero on every payload the project has measured; a non-zero
     /// value means the parameter grammar no longer describes this build.
     pub rpc_suffix_bits_dropped: u64,
+
+    /// Flattened array leaves with a resolved type whose payload failed that
+    /// decoder. Their raw leaf rows are still emitted; this counts the typed
+    /// values that could not be recovered.
+    pub array_leaf_decode_errors: u64,
 }
 
 impl ExportStats {
@@ -387,7 +392,7 @@ pub struct ExportSink<'a> {
     /// group path for every field in it, and the group path is long
     /// (`/Game/Characters/.../AggroBot_PC.AggroBot_PC_C`) while the field names
     /// are short. Caching the group-path fold and finishing only the field-name
-    /// half per probe is the saving. Refreshed by [`set_current_group_path`].
+    /// half per probe is the saving. Refreshed by `set_current_group_path`.
     ///
     /// A stale value is a performance and typing regression, not a wrong-value
     /// bug: the slot tag and the full string equality check still reject a

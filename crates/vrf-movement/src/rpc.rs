@@ -216,7 +216,9 @@ fn decode_component_data_stream(
     emit: &mut impl FnMut(MovementMove),
 ) -> Result<(), MovementError> {
     if reader.bits_remaining() < 16 {
-        return Ok(());
+        return Err(MovementError::TruncatedComponentHeader {
+            available_bits: reader.bits_remaining(),
+        });
     }
 
     let first_u16 = reader.read_u16()?;
@@ -244,7 +246,9 @@ fn parse_component_payload(
     emit: &mut impl FnMut(MovementMove),
 ) -> Result<(), MovementError> {
     if reader.bits_remaining() < 16 {
-        return Ok(());
+        return Err(MovementError::TruncatedComponentHeader {
+            available_bits: reader.bits_remaining(),
+        });
     }
 
     let movement_bit_count = reader.read_u16()?;

@@ -2,7 +2,7 @@
 //!
 //! When a ClassNetCache block's group is never declared in the replay,
 //! `function_count` -- the handle width for the RPC stream -- is unknown, and
-//! [`vrf_net::field::parse_class_net_cache`] refuses to walk it. The payload is
+//! `vrf_net`'s ClassNetCache parser refuses to walk it. The payload is
 //! preserved as raw bits (one `__vrfkit_unresolved_class_net_cache_payload__`
 //! row), but every RPC inside is lost.
 //!
@@ -47,7 +47,7 @@
 //! (handle, payload offset/size) and, for `AbilitiesAndBuffsComponent`,
 //! decomposes the inner payload into its deterministic structure (a flag bit
 //! followed by a little-endian `u32` stream; see
-//! [`decode_abilities_and_buffs_inner`]). What it does not do is assign
+//! `decode_abilities_and_buffs_inner`). What it does not do is assign
 //! authoritative semantic names to the later words: those (ability-class
 //! signature, effect specs) depend on game assets, so the raw bits are
 //! preserved alongside the recovered structure.

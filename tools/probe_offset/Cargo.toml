@@ -2,6 +2,11 @@
 name = "probe-offset"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.86"
+license = "MIT"
+publish = false
+
+[workspace]
 
 [[bin]]
 name = "probe-offset"

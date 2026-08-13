@@ -31,10 +31,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from validate_corpus import parse_oracle_output  # noqa: E402
+from corpus_scan import find_replays  # noqa: E402
 
-try:
+if __package__:
     from .atomic_io import atomic_write_text
-except ImportError:  # direct script execution
+else:  # direct script execution
     from atomic_io import atomic_write_text
 
 REPO = Path(__file__).resolve().parent.parent
@@ -43,7 +44,7 @@ DEFAULT_EXE = REPO / "target" / "release" / "vrfkit.exe"
 
 def measure(exe: Path, root: Path) -> dict:
     """Run the oracle over every .vrf under root and collect the numbers."""
-    files = sorted(root.rglob("*.vrf"))
+    files = find_replays(root, recursive=True)
     per_file = {}
     totals = {"blocks": 0, "fields": 0, "rpcs": 0, "malformed": 0, "skipped": 0}
     branches = {}
@@ -144,6 +145,8 @@ def main() -> int:
                     help="overrides the corpus path stored in the baseline")
     ap.add_argument("--update", action="store_true",
                     help="rewrite the baseline from the current numbers")
+    ap.add_argument("--require-input", action="store_true",
+                    help="fail instead of skipping when the corpus is absent/empty")
     args = ap.parse_args()
 
     if not args.exe.exists():
@@ -160,12 +163,19 @@ def main() -> int:
         if corpus_dir:
             corpus = Path(corpus_dir) / corpus
     if not corpus or not corpus.exists():
+        if args.require_input or os.environ.get("VRFKIT_REQUIRE_CORPUS"):
+            print(f"REQUIRED INPUT MISSING: corpus not present ({corpus})",
+                  file=sys.stderr)
+            return 2
         print(f"SKIP: corpus not present ({corpus})")
         print("      these replays are machine-local; nothing to guard here.")
         return 0
 
     current = measure(args.exe, corpus)
     if not current["per_file"]:
+        if args.require_input or os.environ.get("VRFKIT_REQUIRE_CORPUS"):
+            print(f"REQUIRED INPUT MISSING: no .vrf under {corpus}", file=sys.stderr)
+            return 2
         print(f"SKIP: no .vrf under {corpus}")
         return 0
 

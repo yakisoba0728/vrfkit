@@ -42,7 +42,7 @@ const WRITER_QUEUE_DEPTH: usize = 4;
 /// result. `T` is the record type of the table it owns.
 pub(super) struct WriterThread<T> {
     tx: Option<SyncSender<Vec<T>>>,
-    handle: thread::JoinHandle<Result<(), ExportError>>,
+    handle: Option<thread::JoinHandle<Result<(), ExportError>>>,
     batch: Vec<T>,
     /// Table name, used only to name the failing table in an error message.
     table: &'static str,
@@ -59,7 +59,7 @@ impl<T: Send + 'static> WriterThread<T> {
         let handle = thread::spawn(move || run(rx));
         Self {
             tx: Some(tx),
-            handle,
+            handle: Some(handle),
             batch: Vec::with_capacity(WRITER_BATCH_ROWS),
             table,
         }
@@ -99,7 +99,7 @@ impl<T: Send + 'static> WriterThread<T> {
         // Dropping the sender is what ends the writer loop.
         self.tx = None;
         let table = self.table;
-        match self.handle.join() {
+        match self.handle.take().expect("writer handle present").join() {
             Ok(Ok(())) => send_result,
             // The writer's own error is the real cause; it supersedes a send
             // failure caused by that same early return.
@@ -109,9 +109,48 @@ impl<T: Send + 'static> WriterThread<T> {
     }
 }
 
+impl<T> Drop for WriterThread<T> {
+    fn drop(&mut self) {
+        // Every early return closes the producer side and waits for the writer
+        // to observe cancellation. Dropping JoinHandle without joining would
+        // detach a thread still writing into a staging directory that the
+        // caller is about to remove or publish.
+        self.tx = None;
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Barrier, mpsc};
+    use std::time::Duration;
+
+    #[test]
+    fn dropping_a_writer_closes_and_joins_its_thread() {
+        let gate = Arc::new(Barrier::new(2));
+        let writer_gate = Arc::clone(&gate);
+        let writer = WriterThread::<u8>::spawn("test", move |rx| {
+            for _ in rx {}
+            writer_gate.wait();
+            Ok(())
+        });
+        let (drop_done, dropped) = mpsc::channel();
+        let dropper = thread::spawn(move || {
+            drop(writer);
+            drop_done.send(()).unwrap();
+        });
+
+        assert!(
+            dropped.recv_timeout(Duration::from_millis(50)).is_err(),
+            "drop returned while its writer thread was still running"
+        );
+        gate.wait();
+        dropped.recv_timeout(Duration::from_secs(1)).unwrap();
+        dropper.join().unwrap();
+    }
 
     /// A writer that fails must never be reported as a finished file.
     ///

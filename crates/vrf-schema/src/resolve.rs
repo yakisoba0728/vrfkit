@@ -265,6 +265,8 @@ impl NetGuidCache {
 
 #[cfg(test)]
 mod tests {
+    #![allow(unused_must_use)]
+
     use super::*;
     use crate::export::NetFieldExportGroup; // -- UniqueLeafMatch suffix extension tests -------------------------------
 

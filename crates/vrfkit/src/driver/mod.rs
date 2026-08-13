@@ -2,13 +2,11 @@
 //!
 //! # Architecture
 //!
-//! The borrow-checker constraint: `iter_demo_frames` mutably borrows the
-//! `NetGuidCache` (to receive schema updates), while the `ExportSink` needs a
-//! shared reference to that same cache (to resolve paths and field names).
-//!
-//! Solution: collect packets from one DemoFrame pass (cheap -- just byte offsets
-//! into the decompressed chunk), then process them with the *updated* cache.
-//! This two-phase design means path resolution always sees the latest schema.
+//! DemoFrames and packets are processed in one wire-order pass. The frame
+//! iterator applies one frame's ExportData, then lends that exact cache state
+//! to the packet callback. Packet-side export mutations therefore precede the
+//! next packet, while a later frame's schema cannot leak backward into an
+//! earlier packet.
 //!
 //! # Layout
 //!
@@ -16,14 +14,15 @@
 //! - [`checkpoints`] -- the optional full-state snapshot pass.
 //! - [`summary`] -- the stderr report, whose every line a Python harness pins.
 
-mod checkpoints;
+pub(crate) mod checkpoints;
+mod publish;
 mod summary;
-mod totals;
+pub(crate) mod totals;
 mod writers;
 
 use std::fs;
 use std::io::BufWriter;
-use std::path::Path;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use vrf_container::{
@@ -40,20 +39,13 @@ use vrf_net::pipeline::ReplicationReader;
 use vrf_schema::NetGuidCache;
 
 use crate::error::CliError;
-use crate::manifest;
+use crate::manifest::{self, ManifestQuality};
 use crate::sink::{ChannelState, ExportSink, RecordBuffers};
 use checkpoints::{CheckpointStats, ReplayContext};
+use publish::OutputTransaction;
 use summary::RunTotals;
 use totals::SinkTotals;
 use writers::WriterThread;
-
-/// A packet descriptor collected from DemoFrame iteration.
-/// Stores byte offset + length into the decompressed chunk buffer.
-struct PacketDesc {
-    time_ms: u32,
-    offset: usize,
-    len: usize,
-}
 
 /// The first two payload words for an Event group that declares `word_count` of
 /// them, or `None` when the payload does not fit that layout.
@@ -136,8 +128,9 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     );
 
     // -- Setup output ------------------------------------------------------
-    let out_path = Path::new(out_dir);
-    fs::create_dir_all(out_path)?;
+    let destination = PathBuf::from(out_dir);
+    let output = OutputTransaction::begin(&destination)?;
+    let out_path = output.path();
 
     let create = |name: &str| -> Result<BufWriter<fs::File>, CliError> {
         Ok(BufWriter::new(fs::File::create(out_path.join(name))?))
@@ -179,8 +172,6 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     let mut total_packets: u32 = 0;
     let mut channel_state = ChannelState::new();
 
-    // Reusable packet descriptor buffer (avoids per-chunk allocation).
-    let mut packet_descs: Vec<PacketDesc> = Vec::with_capacity(4096);
     // Reusable per-packet record buffers; see `RecordBuffers`.
     let mut buffers = RecordBuffers::default();
     let mut movement_rows: u64 = 0;
@@ -272,32 +263,26 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             decompress_replay_data_with_trailing(payload, ctx.compressed, ctx.encrypted)?;
         replay_data_trailing_bytes += trailing as u64;
 
-        // Phase 1: iterate DemoFrames -- populates cache, collects packet locations.
-        packet_descs.clear();
-        iter_demo_frames(&decompressed, ctx.flags, &mut cache, |pkt| {
-            // pkt.data is a slice into `decompressed`. Compute its offset.
-            let offset = pkt.data.as_ptr() as usize - decompressed.as_ptr() as usize;
-            packet_descs.push(PacketDesc {
-                time_ms: pkt.time_ms,
-                offset,
-                len: pkt.data.len(),
-            });
-        })?;
-
-        // Phase 2: process packets through replication using the now-complete cache.
-        for desc in &packet_descs {
-            let pkt_data = &decompressed[desc.offset..desc.offset + desc.len];
+        // Process each packet before the iterator advances to later ExportData.
+        // The callback cannot return a writer error through `FrameError`, so it
+        // records the first one and makes later callbacks no-ops until the
+        // frame walk finishes and the error can be returned here.
+        let mut packet_error = None;
+        iter_demo_frames(&decompressed, ctx.flags, &mut cache, |pkt, packet_cache| {
+            if packet_error.is_some() {
+                return;
+            }
             let pkt_id = total_packets;
             total_packets += 1;
 
             // Scoped so the sink's borrow of `buffers` ends before they are
             // drained. The buffers outlive the sink; that is the point.
             {
-                let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut buffers);
-                sink.time_ms = desc.time_ms;
+                let mut sink = ExportSink::new(packet_cache, &mut channel_state, &mut buffers);
+                sink.time_ms = pkt.time_ms;
                 sink.packet_id = pkt_id;
 
-                repl_reader.process_packet(pkt_data, pkt_id as i32, &mut sink);
+                repl_reader.process_packet(pkt.data, pkt_id as i32, &mut sink);
 
                 // The sink is dropped at the end of this scope, so a counter
                 // not read here is a counter that never existed. All of them
@@ -306,13 +291,22 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             }
 
             // Hand field and movement records to their writer threads.
-            fields.append(&mut buffers.fields)?;
-            movement_rows += buffers.movement.len() as u64;
-            movement.append(&mut buffers.movement)?;
-            // Drain actor lifecycle records to the inline writer.
-            for record in buffers.actors.drain(..) {
-                actor_writer.push(record)?;
+            let result = (|| -> Result<(), CliError> {
+                fields.append(&mut buffers.fields)?;
+                movement_rows += buffers.movement.len() as u64;
+                movement.append(&mut buffers.movement)?;
+                // Drain actor lifecycle records to the inline writer.
+                for record in buffers.actors.drain(..) {
+                    actor_writer.push(record)?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = result {
+                packet_error = Some(error);
             }
+        })?;
+        if let Some(error) = packet_error {
+            return Err(error);
         }
 
         chunks_processed += 1;
@@ -370,7 +364,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     //
     // Before the summary so the path the summary prints names a file that
     // exists by the time it is read.
-    let manifest_path = out_path.join("manifest.json");
+    let staged_manifest_path = out_path.join("manifest.json");
     // Drain per-PlayerState identity (Subject + SpawnedCharacter) captured
     // during the walk into a sorted players list for the manifest.
     let mut players: Vec<(u32, Option<String>, Option<u32>)> = channel_state
@@ -381,7 +375,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
         .collect();
     players.sort_unstable_by_key(|(g, _, _)| *g);
     manifest::write_manifest(
-        &manifest_path,
+        &staged_manifest_path,
         vrf_path,
         file_size,
         &preamble,
@@ -390,10 +384,31 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
         total_packets,
         elapsed,
         &players,
+        &ManifestQuality {
+            chunks_processed,
+            export_groups: cache.group_count(),
+            movement_rows,
+            net_guid_rows,
+            event_rows,
+            event_trailing_bytes,
+            replay_data_trailing_bytes,
+            event_layout_mismatches,
+            event_first_layout_mismatch: event_first_layout_mismatch.as_deref(),
+            net: net_stats,
+            sink: &sink_totals,
+            error_report: &error_report,
+            checkpoints: with_checkpoints.then_some(&cp_stats),
+        },
     )?;
 
+    // No handle remains open in staging at this point. Replace the destination
+    // only after every table and the manifest are complete; a failed run before
+    // here drops the guard and removes staging without touching the prior run.
+    output.publish()?;
+    let manifest_path = destination.join("manifest.json");
+
     summary::print(
-        out_path,
+        &destination,
         net_stats,
         &RunTotals {
             chunks_processed,
@@ -450,6 +465,7 @@ mod tests {
                 truncated_rpcs: 6,
                 rpc_suffix_bits_dropped: 7,
                 cnc_rpcs_emitted: 8,
+                array_leaf_decode_errors: 22,
                 ..crate::sink::ExportStats::default()
             };
             stats.overlay.decoded_ok = 9;
@@ -457,7 +473,14 @@ mod tests {
             stats.overlay.raw_or_skip = 11;
             stats.overlay.not_in_table = 12;
             stats.overlay.no_field_name = 13;
-            stats.array.errors = 14;
+            stats.overlay.handle_conflicts_refused = 14;
+            stats.array.elements_decoded = 15;
+            stats.array.fields_emitted = 16;
+            stats.array.truncations = 17;
+            stats.array.errors = 18;
+            stats.array.unconsumed_nested_bits = 19;
+            stats.array.implicit_terminations = 20;
+            stats.array.unconsumed_root_bits = 21;
             totals.absorb(&mut stats, &mut report);
         }
 
@@ -469,12 +492,20 @@ mod tests {
         assert_eq!(totals.truncated_rpcs, 12);
         assert_eq!(totals.rpc_suffix_bits_dropped, 14);
         assert_eq!(totals.cnc_rpcs_emitted, 16);
-        assert_eq!(totals.array_decode_errors, 28);
+        assert_eq!(totals.array_leaf_decode_errors, 44);
         assert_eq!(totals.overlay.decoded_ok, 18);
         assert_eq!(totals.overlay.decoded_err, 20);
         assert_eq!(totals.overlay.raw_or_skip, 22);
         assert_eq!(totals.overlay.not_in_table, 24);
         assert_eq!(totals.overlay.no_field_name, 26);
+        assert_eq!(totals.overlay.handle_conflicts_refused, 28);
+        assert_eq!(totals.array.elements_decoded, 30);
+        assert_eq!(totals.array.fields_emitted, 32);
+        assert_eq!(totals.array.truncations, 34);
+        assert_eq!(totals.array.errors, 36);
+        assert_eq!(totals.array.unconsumed_nested_bits, 38);
+        assert_eq!(totals.array.implicit_terminations, 40);
+        assert_eq!(totals.array.unconsumed_root_bits, 42);
         // First error wins, so a later packet cannot overwrite the one that
         // names the build change.
         assert_eq!(totals.struct_blob_first_error.as_deref(), Some("blob boom"));

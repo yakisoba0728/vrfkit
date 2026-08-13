@@ -33,6 +33,16 @@ impl std::fmt::Display for DecodeErrorKind {
     }
 }
 
+impl DecodeErrorKind {
+    const fn sort_key(self) -> u8 {
+        match self {
+            Self::Eof => 0,
+            Self::Residual => 1,
+            Self::ZeroBits => 2,
+        }
+    }
+}
+
 /// Accumulates per-(group, field, type, bit_count, error_kind) counts so the
 /// operator can identify the dominant decode-error sources after an export run.
 ///
@@ -108,6 +118,7 @@ impl OverlayErrorReport {
                     .then_with(|| a.field_name.cmp(&b.field_name))
                     .then_with(|| a.declared_type.cmp(&b.declared_type))
                     .then_with(|| a.bit_count.cmp(&b.bit_count))
+                    .then_with(|| a.error_kind.sort_key().cmp(&b.error_kind.sort_key()))
             })
         });
         rows.truncate(n);
@@ -241,5 +252,31 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].count, 2);
         assert_eq!(rows[0].group_path, "GroupD");
+    }
+
+    #[test]
+    fn top_n_breaks_identity_ties_by_error_kind() {
+        let mut report = OverlayErrorReport::default();
+        for kind in [
+            DecodeErrorKind::ZeroBits,
+            DecodeErrorKind::Residual,
+            DecodeErrorKind::Eof,
+        ] {
+            report.record("Group", "Field", FieldType::Int32, 32, kind);
+        }
+
+        let kinds: Vec<DecodeErrorKind> = report
+            .top_n(3)
+            .into_iter()
+            .map(|row| row.error_kind)
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                DecodeErrorKind::Eof,
+                DecodeErrorKind::Residual,
+                DecodeErrorKind::ZeroBits,
+            ]
+        );
     }
 }

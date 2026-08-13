@@ -29,7 +29,7 @@ pub enum FieldType {
     Float,
     Double,
     FString,
-    /// See [`scalar::decode_ftext`].
+    /// See the internal `scalar::decode_ftext` reader.
     FText,
     FName,
     ObjectNetGuid,
@@ -96,6 +96,15 @@ pub enum DecodeError {
     /// same call `EffectBlobError::NonFiniteFloat` already makes.
     #[error("{context} component is not finite")]
     NonFiniteComponent { context: &'static str },
+
+    /// A `VectorNetQuantize` descriptor supplied a zero divisor.
+    #[error("quantized vector scale must be non-zero, got {scale}")]
+    InvalidQuantizationScale { scale: u32 },
+
+    /// An inline FName carried a negative instance number, which Unreal does
+    /// not define a display spelling for.
+    #[error("FName instance number must be non-negative, got {number}")]
+    InvalidFNameNumber { number: i32 },
 
     /// An `FText` whose history discriminator was never observed.
     ///

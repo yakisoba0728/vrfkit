@@ -98,23 +98,9 @@ pub struct CheckpointTables {
     /// Entries whose path arrived as a hardcoded name-table index rather than
     /// a string. 24.3% of the corpus table; see [`read_checkpoint_tables`].
     pub hardcoded_paths: u32,
-    /// Export groups that collided with one already declared in this same
-    /// checkpoint -- same `path_name_index`, or a path (or path alias) already
-    /// registered.
-    ///
-    /// A checkpoint restates the entire export map once into a fresh cache, so
-    /// this is not the incremental re-export that
-    /// [`NetGuidCache::add_export_group`] merges: it is two declarations
-    /// claiming one slot. The merge happens anyway -- it is the same cache the
-    /// ReplayData stream needs it for -- which means the second group's fields
-    /// land in the first group's vector, the second path resolves to the first
-    /// group, and `/A`'s populated slots can be overwritten by `/B`'s. All of
-    /// that used to happen behind `Ok`, `group_count = 2` and a frame offset
-    /// that checks out, because the offset check only proves the cursor stayed
-    /// aligned, not that the map means anything.
-    ///
-    /// Expected to be zero. Non-zero means the group map cannot be trusted for
-    /// that checkpoint, and the counter is the only thing that will say so.
+    /// Export-group collisions. Always zero on success: a collision makes the
+    /// checkpoint cache untrusted and returns
+    /// [`SchemaError::CheckpointGroupCollision`] before frame decode.
     pub group_collisions: u32,
 }
 
@@ -195,7 +181,6 @@ pub fn read_checkpoint_tables(data: &[u8], cache: &mut NetGuidCache) -> Result<C
     }
 
     let mut exported_fields = 0u32;
-    let mut group_collisions = 0u32;
     for _ in 0..group_count {
         let path = reader.read_fstring(MAX_FSTRING_BYTES)?;
         let path_name_index = reader.read_int_packed()?;
@@ -213,19 +198,22 @@ pub fn read_checkpoint_tables(data: &[u8], cache: &mut NetGuidCache) -> Result<C
         // `add_export_group` merges on: `by_path` (which includes the path
         // aliases it registers) and `by_index`. The cache is fresh per
         // checkpoint, so a hit here means this checkpoint declared the slot
-        // twice, not that a previous frame did. See
-        // [`CheckpointTables::group_collisions`] for what the merge then does.
+        // twice, not that a previous frame did. Returning here prevents an
+        // ambiguous cache from reaching frame decode.
         if cache.get_group_by_index(path_name_index).is_some()
             || cache.get_group_by_path(&path).is_some()
         {
-            group_collisions += 1;
+            return Err(SchemaError::CheckpointGroupCollision {
+                path,
+                path_name_index,
+            });
         }
 
         cache.add_export_group(NetFieldExportGroup::new(
             path.clone(),
             path_name_index,
             declared,
-        ));
+        ))?;
 
         for slot in 0..declared {
             if reader.read_u8()? == 0 {
@@ -266,7 +254,7 @@ pub fn read_checkpoint_tables(data: &[u8], cache: &mut NetGuidCache) -> Result<C
         exported_fields,
         frame_offset: map_end,
         hardcoded_paths,
-        group_collisions,
+        group_collisions: 0,
     })
 }
 
@@ -469,13 +457,8 @@ mod tests {
     /// incremental re-export that [`NetGuidCache::add_export_group`] merges --
     /// it is two different paths claiming one slot.
     ///
-    /// The merge is left in place: it is correct for the ReplayData stream that
-    /// shares the cache, and changing it here would change what every corpus
-    /// checkpoint resolves to on evidence this crate cannot see. What the
-    /// collision does is pinned below, and counted, so a run says so instead of
-    /// returning `Ok` with `group_count = 2` and a frame offset that checks out.
     #[test]
-    fn two_groups_at_one_index_are_counted_as_a_collision() {
+    fn two_groups_at_one_index_fail_before_returning_an_untrusted_cache() {
         // `build` writes path_name_index 7 for every group, so two groups is
         // exactly the collision.
         let archive = build(
@@ -484,18 +467,15 @@ mod tests {
             &[0u8; 8],
         );
         let mut cache = NetGuidCache::new();
-        let t = read_checkpoint_tables(&archive, &mut cache).unwrap();
+        let err = read_checkpoint_tables(&archive, &mut cache).unwrap_err();
 
-        assert_eq!(t.group_count, 2, "the wire declared two groups");
-        assert_eq!(t.group_collisions, 1);
-        // The consequence the counter names: /B resolves to the group /A made.
-        assert_eq!(
-            cache
-                .get_group_by_path("/Script/G.B")
-                .map(|g| g.path.as_str()),
-            Some("/Script/G.A"),
-            "the second group was merged into the first, so its path is a lie"
-        );
+        assert!(matches!(
+            err,
+            SchemaError::CheckpointGroupCollision {
+                path_name_index: 7,
+                ..
+            }
+        ));
     }
 
     /// Two groups at different indices are the ordinary case and must not be
