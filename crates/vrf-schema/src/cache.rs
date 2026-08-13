@@ -24,6 +24,7 @@
 //! Every map here uses [`FxHashMap`] rather than the standard hasher. See
 //! [`crate::hash`] for the measurement and the security trade that motivates it.
 
+use crate::error::{Result, SchemaError};
 use crate::export::{NetFieldExport, NetFieldExportGroup};
 use crate::guid::{NetGuidEntry, NetworkGuid};
 use crate::hash::FxHashMap;
@@ -96,11 +97,11 @@ impl NetGuidCache {
     /// [`Self::clear`], which are the only operations that add a path, add a
     /// path alias, or remove one.
     ///
-    /// It deliberately does NOT track field mutations ([`Self::set_field_on_group`],
-    /// the merge half of `add_export_group`): a memo of field contents would be
-    /// unsound to key on this. Only path-set queries may use it. The generation
-    /// is bumped unconditionally on `add_export_group`, including the merge
-    /// branch, because merging also re-registers path aliases.
+    /// It deliberately does NOT track field mutations
+    /// ([`Self::set_field_on_group`]): a memo of field contents would be unsound
+    /// to key on this. Only path-set queries may use it. A successful
+    /// `add_export_group` always bumps the generation because a supported merge
+    /// can replace canonical path metadata and its aliases.
     #[must_use]
     pub fn schema_generation(&self) -> u64 {
         self.schema_generation
@@ -108,44 +109,54 @@ impl NetGuidCache {
 
     /// Register a new export group or merge it with an existing one.
     ///
-    /// If a group with the same `path` or `path_name_index` already exists, the
-    /// incoming fields are merged into it (growing the field vector if needed).
+    /// If exactly one coordinate already exists, that canonical group adopts
+    /// both incoming coordinates and merges the fields. If the path and index
+    /// identify different groups, the update fails without mutating the cache.
+    ///
     /// Returns the index of the canonical group.
-    pub fn add_export_group(&mut self, group: NetFieldExportGroup) -> usize {
-        self.schema_generation = self.schema_generation.wrapping_add(1);
+    pub fn add_export_group(&mut self, group: NetFieldExportGroup) -> Result<usize> {
         let existing_by_path = self.by_path.get(&group.path).copied();
         let existing_by_index = self.by_index.get(&group.path_name_index).copied();
 
-        let existing_idx = existing_by_path.or(existing_by_index);
+        if let (Some(path_idx), Some(index_idx)) = (existing_by_path, existing_by_index) {
+            if path_idx != index_idx {
+                return Err(SchemaError::CrossedExportGroupIdentity {
+                    path: group.path,
+                    path_name_index: group.path_name_index,
+                    path_group: self.groups[path_idx].path.clone(),
+                    index_group: self.groups[index_idx].path.clone(),
+                });
+            }
+        }
 
-        if let Some(idx) = existing_idx {
+        let idx = if let Some(idx) = existing_by_path.or(existing_by_index) {
             // Merge: grow capacity and overwrite populated slots.
             self.groups[idx].merge_from(&group);
-            // Ensure both maps point to the same group.
-            self.by_path.insert(group.path.clone(), idx);
-            self.by_index.insert(group.path_name_index, idx);
-            // Also register all path aliases. The base key is skipped: it was
-            // just inserted above, and `or_insert` would not overwrite anyway.
-            let mut first = true;
-            for_each_replay_path_key(&group.path, |alias| {
-                if first {
-                    first = false;
-                } else if !self.by_path.contains_key(alias) {
-                    self.by_path.insert(alias.to_owned(), idx);
-                }
-            });
+            self.groups[idx].path = group.path;
+            self.groups[idx].path_name_index = group.path_name_index;
             idx
         } else {
             let idx = self.groups.len();
-            // Register aliases before pushing.
+            self.groups.push(group);
+            idx
+        };
+
+        self.rebuild_group_indexes();
+        self.schema_generation = self.schema_generation.wrapping_add(1);
+        Ok(idx)
+    }
+
+    /// Rebuild every group-derived lookup after a canonical identity changes.
+    fn rebuild_group_indexes(&mut self) {
+        self.by_path.clear();
+        self.by_index.clear();
+        self.by_leaf.clear();
+        for (idx, group) in self.groups.iter().enumerate() {
             for_each_replay_path_key(&group.path, |alias| {
                 self.by_path.insert(alias.to_owned(), idx);
             });
             self.by_index.insert(group.path_name_index, idx);
-            // Register leaf-suffix index for UniqueLeafMatch resolution.
             register_leaf(&mut self.by_leaf, &group.path, idx);
-            self.groups.push(group);
-            idx
         }
     }
 
@@ -290,7 +301,7 @@ mod tests {
     fn cache_stores_group_by_path_and_index() {
         let mut cache = NetGuidCache::new();
         let group = NetFieldExportGroup::new("/Game/Test.Test_C".into(), 7, 2);
-        cache.add_export_group(group);
+        cache.add_export_group(group).unwrap();
 
         assert!(cache.get_group_by_path("/Game/Test.Test_C").is_some());
         assert!(cache.get_group_by_index(7).is_some());
@@ -305,15 +316,93 @@ mod tests {
             compatible_checksum: 17,
             name: "ExistingField".into(),
         });
-        cache.add_export_group(group);
+        cache.add_export_group(group).unwrap();
 
         // Re-add with larger capacity.
         let expanded = NetFieldExportGroup::new("/Game/Test.Test_C".into(), 7, 4);
-        cache.add_export_group(expanded);
+        cache.add_export_group(expanded).unwrap();
 
         let result = cache.get_group_by_index(7).unwrap();
         assert_eq!(result.len(), 4);
         assert_eq!(result.get_field(1).unwrap().name, "ExistingField");
+    }
+
+    #[test]
+    fn crossed_path_and_index_identities_leave_both_groups_unchanged() {
+        let mut cache = NetGuidCache::new();
+        cache
+            .add_export_group(NetFieldExportGroup::new("/Script/G.A".into(), 7, 1))
+            .unwrap();
+        cache
+            .add_export_group(NetFieldExportGroup::new("/Script/G.B".into(), 8, 1))
+            .unwrap();
+
+        let err = cache
+            .add_export_group(NetFieldExportGroup::new("/Script/G.A".into(), 8, 2))
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            SchemaError::CrossedExportGroupIdentity { .. }
+        ));
+
+        assert_eq!(cache.group_count(), 2);
+        assert_eq!(cache.get_group_by_index(7).unwrap().path, "/Script/G.A");
+        assert_eq!(cache.get_group_by_index(8).unwrap().path, "/Script/G.B");
+        assert_eq!(
+            cache
+                .get_group_by_path("/Script/G.A")
+                .unwrap()
+                .path_name_index,
+            7
+        );
+        assert_eq!(
+            cache
+                .get_group_by_path("/Script/G.B")
+                .unwrap()
+                .path_name_index,
+            8
+        );
+    }
+
+    #[test]
+    fn same_path_at_new_index_refreshes_the_canonical_index() {
+        let mut cache = NetGuidCache::new();
+        cache
+            .add_export_group(NetFieldExportGroup::new("/Script/G.A".into(), 7, 1))
+            .unwrap();
+
+        cache
+            .add_export_group(NetFieldExportGroup::new("/Script/G.A".into(), 9, 2))
+            .unwrap();
+
+        let group = cache.get_group_by_index(9).unwrap();
+        assert_eq!(group.path, "/Script/G.A");
+        assert_eq!(group.path_name_index, 9);
+        assert_eq!(group.len(), 2);
+        assert!(cache.get_group_by_index(7).is_none());
+    }
+
+    #[test]
+    fn same_index_with_new_path_refreshes_path_and_leaf_indexes() {
+        let mut cache = NetGuidCache::new();
+        cache
+            .add_export_group(NetFieldExportGroup::new("/Script/G.Old".into(), 7, 1))
+            .unwrap();
+
+        cache
+            .add_export_group(NetFieldExportGroup::new("/Script/G.New".into(), 7, 2))
+            .unwrap();
+
+        let group = cache.get_group_by_index(7).unwrap();
+        assert_eq!(group.path, "/Script/G.New");
+        assert_eq!(group.path_name_index, 7);
+        assert_eq!(group.len(), 2);
+        assert!(cache.get_group_by_path("/Script/G.Old").is_none());
+        assert!(cache.unique_leaf_match("Old").is_none());
+        assert_eq!(
+            cache.unique_leaf_match("New").unwrap().path,
+            "/Script/G.New"
+        );
     }
 
     #[test]
@@ -356,7 +445,9 @@ mod tests {
     #[test]
     fn cache_clear_removes_all() {
         let mut cache = NetGuidCache::new();
-        cache.add_export_group(NetFieldExportGroup::new("/Game/Test.Test_C".into(), 7, 2));
+        cache
+            .add_export_group(NetFieldExportGroup::new("/Game/Test.Test_C".into(), 7, 2))
+            .unwrap();
         cache.set_net_guid_path(17, "/Game/Test.Test_C".into(), None);
 
         cache.clear();
@@ -376,7 +467,7 @@ mod tests {
             compatible_checksum: 0,
             name: "Ability.Active".into(),
         });
-        cache.add_export_group(group);
+        cache.add_export_group(group).unwrap();
 
         assert_eq!(cache.get_gameplay_tag_name(2).unwrap(), "Ability.Active");
         assert!(cache.get_gameplay_tag_name(4).is_none()); // unpopulated slot
@@ -389,7 +480,7 @@ mod tests {
     fn alias_lookup_via_cache() {
         let mut cache = NetGuidCache::new();
         let group = NetFieldExportGroup::new("/Game/Characters/_Core/Jett/Jett_C".into(), 50, 1);
-        cache.add_export_group(group);
+        cache.add_export_group(group).unwrap();
 
         // Should be reachable via the core-stripped alias.
         assert!(

@@ -94,36 +94,41 @@ pub(super) fn process_chunk<W: Write + Send>(
         .map_err(|e| CliError::Usage(format!("checkpoint {}: {e}", cp.id)))?;
 
     let frame = &plain[tables.frame_offset..];
-    let mut packets: Vec<(u32, usize, usize)> = Vec::new();
-    iter_demo_frames(frame, ctx.flags, &mut cache, |pkt| {
-        let base = frame.as_ptr() as usize;
-        packets.push((
-            pkt.time_ms,
-            pkt.data.as_ptr() as usize - base,
-            pkt.data.len(),
-        ));
-    })?;
-
     let mut reader = ReplicationReader::new(ctx.branch)
         .map_err(|e| CliError::Usage(format!("unsupported branch: {e}")))?;
     let mut channels = ChannelState::new();
     let mut buffers = RecordBuffers::default();
-    for (i, (time_ms, off, len)) in packets.iter().enumerate() {
+    let mut packet_count = 0u64;
+    let mut packet_error = None;
+    iter_demo_frames(frame, ctx.flags, &mut cache, |pkt, packet_cache| {
+        if packet_error.is_some() {
+            return;
+        }
         {
-            let mut sink = ExportSink::new(&mut cache, &mut channels, &mut buffers);
-            sink.time_ms = *time_ms;
-            sink.packet_id = i as u32;
-            reader.process_packet(&frame[*off..*off + *len], i as i32, &mut sink);
+            let mut sink = ExportSink::new(packet_cache, &mut channels, &mut buffers);
+            sink.time_ms = pkt.time_ms;
+            sink.packet_id = packet_count as u32;
+            reader.process_packet(pkt.data, packet_count as i32, &mut sink);
             // Same aggregation the ReplayData pass uses, so the two cannot
             // diverge on which counters they bother to read. See `totals`.
             stats.sink.absorb(&mut sink.stats, error_report);
         }
-        stats.field_rows += buffers.fields.len() as u64;
-        writer.push_batch(buffers.fields.drain(..))?;
-        stats.actor_rows_dropped += buffers.actors.len() as u64;
-        stats.movement_rows_dropped += buffers.movement.len() as u64;
-        buffers.actors.clear();
-        buffers.movement.clear();
+        let result = (|| -> Result<(), CliError> {
+            stats.field_rows += buffers.fields.len() as u64;
+            writer.push_batch(buffers.fields.drain(..))?;
+            stats.actor_rows_dropped += buffers.actors.len() as u64;
+            stats.movement_rows_dropped += buffers.movement.len() as u64;
+            buffers.actors.clear();
+            buffers.movement.clear();
+            Ok(())
+        })();
+        if let Err(error) = result {
+            packet_error = Some(error);
+        }
+        packet_count += 1;
+    })?;
+    if let Some(error) = packet_error {
+        return Err(error);
     }
 
     stats.chunks += 1;
@@ -131,6 +136,6 @@ pub(super) fn process_chunk<W: Write + Send>(
     stats.group_records += u64::from(tables.group_count);
     stats.exported_fields += u64::from(tables.exported_fields);
     stats.frames += 1;
-    stats.packets += packets.len() as u64;
+    stats.packets += packet_count;
     Ok(())
 }

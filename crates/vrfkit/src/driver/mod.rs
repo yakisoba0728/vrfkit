@@ -2,13 +2,11 @@
 //!
 //! # Architecture
 //!
-//! The borrow-checker constraint: `iter_demo_frames` mutably borrows the
-//! `NetGuidCache` (to receive schema updates), while the `ExportSink` needs a
-//! shared reference to that same cache (to resolve paths and field names).
-//!
-//! Solution: collect packets from one DemoFrame pass (cheap -- just byte offsets
-//! into the decompressed chunk), then process them with the *updated* cache.
-//! This two-phase design means path resolution always sees the latest schema.
+//! DemoFrames and packets are processed in one wire-order pass. The frame
+//! iterator applies one frame's ExportData, then lends that exact cache state
+//! to the packet callback. Packet-side export mutations therefore precede the
+//! next packet, while a later frame's schema cannot leak backward into an
+//! earlier packet.
 //!
 //! # Layout
 //!
@@ -46,14 +44,6 @@ use checkpoints::{CheckpointStats, ReplayContext};
 use summary::RunTotals;
 use totals::SinkTotals;
 use writers::WriterThread;
-
-/// A packet descriptor collected from DemoFrame iteration.
-/// Stores byte offset + length into the decompressed chunk buffer.
-struct PacketDesc {
-    time_ms: u32,
-    offset: usize,
-    len: usize,
-}
 
 /// The first two payload words for an Event group that declares `word_count` of
 /// them, or `None` when the payload does not fit that layout.
@@ -179,8 +169,6 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     let mut total_packets: u32 = 0;
     let mut channel_state = ChannelState::new();
 
-    // Reusable packet descriptor buffer (avoids per-chunk allocation).
-    let mut packet_descs: Vec<PacketDesc> = Vec::with_capacity(4096);
     // Reusable per-packet record buffers; see `RecordBuffers`.
     let mut buffers = RecordBuffers::default();
     let mut movement_rows: u64 = 0;
@@ -272,32 +260,26 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             decompress_replay_data_with_trailing(payload, ctx.compressed, ctx.encrypted)?;
         replay_data_trailing_bytes += trailing as u64;
 
-        // Phase 1: iterate DemoFrames -- populates cache, collects packet locations.
-        packet_descs.clear();
-        iter_demo_frames(&decompressed, ctx.flags, &mut cache, |pkt| {
-            // pkt.data is a slice into `decompressed`. Compute its offset.
-            let offset = pkt.data.as_ptr() as usize - decompressed.as_ptr() as usize;
-            packet_descs.push(PacketDesc {
-                time_ms: pkt.time_ms,
-                offset,
-                len: pkt.data.len(),
-            });
-        })?;
-
-        // Phase 2: process packets through replication using the now-complete cache.
-        for desc in &packet_descs {
-            let pkt_data = &decompressed[desc.offset..desc.offset + desc.len];
+        // Process each packet before the iterator advances to later ExportData.
+        // The callback cannot return a writer error through `FrameError`, so it
+        // records the first one and makes later callbacks no-ops until the
+        // frame walk finishes and the error can be returned here.
+        let mut packet_error = None;
+        iter_demo_frames(&decompressed, ctx.flags, &mut cache, |pkt, packet_cache| {
+            if packet_error.is_some() {
+                return;
+            }
             let pkt_id = total_packets;
             total_packets += 1;
 
             // Scoped so the sink's borrow of `buffers` ends before they are
             // drained. The buffers outlive the sink; that is the point.
             {
-                let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut buffers);
-                sink.time_ms = desc.time_ms;
+                let mut sink = ExportSink::new(packet_cache, &mut channel_state, &mut buffers);
+                sink.time_ms = pkt.time_ms;
                 sink.packet_id = pkt_id;
 
-                repl_reader.process_packet(pkt_data, pkt_id as i32, &mut sink);
+                repl_reader.process_packet(pkt.data, pkt_id as i32, &mut sink);
 
                 // The sink is dropped at the end of this scope, so a counter
                 // not read here is a counter that never existed. All of them
@@ -306,13 +288,22 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             }
 
             // Hand field and movement records to their writer threads.
-            fields.append(&mut buffers.fields)?;
-            movement_rows += buffers.movement.len() as u64;
-            movement.append(&mut buffers.movement)?;
-            // Drain actor lifecycle records to the inline writer.
-            for record in buffers.actors.drain(..) {
-                actor_writer.push(record)?;
+            let result = (|| -> Result<(), CliError> {
+                fields.append(&mut buffers.fields)?;
+                movement_rows += buffers.movement.len() as u64;
+                movement.append(&mut buffers.movement)?;
+                // Drain actor lifecycle records to the inline writer.
+                for record in buffers.actors.drain(..) {
+                    actor_writer.push(record)?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = result {
+                packet_error = Some(error);
             }
+        })?;
+        if let Some(error) = packet_error {
+            return Err(error);
         }
 
         chunks_processed += 1;

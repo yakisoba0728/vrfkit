@@ -234,7 +234,6 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
     // Counted, not merely skipped: see `checkpoint_scope_note`.
     let mut checkpoint_chunks: u64 = 0;
     let mut chunk_iter = ChunkIterator::new(&data, preamble.remaining_offset);
-    let mut packet_descs: Vec<(u32, usize, usize)> = Vec::with_capacity(4096);
     let mut channel_state = ChannelState::new();
     // Reused across every packet: the oracle never drains these, and
     // `ExportSink::new` clears them, so they stay bounded by the largest packet.
@@ -252,22 +251,13 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
         let payload = &data[chunk.data_offset..chunk.data_offset + chunk.size_in_bytes as usize];
         let decompressed = decompress_replay_data(payload, compressed, encrypted)?;
 
-        // Phase 1: frame iteration (populates cache, collects packet offsets)
-        packet_descs.clear();
-        iter_demo_frames(&decompressed, flags, &mut cache, |pkt| {
-            let offset = pkt.data.as_ptr() as usize - decompressed.as_ptr() as usize;
-            packet_descs.push((pkt.time_ms, offset, pkt.data.len()));
-        })?;
-
-        // Phase 2: process packets
-        for &(time_ms, offset, len) in &packet_descs {
-            let pkt_data = &decompressed[offset..offset + len];
-            let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut buffers);
-            sink.time_ms = time_ms;
+        iter_demo_frames(&decompressed, flags, &mut cache, |pkt, packet_cache| {
+            let mut sink = ExportSink::new(packet_cache, &mut channel_state, &mut buffers);
+            sink.time_ms = pkt.time_ms;
             sink.packet_id = total_packets;
-            repl_reader.process_packet(pkt_data, total_packets as i32, &mut sink);
+            repl_reader.process_packet(pkt.data, total_packets as i32, &mut sink);
             total_packets += 1;
-        }
+        })?;
     }
 
     let stats = repl_reader.stats();

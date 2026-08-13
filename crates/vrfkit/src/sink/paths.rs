@@ -805,6 +805,8 @@ pub(super) fn channel_archetype(
 
 #[cfg(test)]
 mod tests {
+    #![allow(unused_must_use)]
+
     use super::*;
     use crate::sink::RecordBuffers;
     use vrf_net::pipeline::{ActorChannelState, ReplicationSink};
