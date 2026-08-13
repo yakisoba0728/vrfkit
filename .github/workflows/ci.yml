@@ -95,7 +95,7 @@ jobs:
       - name: generated checksum guard
         run: python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
       - name: baseline schemas
-        run: python -W error tools/check_baseline_schemas.py --allow-missing-hashes
+        run: python -W error tools/check_baseline_schemas.py
       - name: docs self-check
         run: python -W error tools/check_docs.py --fast
       # CONTRIBUTING calls these two required before a PR and CI did not run

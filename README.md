@@ -18,8 +18,8 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 by Michel Giehl; see [`NOTICE.md`](NOTICE.md). Not affiliated with, endorsed
 by, or approved by Riot Games.
 
-**Current state:** `cargo +1.86.0 test --workspace --locked` **525 passing**,
-`tools/tests` **461 passing** -- see [Status](#status) for the rest.
+**Current state:** `cargo +1.86.0 test --workspace --locked` **554 passing**,
+`tools/tests` **466 passing** -- see [Status](#status) for the rest.
 
 - Run it: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable: [`docs/DATA.md`](docs/DATA.md)
@@ -92,7 +92,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **525 tests** plus a layered validation suite (framing / bytes / decode
+- **554 tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -146,7 +146,7 @@ produces seven files:
 
 | File | Rows | Bytes |
 |---|---|---|
-| `fields.parquet` | 1,277,627 | 15,884,671 |
+| `fields.parquet` | 1,277,658 | 15,880,542 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
@@ -280,8 +280,8 @@ it as one gives the year 3626.
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**525 passing**, strict workspace `clippy -D warnings` **0**, `cargo fmt` clean,
-and `check_ascii` on 117 files. The Python suite in `tools/tests` has 461 tests.
+**554 passing**, strict workspace `clippy -D warnings` **0**, `cargo fmt` clean,
+and `check_ascii` on 117 files. The Python suite in `tools/tests` has 466 tests.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.

@@ -21,8 +21,8 @@ import pyarrow.parquet as pq
 
 # Accept only the exact directory written by the Rust test. Picking the newest
 # matching system-temp directory can silently validate another checkout's
-# stale fixture, so CI captures INTEROP_FIELDS/INTEROP_MOVEMENT from the test,
-# verifies their common parent, then sets VRFKIT_INTEROP_DIR to that directory.
+# stale fixture. CI sets VRFKIT_INTEROP_DIR to one private Rust-output root,
+# then passes that root's exact `interop` child to this script.
 def _find_interop_dir() -> Path:
     if len(sys.argv) > 1:
         return Path(sys.argv[1]).resolve()

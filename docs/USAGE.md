@@ -154,7 +154,7 @@ Measured on `02d4d478` (48,215,213 bytes):
 
 | File | Rows | Bytes | Notes |
 |---|---|---|---|
-| `fields.parquet` | 1,277,627 | 15,884,671 | |
+| `fields.parquet` | 1,277,658 | 15,880,542 | |
 | `movement.parquet` | 1,839,607 | 31,835,557 | |
 | `actors.parquet` | 3,827 | 87,281 | |
 | `net_guids.parquet` | 16,167 | 153,606 | |
@@ -465,7 +465,7 @@ records the fields that failed the bar and why.
 | `validate_metrics_corpus.py` | Metrics pipeline passes |
 | `check_corpus_baseline.py` | Per-build corpus baseline |
 | `check_export_baseline.py` | Export counters + per-file rows/bytes/SHA-256 content identity |
-| `check_baseline_schemas.py` | All committed baseline schemas and cross-file replay/counter/table identities. Strict mode requires measured SHA-256; `--allow-missing-hashes` is only a migration aid. |
+| `check_baseline_schemas.py` | All committed baseline schemas, measured SHA-256 hashes, and cross-file replay/counter/table identities. |
 | `check_decode_errors_corpus.py` | Overlay type errors + struct blob failures (top level; `--recursive` for subdirectories, `--checkpoints` to also decode Checkpoint chunks) |
 | `corpus_scan.py` | Not a check -- the `.vrf` discovery `validate_corpus.py` and `check_decode_errors_corpus.py` share, so the two can no longer glob a directory two different ways and disagree about what "the corpus" is without saying so. Non-recursive by default; read its docstring for why. |
 | `check_component_remaps.py` | Whether each Blueprint-component remap still matches. Needs only an export, so it works on a replay from a build that has no baseline -- which is the case a renamed component would otherwise slip through. |
@@ -551,16 +551,16 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo +1.86.0 test --workspace --locked                              # 525 passing
+cargo +1.86.0 test --workspace --locked                              # 554 passing
 cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.86.0 fmt --check
 python -W error tools/check_ascii.py --check                         # 117 files
 python -W error tools/check_effect_decoder.py --check                # 12 cases
-python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 461 passing
+python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 466 passing
 python -W error tools/check_docs.py --fast
 python -W error tools/apply_type_corrections.py --check              # 130 corrections
 python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
-python -W error tools/check_baseline_schemas.py --allow-missing-hashes
+python -W error tools/check_baseline_schemas.py
 ```
 
 The CI interop gate sets `VRFKIT_INTEROP_DIR` to a private root before Rust's
