@@ -91,6 +91,10 @@ impl ExportSink<'_> {
         let Some(func_name) = function_name else {
             return false;
         };
+        let whole_reader = reader.clone();
+        let Ok(whole_bit_count) = u32::try_from(reader.bits_remaining()) else {
+            return false;
+        };
 
         // Find the RPC parameter group. Try direct path construction first,
         // then fall back to function-name leaf match.
@@ -110,6 +114,7 @@ impl ExportSink<'_> {
         // (clean end-of-stream, the trailing alignment bit, the zero-handle
         // terminator) leave it `false`.
         let mut truncated = false;
+        let mut unexplained_suffix = false;
         let param_group_path_ref = param_group_path.as_deref();
 
         loop {
@@ -137,6 +142,7 @@ impl ExportSink<'_> {
                 if leftover > 1 {
                     self.stats.rpc_suffix_bits_dropped =
                         self.stats.rpc_suffix_bits_dropped.saturating_add(leftover);
+                    unexplained_suffix = true;
                 }
                 break;
             }
@@ -318,6 +324,24 @@ impl ExportSink<'_> {
             self.stats.truncated_rpcs = self.stats.truncated_rpcs.saturating_add(1);
         }
 
+        // Parameter rows already emitted remain useful, but they cannot stand
+        // in for bytes the walk did not explain. Add the original payload as a
+        // fallback row whenever a partial walk would otherwise suppress the
+        // caller's ordinary whole-payload fallback. This is additive: typed
+        // parameter rows stay, and the exact raw input stays available for a
+        // future decoder.
+        if emitted_any && (truncated || unexplained_suffix) {
+            let field_name = self.channel_state.names.intern(func_name);
+            self.push_field(FieldValues {
+                handle: rpc_handle,
+                field_name: Some(field_name),
+                bit_count: whole_bit_count,
+                raw_bits: copy_raw_bits(whole_reader, whole_bit_count),
+                ..FieldValues::default()
+            });
+            self.stats.fields_emitted += 1;
+        }
+
         emitted_any
     }
 
@@ -346,9 +370,12 @@ impl ExportSink<'_> {
         for field in &flattened {
             let (value_i64, value_f64, value_bool, value_str) =
                 match life_change_member_type(&field.path) {
-                    Some(ft) => {
-                        super::blobs::decode_leaf_with(ft, &field.raw_bits, field.bit_count)
-                    }
+                    Some(ft) => super::blobs::decode_leaf_with_stats(
+                        ft,
+                        &field.raw_bits,
+                        field.bit_count,
+                        &mut self.stats.array_leaf_decode_errors,
+                    ),
                     None => (None, None, None, None),
                 };
             let full_name = self.channel_state.names.intern_fmt(|out| {

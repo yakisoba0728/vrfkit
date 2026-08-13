@@ -135,6 +135,13 @@ pub struct ArrayDecodeStats {
     /// the parent row's `raw_bits`. Zero on a corpus that decodes cleanly,
     /// which is what makes a non-zero value worth looking at.
     pub unconsumed_nested_bits: u64,
+    /// Bits left after the root array's explicit terminator or an early stop.
+    ///
+    /// The caller retains the whole parent payload, so these bits remain
+    /// recoverable. This counter distinguishes that raw fallback from a fully
+    /// walked root array; the nested equivalent is
+    /// [`Self::unconsumed_nested_bits`].
+    pub unconsumed_root_bits: u64,
     /// Times an element's field loop or an array level ended because the reader
     /// ran out, rather than because it read an explicit `0` terminator.
     ///
@@ -192,6 +199,7 @@ pub fn decode_struct_array(
         output: Vec::with_capacity(INITIAL_FIELD_CAPACITY),
     };
     decode_array_level(&mut reader, &mut walk, schema, 0, stats);
+    stats.unconsumed_root_bits += reader.bits_remaining();
     walk.output
 }
 
@@ -212,35 +220,76 @@ pub fn decode_struct_array(
 /// whatever was decoded so far: the caller still emits the parent row from its
 /// own `raw_bits`, so a short `Vec` costs the typed leaves, not the bits.
 pub fn decode_object_ref_array(data: &[u8], bit_count: u32) -> Vec<u32> {
+    let mut ignored = ArrayDecodeStats::default();
+    decode_object_ref_array_with_stats(data, bit_count, &mut ignored)
+}
+
+/// Decode an object-reference dynamic array while exposing every partial or
+/// malformed path through `stats`.
+///
+/// This is the production entry point for `MultiContents`: the parent raw row
+/// is preserved by the caller, while these diagnostics state whether all typed
+/// item rows were recovered. [`decode_object_ref_array`] remains as the
+/// compatibility wrapper for callers that do not need diagnostics.
+pub fn decode_object_ref_array_with_stats(
+    data: &[u8],
+    bit_count: u32,
+    stats: &mut ArrayDecodeStats,
+) -> Vec<u32> {
     let Ok(mut reader) = BitReader::with_bit_len(data, u64::from(bit_count)) else {
+        stats.errors += 1;
         return Vec::new();
     };
+    let out = decode_object_ref_array_reader(&mut reader, stats);
+    stats.unconsumed_root_bits += reader.bits_remaining();
+    out
+}
+
+fn decode_object_ref_array_reader(
+    reader: &mut BitReader<'_>,
+    stats: &mut ArrayDecodeStats,
+) -> Vec<u32> {
     let mut out = Vec::new();
 
     let Ok(element_count) = reader.read_int_packed() else {
+        stats.errors += 1;
         return out;
     };
     if element_count > MAX_ELEMENTS {
+        stats.truncations += 1;
         return out;
     }
 
+    let mut elements_seen = 0u32;
     while !reader.at_end() {
+        if elements_seen == MAX_ELEMENTS {
+            let mut probe = reader.clone();
+            match probe.read_int_packed() {
+                Ok(0) => {
+                    *reader = probe;
+                    consume_optional_trailing_int_packed(reader, stats);
+                }
+                Ok(_) => stats.truncations += 1,
+                Err(_) => stats.errors += 1,
+            }
+            return out;
+        }
         let Ok(encoded_index) = reader.read_int_packed() else {
+            stats.errors += 1;
             break;
         };
         if encoded_index == 0 {
-            // Same trailing 8-bit terminator the C# parser consumes and
-            // [`decode_array_level`] mirrors for struct arrays.
-            if reader.bits_remaining() == 8 {
-                let _ = reader.read_int_packed();
-            }
+            consume_optional_trailing_int_packed(reader, stats);
             break;
         }
         let index = encoded_index - 1;
         if index >= element_count {
+            stats.errors += 1;
             reader.skip_remaining();
             break;
         }
+        elements_seen += 1;
+        stats.elements_decoded += 1;
 
         // Each element carries one object-reference field. Walk its handle loop
         // -- real payloads run it once -- and decode the first payload as the
@@ -248,23 +297,41 @@ pub fn decode_object_ref_array(data: &[u8], bit_count: u32) -> Vec<u32> {
         // (none seen on the wire, but the framing permits it) from
         // desynchronising the rest of the array.
         let mut guid = None;
-        for _ in 0..MAX_FIELDS_PER_ELEMENT {
+        let mut element_complete = false;
+        for field_idx in 0..=MAX_FIELDS_PER_ELEMENT {
             if reader.at_end() {
+                stats.implicit_terminations += 1;
+                break;
+            }
+            if field_idx == MAX_FIELDS_PER_ELEMENT {
+                let mut probe = reader.clone();
+                match probe.read_int_packed() {
+                    Ok(0) => {
+                        *reader = probe;
+                        element_complete = true;
+                    }
+                    Ok(_) => stats.truncations += 1,
+                    Err(_) => stats.errors += 1,
+                }
                 break;
             }
             let Ok(encoded_handle) = reader.read_int_packed() else {
+                stats.errors += 1;
                 break;
             };
             if encoded_handle == 0 {
+                element_complete = true;
                 break;
             }
             let Ok(payload_bits) = reader.read_int_packed() else {
+                stats.errors += 1;
                 break;
             };
             if payload_bits == 0 {
                 continue;
             }
             if u64::from(payload_bits) > reader.bits_remaining() {
+                stats.errors += 1;
                 reader.skip_remaining();
                 break;
             }
@@ -272,17 +339,24 @@ pub fn decode_object_ref_array(data: &[u8], bit_count: u32) -> Vec<u32> {
             // the parent past it, so a NetGUID that spends fewer bits than the
             // window still leaves the reader aligned on the next handle.
             let Ok(mut sub) = reader.sub_reader(u64::from(payload_bits)) else {
+                stats.errors += 1;
                 break;
             };
             if guid.is_none() {
-                if let Ok(v) = sub.read_int_packed() {
-                    guid = Some(v);
+                match sub.read_int_packed() {
+                    Ok(v) if sub.at_end() => guid = Some(v),
+                    Ok(_) | Err(_) => stats.errors += 1,
                 }
             }
         }
 
         if let Some(g) = guid {
             out.push(g);
+            stats.fields_emitted += 1;
+        }
+        if !element_complete {
+            reader.skip_remaining();
+            break;
         }
     }
 
@@ -317,9 +391,25 @@ fn decode_array_level(
     // Read elements. An explicit `0` index is what ends the array; running out
     // of bits instead is accepted (a padded window legitimately does that) but
     // tallied, because it is also what a truncated payload looks like.
+    let mut elements_seen = 0u32;
     loop {
         if reader.at_end() {
             stats.implicit_terminations += 1;
+            break;
+        }
+        if elements_seen == MAX_ELEMENTS {
+            let mut probe = reader.clone();
+            match probe.read_int_packed() {
+                Ok(0) => {
+                    *reader = probe;
+                    consume_optional_trailing_int_packed(reader, stats);
+                }
+                Ok(_) => {
+                    stats.truncations += 1;
+                    emit_remaining_raw(reader, walk);
+                }
+                Err(_) => stats.errors += 1,
+            }
             break;
         }
         let Ok(encoded_index) = reader.read_int_packed() else {
@@ -328,23 +418,18 @@ fn decode_array_level(
         };
 
         if encoded_index == 0 {
-            // Check for the trailing 8-bit terminator that the C# parser handles:
-            // "if (archive.BitsRemaining == 8) { _ = archive.ReadIntPacked(); }"
-            // This occurs in struct arrays when exactly 8 bits remain after the
-            // zero terminator. We consume it silently.
-            if reader.bits_remaining() == 8 {
-                let _ = reader.read_int_packed();
-            }
+            consume_optional_trailing_int_packed(reader, stats);
             break;
         }
 
         let index = encoded_index - 1;
         if index >= element_count {
-            // Index exceeds declared count -- skip remaining.
+            stats.errors += 1;
             reader.skip_remaining();
             break;
         }
 
+        elements_seen += 1;
         stats.elements_decoded += 1;
         let prefix_len = walk.path.len();
         let _ = write!(walk.path, "[{index}]");
@@ -361,13 +446,26 @@ fn decode_struct_fields(
     depth: u32,
     stats: &mut ArrayDecodeStats,
 ) {
-    for _field_idx in 0..MAX_FIELDS_PER_ELEMENT {
+    for field_idx in 0..=MAX_FIELDS_PER_ELEMENT {
         if reader.at_end() {
             // An element ends on a zero handle. Reaching EOF instead means the
             // element was never closed -- harmless for alignment, since there
             // is nothing after it, but indistinguishable from a complete
             // element without this tally.
             stats.implicit_terminations += 1;
+            return;
+        }
+
+        if field_idx == MAX_FIELDS_PER_ELEMENT {
+            let mut probe = reader.clone();
+            match probe.read_int_packed() {
+                Ok(0) => *reader = probe,
+                Ok(_) => {
+                    stats.truncations += 1;
+                    emit_remaining_raw(reader, walk);
+                }
+                Err(_) => stats.errors += 1,
+            }
             return;
         }
 
@@ -440,9 +538,14 @@ fn decode_struct_fields(
             }
         }
     }
+}
 
-    // Hit MAX_FIELDS_PER_ELEMENT -- truncate.
-    stats.truncations += 1;
+/// Consume the format's optional one-IntPacked trailer without hiding a
+/// continuation byte that runs past the declared array window.
+fn consume_optional_trailing_int_packed(reader: &mut BitReader<'_>, stats: &mut ArrayDecodeStats) {
+    if reader.bits_remaining() == 8 && reader.read_int_packed().is_err() {
+        stats.errors += 1;
+    }
 }
 
 /// Take `payload_bits` bits out of `reader` as owned bytes.
@@ -928,6 +1031,23 @@ mod tests {
         assert!(guids.is_empty());
     }
 
+    #[test]
+    fn malformed_object_ref_array_exposes_its_failure_stats() {
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 1);
+        write_int_packed(&mut bits, 1);
+        write_int_packed(&mut bits, 3);
+        write_int_packed(&mut bits, 32); // only eight payload bits follow
+        bits.extend(std::iter::repeat_n(false, 8));
+        let data = bits_to_bytes(&bits);
+        let mut stats = ArrayDecodeStats::default();
+
+        let guids = decode_object_ref_array_with_stats(&data, bits.len() as u32, &mut stats);
+
+        assert!(guids.is_empty());
+        assert_eq!(stats.errors, 1, "{stats:?}");
+    }
+
     /// A BitIo read failure (fewer than 8 bits left for an IntPacked read) must
     /// also count as an error rather than returning silently.
     #[test]
@@ -1047,6 +1167,91 @@ mod tests {
         assert_eq!(stats.implicit_terminations, 0, "{stats:?}");
         assert_eq!(stats.unconsumed_nested_bits, 0, "{stats:?}");
         assert_eq!(stats.errors, 0, "{stats:?}");
+    }
+
+    #[test]
+    fn bits_after_the_root_array_terminator_are_tallied() {
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 0);
+        write_int_packed(&mut bits, 0);
+        bits.extend(std::iter::repeat_n(true, 16));
+        let data = bits_to_bytes(&bits);
+        let mut stats = ArrayDecodeStats::default();
+
+        let _ = decode_struct_array(&data, bits.len() as u32, None, &[], &mut stats);
+
+        assert_eq!(stats.unconsumed_root_bits, 16, "{stats:?}");
+    }
+
+    #[test]
+    fn an_out_of_range_element_index_is_malformed_not_a_clean_empty_array() {
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 1); // one declared element
+        write_int_packed(&mut bits, 2); // index 1 is outside [0, 1)
+        bits.extend(std::iter::repeat_n(true, 16));
+        let data = bits_to_bytes(&bits);
+        let mut stats = ArrayDecodeStats::default();
+
+        let fields = decode_struct_array(&data, bits.len() as u32, None, &[], &mut stats);
+
+        assert!(fields.is_empty());
+        assert_eq!(stats.errors, 1, "{stats:?}");
+    }
+
+    #[test]
+    fn a_truncated_trailing_int_packed_is_not_accepted() {
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 0); // zero elements
+        write_int_packed(&mut bits, 0); // array terminator
+        // Exactly eight trailing bits activates the optional IntPacked read,
+        // but the continuation flag asks for a byte that is not present.
+        for bit in 0..8 {
+            bits.push((0x01 & (1 << bit)) != 0);
+        }
+        let data = bits_to_bytes(&bits);
+        let mut stats = ArrayDecodeStats::default();
+
+        let _ = decode_struct_array(&data, bits.len() as u32, None, &[], &mut stats);
+
+        assert_eq!(stats.errors, 1, "{stats:?}");
+    }
+
+    #[test]
+    fn exactly_max_fields_followed_by_a_terminator_is_not_truncated() {
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 1);
+        write_int_packed(&mut bits, 1);
+        for _ in 0..MAX_FIELDS_PER_ELEMENT {
+            write_int_packed(&mut bits, 1); // handle 0
+            write_int_packed(&mut bits, 0); // valid empty payload
+        }
+        write_int_packed(&mut bits, 0); // element terminator
+        write_int_packed(&mut bits, 0); // array terminator
+        let data = bits_to_bytes(&bits);
+        let mut stats = ArrayDecodeStats::default();
+
+        let _ = decode_struct_array(&data, bits.len() as u32, None, &[], &mut stats);
+
+        assert_eq!(stats.truncations, 0, "{stats:?}");
+        assert_eq!(stats.errors, 0, "{stats:?}");
+    }
+
+    #[test]
+    fn repeated_element_indices_cannot_bypass_the_element_work_limit() {
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 1); // one declared slot
+        for _ in 0..=MAX_ELEMENTS {
+            write_int_packed(&mut bits, 1); // repeat index 0
+            write_int_packed(&mut bits, 0); // empty element
+        }
+        write_int_packed(&mut bits, 0); // array terminator
+        let data = bits_to_bytes(&bits);
+        let mut stats = ArrayDecodeStats::default();
+
+        let _ = decode_struct_array(&data, bits.len() as u32, None, &[], &mut stats);
+
+        assert_eq!(stats.elements_decoded, u64::from(MAX_ELEMENTS));
+        assert_eq!(stats.truncations, 1, "{stats:?}");
     }
 
     /// `AbilityCastsThisRound[].Effects[]` is a nested array, and until it had

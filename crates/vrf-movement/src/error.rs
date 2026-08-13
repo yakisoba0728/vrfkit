@@ -30,6 +30,13 @@ pub enum MovementError {
     #[error("update count too large: {0}")]
     TooManyUpdates(u32),
 
+    /// A component stream ended before its mandatory u16 framing header.
+    #[error("movement component header needs 16 bits, only {available_bits} remain")]
+    TruncatedComponentHeader {
+        /// Bits available where the u16 header was required.
+        available_bits: u64,
+    },
+
     /// A character update index exceeded the declared update count.
     #[error("update index {index} out of range (count={count})")]
     UpdateIndexOutOfRange { index: u32, count: u32 },

@@ -165,14 +165,22 @@ impl ExportSink<'_> {
             });
 
             let (vi, vf, vb, vs) = match declared_type {
-                Some(ft) => decode_leaf_with(ft, &f.raw_bits, f.bit_count),
+                Some(ft) => decode_leaf_with_stats(
+                    ft,
+                    &f.raw_bits,
+                    f.bit_count,
+                    &mut self.stats.array_leaf_decode_errors,
+                ),
                 // The hardcoded handle->type map is CombatReport-specific:
                 // handle 3 is an Int32 there and an FString in
                 // AbilityCastsThisRound, so applying it to any other array
                 // forces the wrong type. Only Rounds falls through to it.
-                None if parent_name == "Rounds" => {
-                    decode_array_leaf(f.handle, &f.raw_bits, f.bit_count)
-                }
+                None if parent_name == "Rounds" => decode_array_leaf(
+                    f.handle,
+                    &f.raw_bits,
+                    f.bit_count,
+                    &mut self.stats.array_leaf_decode_errors,
+                ),
                 None => (None, None, None, None),
             };
 
@@ -253,7 +261,8 @@ impl ExportSink<'_> {
     /// `MultiContents[i]` row with the NetGUID in `value_i64`, the same column
     /// a single `ItemSlot.Contents` decode populates.
     pub(super) fn emit_multi_contents(&mut self, raw: &[u8], bit_count: u32) {
-        let guids = vrf_decode::decode_object_ref_array(raw, bit_count);
+        let guids =
+            vrf_decode::decode_object_ref_array_with_stats(raw, bit_count, &mut self.stats.array);
         for (i, guid) in guids.iter().enumerate() {
             self.emit_struct_sub_field(
                 |out| put(out, format_args!("MultiContents[{i}]")),
@@ -466,10 +475,11 @@ impl ExportSink<'_> {
 /// Split out so the overlay-driven path and the hardcoded-handle fallback share
 /// one decode-and-widen, rather than each growing its own copy of the match on
 /// `DecodedValue`.
-pub(super) fn decode_leaf_with(
+pub(super) fn decode_leaf_with_stats(
     field_type: FieldType,
     raw: &[u8],
     bit_count: u32,
+    failures: &mut u64,
 ) -> DecodedColumns {
     use vrf_decode::{DecodedValue, decode_field};
 
@@ -478,7 +488,10 @@ pub(super) fn decode_leaf_with(
         Ok(DecodedValue::F64(v)) => (None, Some(v), None, None),
         Ok(DecodedValue::Bool(v)) => (None, None, Some(v), None),
         Ok(DecodedValue::Str(v)) => (None, None, None, Some(v)),
-        Err(_) => (None, None, None, None),
+        Err(_) => {
+            *failures = failures.saturating_add(1);
+            (None, None, None, None)
+        }
     }
 }
 
@@ -499,7 +512,12 @@ pub(super) fn decode_leaf_with(
 /// - ObjectNetGuid handles: 13, 24, 50, 85, 98
 /// - FString handles: 11
 /// - FName handles: 12
-fn decode_array_leaf(handle: u32, raw: &[u8], bit_count: u32) -> DecodedColumns {
+fn decode_array_leaf(
+    handle: u32,
+    raw: &[u8],
+    bit_count: u32,
+    failures: &mut u64,
+) -> DecodedColumns {
     let field_type = match handle {
         3 | 5 | 19 | 21 | 46 | 81 | 96 => FieldType::Int32,
         18 | 20 | 47 | 82 => FieldType::Float,
@@ -511,5 +529,22 @@ fn decode_array_leaf(handle: u32, raw: &[u8], bit_count: u32) -> DecodedColumns 
         _ => return (None, None, None, None),
     };
 
-    decode_leaf_with(field_type, raw, bit_count)
+    decode_leaf_with_stats(field_type, raw, bit_count, failures)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_typed_array_leaf_failure_is_counted_while_its_raw_input_survives() {
+        let raw = [0x7a];
+        let mut failures = 0;
+
+        let decoded = decode_leaf_with_stats(FieldType::Int32, &raw, 8, &mut failures);
+
+        assert_eq!(decoded, (None, None, None, None));
+        assert_eq!(failures, 1);
+        assert_eq!(raw, [0x7a]);
+    }
 }

@@ -119,9 +119,23 @@ pub(super) fn print(
     // Printed only when non-zero: valid replays produce zero and the line would
     // otherwise be noise on the pinned summary. A non-zero value means the
     // array walker abandoned bits mid-element and flattened leaves were lost.
-    if totals.sink.array_decode_errors > 0 {
-        eprintln!("  Array decode err: {}", totals.sink.array_decode_errors);
-    }
+    eprintln!(
+        "  Array decode:     {} elements / {} fields / {} errors / {} truncations",
+        totals.sink.array.elements_decoded,
+        totals.sink.array.fields_emitted,
+        totals.sink.array.errors,
+        totals.sink.array.truncations
+    );
+    eprintln!(
+        "  Array residual:   {} root bits / {} nested bits / {} implicit ends",
+        totals.sink.array.unconsumed_root_bits,
+        totals.sink.array.unconsumed_nested_bits,
+        totals.sink.array.implicit_terminations
+    );
+    eprintln!(
+        "  Array leaf errs:  {}",
+        totals.sink.array_leaf_decode_errors
+    );
     if totals.sink.truncated_rpcs > 0 {
         eprintln!("  Truncated RPCs:   {}", totals.sink.truncated_rpcs);
     }
@@ -196,7 +210,20 @@ fn print_checkpoints(cp: &CheckpointStats) {
     // were never reached", which is the whole reason they are counted.
     eprintln!(
         "  Checkpoint fails: {} array / {} truncated RPC / {} movement",
-        cp.sink.array_decode_errors, cp.sink.truncated_rpcs, cp.sink.movement_rpc_errors
+        cp.sink.array.errors, cp.sink.truncated_rpcs, cp.sink.movement_rpc_errors
+    );
+    eprintln!(
+        "  Checkpoint array: {} elements / {} fields / {} truncations / {} root bits / {} nested bits / {} implicit ends",
+        cp.sink.array.elements_decoded,
+        cp.sink.array.fields_emitted,
+        cp.sink.array.truncations,
+        cp.sink.array.unconsumed_root_bits,
+        cp.sink.array.unconsumed_nested_bits,
+        cp.sink.array.implicit_terminations
+    );
+    eprintln!(
+        "  Checkpoint leaf:  {} typed decode errors",
+        cp.sink.array_leaf_decode_errors
     );
     if cp.sink.rpc_suffix_bits_dropped > 0 {
         eprintln!(

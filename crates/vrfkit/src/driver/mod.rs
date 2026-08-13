@@ -441,6 +441,7 @@ mod tests {
                 truncated_rpcs: 6,
                 rpc_suffix_bits_dropped: 7,
                 cnc_rpcs_emitted: 8,
+                array_leaf_decode_errors: 22,
                 ..crate::sink::ExportStats::default()
             };
             stats.overlay.decoded_ok = 9;
@@ -448,7 +449,14 @@ mod tests {
             stats.overlay.raw_or_skip = 11;
             stats.overlay.not_in_table = 12;
             stats.overlay.no_field_name = 13;
-            stats.array.errors = 14;
+            stats.overlay.handle_conflicts_refused = 14;
+            stats.array.elements_decoded = 15;
+            stats.array.fields_emitted = 16;
+            stats.array.truncations = 17;
+            stats.array.errors = 18;
+            stats.array.unconsumed_nested_bits = 19;
+            stats.array.implicit_terminations = 20;
+            stats.array.unconsumed_root_bits = 21;
             totals.absorb(&mut stats, &mut report);
         }
 
@@ -460,12 +468,20 @@ mod tests {
         assert_eq!(totals.truncated_rpcs, 12);
         assert_eq!(totals.rpc_suffix_bits_dropped, 14);
         assert_eq!(totals.cnc_rpcs_emitted, 16);
-        assert_eq!(totals.array_decode_errors, 28);
+        assert_eq!(totals.array_leaf_decode_errors, 44);
         assert_eq!(totals.overlay.decoded_ok, 18);
         assert_eq!(totals.overlay.decoded_err, 20);
         assert_eq!(totals.overlay.raw_or_skip, 22);
         assert_eq!(totals.overlay.not_in_table, 24);
         assert_eq!(totals.overlay.no_field_name, 26);
+        assert_eq!(totals.overlay.handle_conflicts_refused, 28);
+        assert_eq!(totals.array.elements_decoded, 30);
+        assert_eq!(totals.array.fields_emitted, 32);
+        assert_eq!(totals.array.truncations, 34);
+        assert_eq!(totals.array.errors, 36);
+        assert_eq!(totals.array.unconsumed_nested_bits, 38);
+        assert_eq!(totals.array.implicit_terminations, 40);
+        assert_eq!(totals.array.unconsumed_root_bits, 42);
         // First error wins, so a later packet cannot overwrite the one that
         // names the build change.
         assert_eq!(totals.struct_blob_first_error.as_deref(), Some("blob boom"));

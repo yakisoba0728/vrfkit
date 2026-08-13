@@ -250,6 +250,11 @@ pub struct ExportStats {
     /// a point. Zero on every payload the project has measured; a non-zero
     /// value means the parameter grammar no longer describes this build.
     pub rpc_suffix_bits_dropped: u64,
+
+    /// Flattened array leaves with a resolved type whose payload failed that
+    /// decoder. Their raw leaf rows are still emitted; this counts the typed
+    /// values that could not be recovered.
+    pub array_leaf_decode_errors: u64,
 }
 
 impl ExportStats {

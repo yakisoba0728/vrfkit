@@ -581,6 +581,7 @@ mod tests {
     struct TestSink {
         fields: Vec<(u32, u32)>,
         rpcs: Vec<(u32, u32)>,
+        stream_failures: Vec<StreamFailure>,
         unresolved_payloads: Vec<(StreamFailure, Vec<u8>)>,
         opens: Vec<u32>,
         closes: Vec<u32>,
@@ -632,6 +633,10 @@ mod tests {
             _actor_net_guid: NetworkGuid,
             _header: &ContentBlockHeader,
         ) {
+        }
+
+        fn on_stream_failure(&mut self, failure: StreamFailure) {
+            self.stream_failures.push(failure);
         }
 
         fn on_unresolved_class_net_cache_payload(
@@ -1389,8 +1394,9 @@ mod tests {
         assert_eq!(stats.skipped_bits, 7);
     }
 
-    /// A field stream that returns Ok but abandons bits mid-block must land
-    /// those bits in `skipped_bits`. Before the fix, `parse_class_net_cache`
+    /// A field stream that returns Ok but abandons bits mid-block must be a
+    /// stream failure as well as landing those bits in `skipped_bits`. Before
+    /// the fix, `parse_class_net_cache`
     /// did `reader.skip_remaining(); break; return Ok(count)` and the framing
     /// layer only counted `skipped_bits` on Err, so the abandoned bits vanished
     /// from every counter.
@@ -1402,7 +1408,7 @@ mod tests {
     /// payload-length read needs -- so the stream returns Ok(0) after skipping
     /// those 6 bits. They must be accounted.
     #[test]
-    fn class_net_cache_overrun_ok_path_counts_skipped_bits() {
+    fn class_net_cache_overrun_ok_path_is_a_stream_failure() {
         let wire = [0xBF];
         let mut payload = BitReader::with_bit_len(&wire, 7).unwrap();
         let mut scratch = vec![0xFF; 16];
@@ -1426,9 +1432,7 @@ mod tests {
         );
 
         assert_eq!(payload.position(), 7);
-        // Ok path: the block was processed, just malformed internally, so no
-        // hard stream failure is recorded.
-        assert_eq!(stats.rpc_stream_failures, 0);
+        assert_eq!(stats.rpc_stream_failures, 1);
         assert_eq!(stats.rpcs, 0);
         // The 6 abandoned bits must be counted, not silently dropped.
         assert!(
@@ -1436,6 +1440,84 @@ mod tests {
             "abandoned mid-block bits must land in skipped_bits, got {}",
             stats.skipped_bits
         );
+        assert_eq!(sink.stream_failures.len(), 1);
+        assert_eq!(sink.stream_failures[0].kind, StreamKind::Rpc);
+        assert_eq!(sink.stream_failures[0].remaining_bits, 7);
+    }
+
+    /// Invert the short V13.01 byte transform for a test payload. Payloads
+    /// below 32 bits are transformed byte-by-byte, so each byte has exactly
+    /// one preimage and can be found independently without duplicating the
+    /// production transform implementation.
+    fn wire_for_short_decoded(decoded: &[u8], bit_count: usize, actor: u32) -> Vec<u8> {
+        assert!(bit_count < 32);
+        let byte_count = bit_count.div_ceil(8);
+        let mut wire = vec![0u8; byte_count];
+        for offset in 0..byte_count {
+            let mask = if offset + 1 == byte_count && bit_count % 8 != 0 {
+                0xff >> (8 - bit_count % 8)
+            } else {
+                0xff
+            };
+            wire[offset] = (0u8..=u8::MAX)
+                .find(|&candidate| {
+                    let mut trial = wire.clone();
+                    trial[offset] = candidate;
+                    TransformVersion::V1301
+                        .apply(
+                            &mut trial,
+                            bit_count,
+                            vrf_transform::seed_for(bit_count, actor),
+                        )
+                        .unwrap();
+                    trial[offset] & mask == decoded[offset] & mask
+                })
+                .expect("the transform is bijective");
+        }
+        wire
+    }
+
+    #[test]
+    fn rep_layout_overrun_ok_path_is_a_stream_failure() {
+        let mut decoded_bits = Vec::new();
+        decoded_bits.push(false); // property checksum
+        write_int_packed(&mut decoded_bits, 1); // handle 0
+        write_int_packed(&mut decoded_bits, 32); // overruns the remaining 8 bits
+        decoded_bits.extend(std::iter::repeat_n(false, 8));
+        assert_eq!(decoded_bits.len(), 25);
+        let mut decoded = vec![0u8; decoded_bits.len().div_ceil(8)];
+        for (index, bit) in decoded_bits.iter().copied().enumerate() {
+            if bit {
+                decoded[index / 8] |= 1 << (index % 8);
+            }
+        }
+        let wire = wire_for_short_decoded(&decoded, decoded_bits.len(), 2);
+        let mut payload = BitReader::with_bit_len(&wire, decoded_bits.len() as u64).unwrap();
+        let mut scratch = Vec::new();
+        let mut stats = NetStats::default();
+        let mut channels = ChannelTable::default();
+        let mut sink = TestSink::default();
+        let mut stage = Stage {
+            stats: &mut stats,
+            channels: &mut channels,
+            transform: TransformVersion::V1301,
+            scratch: &mut scratch,
+        };
+
+        framing::decode_and_parse_rep_layout(
+            &mut payload,
+            decoded_bits.len(),
+            NetworkGuid(2),
+            &mut stage,
+            &mut sink,
+        );
+
+        assert_eq!(stats.field_stream_failures, 1);
+        assert_eq!(stats.skipped_bits, 24);
+        assert_eq!(sink.stream_failures.len(), 1);
+        assert_eq!(sink.stream_failures[0].kind, StreamKind::RepLayout);
+        assert_eq!(sink.stream_failures[0].consumed_bits, 1);
+        assert_eq!(sink.stream_failures[0].remaining_bits, 24);
     }
 
     /// Verifies that a content-block overrun produces a DiagnosticEvent with
