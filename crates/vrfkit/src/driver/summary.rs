@@ -100,6 +100,10 @@ pub(super) fn print(
         net_stats.actor_opens_missing_spawn
     );
     eprintln!(
+        "  Resource limits:  {} channel / {} partial reassembly",
+        net_stats.channel_state_limit_failures, net_stats.partial_resource_limit_failures
+    );
+    eprintln!(
         "  RepLayout exports: {}",
         net_stats.rep_layout_export_bunches
     );
@@ -231,6 +235,10 @@ fn print_checkpoints(cp: &CheckpointStats) {
         cp.net.actor_closes,
         cp.net.channel_reopens_while_open,
         cp.net.actor_opens_missing_spawn
+    );
+    eprintln!(
+        "  Checkpoint limits: {} channel / {} partial reassembly",
+        cp.net.channel_state_limit_failures, cp.net.partial_resource_limit_failures
     );
     eprintln!(
         "  Checkpoint GUIDs: {} package maps / {} RepLayout exports / {} exported / {} required",

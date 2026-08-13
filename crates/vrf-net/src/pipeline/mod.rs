@@ -51,6 +51,7 @@ use crate::field::FieldSink;
 use crate::net_guid::GuidPathSink;
 use crate::packet::RawPacketReader;
 use crate::stats::NetStats;
+use crate::types::MAX_ACTIVE_CHANNELS;
 use crate::types::NetworkGuid;
 
 use std::collections::HashMap;
@@ -357,6 +358,19 @@ impl ReplicationReader {
             // and the asymmetry is what the fields have always meant.
             let global_index = *global_bunch_index;
             *global_bunch_index += 1;
+            if header.has_channel_limit_error
+                || (!stage.channels.contains_key(&header.ch_index)
+                    && stage.channels.len() >= MAX_ACTIVE_CHANNELS)
+            {
+                stage.stats.channel_state_limit_failures += 1;
+                Self::abandon_bunch(&mut payload.clone(), &mut stage);
+                if header.b_close {
+                    channel::handle_channel_close(header, stage.channels, stage.stats, sink);
+                    Self::retire_destroyed_channel(header, &mut stage, accumulator);
+                }
+                bunch_index_in_packet += 1;
+                return;
+            }
             let slot = stage.channels.entry(header.ch_index).or_default();
             slot.bunch_count += 1;
             let ids = BunchIds {
@@ -412,7 +426,16 @@ impl ReplicationReader {
             );
             *header = result.header;
 
+            stage.stats.skipped_bits += result.discarded_bits as u64;
+            if result.resource_limit.is_some() {
+                stage.stats.partial_resource_limit_failures += 1;
+            }
+
             if !result.should_process {
+                if header.b_close {
+                    channel::handle_channel_close(header, stage.channels, stage.stats, sink);
+                    Self::retire_destroyed_channel(header, stage, accumulator);
+                }
                 return;
             }
 
@@ -442,6 +465,7 @@ impl ReplicationReader {
             // its close row was never emitted, and `actor_closes` never moved.
             if header.b_close {
                 channel::handle_channel_close(header, stage.channels, stage.stats, sink);
+                Self::retire_destroyed_channel(header, stage, accumulator);
             }
             return;
         }
@@ -451,6 +475,7 @@ impl ReplicationReader {
             // Handle close
             if header.b_close {
                 channel::handle_channel_close(header, stage.channels, stage.stats, sink);
+                Self::retire_destroyed_channel(header, stage, accumulator);
             }
             return;
         }
@@ -460,6 +485,23 @@ impl ReplicationReader {
 
         if header.b_close {
             channel::handle_channel_close(header, stage.channels, stage.stats, sink);
+            Self::retire_destroyed_channel(header, stage, accumulator);
+        }
+    }
+
+    fn retire_destroyed_channel(
+        header: &RawBunchHeader,
+        stage: &mut Stage<'_>,
+        accumulator: &mut PartialBunchAccumulator,
+    ) {
+        if header.b_dormant {
+            return;
+        }
+        stage.channels.remove(&header.ch_index);
+        let discarded = accumulator.retire_channel(header.ch_index);
+        if discarded != 0 {
+            stage.stats.partial_errors += 1;
+            stage.stats.skipped_bits += discarded as u64;
         }
     }
 
@@ -841,6 +883,11 @@ mod tests {
             1,
             "one missing-initial error, counted once (not twice)"
         );
+        assert_eq!(
+            reader.stats().skipped_bits,
+            8,
+            "the rejected fragment payload must remain in loss accounting"
+        );
     }
 
     /// A bunch whose header parse fails is counted and abandoned, not silently
@@ -1114,6 +1161,41 @@ mod tests {
         assert_eq!(sink.closes, vec![2], "the close row must be emitted");
     }
 
+    #[test]
+    fn a_rejected_partial_close_still_retires_the_channel() {
+        let mut open_payload = Vec::new();
+        write_int_packed(&mut open_payload, 3);
+        write_empty_actor_block(&mut open_payload);
+        let open = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_open: true,
+                ..Default::default()
+            },
+            &open_payload,
+        );
+        let close = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_close: true,
+                b_partial: true,
+                b_partial_final: true,
+                ..Default::default()
+            },
+            &[true; 8],
+        );
+
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&open, 0, &mut sink);
+        reader.process_packet(&close, 1, &mut sink);
+
+        assert_eq!(reader.stats().partial_errors, 1);
+        assert_eq!(reader.stats().skipped_bits, 8);
+        assert_eq!(reader.stats().actor_closes, 1);
+        assert!(reader.channels.is_empty());
+    }
+
     /// Opening a channel that is already open replaces the actor silently:
     /// every later block on the channel is attributed to the new actor and the
     /// old one never gets a close. The replacement is what the wire says, so it
@@ -1202,6 +1284,125 @@ mod tests {
         assert_eq!(stats.actor_opens, 2);
         assert_eq!(stats.actor_closes, 1);
         assert_eq!(stats.channel_reopens_while_open, 0);
+    }
+
+    #[test]
+    fn a_destroyed_channel_is_retired_before_later_reuse() {
+        let mut open_payload = Vec::new();
+        write_int_packed(&mut open_payload, 3);
+        write_empty_actor_block(&mut open_payload);
+        let open = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_open: true,
+                ..Default::default()
+            },
+            &open_payload,
+        );
+        let close = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_close: true,
+                ..Default::default()
+            },
+            &[],
+        );
+
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        let mut sink = TestSink::default();
+        reader.process_packet(&open, 0, &mut sink);
+        assert_eq!(reader.channels.len(), 1);
+        reader.process_packet(&close, 1, &mut sink);
+        assert!(
+            reader.channels.is_empty(),
+            "destroyed channels must not accumulate"
+        );
+
+        let mut reopened_payload = Vec::new();
+        write_int_packed(&mut reopened_payload, 5);
+        write_empty_actor_block(&mut reopened_payload);
+        let reopened = build_bunch_packet(
+            &BunchSpec {
+                ch_index: 2,
+                b_open: true,
+                ..Default::default()
+            },
+            &reopened_payload,
+        );
+        reader.process_packet(&reopened, 2, &mut sink);
+        assert_eq!(reader.stats().actor_opens, 2);
+        assert_eq!(reader.stats().channel_reopens_while_open, 0);
+        assert_eq!(
+            reader.channels.len(),
+            1,
+            "the channel index remains reusable"
+        );
+    }
+
+    #[test]
+    fn an_open_beyond_the_active_channel_budget_fails_closed() {
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        for ch_index in 0..crate::types::MAX_ACTIVE_CHANNELS as u32 {
+            reader.channels.insert(ch_index, ChannelSlot::default());
+        }
+        let mut payload = Vec::new();
+        write_int_packed(&mut payload, 3);
+        write_empty_actor_block(&mut payload);
+        let payload_len = payload.len() as u64;
+        let packet = build_bunch_packet(
+            &BunchSpec {
+                ch_index: crate::types::MAX_ACTIVE_CHANNELS as u32,
+                b_open: true,
+                ..Default::default()
+            },
+            &payload,
+        );
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        assert_eq!(reader.channels.len(), crate::types::MAX_ACTIVE_CHANNELS);
+        assert_eq!(reader.stats().channel_state_limit_failures, 1);
+        assert_eq!(reader.stats().actor_opens, 0);
+        assert_eq!(reader.stats().bunch_header_failures, 1);
+        assert_eq!(reader.stats().skipped_bits, payload_len);
+    }
+
+    #[test]
+    fn a_non_open_bunch_cannot_grow_the_channel_table_past_its_budget() {
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        for ch_index in 0..crate::types::MAX_ACTIVE_CHANNELS as u32 {
+            reader.channels.insert(ch_index, ChannelSlot::default());
+        }
+        let payload = vec![true, false, true, false, true];
+        let packet = build_bunch_packet(
+            &BunchSpec {
+                ch_index: crate::types::MAX_ACTIVE_CHANNELS as u32,
+                ..Default::default()
+            },
+            &payload,
+        );
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        assert_eq!(reader.channels.len(), crate::types::MAX_ACTIVE_CHANNELS);
+        assert_eq!(reader.stats().channel_state_limit_failures, 1);
+        assert_eq!(reader.stats().bunch_header_failures, 1);
+        assert_eq!(reader.stats().skipped_bits, payload.len() as u64);
+    }
+
+    #[test]
+    fn raw_reliable_state_refusal_is_abandoned_and_counted_once() {
+        let mut reader = ReplicationReader::new("++Ares-Core+release-13.01").unwrap();
+        reader.packet_reader = RawPacketReader::with_max_channels(0);
+        let payload = vec![true, false, true, false, true];
+        let packet = build_bunch_packet(&BunchSpec::default(), &payload);
+        let mut sink = TestSink::default();
+        reader.process_packet(&packet, 0, &mut sink);
+
+        assert!(reader.channels.is_empty());
+        assert_eq!(reader.stats().channel_state_limit_failures, 1);
+        assert_eq!(reader.stats().bunch_header_failures, 1);
+        assert_eq!(reader.stats().skipped_bits, payload.len() as u64);
     }
 
     /// A dynamic actor's spawn block is mandatory. A payload that ends at the

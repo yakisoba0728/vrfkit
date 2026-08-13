@@ -18,7 +18,7 @@ use vrf_net::pipeline::{ActorChannelState, ReplicationSink, StreamFailure};
 use vrf_net::types::NetworkGuid;
 
 use super::intern::put;
-use super::paths::{channel_archetype, set_channel_archetype};
+use super::paths::{channel_archetype, retire_channel_archetype, set_channel_archetype};
 use super::rpc::copy_raw_bits;
 use super::{ExportSink, FieldValues, TABLE};
 
@@ -492,6 +492,9 @@ impl ReplicationSink for ExportSink<'_> {
             spawn_yaw: None,
             spawn_roll: None,
         });
+        if !dormant {
+            retire_channel_archetype(self.channel_state, channel_index);
+        }
     }
 
     fn on_content_block(
@@ -1112,6 +1115,42 @@ mod tests {
         );
         // Both still count as closes: the actor channel did close.
         assert_eq!(sink.stats.actor_closes, 2);
+    }
+
+    #[test]
+    fn destroyed_channel_archetypes_are_retired_but_dormant_ones_survive() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        let opened = |channel_index, actor, archetype| ActorChannelState {
+            channel_index,
+            is_open: true,
+            is_dormant: false,
+            actor_net_guid: NetworkGuid(actor),
+            archetype_net_guid: NetworkGuid(archetype),
+            level_guid: NetworkGuid(0),
+            spawn_location: None,
+            spawn_rotation: None,
+            spawn_scale: None,
+            spawn_velocity: None,
+            open_packet_id: 0,
+        };
+
+        sink.on_actor_open(&opened(3, 42, 8));
+        sink.on_actor_open(&opened(4, 43, 9));
+        sink.on_actor_close(3, NetworkGuid(42), false);
+        sink.on_actor_close(4, NetworkGuid(43), true);
+
+        assert!(
+            channel_archetype(sink.channel_state, 3, NetworkGuid(42)).is_none(),
+            "destroyed channels must not accumulate sink-side archetypes"
+        );
+        assert_eq!(
+            channel_archetype(sink.channel_state, 4, NetworkGuid(43)),
+            Some(NetworkGuid(9)),
+            "dormancy preserves the class needed when the same actor wakes"
+        );
     }
 
     /// Player identity has to survive a game mode that is not Bomb.

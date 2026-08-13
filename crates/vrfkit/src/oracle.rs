@@ -216,6 +216,8 @@ fn verdict_from_stats(stats: &NetStats, replay_data_trailing_bytes: u64) -> Verd
         .saturating_sub(stats.unresolved_rpc_payloads_preserved);
     let failures = stats.malformed_packets
         + stats.unfinished_partials
+        + stats.channel_state_limit_failures
+        + stats.partial_resource_limit_failures
         + stats.bunch_header_failures
         + stats.malformed_content_blocks
         + stats.transform_failures
@@ -328,6 +330,10 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
     println!(
         "  Unfinished partials:  {} ({} bits)",
         stats.unfinished_partials, stats.unfinished_partial_bits
+    );
+    println!(
+        "  State resource limits: {} channel / {} partial reassembly",
+        stats.channel_state_limit_failures, stats.partial_resource_limit_failures
     );
     println!(
         "  ReplayData unread:    {} bytes",
@@ -630,6 +636,16 @@ mod tests {
             NetStats {
                 rep_layout_blocks: 1,
                 unfinished_partials: 1,
+                ..NetStats::default()
+            },
+            NetStats {
+                rep_layout_blocks: 1,
+                partial_resource_limit_failures: 1,
+                ..NetStats::default()
+            },
+            NetStats {
+                rep_layout_blocks: 1,
+                channel_state_limit_failures: 1,
                 ..NetStats::default()
             },
         ] {

@@ -12,6 +12,13 @@ pub const MAX_NET_GUID_RECURSION: u32 = 16;
 /// Maximum number of GUIDs in a single package-map export bunch.
 pub const MAX_GUID_COUNT: u32 = 2048;
 
+/// Maximum number of simultaneously tracked channel indices.
+///
+/// The reference replay peaks at 232 distinct slots. 4,096 is wide enough for
+/// ordinary Unreal channel populations while bounding adversarial IntPacked
+/// indices that otherwise create one hash-table entry per bunch forever.
+pub const MAX_ACTIVE_CHANNELS: usize = 4_096;
+
 /// Reason a channel was closed by the server.
 ///
 /// ```text

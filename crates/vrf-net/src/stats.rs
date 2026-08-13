@@ -135,6 +135,12 @@ pub struct NetStats {
     /// other truncated read; this names the specific shape so a corpus run can
     /// say whether it ever happens.
     pub actor_opens_missing_spawn: u64,
+    /// Bunches refused because a channel-state table was at capacity or a
+    /// reliable sequence could not advance representably.
+    pub channel_state_limit_failures: u64,
+    /// Partial fragments refused because active reassembly state, buffered
+    /// bits, checked arithmetic, or allocation reached its bound.
+    pub partial_resource_limit_failures: u64,
     /// Package-map export bunches processed.
     pub package_map_exports: u64,
     /// Package-map export bunches carrying a RepLayout export instead of GUIDs.
@@ -197,6 +203,8 @@ impl NetStats {
         self.actor_closes += other.actor_closes;
         self.channel_reopens_while_open += other.channel_reopens_while_open;
         self.actor_opens_missing_spawn += other.actor_opens_missing_spawn;
+        self.channel_state_limit_failures += other.channel_state_limit_failures;
+        self.partial_resource_limit_failures += other.partial_resource_limit_failures;
         self.package_map_exports += other.package_map_exports;
         self.rep_layout_export_bunches += other.rep_layout_export_bunches;
         self.exported_guids += other.exported_guids;
@@ -433,12 +441,14 @@ mod tests {
             actor_closes: 23,
             channel_reopens_while_open: 24,
             actor_opens_missing_spawn: 25,
-            package_map_exports: 26,
-            rep_layout_export_bunches: 27,
-            exported_guids: 28,
-            must_be_mapped_guids: 29,
-            diagnostics: vec![dummy_event(30)],
-            diagnostics_dropped: 31,
+            channel_state_limit_failures: 26,
+            partial_resource_limit_failures: 27,
+            package_map_exports: 28,
+            rep_layout_export_bunches: 29,
+            exported_guids: 30,
+            must_be_mapped_guids: 31,
+            diagnostics: vec![dummy_event(32)],
+            diagnostics_dropped: 33,
         };
         let mut totals = NetStats::default();
         for _ in 0..2 {
@@ -470,11 +480,13 @@ mod tests {
         assert_eq!(totals.actor_closes, 46);
         assert_eq!(totals.channel_reopens_while_open, 48);
         assert_eq!(totals.actor_opens_missing_spawn, 50);
-        assert_eq!(totals.package_map_exports, 52);
-        assert_eq!(totals.rep_layout_export_bunches, 54);
-        assert_eq!(totals.exported_guids, 56);
-        assert_eq!(totals.must_be_mapped_guids, 58);
+        assert_eq!(totals.channel_state_limit_failures, 52);
+        assert_eq!(totals.partial_resource_limit_failures, 54);
+        assert_eq!(totals.package_map_exports, 56);
+        assert_eq!(totals.rep_layout_export_bunches, 58);
+        assert_eq!(totals.exported_guids, 60);
+        assert_eq!(totals.must_be_mapped_guids, 62);
         assert_eq!(totals.diagnostics.len(), 2);
-        assert_eq!(totals.diagnostics_dropped, 62);
+        assert_eq!(totals.diagnostics_dropped, 66);
     }
 }

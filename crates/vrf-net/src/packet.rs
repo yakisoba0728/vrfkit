@@ -19,7 +19,7 @@ use vrf_bitio::BitReader;
 
 use crate::bunch::RawBunchHeader;
 use crate::error::{PartialSequenceKind, Result};
-use crate::types::{ChannelCloseReason, MAX_PACKET_SIZE_BITS};
+use crate::types::{ChannelCloseReason, MAX_ACTIVE_CHANNELS, MAX_PACKET_SIZE_BITS};
 
 use std::collections::HashMap;
 
@@ -32,6 +32,8 @@ pub struct PacketReadResult {
     pub is_malformed: bool,
     /// Partial-bunch sequence errors encountered.
     pub partial_error_count: u32,
+    /// Bunches refused because per-channel state could not be admitted or advanced.
+    pub channel_limit_count: u32,
 }
 
 /// Per-channel state for partial bunch tracking within the packet reader.
@@ -39,7 +41,6 @@ pub struct PacketReadResult {
 struct PartialState {
     ch_sequence: i32,
     reliable: bool,
-    cumulative_bits: i32,
     is_complete: bool,
 }
 
@@ -52,15 +53,21 @@ struct PartialState {
 pub struct RawPacketReader {
     partial_bunches: HashMap<u32, PartialState>,
     in_reliable_sequence: HashMap<u32, i32>,
+    max_channels: usize,
 }
 
 impl RawPacketReader {
     /// Create a fresh reader with no channel state.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_max_channels(MAX_ACTIVE_CHANNELS)
+    }
+
+    pub(crate) fn with_max_channels(max_channels: usize) -> Self {
         Self {
             partial_bunches: HashMap::new(),
             in_reliable_sequence: HashMap::new(),
+            max_channels,
         }
     }
 
@@ -84,6 +91,7 @@ impl RawPacketReader {
                 bunch_count: 0,
                 is_malformed: false,
                 partial_error_count: 0,
+                channel_limit_count: 0,
             };
         }
 
@@ -93,6 +101,7 @@ impl RawPacketReader {
                 bunch_count: 0,
                 is_malformed: true,
                 partial_error_count: 0,
+                channel_limit_count: 0,
             };
         }
 
@@ -102,11 +111,13 @@ impl RawPacketReader {
                 bunch_count: 0,
                 is_malformed: true,
                 partial_error_count: 0,
+                channel_limit_count: 0,
             };
         };
 
         let mut bunch_count = 0u32;
         let mut partial_error_count = 0u32;
+        let mut channel_limit_count = 0u32;
 
         while !reader.at_end() {
             let header = self.parse_bunch_header(&mut reader, packet_id);
@@ -117,21 +128,28 @@ impl RawPacketReader {
                         bunch_count,
                         is_malformed: true,
                         partial_error_count,
+                        channel_limit_count,
                     };
                 }
             };
 
             let mut header = header;
+            if header.has_channel_limit_error {
+                channel_limit_count += 1;
+            }
 
             if header.payload_bit_count as u64 > reader.bits_remaining() {
                 return PacketReadResult {
                     bunch_count,
                     is_malformed: true,
                     partial_error_count,
+                    channel_limit_count,
                 };
             }
 
-            self.track_partial_bunch(&mut header, &mut partial_error_count);
+            if !header.has_channel_limit_error {
+                self.track_partial_bunch(&mut header, &mut partial_error_count);
+            }
 
             let payload = reader
                 .sub_reader(header.payload_bit_count as u64)
@@ -139,12 +157,16 @@ impl RawPacketReader {
 
             callback(&mut header, payload);
             bunch_count += 1;
+            if header.b_close && !header.b_dormant {
+                self.retire_channel(header.ch_index);
+            }
         }
 
         PacketReadResult {
             bunch_count,
             is_malformed: false,
             partial_error_count,
+            channel_limit_count,
         }
     }
 
@@ -204,12 +226,19 @@ impl RawPacketReader {
         header.b_partial = reader.read_bit()?;
 
         if header.b_reliable {
-            header.ch_sequence = self
-                .in_reliable_sequence
-                .get(&header.ch_index)
-                .copied()
-                .unwrap_or(0)
-                + 1;
+            // No wrap rule is established for this replay format. Refuse the
+            // bunch at the representational boundary instead of panicking in
+            // debug builds or silently inventing a wrapped sequence in release.
+            header.ch_sequence = match self.in_reliable_sequence.get(&header.ch_index).copied() {
+                Some(previous) => match previous.checked_add(1) {
+                    Some(next) => next,
+                    None => {
+                        header.has_channel_limit_error = true;
+                        previous
+                    }
+                },
+                None => 1,
+            };
         } else if header.b_partial {
             header.ch_sequence = packet_id;
         }
@@ -233,9 +262,15 @@ impl RawPacketReader {
         header.payload_bit_count = reader.read_serialized_int(MAX_PACKET_SIZE_BITS)? as i32;
         header.payload_bit_offset = reader.position() as i64;
 
-        if header.b_reliable {
-            self.in_reliable_sequence
-                .insert(header.ch_index, header.ch_sequence);
+        if header.b_reliable && !header.has_channel_limit_error {
+            if !self.in_reliable_sequence.contains_key(&header.ch_index)
+                && self.in_reliable_sequence.len() >= self.max_channels
+            {
+                header.has_channel_limit_error = true;
+            } else {
+                self.in_reliable_sequence
+                    .insert(header.ch_index, header.ch_sequence);
+            }
         }
 
         Ok(header)
@@ -248,6 +283,13 @@ impl RawPacketReader {
         }
 
         if header.b_partial_initial {
+            if !self.partial_bunches.contains_key(&header.ch_index)
+                && self.partial_bunches.len() >= self.max_channels
+            {
+                *partial_error_count += 1;
+                header.has_partial_error = true;
+                return;
+            }
             // Check for overlapping initial
             if let Some(existing) = self.partial_bunches.get(&header.ch_index) {
                 if !existing.is_complete {
@@ -261,7 +303,6 @@ impl RawPacketReader {
                 PartialState {
                     ch_sequence: header.ch_sequence,
                     reliable: header.b_reliable,
-                    cumulative_bits: header.payload_bit_count,
                     is_complete: false,
                 },
             );
@@ -273,18 +314,23 @@ impl RawPacketReader {
         if let Some(kind) = error {
             *partial_error_count += 1;
             header.has_partial_error = true;
+            if kind == PartialSequenceKind::MismatchedContinuation {
+                self.partial_bunches.remove(&header.ch_index);
+            }
             let _ = kind; // consumed for the count
             return;
         }
 
         if let Some(state) = self.partial_bunches.get_mut(&header.ch_index) {
-            state.cumulative_bits += header.payload_bit_count;
             state.ch_sequence = header.ch_sequence;
 
             if header.b_partial_final {
                 state.is_complete = true;
                 header.is_partial_completed = true;
             }
+        }
+        if header.b_partial_final {
+            self.partial_bunches.remove(&header.ch_index);
         }
     }
 
@@ -313,6 +359,11 @@ impl RawPacketReader {
         }
 
         None
+    }
+
+    fn retire_channel(&mut self, ch_index: u32) {
+        self.partial_bunches.remove(&ch_index);
+        self.in_reliable_sequence.remove(&ch_index);
     }
 }
 
@@ -562,6 +613,11 @@ mod tests {
         assert!(!headers[0].has_partial_error);
         assert!(headers[1].b_partial_final);
         assert!(headers[1].is_partial_completed);
+        assert_eq!(
+            reader.partial_bunches.len(),
+            0,
+            "completed packet-level partial state must be retired"
+        );
     }
 
     #[test]
@@ -643,6 +699,74 @@ mod tests {
         reader.read_packet(&packet, 0, |h, _| seen.push((h.ch_index, h.ch_sequence)));
 
         assert_eq!(seen, vec![(2, 1), (5, 1), (2, 2), (5, 2)]);
+    }
+
+    #[test]
+    fn reliable_sequence_state_refuses_new_channel_keys_past_its_budget() {
+        let mut reader = RawPacketReader::with_max_channels(1);
+        let mut bits = Vec::new();
+        write_reliable_header(&mut bits, 2, 0);
+        write_reliable_header(&mut bits, 5, 0);
+        let packet = build_packet(&bits);
+        let mut headers = Vec::new();
+        let result = reader.read_packet(&packet, 0, |header, _| headers.push(header.clone()));
+
+        assert_eq!(reader.in_reliable_sequence.len(), 1);
+        assert_eq!(result.channel_limit_count, 1);
+        assert!(!headers[0].has_channel_limit_error);
+        assert!(headers[1].has_channel_limit_error);
+    }
+
+    #[test]
+    fn reliable_sequence_overflow_fails_closed_without_panicking() {
+        let mut reader = RawPacketReader::new();
+        reader.in_reliable_sequence.insert(2, i32::MAX);
+        let mut bits = Vec::new();
+        write_reliable_header(&mut bits, 2, 0);
+        let mut headers = Vec::new();
+        let result = reader.read_packet(&build_packet(&bits), 0, |header, _| {
+            headers.push(header.clone())
+        });
+
+        assert_eq!(result.channel_limit_count, 1);
+        assert!(headers[0].has_channel_limit_error);
+        assert_eq!(reader.in_reliable_sequence.get(&2), Some(&i32::MAX));
+    }
+
+    #[test]
+    fn destroying_then_reusing_a_reliable_channel_restarts_its_state() {
+        let mut reader = RawPacketReader::new();
+        let mut open = Vec::new();
+        write_reliable_header(&mut open, 2, 0);
+        let mut seen = Vec::new();
+        reader.read_packet(&build_packet(&open), 0, |header, _| {
+            seen.push(header.ch_sequence)
+        });
+
+        let mut close = Vec::new();
+        write_bit(&mut close, true); // control
+        write_bit(&mut close, false); // open
+        write_bit(&mut close, true); // close
+        write_serialized_int(&mut close, 0, ChannelCloseReason::MAX);
+        write_bit(&mut close, false); // paused
+        write_bit(&mut close, true); // reliable
+        write_int_packed(&mut close, 2);
+        write_bit(&mut close, false); // exports
+        write_bit(&mut close, false); // mapped
+        write_bit(&mut close, false); // partial
+        write_bit(&mut close, false); // valorant
+        write_fname(&mut close, 1);
+        write_payload_size(&mut close, 0);
+        reader.read_packet(&build_packet(&close), 1, |header, _| {
+            seen.push(header.ch_sequence)
+        });
+
+        let mut reused = Vec::new();
+        write_reliable_header(&mut reused, 2, 0);
+        reader.read_packet(&build_packet(&reused), 2, |header, _| {
+            seen.push(header.ch_sequence)
+        });
+        assert_eq!(seen, [1, 2, 1]);
     }
 
     #[test]

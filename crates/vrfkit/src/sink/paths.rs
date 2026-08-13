@@ -764,9 +764,9 @@ fn resolve_known_subobject_class_path(object_path: &str, want: GroupKind) -> Opt
 /// in that state: the fields get names, the values get types, and the rows are
 /// exported under a class the actor never had.
 ///
-/// Keying on the actor is strictly narrower than clearing the entry on close.
-/// A channel that closes for dormancy and re-opens for the same actor need not
-/// repeat its archetype, and that case still resolves exactly as it did.
+/// Destroyed channels are removed; dormancy closes retain the entry because a
+/// wake-up for the same actor need not repeat its archetype. The actor stamp is
+/// still load-bearing while a dormant entry survives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ChannelArchetype {
     actor: NetworkGuid,
@@ -801,6 +801,13 @@ pub(super) fn channel_archetype(
         .get(&channel_index)
         .filter(|entry| entry.actor == actor)
         .map(|entry| entry.archetype)
+}
+
+/// Retire the archetype state owned by a destroyed channel index.
+pub(super) fn retire_channel_archetype(state: &mut ChannelState, channel_index: u32) {
+    if state.archetypes.remove(&channel_index).is_some() {
+        state.note_resolution_input_changed();
+    }
 }
 
 #[cfg(test)]
