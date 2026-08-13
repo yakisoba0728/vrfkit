@@ -131,6 +131,12 @@ ORACLE PASS RATE: 100.000000%
         self.assertIn("Branch", entry["error"])
         self.assertTrue(guard.unpinnable(result))
 
+    def test_uppercase_vrf_extension_is_measured(self):
+        result = self.run_measure(f"print({self.SUMMARY!r})\n", ["MATCH.VRF"])
+
+        self.assertEqual(set(result["per_file"]), {"MATCH.VRF"})
+        self.assertNotIn("error", result["per_file"]["MATCH.VRF"])
+
 
 class RequiredInputTests(unittest.TestCase):
     def test_explicit_required_mode_cannot_report_missing_corpus_as_skip(self):

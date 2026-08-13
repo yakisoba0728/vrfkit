@@ -31,6 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from validate_corpus import parse_oracle_output  # noqa: E402
+from corpus_scan import find_replays  # noqa: E402
 
 if __package__:
     from .atomic_io import atomic_write_text
@@ -43,7 +44,7 @@ DEFAULT_EXE = REPO / "target" / "release" / "vrfkit.exe"
 
 def measure(exe: Path, root: Path) -> dict:
     """Run the oracle over every .vrf under root and collect the numbers."""
-    files = sorted(root.rglob("*.vrf"))
+    files = find_replays(root, recursive=True)
     per_file = {}
     totals = {"blocks": 0, "fields": 0, "rpcs": 0, "malformed": 0, "skipped": 0}
     branches = {}

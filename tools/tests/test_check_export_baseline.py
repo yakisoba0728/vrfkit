@@ -11,6 +11,7 @@ identities. The other twenty had nothing.
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -105,6 +106,85 @@ class RequiredInputTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("required", output.getvalue().lower())
         self.assertNotIn("SKIP:", output.getvalue())
+
+
+class TransactionalOutputTests(unittest.TestCase):
+    SUMMARY = """
+Total content blocks: 1
+Fields emitted: 1
+RPCs emitted: 1
+Movement rows: 1
+Event rows: 1
+NetGUID rows: 1
+Actor opens: 1
+Actor closes: 0
+"""
+
+    def run_fake_export(self, *, fail: bool):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        replay = root / "match.vrf"
+        replay.write_bytes(b"replay")
+        output = root / "published"
+        output.mkdir()
+        sentinel = output / "complete.sentinel"
+        sentinel.write_text("previous complete output", encoding="utf-8")
+
+        script = root / "export"
+        if fail:
+            script.write_text(
+                "import sys\n"
+                "print('deliberate export failure', file=sys.stderr)\n"
+                "raise SystemExit(7)\n",
+                encoding="utf-8",
+            )
+        else:
+            script.write_text(
+                "import os, shutil, sys\n"
+                "from pathlib import Path\n"
+                "import pyarrow as pa\n"
+                "import pyarrow.parquet as pq\n"
+                "out = Path(sys.argv[sys.argv.index('--out') + 1])\n"
+                "stage = out.parent / (out.name + '.stage')\n"
+                "backup = out.parent / (out.name + '.backup')\n"
+                "stage.mkdir()\n"
+                "for name in ('actors', 'fields', 'movement', 'net_guids', 'events'):\n"
+                "    pq.write_table(pa.table({'value': [1]}), stage / (name + '.parquet'))\n"
+                "os.replace(out, backup)\n"
+                "os.replace(stage, out)\n"
+                "shutil.rmtree(backup)\n"
+                f"print({self.SUMMARY!r})\n",
+                encoding="utf-8",
+            )
+
+        previous = Path.cwd()
+        os.chdir(root)
+        try:
+            if fail:
+                with self.assertRaises(SystemExit) as caught:
+                    guard.measure(Path(sys.executable), replay, output)
+                self.assertIn("exit 7", str(caught.exception))
+                self.assertIn("deliberate export failure", str(caught.exception))
+                result = None
+            else:
+                result = guard.measure(Path(sys.executable), replay, output)
+        finally:
+            os.chdir(previous)
+        return output, sentinel, result
+
+    def test_failed_export_preserves_previous_complete_output(self):
+        _, sentinel, _ = self.run_fake_export(fail=True)
+
+        self.assertEqual(sentinel.read_text(encoding="utf-8"),
+                         "previous complete output")
+
+    def test_successful_export_replaces_previous_complete_output(self):
+        output, sentinel, result = self.run_fake_export(fail=False)
+
+        self.assertFalse(sentinel.exists())
+        self.assertTrue((output / "fields.parquet").is_file())
+        self.assertEqual(result["parquet"]["fields"]["rows"], 1)
 
 
 if __name__ == "__main__":

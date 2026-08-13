@@ -62,6 +62,21 @@ class CorpusScan:
     excluded: int
 
 
+def find_replays(root: Path, recursive: bool) -> list[Path]:
+    """Return replay files using the wire-format suffix, case-insensitively.
+
+    ``Path.glob("*.vrf")`` inherits the host filesystem's case rules.  That
+    made ``MATCH.VRF`` part of a corpus on Windows but invisible on POSIX.
+    Enumerating candidates and classifying the suffix gives both hosts the
+    same answer (and excludes a directory merely named ``something.vrf``).
+    """
+    candidates = root.rglob("*") if recursive else root.glob("*")
+    return sorted(
+        path for path in candidates
+        if path.is_file() and path.suffix.casefold() == ".vrf"
+    )
+
+
 def discover(root: Path, recursive: bool) -> CorpusScan:
     """Find the `.vrf` files that make up "the corpus" rooted at `root`.
 
@@ -69,12 +84,12 @@ def discover(root: Path, recursive: bool) -> CorpusScan:
     guess -- the cost is one extra `rglob` on the non-recursive path, which is
     negligible next to the `vrfkit` subprocess each file goes on to cost.
     """
-    top = sorted(root.glob("*.vrf"))
+    top = find_replays(root, recursive=False)
     if recursive:
-        everything = sorted(root.rglob("*.vrf"))
+        everything = find_replays(root, recursive=True)
         return CorpusScan(files=everything, scanned_root=root, recursive=True,
                           excluded=0)
-    everything = sorted(root.rglob("*.vrf"))
+    everything = find_replays(root, recursive=True)
     excluded = len(everything) - len(top)
     return CorpusScan(files=top, scanned_root=root, recursive=False,
                       excluded=excluded)

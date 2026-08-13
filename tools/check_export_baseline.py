@@ -54,7 +54,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -200,19 +199,16 @@ def unpinnable(current: dict) -> list[str]:
 def measure(exe: Path, replay: Path, out_dir: Path, checkpoints: bool = False) -> dict:
     """Export one replay and collect the summary counters and Parquet shape.
 
-    The output directory is deleted first. Exporting over a previous run would
-    leave a file the exporter has stopped writing sitting there with last
-    run's contents, and both checks below would then read it and pass -- the
-    exact way "a stale file makes a matching hash meaningless" applies here.
+    The exporter transactionally replaces the complete output directory.  Do
+    not delete it here first: on export failure the previous complete result
+    must remain available, while a successful replacement removes stale files
+    by construction.
 
     `checkpoints` runs the optional Checkpoint pass and pins its counters and
     its table too. That path is off by default in the exporter, and an
     unguarded optional path is the shape of every silent change this script
     exists to prevent -- so it gets a baseline of its own rather than none.
     """
-    shutil.rmtree(out_dir, ignore_errors=True)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
     cmd = [str(exe), "export", str(replay), "--out", str(out_dir)]
     if checkpoints:
         cmd.append("--checkpoints")
@@ -277,7 +273,8 @@ def main() -> int:
     ap.add_argument("--replay", type=Path, default=None,
                     help="overrides the replay path stored in the baseline")
     ap.add_argument("--out", type=Path, default=None,
-                    help="export directory, DELETED first (default: out/export_check)")
+                    help="transactionally replaced export directory "
+                         "(default: out/export_check)")
     ap.add_argument("--update", action="store_true",
                     help="rewrite the baseline from the current numbers")
     ap.add_argument("--checkpoints", action="store_true",

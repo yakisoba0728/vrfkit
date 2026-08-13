@@ -79,6 +79,38 @@ class DiscoverTests(unittest.TestCase):
             self.assertEqual(flat.excluded, 0)
             self.assertEqual([p.name for p in flat.files], [p.name for p in deep.files])
 
+    def test_uppercase_extension_is_a_replay_on_case_sensitive_filesystems(self):
+        """POSIX glob("*.vrf") does not match MATCH.VRF."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            lower = root / "lower.vrf"
+            upper = root / "UPPER.VRF"
+            lower.write_bytes(b"")
+            upper.write_bytes(b"")
+
+            class CaseSensitiveRoot:
+                """Expose POSIX-style glob results even when this test runs on Windows."""
+
+                def glob(self, pattern):
+                    self_pattern = pattern
+                    if self_pattern == "*.vrf":
+                        return iter([lower])
+                    if self_pattern == "*":
+                        return iter([lower, upper])
+                    raise AssertionError(self_pattern)
+
+                def rglob(self, pattern):
+                    self_pattern = pattern
+                    if self_pattern == "*.vrf":
+                        return iter([lower])
+                    if self_pattern == "*":
+                        return iter([lower, upper])
+                    raise AssertionError(self_pattern)
+
+            scan = corpus_scan.discover(CaseSensitiveRoot(), recursive=True)
+
+        self.assertEqual({p.name for p in scan.files}, {"UPPER.VRF", "lower.vrf"})
+
 
 class ScopeLineTests(unittest.TestCase):
     """The line a reader sees is the only thing that has to prove the scope."""

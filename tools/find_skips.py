@@ -17,9 +17,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+from corpus_scan import find_replays as _find_replays
+
 SKIPPED = re.compile(r"Skipped bits:\s+(\d+)")
 MALFORMED = re.compile(r"Malformed framing:\s+(\d+)")
 RATE = re.compile(r"ORACLE PASS RATE:\s+([\d.]+)%")
+
+
+def find_replays(root: Path, limit: int | None) -> list[Path]:
+    """Discover the same case-insensitive recursive replay set as corpus tools."""
+    return _find_replays(root, recursive=True)[:limit]
 
 
 def main(argv: list[str]) -> int:
@@ -27,7 +34,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit(__doc__)
     exe, root = Path(argv[1]), Path(argv[2])
     limit = int(argv[3]) if len(argv) > 3 else None
-    files = sorted(root.rglob("*.vrf"))[:limit]
+    files = find_replays(root, limit)
 
     offenders: list[tuple[int, int, float, str]] = []
     total_skipped = 0
