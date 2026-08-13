@@ -2443,7 +2443,18 @@ def _publish_bundle(staging: Path, output_dir: Path) -> None:
             os.replace(backup, output_dir)
         raise
     if backup.exists():
-        remove_tree(backup, parent)
+        try:
+            remove_tree(backup, parent)
+        except OSError as exc:
+            # os.replace(staging, output_dir) is the commit point.  Cleanup is
+            # best-effort after that: reporting conversion failure here would
+            # be false (and callers might retry over the newly published
+            # bundle).  Leave the uniquely named old bundle recoverable.
+            print(
+                f"warning: published {output_dir}, but could not remove old "
+                f"backup {backup}: {exc}",
+                file=sys.stderr,
+            )
 
 
 def convert(export_dir: Path, output_dir: Path, *, verbose: bool = False):
