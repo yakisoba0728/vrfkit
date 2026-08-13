@@ -144,6 +144,8 @@ def main() -> int:
                     help="overrides the corpus path stored in the baseline")
     ap.add_argument("--update", action="store_true",
                     help="rewrite the baseline from the current numbers")
+    ap.add_argument("--require-input", action="store_true",
+                    help="fail instead of skipping when the corpus is absent/empty")
     args = ap.parse_args()
 
     if not args.exe.exists():
@@ -160,12 +162,19 @@ def main() -> int:
         if corpus_dir:
             corpus = Path(corpus_dir) / corpus
     if not corpus or not corpus.exists():
+        if args.require_input or os.environ.get("VRFKIT_REQUIRE_CORPUS"):
+            print(f"REQUIRED INPUT MISSING: corpus not present ({corpus})",
+                  file=sys.stderr)
+            return 2
         print(f"SKIP: corpus not present ({corpus})")
         print("      these replays are machine-local; nothing to guard here.")
         return 0
 
     current = measure(args.exe, corpus)
     if not current["per_file"]:
+        if args.require_input or os.environ.get("VRFKIT_REQUIRE_CORPUS"):
+            print(f"REQUIRED INPUT MISSING: no .vrf under {corpus}", file=sys.stderr)
+            return 2
         print(f"SKIP: no .vrf under {corpus}")
         return 0
 

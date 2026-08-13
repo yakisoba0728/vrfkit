@@ -8,7 +8,11 @@ a summary that STOPPED printing a counter matched the baseline from then on.
 The cross-check already catches this for the four counters that are Parquet row
 identities. The other twenty had nothing.
 """
+import contextlib
+import io
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -22,7 +26,7 @@ def measurement(**overrides):
     counters.update(overrides)
     return {
         "counters": counters,
-        "parquet": {name: {"rows": 1, "bytes": 100}
+        "parquet": {name: {"rows": 1, "bytes": 100, "sha256": "a" * 64}
                     for name in guard.PARQUET_FILES},
     }
 
@@ -64,6 +68,43 @@ class CrossCheckTests(unittest.TestCase):
         current = measurement(movement_rows=None)
         lies = guard.cross_checks(current["counters"], current["parquet"])
         self.assertTrue(any("did not print it" in l for l in lies))
+
+
+class ContentIdentityTests(unittest.TestCase):
+    def test_equal_size_different_bytes_do_not_satisfy_byte_identity(self):
+        baseline = measurement()
+        current = measurement()
+        current["parquet"]["fields"]["sha256"] = "b" * 64
+
+        problems = guard.diff(baseline, current)
+
+        self.assertTrue(any("fields.parquet sha256" in p for p in problems), problems)
+
+
+class RequiredInputTests(unittest.TestCase):
+    def test_explicit_required_mode_cannot_report_missing_replay_as_skip(self):
+        with tempfile.TemporaryDirectory() as temp:
+            baseline = Path(temp) / "baseline.json"
+            baseline.write_text(
+                json.dumps({"replay": "missing.vrf"}), encoding="utf-8"
+            )
+            argv = sys.argv
+            sys.argv = [
+                "check_export_baseline.py",
+                "--baseline", str(baseline),
+                "--exe", sys.executable,
+                "--require-input",
+            ]
+            output = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+                    code = guard.main()
+            finally:
+                sys.argv = argv
+
+        self.assertEqual(code, 2)
+        self.assertIn("required", output.getvalue().lower())
+        self.assertNotIn("SKIP:", output.getvalue())
 
 
 if __name__ == "__main__":
