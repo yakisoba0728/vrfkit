@@ -255,7 +255,7 @@ impl NetGuidCache {
     /// group path actually ends with `_ClassNetCache`.
     fn lookup_cnc_leaf(&self, leaf: &str) -> Option<&NetFieldExportGroup> {
         let group = self.leaf_group(leaf)?;
-        if group.path.ends_with("_ClassNetCache") {
+        if group.path.ends_with(crate::path::CLASS_NET_CACHE_SUFFIX) {
             Some(group)
         } else {
             None

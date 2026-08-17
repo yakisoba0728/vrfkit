@@ -457,7 +457,7 @@ impl ExportSink<'_> {
         function_name: &str,
     ) -> Option<Arc<str>> {
         // Strategy 1: direct path construction from CNC group.
-        if let Some(base) = current_group_path.strip_suffix("_ClassNetCache") {
+        if let Some(base) = current_group_path.strip_suffix(vrf_schema::CLASS_NET_CACHE_SUFFIX) {
             let candidate = format!("{base}:{function_name}");
             if cache.get_group_by_path(&candidate).is_some() {
                 return Some(Arc::from(candidate));

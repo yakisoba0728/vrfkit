@@ -72,7 +72,10 @@ pub use error::SchemaError;
 pub use export::{NetFieldExport, NetFieldExportGroup};
 pub use guid::{ExportFlags, NetGuidEntry, NetworkGuid};
 pub use hash::{FxHashMap, FxHashSet};
-pub use path::{find_class_net_cache_key, find_replay_path_key, for_each_replay_path_key};
+pub use path::{
+    CLASS_NET_CACHE_SUFFIX, find_class_net_cache_key, find_replay_path_key,
+    for_each_replay_path_key,
+};
 pub use reader::{read_export_guids, read_net_field_exports};
 
 #[cfg(feature = "checkpoint")]

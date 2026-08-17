@@ -9,7 +9,16 @@
 //! The rules are **ordinal exact-match** (case-sensitive, no regex, no fuzzy
 //! matching), faithfully replicating `Replay.Unreal/Parsing/ReplayPath.cs`.
 
-const CLASS_NET_CACHE_SUFFIX: &str = "_ClassNetCache";
+/// The suffix that marks an export group as an RPC (ClassNetCache) group.
+///
+/// Public because it is a wire-format discriminator, not an implementation
+/// detail: every consumer that has to tell an RPC group from a replicated
+/// property group tests for exactly this suffix, and the Python adapter under
+/// `tools/` carries its own copy. `crates/vrfkit/tests/adapter_contract.rs`
+/// pins the two together, so renaming this constant's VALUE fails the Rust
+/// suite instead of silently reclassifying every RPC downstream as a
+/// replicated property.
+pub const CLASS_NET_CACHE_SUFFIX: &str = "_ClassNetCache";
 const CORE_SEGMENT: &str = "/_Core/";
 const CHARACTERS_ROOT: &str = "/Game/Characters/";
 const DEFAULT_OBJECT_PREFIX: &str = "Default__";

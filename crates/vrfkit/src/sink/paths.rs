@@ -698,7 +698,7 @@ impl GroupKind {
 }
 
 fn is_class_net_cache(group: &NetFieldExportGroup) -> bool {
-    group.path.ends_with("_ClassNetCache")
+    group.path.ends_with(vrf_schema::CLASS_NET_CACHE_SUFFIX)
 }
 
 /// A path with no separators and no `<unknown:` marker -- the shape the
