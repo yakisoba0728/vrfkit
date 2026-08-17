@@ -80,6 +80,13 @@ UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME = (
     "__vrfkit_unresolved_class_net_cache_payload__"
 )
 
+# The group-path suffix that separates an RPC group from a replicated property
+# group. Shared with vrf-schema's CLASS_NET_CACHE_SUFFIX; the two are pinned
+# together by crates/vrfkit/tests/adapter_contract.rs, because a drift here
+# reclassifies every RPC as a property and yields a bundle that looks complete
+# and contains no kills, damage or abilities.
+CLASS_NET_CACHE_SUFFIX = "_ClassNetCache"
+
 # Substrings that mark a firing state as the weapon's secondary fire cycle.
 # Copied from ValorantShotFireModeResolver.AlternateMarkers; matched
 # case-insensitively against every object path on the FiringState outer chain.
@@ -262,6 +269,10 @@ class _Tally(dict):
             "manifest.json absent (replay metadata substituted)",
         "empty_gameplay_tag_table":
             "shots decoded with no gameplay-tag table (fields keyed by index)",
+        "events_time_ms_regressions":
+            "events whose time_ms is lower than the line before (tie-break unsound)",
+        "upstream_row_count_disagreement":
+            "row counts the export declared that its own tables contradict",
     }
 
     def __init__(self):
@@ -583,22 +594,27 @@ def _resolve_equippable(net_guid, guid_outer, guid_path, guid_class):
 
 
 def _load_net_guids(export_dir):
-    """Read net_guids.parquet into (guid -> outer, guid -> path) dicts.
+    """Read net_guids.parquet into (guid -> outer, guid -> path, row count).
 
-    Returns empty dicts when the file is absent, so bundles produced by an
-    older vrfkit still convert -- weapon identity is simply left unresolved
-    rather than the run failing.
+    Returns empty dicts and a `None` row count when the file is absent, so
+    bundles produced by an older vrfkit still convert -- weapon identity is
+    simply left unresolved rather than the run failing. `None` rather than 0
+    because "there was no table" and "the table was empty" are different
+    facts, and only the second one can be compared with a declared count.
     """
     path = export_dir / "net_guids.parquet"
     if not path.exists():
-        return {}, {}
+        return {}, {}, None
     table = pq.read_table(path)
     guids = table.column("net_guid").to_pylist()
     paths = table.column("path").cast("string").to_pylist()
     outers = table.column("outer_net_guid").to_pylist()
     guid_outer = {g: o for g, o in zip(guids, outers) if o is not None}
     guid_path = {g: p for g, p in zip(guids, paths) if p}
-    return guid_outer, guid_path
+    # The row count is returned separately from the two dicts: both drop rows
+    # (a null outer, an empty path), so `len(guid_path)` is NOT the table's
+    # height and cannot be compared with what the export manifest declared.
+    return guid_outer, guid_path, len(table)
 
 
 # ---------------------------------------------------------------------------
@@ -1357,10 +1373,10 @@ def _group_path_to_class(gp: str) -> str:
     '/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C').
     For ClassNetCache RPCs, strip the _ClassNetCache suffix to get the class.
     """
-    if '_ClassNetCache' in gp:
+    if CLASS_NET_CACHE_SUFFIX in gp:
         # e.g. '/Script/ShooterGame.DamageableComponent_ClassNetCache'
         # -> '/Script/ShooterGame.DamageableComponent'
-        return gp.replace('_ClassNetCache', '')
+        return gp.replace(CLASS_NET_CACHE_SUFFIX, '')
     return gp
 
 
@@ -1569,16 +1585,69 @@ def _normalize_rpc_param(rpc_name: str, param: str, value, is_raw: bool) -> dict
 # order the phases produced them. Keep the phase order (actors, properties,
 # RPCs) and the append order inside each phase.
 # ---------------------------------------------------------------------------
-def _write_manifest(manifest: dict, output_dir: Path):
-    """Write the minimal manifest compute_metrics needs."""
+#: Bump when the bundle manifest's shape changes in a way a consumer must
+#: notice. valplay's resume marker records it, so an older bundle is rebuilt
+#: instead of being read under the newer contract.
+#:
+#: 1 -> 2: `quality`, `net_field_export_groups` and `adapter` were added. A
+#: bundle at 1 carries no upstream accounting at all, so a consumer cannot
+#: distinguish "the export was complete" from "nobody counted".
+BUNDLE_SCHEMA_VERSION = 2
+
+
+def _upstream_row_check(declared, observed) -> dict:
+    """One declared-vs-observed row count, and whether it can be judged.
+
+    `agrees` is `None`, not `True`, when the export declared nothing. An
+    absent declaration is a fact about the export, and reporting it as
+    agreement would let a manifest with no accounting in it certify itself.
+    """
+    return {
+        "declared": declared,
+        "observed": observed,
+        "agrees": None if declared is None else declared == observed,
+    }
+
+
+def _write_manifest(manifest: dict, output_dir: Path, adapter: dict):
+    """Write the bundle manifest, forwarding vrfkit's own accounting.
+
+    Three things cross this seam that used to stop here:
+
+    * ``quality`` -- vrfkit's complete loss/fallback accounting, copied
+      through VERBATIM. Not re-derived, not summarised, not defaulted: the
+      point of forwarding it is that the consumer reads the producer's own
+      numbers, and a value this adapter invented would be the opposite of
+      that. Absent upstream, it is written as ``null`` -- a visible absence,
+      never a plausible zero.
+    * ``net_field_export_groups`` -- the replay's handle -> field-name
+      dictionary, also verbatim. It is the only thing in the export that can
+      turn a wire handle back into a name, and valplay's `_roundinfo` decoder
+      has been naming handles 41-45 from a hardcoded list while citing this
+      table as its source. With the table present the naming becomes a check
+      instead of an assumption.
+    * ``adapter`` -- what THIS process measured, kept in its own object so it
+      can never be mistaken for an upstream figure. It carries the exact
+      identities a consumer can re-verify (line counts) and the declared-vs-
+      observed comparisons this adapter was able to make.
+
+    ``players`` is deliberately NOT forwarded; see the note in `_convert_into`.
+    """
+    quality = manifest.get("quality")
+    groups = manifest.get("net_field_export_groups")
     out_manifest = {
         "replay_version": manifest.get("replay_version", "unknown"),
         "duration_ms": manifest.get("duration_ms", 0),
         "replay_build": manifest.get("replay_build", ""),
         "replay_changelist": manifest.get("replay_changelist", 0),
         "source_file": manifest.get("source_file", ""),
+        "source_size_bytes": manifest.get("source_size_bytes"),
         # Mark as vrfkit-converted
         "converter": "vrfkit/tools/to_valplay_bundle.py",
+        "bundle_schema_version": BUNDLE_SCHEMA_VERSION,
+        "quality": quality if isinstance(quality, dict) else None,
+        "net_field_export_groups": groups if isinstance(groups, list) else None,
+        "adapter": adapter,
     }
     (output_dir / "manifest.json").write_text(
         json.dumps(out_manifest, indent=2), encoding='utf-8'
@@ -1732,6 +1801,11 @@ def _group_rows(cols: _FieldColumns):
     # For RPCs: (packet_id, actor_net_guid, group_path, handle)
     prop_groups = defaultdict(list)
     rpc_groups = defaultdict(list)
+    # Counted, not merely skipped. vrfkit reports the same quantity as
+    # `quality.net.unresolved_rpc_payloads_preserved`; recording this
+    # adapter's own count of the rows it actually saw makes the two
+    # comparable instead of leaving the skip invisible.
+    unresolved_cnc_rows = 0
 
     col_time = cols.time_ms
     col_pid = cols.packet_id
@@ -1743,6 +1817,7 @@ def _group_rows(cols: _FieldColumns):
 
     for i in range(cols.n_rows):
         if col_fn[i] == UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME:
+            unresolved_cnc_rows += 1
             continue
 
         actor = col_actor[i]
@@ -1755,7 +1830,7 @@ def _group_rows(cols: _FieldColumns):
             actor_first[actor] = (ms, pid, gp)
         actor_last[actor] = (ms, pid)
 
-        is_rpc = '_ClassNetCache' in gp
+        is_rpc = CLASS_NET_CACHE_SUFFIX in gp
         if is_rpc:
             handle = col_handle[i]
             rpc_groups[(pid, actor, gp, handle)].append(i)
@@ -1765,7 +1840,7 @@ def _group_rows(cols: _FieldColumns):
             # the inventory look like a single slot.
             prop_groups[(pid, actor, col_obj[i], gp)].append(i)
 
-    return actor_first, actor_last, prop_groups, rpc_groups
+    return actor_first, actor_last, prop_groups, rpc_groups, unresolved_cnc_rows
 
 
 def _build_actor_events(export_dir: Path, actor_first: dict, actor_last: dict,
@@ -2119,10 +2194,36 @@ def _build_rpc_events(cols: _FieldColumns, rpc_groups: dict,
     return events, shot_count, resolved_weapon_count
 
 
-def _write_events(events: list, output_dir: Path, verbose: bool) -> int:
+def _write_events(events: list, output_dir: Path, verbose: bool) -> tuple[int, int]:
     """Sort by (packet_id, time_ms) and write events.ndjson.
 
-    The sort is stable, so ties keep the order the phases appended them in.
+    Returns ``(events_written, time_ms_regressions)``.
+
+    # The ordering contract this file owns
+
+    `packet_id` is the replay's own global packet counter and is the only
+    total order the wire actually provides: vrfkit stamps it from a
+    monotonically increasing driver counter (`driver/mod.rs`, `total_packets`)
+    and never sorts, so append order IS packet order. Sorting on it here is
+    therefore a re-assertion, not a reordering, and the sort is stable, so
+    events tying on `(packet_id, time_ms)` keep the order the phases appended
+    them in -- actors, then properties, then RPCs, and inside each phase the
+    insertion order of the grouping dicts, which is the row order of
+    fields.parquet, which is wire order.
+
+    `time_ms` is NOT part of that guarantee and must not be treated as one.
+    It is derived per demo frame from a raw `read_f32` with no validation
+    (`vrf-frame/src/lib.rs`), and a frame whose time is not finite yields
+    `time_ms = 0`. A single such frame mid-replay makes `time_ms`
+    non-monotonic in file order.
+
+    That matters downstream: valplay orders same-millisecond events by
+    `(time_ms, line_index)`, which is a sound total order only while `time_ms`
+    is non-decreasing in file order. So the regression is COUNTED here rather
+    than repaired -- repairing it would mean reordering away from packet
+    order, i.e. away from the wire -- and the count is published in the bundle
+    manifest so the consumer can see that its tie-break is standing on sand
+    instead of assuming it is not.
     """
     t0 = time.time()
     if verbose:
@@ -2130,21 +2231,36 @@ def _write_events(events: list, output_dir: Path, verbose: bool) -> int:
     events.sort(key=lambda x: (x[0], x[1]))
 
     events_written = 0
+    regressions = 0
+    previous_ms = None
     encode = _JSON.encode
     with open(output_dir / "events.ndjson", 'w', encoding='utf-8') as f:
         write = f.write
-        for _, _, evt in events:
+        for _, time_ms, evt in events:
+            if previous_ms is not None and time_ms < previous_ms:
+                regressions += 1
+            previous_ms = time_ms
             write(encode(evt))
             write('\n')
             events_written += 1
 
     if verbose:
         print(f"  {events_written:,} events written in {time.time()-t0:.1f}s")
-    return events_written
+        if regressions:
+            print(f"  {regressions:,} time_ms regressions in written order")
+    return events_written, regressions
 
 
-def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> int:
-    """Write movement.ndjson, keeping the last sub-move per (packet, character)."""
+def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> tuple:
+    """Write movement.ndjson, keeping the last sub-move per (packet, character).
+
+    Returns ``(rows_read, rows_written)``. They differ by the intra-packet
+    sub-move collapse below, so only `rows_read` can be compared with what the
+    export manifest declared; publishing `rows_written` against
+    `quality.movement_rows` would report every healthy replay as lossy.
+    `rows_read` is `None` when the table is absent, which is a different fact
+    from an empty one.
+    """
     if not movement_path.exists():
         # Truncate rather than return. `convert` reuses an existing output
         # directory, so converting a replay with no movement table over an
@@ -2156,7 +2272,7 @@ def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> int
         (output_dir / "movement.ndjson").write_text("", encoding='utf-8')
         if verbose:
             print("  movement.parquet not found, movement.ndjson written empty")
-        return 0
+        return None, 0
 
     t0 = time.time()
     if verbose:
@@ -2287,7 +2403,7 @@ def _write_movement(movement_path: Path, output_dir: Path, verbose: bool) -> int
 
     if verbose:
         print(f"  {movement_written:,} movement rows written in {time.time()-t0:.1f}s")
-    return movement_written
+    return n_mv, movement_written
 
 
 # ---------------------------------------------------------------------------
@@ -2319,7 +2435,17 @@ def _convert_into(export_dir: Path, output_dir: Path, *, verbose: bool = False):
         manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
     else:
         tally.bump("missing_manifest")
-    _write_manifest(manifest, output_dir)
+    # The bundle manifest is written LAST, once the counts it has to carry
+    # exist. It used to be written here, before a single row had been read,
+    # which is why it could only ever carry header scalars.
+    upstream_quality = manifest.get("quality")
+    if not isinstance(upstream_quality, dict):
+        # An export with no quality accounting is not a lossy conversion --
+        # older vrfkit builds emitted none and this run dropped nothing -- so
+        # it is deliberately NOT counted in the tally. It is still visible: the
+        # manifest publishes `"quality": null`, which says "nobody counted"
+        # rather than the plausible zero that would say "nothing was lost".
+        upstream_quality = None
 
     # ---- Load fields.parquet ----
     cols = _load_field_columns(fields_path, verbose)
@@ -2330,7 +2456,8 @@ def _convert_into(export_dir: Path, output_dir: Path, *, verbose: bool = False):
     t0 = time.time()
     if verbose:
         print("Grouping rows into events...")
-    actor_first, actor_last, prop_groups, rpc_groups = _group_rows(cols)
+    (actor_first, actor_last, prop_groups, rpc_groups,
+     unresolved_cnc_rows) = _group_rows(cols)
     if verbose:
         print(f"  {len(prop_groups):,} property events, {len(rpc_groups):,} RPC invocations")
         print(f"  Grouped in {time.time()-t0:.1f}s")
@@ -2342,7 +2469,7 @@ def _convert_into(export_dir: Path, output_dir: Path, *, verbose: bool = False):
 
     # Containment chain for weapon identity. Loaded before the actor pass so
     # guid_class can be filled from the same loop that emits actor_spawned.
-    guid_outer, guid_path = _load_net_guids(export_dir)
+    guid_outer, guid_path, net_guid_rows_read = _load_net_guids(export_dir)
 
     # 1 & 2. actor_spawned and actor_closed
     events, guid_class = _build_actor_events(
@@ -2381,10 +2508,66 @@ def _convert_into(export_dir: Path, output_dir: Path, *, verbose: bool = False):
         print(f"  {resolved_weapon_count:,} with a resolved weapon ({pct:.2f}%)")
 
     # ---- Sort by (packet_id, time_ms) and write ----
-    events_written = _write_events(events, output_dir, verbose)
+    events_written, time_ms_regressions = _write_events(events, output_dir, verbose)
+    if time_ms_regressions:
+        # Not a conversion loss -- every event is still written -- but it
+        # invalidates the (time_ms, line index) tie-break the consumer uses,
+        # so it is surfaced with the losses rather than buried in the manifest.
+        tally.bump("events_time_ms_regressions", time_ms_regressions)
 
     # ---- Convert movement.parquet ----
-    movement_written = _write_movement(movement_path, output_dir, verbose)
+    movement_rows_read, movement_written = _write_movement(
+        movement_path, output_dir, verbose
+    )
+
+    # ---- Cross-check what vrfkit declared against what was actually read ----
+    #
+    # Only the two identities that are exact are judged. `quality.movement_rows`
+    # and `quality.net_guid_rows` are the row counts of the tables vrfkit wrote,
+    # so they must equal the heights this adapter reads back. `quality.net.fields`
+    # is NOT such an identity -- fields.parquet carries flattened array leaves,
+    # struct sub-fields and preservation rows on top of the wire fields
+    # (1,277,658 rows against 429,637 fields on the 02d4d478 reference) -- so it
+    # is recorded, never compared. Asserting an equality that does not hold
+    # would put a permanent false alarm in front of every run, and a false alarm
+    # is how a real one stops being read.
+    declared = upstream_quality or {}
+    upstream_row_counts = {
+        "movement_rows": _upstream_row_check(
+            declared.get("movement_rows"), movement_rows_read
+        ),
+        "net_guid_rows": _upstream_row_check(
+            declared.get("net_guid_rows"), net_guid_rows_read
+        ),
+    }
+    disagreements = sum(
+        1 for check in upstream_row_counts.values() if check["agrees"] is False
+    )
+    if disagreements:
+        # The export's own manifest does not describe the tables sitting next
+        # to it. Which of the two is wrong is not knowable here, so nothing is
+        # repaired and nothing is refused: the disagreement is counted, and the
+        # consumer decides what a bundle whose producer contradicts itself is
+        # allowed to publish.
+        tally.bump("upstream_row_count_disagreement", disagreements)
+
+    adapter_accounting = {
+        "schema_version": BUNDLE_SCHEMA_VERSION,
+        "events_written": events_written,
+        "events_time_ms_regressions": time_ms_regressions,
+        "movement_rows_read": movement_rows_read,
+        "movement_rows_written": movement_written,
+        "net_guid_rows_read": net_guid_rows_read,
+        "field_rows_read": cols.n_rows,
+        "field_rows_unresolved_class_net_cache": unresolved_cnc_rows,
+        "upstream_row_counts": upstream_row_counts,
+        # Every conversion loss this run recorded, printed below as well.
+        # Written even when empty: `{}` says the counters ran and found
+        # nothing, where an absent key would not distinguish that from a run
+        # that never counted.
+        "losses": dict(tally),
+    }
+    _write_manifest(manifest, output_dir, adapter_accounting)
 
     # ---- Summary ----
     #
