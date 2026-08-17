@@ -364,6 +364,19 @@ pub fn write_manifest(
 fn quality_json(quality: &ManifestQuality<'_>) -> String {
     let mut out = String::with_capacity(8 * 1024);
     out.push_str("  \"quality\": {\n");
+    // First, because it is the one key that answers "is anything missing from
+    // the tables next to this file". Everything below it is evidence; this is
+    // the verdict, and it is the same arithmetic `validate` prints, taken from
+    // the same function so the two cannot disagree.
+    //
+    // Zero is printed, not omitted. A line that appears only when non-zero
+    // cannot distinguish "nothing was lost" from "this code stopped running".
+    wkv(
+        &mut out,
+        "content_blocks_lost",
+        &quality.net.lost_content_blocks().to_string(),
+        2,
+    );
     wkv(
         &mut out,
         "chunks_processed",
@@ -836,6 +849,7 @@ mod tests {
             "rpc_suffix_bits_dropped",
             "cnc_rpcs_emitted",
             // Run-level completeness and checkpoint-only accounting.
+            "content_blocks_lost",
             "chunks_processed",
             "export_groups",
             "movement_rows",
@@ -927,6 +941,50 @@ mod tests {
                 "quality manifest omitted or duplicated {key}: {json}"
             );
         }
+    }
+
+    /// The published verdict has to be the measured one.
+    ///
+    /// `quality.content_blocks_lost` is the single number a downstream
+    /// consumer reads to decide whether recounting the exported tables can
+    /// yield a coverage claim at all. A constant zero there would be exactly
+    /// the "counter that cannot move" this repository forbids -- it would read
+    /// as "nothing was lost" on a run that lost everything -- so this asserts
+    /// the emitted digits against `NetStats::lost_content_blocks`, on stats
+    /// where all four failure depths are non-zero and unequal.
+    #[test]
+    fn content_blocks_lost_publishes_the_measured_number() {
+        let net = NetStats {
+            malformed_content_blocks: 1,
+            transform_failures: 2,
+            field_stream_failures: 4,
+            rpc_stream_failures: 100,
+            unresolved_rpc_payloads_preserved: 92,
+            ..NetStats::default()
+        };
+        assert_eq!(net.lost_content_blocks(), 15);
+
+        let sink = SinkTotals::default();
+        let errors = OverlayErrorReport::default();
+        let json = quality_json(&ManifestQuality {
+            chunks_processed: 0,
+            export_groups: 0,
+            movement_rows: 0,
+            net_guid_rows: 0,
+            event_rows: 0,
+            event_trailing_bytes: 0,
+            replay_data_trailing_bytes: 0,
+            event_layout_mismatches: 0,
+            event_first_layout_mismatch: None,
+            net: &net,
+            sink: &sink,
+            error_report: &errors,
+            checkpoints: None,
+        });
+        assert!(
+            json.contains("\"content_blocks_lost\": 15"),
+            "quality did not publish the measured loss: {json}"
+        );
     }
 
     #[test]

@@ -293,15 +293,15 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
     let class_net = stats.class_net_cache_blocks;
     let malformed = stats.malformed_content_blocks;
     let deleted = stats.deleted_blocks;
-    // A block can fail at three different depths, and only counting the shallowest
+    // A block can fail at four different depths, and only counting the shallowest
     // would overstate the verdict: framing can look fine while the payload inside
-    // is unreadable. All three are failures for oracle purposes.
+    // is unreadable. `NetStats::lost_content_blocks` owns that definition; it is
+    // shared with `manifest.rs` so the number the oracle prints and the number
+    // `quality.content_blocks_lost` publishes cannot drift apart.
     let rpc_payloads_lost = stats
         .rpc_stream_failures
         .saturating_sub(stats.unresolved_rpc_payloads_preserved);
-    let payload_failures =
-        stats.transform_failures + stats.field_stream_failures + rpc_payloads_lost;
-    let failed = malformed + payload_failures;
+    let failed = stats.lost_content_blocks();
 
     println!();
     println!("=== Validation Oracle ===");

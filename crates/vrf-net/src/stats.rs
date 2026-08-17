@@ -219,6 +219,41 @@ impl NetStats {
         }
     }
 
+    /// Content blocks whose payload never reached the exported tables.
+    ///
+    /// A block can fail at four different depths and only counting the
+    /// shallowest would overstate the verdict: framing can look fine while the
+    /// payload inside is unreadable. This is the single number that answers
+    /// "did anything get lost", and it is deliberately NOT the same thing as
+    /// the oracle's pass rate.
+    ///
+    /// `rpc_stream_failures` is netted against
+    /// `unresolved_rpc_payloads_preserved` because an unresolved
+    /// ClassNetCache block is not a loss: its whole payload is exported as one
+    /// reserved row (see `UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME` in
+    /// `vrf-export`), so the bits are still on disk even though no handle
+    /// could be named. On the 02d4d478 reference that netting is what
+    /// separates 7889 unattributed blocks from 0 lost ones, and the 98.94%
+    /// oracle pass rate from a complete export.
+    ///
+    /// `saturating_sub` rather than `-`: the two counters are incremented on
+    /// different code paths, and a future path that preserves a payload
+    /// without counting the failure must not make this wrap to 18 quintillion.
+    ///
+    /// Consumers downstream of the export read this through
+    /// `manifest.json` -> `quality.content_blocks_lost`. Non-zero means the
+    /// published tables are missing replicated state, so any coverage claim
+    /// derived by recounting them is an undercount of unknown size.
+    pub fn lost_content_blocks(&self) -> u64 {
+        let rpc_payloads_lost = self
+            .rpc_stream_failures
+            .saturating_sub(self.unresolved_rpc_payloads_preserved);
+        self.malformed_content_blocks
+            + self.transform_failures
+            + self.field_stream_failures
+            + rpc_payloads_lost
+    }
+
     /// Record one diagnostic event, or count it as dropped if the log is full.
     ///
     /// The event is built by the closure so that a full log costs a length
@@ -342,6 +377,123 @@ impl From<&ContentBlockHeader> for ContentBlockHeaderSnapshot {
             outer_net_guid: h.outer_net_guid.0,
             delete_flags: h.delete_flags,
         }
+    }
+}
+
+/// Tests for the loss accounting, which does not depend on `diagnostics`.
+///
+/// A separate module because the older `tests` module below is gated on that
+/// feature, and `lost_content_blocks` is read by the manifest on every build.
+#[cfg(test)]
+mod loss_tests {
+    use super::*;
+
+    /// Each of the four depths counts, and they add rather than mask.
+    #[test]
+    fn every_failure_depth_reaches_the_loss_total() {
+        for (label, stats) in [
+            (
+                "malformed framing",
+                NetStats {
+                    malformed_content_blocks: 3,
+                    ..NetStats::default()
+                },
+            ),
+            (
+                "transform failed",
+                NetStats {
+                    transform_failures: 3,
+                    ..NetStats::default()
+                },
+            ),
+            (
+                "field stream failed",
+                NetStats {
+                    field_stream_failures: 3,
+                    ..NetStats::default()
+                },
+            ),
+            (
+                "rpc payload lost",
+                NetStats {
+                    rpc_stream_failures: 3,
+                    ..NetStats::default()
+                },
+            ),
+        ] {
+            assert_eq!(
+                stats.lost_content_blocks(),
+                3,
+                "{label} must reach the loss total on its own"
+            );
+        }
+
+        let all_four = NetStats {
+            malformed_content_blocks: 1,
+            transform_failures: 2,
+            field_stream_failures: 4,
+            rpc_stream_failures: 8,
+            ..NetStats::default()
+        };
+        assert_eq!(
+            all_four.lost_content_blocks(),
+            15,
+            "the four depths add; a total that matches one of them alone would hide the rest"
+        );
+    }
+
+    /// The reference-replay shape: 7889 blocks could not be attributed to a
+    /// group, and every one of their payloads was preserved as a reserved row.
+    /// Nothing was lost, so the loss total is zero even though the oracle pass
+    /// rate is 98.94%.
+    #[test]
+    fn preserved_unresolved_rpc_payloads_are_not_a_loss() {
+        let stats = NetStats {
+            rpc_stream_failures: 7889,
+            unresolved_rpc_payloads_preserved: 7889,
+            ..NetStats::default()
+        };
+        assert_eq!(stats.lost_content_blocks(), 0);
+
+        let partly_preserved = NetStats {
+            rpc_stream_failures: 7889,
+            unresolved_rpc_payloads_preserved: 7000,
+            ..NetStats::default()
+        };
+        assert_eq!(
+            partly_preserved.lost_content_blocks(),
+            889,
+            "a failure whose payload was NOT preserved is a real loss"
+        );
+    }
+
+    /// The counters are incremented on different paths. More preserved than
+    /// failed must read as zero loss, never as a wrapped u64.
+    #[test]
+    fn more_preserved_than_failed_does_not_wrap() {
+        let stats = NetStats {
+            rpc_stream_failures: 1,
+            unresolved_rpc_payloads_preserved: 5,
+            ..NetStats::default()
+        };
+        assert_eq!(stats.lost_content_blocks(), 0);
+    }
+
+    /// Counters that are loud but normal must NOT be mistaken for loss. On the
+    /// 02d4d478 reference `skipped_bits` is 19 135 006 and the export is
+    /// complete; a definition that included them would report every healthy
+    /// replay as lossy and the signal would be discarded as noise.
+    #[test]
+    fn normal_noise_counters_are_not_loss() {
+        let stats = NetStats {
+            skipped_bits: 19_135_006,
+            partial_fragments: 4096,
+            deleted_blocks: 128,
+            actor_closes: 1799,
+            must_be_mapped_guids: 64,
+            ..NetStats::default()
+        };
+        assert_eq!(stats.lost_content_blocks(), 0);
     }
 }
 
