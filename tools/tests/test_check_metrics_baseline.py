@@ -9,8 +9,13 @@ The headline case uses the REAL shape of the section-26 break, measured on the
 13.02 fixture before commit bcc7d70: ClientRoundStart RPCs said 21 rounds while
 BombGameState RoundResults produced none, so team_score was empty.
 """
+import contextlib
 import copy
+import io
+import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -194,6 +199,272 @@ class WiringTests(unittest.TestCase):
         for key in ("rounds_rpc", "rounds_objective", "team_score", "players",
                     "kills", "damage_dealt"):
             self.assertIn(key, HEALTHY)
+
+
+#: A raw `compute_metrics.py` output, shaped exactly like the real valplay
+#: JSON `extract()` reads -- nested dicts, `per_player` maps, not the already
+#: flattened `HEALTHY` fixture above. `HEALTHY` pins what the invariants see;
+#: this pins the seam one layer earlier, between valplay's schema and this
+#: tool's parsing of it. That seam had no coverage: a renamed or reshaped key
+#: on the valplay side raises a loud `KeyError` today (by construction --
+#: `extract()` indexes with `[...]`, never `.get(..., default)`), but nothing
+#: proved the *mapping itself* -- which flattened key reads which nested path,
+#: and which fields get summed versus counted -- was still right.
+RAW_METRICS = {
+    "combat": {
+        "per_player": {
+            "p1": {"kills": 5, "deaths": 3, "assists": 1, "headshots": 2,
+                    "damage_dealt": 501.5},
+            "p2": {"kills": 2, "deaths": 4, "assists": 0, "headshots": 0,
+                    "damage_dealt": 88.25},
+        },
+    },
+    "tactical": {
+        "per_player": {
+            "p1": {"first_bloods": 1, "trade_kills": 0},
+            "p2": {"first_bloods": 0, "trade_kills": 2},
+        },
+    },
+    "rounds": {"round_count": 6, "client_round_start_events": 6},
+    "objective": {"round_count": 6, "team_score": {"Blue": 4, "Red": 2}},
+    "objective_detail": {"plant_count": 3, "defuse_count": 1},
+    "players": ["p1", "p2"],
+    "kast": {"per_player": {"p1": {"kast_rounds": 5}, "p2": {"kast_rounds": 4}}},
+    "ultimate": {"total_casts": 2},
+    "weapons": {"distinct_weapons": 3,
+                "shots_by_weapon": {"Vandal": 30, "Classic": 12}},
+    "shot_rays": {"ray_count": 41},
+    "ability_usage": {"ability_spawn_count": 9},
+    "movement_summary": {"movement_samples": 12345},
+    "economy_detail": {"rounds": 6},
+}
+
+
+class ExtractShapeTests(unittest.TestCase):
+    """`extract()` is the only code that reads valplay's real JSON shape.
+    Nothing else in this suite exercises it against a shape that looks like
+    what `compute_metrics.py` actually emits -- every other test starts from
+    the already-flattened `HEALTHY` dict, which proves the invariants but
+    never proves the mapping into them.
+    """
+
+    def test_scalar_fields_are_read_from_their_nested_path(self):
+        got = guard.extract(RAW_METRICS)
+        self.assertEqual(got["rounds_rpc"], 6)
+        self.assertEqual(got["rounds_objective"], 6)
+        self.assertEqual(got["client_round_starts"], 6)
+        self.assertEqual(got["team_score"], {"Blue": 4, "Red": 2})
+        self.assertEqual(got["plants"], 3)
+        self.assertEqual(got["defuses"], 1)
+        self.assertEqual(got["players"], 2)
+        self.assertEqual(got["combat_players"], 2)
+        self.assertEqual(got["ultimate_casts"], 2)
+        self.assertEqual(got["distinct_weapons"], 3)
+        self.assertEqual(got["shot_rays"], 41)
+        self.assertEqual(got["ability_spawns"], 9)
+        self.assertEqual(got["movement_samples"], 12345)
+        self.assertEqual(got["economy_rounds"], 6)
+
+    def test_per_player_combat_fields_are_summed_across_players(self):
+        got = guard.extract(RAW_METRICS)
+        self.assertEqual(got["kills"], 7)       # 5 + 2
+        self.assertEqual(got["deaths"], 7)      # 3 + 4
+        self.assertEqual(got["assists"], 1)     # 1 + 0
+        self.assertEqual(got["headshots"], 2)   # 2 + 0
+        self.assertEqual(got["damage_dealt"], 589.75)  # 501.5 + 88.25
+
+    def test_per_player_tactical_and_kast_fields_are_summed(self):
+        got = guard.extract(RAW_METRICS)
+        self.assertEqual(got["first_bloods"], 1)   # 1 + 0
+        self.assertEqual(got["trade_kills"], 2)    # 0 + 2
+        self.assertEqual(got["kast_rounds"], 9)    # 5 + 4
+
+    def test_shots_are_summed_across_weapons_not_taken_from_distinct_weapons(self):
+        """`shots` and `distinct_weapons` read different things off the same
+        `weapons` block -- a copy/paste of one into the other would pass every
+        other test here since both are small integers."""
+        got = guard.extract(RAW_METRICS)
+        self.assertEqual(got["shots"], 42)  # 30 + 12
+        self.assertNotEqual(got["shots"], got["distinct_weapons"])
+
+    def test_a_player_with_no_combat_entry_does_not_crash_the_sum(self):
+        """`_sum` reads `.get(field) or 0` per player -- a player present in
+        `players` but absent from `combat.per_player` (never fired a shot,
+        never took damage) must not raise, and must not count."""
+        raw = copy.deepcopy(RAW_METRICS)
+        raw["players"].append("p3")
+        got = guard.extract(raw)
+        self.assertEqual(got["players"], 3)
+        self.assertEqual(got["combat_players"], 2)  # p3 never joined combat
+        self.assertEqual(got["kills"], 7)            # unchanged
+
+
+#: Stand-ins for the three pipeline stages `run_one` shells out to --
+#: `vrfkit export`, `to_valplay_bundle.py`, and valplay's `compute_metrics.py`.
+#: The first is invoked positionally (`[str(exe), "export", ...]`), so under
+#: `sys.executable` a file literally named `export` in the process's cwd
+#: stands in for it, exactly as the other two corpus scripts' fake executables
+#: do. The other two are invoked by explicit path, so ordinary `.py` files
+#: patched onto `guard.BUNDLE_TOOL` / `guard.COMPUTE_METRICS` stand in for
+#: them. The fake `compute_metrics.py` does not compute anything -- it copies
+#: whatever this test staged as the desired metrics.json, so one pair of fake
+#: scripts can play every scenario below by changing what gets staged.
+FAKE_EXPORT_SCRIPT = '''\
+import sys
+from pathlib import Path
+out = Path(sys.argv[sys.argv.index("--out") + 1])
+out.mkdir(parents=True, exist_ok=True)
+print("export ok")
+'''
+
+FAKE_BUNDLE_SCRIPT = '''\
+import sys
+from pathlib import Path
+out = Path(sys.argv[sys.argv.index("-o") + 1])
+out.mkdir(parents=True, exist_ok=True)
+print("bundle ok")
+'''
+
+#: Reads the desired metrics.json from the path the test staged in an
+#: environment variable (`subprocess.run` inherits the parent's environment
+#: by default, so this reaches the child) and writes it to wherever `-o`
+#: says -- so it stands in for compute_metrics.py without knowing anything
+#: about the bundle format `-o`'s sibling argument actually names.
+FAKE_METRICS_SCRIPT = '''\
+import os
+import shutil
+import sys
+from pathlib import Path
+staged = Path(os.environ["VRFKIT_TEST_DESIRED_METRICS"])
+out = Path(sys.argv[sys.argv.index("-o") + 1])
+shutil.copyfile(staged, out)
+print("metrics ok")
+'''
+
+
+class MainWiringTests(unittest.TestCase):
+    """`InvariantTests` and `DriftTests` above prove the pure functions; they
+    say nothing about whether `main()` calls them and acts on the result
+    before deciding an exit code -- the same wiring gap the other two corpus
+    scripts' `MainWiringTests` closes, for the one check this project built
+    specifically because the framing layer cannot see a semantic break.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        (self.root / "export").write_text(FAKE_EXPORT_SCRIPT, encoding="utf-8")
+        self.bundle_tool = self.root / "fake_bundle.py"
+        self.bundle_tool.write_text(FAKE_BUNDLE_SCRIPT, encoding="utf-8")
+        self.compute_metrics = self.root / "fake_compute_metrics.py"
+        self.compute_metrics.write_text(FAKE_METRICS_SCRIPT, encoding="utf-8")
+
+        self.replay = self.root / "match.vrf"
+        self.replay.write_bytes(b"not a real replay")
+
+        self._orig_bundle_tool = guard.BUNDLE_TOOL
+        self._orig_compute_metrics = guard.COMPUTE_METRICS
+        self._orig_replays = guard.REPLAYS
+        guard.BUNDLE_TOOL = self.bundle_tool
+        guard.COMPUTE_METRICS = self.compute_metrics
+        guard.REPLAYS = {"test": str(self.replay)}
+        self.addCleanup(self._restore_module_state)
+
+        self._previous_cwd = Path.cwd()
+        os.chdir(self.root)
+        self.addCleanup(os.chdir, self._previous_cwd)
+
+        self._argv = sys.argv
+        self.addCleanup(self._restore_argv)
+
+    def _restore_module_state(self):
+        guard.BUNDLE_TOOL = self._orig_bundle_tool
+        guard.COMPUTE_METRICS = self._orig_compute_metrics
+        guard.REPLAYS = self._orig_replays
+
+    def _restore_argv(self):
+        sys.argv = self._argv
+
+    def stage_metrics(self, metrics: dict) -> None:
+        staged = self.root / "desired_metrics.json"
+        staged.write_text(json.dumps(metrics), encoding="utf-8")
+        os.environ["VRFKIT_TEST_DESIRED_METRICS"] = str(staged)
+        self.addCleanup(os.environ.pop, "VRFKIT_TEST_DESIRED_METRICS", None)
+
+    def run_main(self, extra_args=()):
+        argv = ["check_metrics_baseline.py", "--exe", sys.executable,
+                "--only", "test", "--jobs", "1", *extra_args]
+        sys.argv = argv
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = guard.main()
+        return code, out.getvalue()
+
+    def test_a_healthy_run_matching_the_baseline_exits_zero(self):
+        self.stage_metrics(RAW_METRICS)
+        baseline = self.root / "baseline.json"
+        baseline.write_text(json.dumps(
+            {"metrics": {"test": guard.extract(RAW_METRICS)}}), encoding="utf-8")
+
+        code, output = self.run_main(["--baseline", str(baseline)])
+
+        self.assertEqual(code, 0, output)
+
+    def test_an_invariant_violation_fails_the_run_and_refuses_to_update(self):
+        """The headline case: R1/R2 fire (see `InvariantTests`), and `main()`
+        must both exit non-zero AND leave the baseline untouched under
+        `--update` -- pinning a broken run would make the NEXT clean run look
+        like drift instead of a fix."""
+        broken = dict(RAW_METRICS)
+        broken["objective"] = {"round_count": 0, "team_score": {}}
+        broken["economy_detail"] = {"rounds": 0}
+        self.stage_metrics(broken)
+        baseline = self.root / "baseline.json"
+        original = json.dumps({"metrics": {}})
+        baseline.write_text(original, encoding="utf-8")
+
+        code, output = self.run_main(["--baseline", str(baseline), "--update"])
+
+        self.assertEqual(code, 1, output)
+        self.assertIn("R1", output)
+        self.assertIn("baseline NOT updated", output)
+        self.assertEqual(baseline.read_text(encoding="utf-8"), original,
+                         "a broken run must not be pinned")
+
+    def test_drift_from_the_baseline_fails_the_run(self):
+        self.stage_metrics(RAW_METRICS)
+        stored = guard.extract(RAW_METRICS)
+        stored = dict(stored, kills=stored["kills"] + 1000)
+        baseline = self.root / "baseline.json"
+        baseline.write_text(json.dumps({"metrics": {"test": stored}}),
+                            encoding="utf-8")
+
+        code, output = self.run_main(["--baseline", str(baseline)])
+
+        self.assertEqual(code, 1, output)
+        self.assertIn("drifted", output)
+        self.assertIn("kills", output)
+
+    def test_a_missing_baseline_is_a_controlled_failure(self):
+        self.stage_metrics(RAW_METRICS)
+        baseline = self.root / "does-not-exist.json"
+
+        code, output = self.run_main(["--baseline", str(baseline)])
+
+        self.assertEqual(code, 2, output)
+        self.assertIn("baseline not found", output)
+
+    def test_a_replay_that_does_not_exist_fails_the_pipeline(self):
+        guard.REPLAYS = {"test": str(self.root / "missing.vrf")}
+        baseline = self.root / "baseline.json"
+        baseline.write_text(json.dumps({"metrics": {}}), encoding="utf-8")
+
+        code, output = self.run_main(["--baseline", str(baseline)])
+
+        self.assertEqual(code, 1, output)
+        self.assertIn("did not complete the pipeline", output)
+        self.assertIn("replay not found", output)
 
 
 if __name__ == "__main__":
