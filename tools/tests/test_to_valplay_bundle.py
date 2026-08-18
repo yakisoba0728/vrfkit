@@ -486,10 +486,28 @@ class BlockPayloadExclusionTests(unittest.TestCase):
             marked_summary = bundle.convert(marked_export, marked_bundle)
 
             self.assertEqual(marked_summary, base_summary)
-            self.assertEqual(
-                self.bundle_files(marked_bundle),
-                self.bundle_files(base_bundle),
-            )
+            # The DATA files must be byte-identical: the marker row changes
+            # nothing a consumer reads as an event or a position.
+            for name in ("events.ndjson", "movement.ndjson"):
+                self.assertEqual(
+                    (marked_bundle / name).read_bytes(),
+                    (base_bundle / name).read_bytes(),
+                    name,
+                )
+            # The manifest must NOT be identical. The row was on disk and was
+            # deliberately skipped; a manifest that read the same either way
+            # would be a bundle that cannot say how much preservation data its
+            # export carried.
+            base_manifest = json.loads(
+                (base_bundle / "manifest.json").read_text(encoding="utf-8")
+            )["adapter"]
+            marked_manifest = json.loads(
+                (marked_bundle / "manifest.json").read_text(encoding="utf-8")
+            )["adapter"]
+            self.assertEqual(base_manifest["field_rows_read"], 2)
+            self.assertEqual(base_manifest["field_rows_unresolved_class_net_cache"], 0)
+            self.assertEqual(marked_manifest["field_rows_read"], 3)
+            self.assertEqual(marked_manifest["field_rows_unresolved_class_net_cache"], 1)
             events = (marked_bundle / "events.ndjson").read_bytes()
             self.assertIn(b'"actor_net_guid":202', events)
             self.assertNotIn(b'"actor_net_guid":303', events)
@@ -940,6 +958,399 @@ class SummaryReportingTests(TallyTestCase):
         self.assertTrue(any("missing_manifest" in ln for ln in lines), lines)
         # Only the non-zero counters are printed.
         self.assertEqual(len(lines), 2, lines)
+
+
+# ---------------------------------------------------------------------------
+# The seam
+#
+# Everything below tests the contract between this repository and valplay:
+# what the bundle manifest carries, what it deliberately does not, and the
+# order events.ndjson is written in. valplay reads all of it and has no way to
+# check any of it -- these are the assertions that fail HERE when a change
+# would have broken it silently over there.
+# ---------------------------------------------------------------------------
+
+#: A quality object shaped like the one crates/vrfkit/src/manifest.rs emits.
+#: Trimmed to the members the seam actually reads plus enough of the rest to
+#: prove the forwarding is verbatim and not a hand-picked subset.
+UPSTREAM_QUALITY = {
+    "content_blocks_lost": 0,
+    "chunks_processed": 19,
+    "export_groups": 475,
+    "movement_rows": 3,
+    "net_guid_rows": 2,
+    "event_rows": 195,
+    "event_trailing_bytes": 0,
+    "replay_data_trailing_bytes": 0,
+    "event_layout_mismatches": 0,
+    "event_first_layout_mismatch": None,
+    "overlay_error_buckets": 0,
+    "overlay_errors_reported": 0,
+    "checkpoints_enabled": False,
+    "net": {"packets": 530401, "malformed_packets": 0, "skipped_bits": 19135006},
+    "sink": {"overlay_decoded_ok": 742738, "struct_blob_first_error": None},
+    "checkpoints": None,
+}
+
+UPSTREAM_GROUPS = [
+    {
+        "path": "/Script/ShooterGame.OwnerExclusivePlayerInfo",
+        "path_name_index": 12,
+        "fields": [
+            {"handle": 40, "name": "RoundNumber", "compatible_checksum": 1},
+            {"handle": 41, "name": "StartOfRoundMoney", "compatible_checksum": 2},
+        ],
+    },
+]
+
+#: Two account UUIDs, shaped like the ones vrfkit's manifest `players` array
+#: carries. Present in the EXPORT manifest so the omission test has something
+#: real to prove is absent from the bundle.
+UPSTREAM_PLAYERS = [
+    {
+        "actor_net_guid": 101,
+        "subject": "11111111-2222-3333-4444-555555555555",
+        "character_net_guid": 501,
+    },
+]
+
+
+def write_net_guids_parquet(path: Path, rows: list[dict]) -> None:
+    """Write a net_guids.parquet with the columns `_load_net_guids` reads."""
+    table = pa.table(
+        {
+            "net_guid": pa.array([r["net_guid"] for r in rows], type=pa.uint32()),
+            "outer_net_guid": pa.array(
+                [r.get("outer") for r in rows], type=pa.uint32()
+            ),
+            "path": pa.array([r.get("path") for r in rows], type=pa.string()),
+        }
+    )
+    pq.write_table(table, path)
+
+
+class SeamTestCase(unittest.TestCase):
+    """Build an export with every table the adapter reads, then convert it."""
+
+    def build(self, tmp, *, field_rows=None, movement_rows=(), guid_rows=(),
+              manifest=None):
+        root = Path(tmp)
+        export = root / "export"
+        export.mkdir()
+        write_fields_parquet(
+            export / "fields.parquet",
+            list(MINIMAL_FIELD_ROWS if field_rows is None else field_rows),
+        )
+        if movement_rows:
+            write_movement_parquet(export / "movement.parquet", list(movement_rows))
+        if guid_rows:
+            write_net_guids_parquet(export / "net_guids.parquet", list(guid_rows))
+        if manifest is not None:
+            (export / "manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+        out = root / "bundle"
+        summary = bundle.convert(export, out)
+        published = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+        return out, published, summary
+
+    def full_manifest(self, **overrides):
+        manifest = {
+            "source_file": "02d4d478.vrf",
+            "source_size_bytes": 55297993,
+            "replay_version": "5.3.2",
+            "replay_build": "++Ares-Core+release-13.02",
+            "replay_changelist": 2152699011,
+            "duration_ms": 2296000,
+            "quality": json.loads(json.dumps(UPSTREAM_QUALITY)),
+            "players": json.loads(json.dumps(UPSTREAM_PLAYERS)),
+            "net_field_export_groups": json.loads(json.dumps(UPSTREAM_GROUPS)),
+        }
+        manifest.update(overrides)
+        return manifest
+
+
+class UpstreamAccountingForwardingTests(SeamTestCase):
+    """vrfkit counts the losses; the bundle has to carry the count.
+
+    Before this, `_write_manifest` emitted six header scalars and dropped the
+    entire `quality` object, so valplay's only way to judge completeness was
+    to recount the NDJSON it had just been handed -- which cannot detect
+    anything that never reached the NDJSON in the first place.
+    """
+
+    def test_quality_is_forwarded_verbatim(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, published, _ = self.build(
+                tmp,
+                movement_rows=[{"time_ms": 1, "packet_id": 1, "char": 5}] * 3,
+                guid_rows=[{"net_guid": 1, "outer": 2, "path": "a"},
+                           {"net_guid": 2, "outer": 3, "path": "b"}],
+                manifest=self.full_manifest(),
+            )
+        self.assertEqual(published["quality"], UPSTREAM_QUALITY)
+
+    def test_net_field_export_groups_are_forwarded_verbatim(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, published, _ = self.build(tmp, manifest=self.full_manifest())
+        self.assertEqual(published["net_field_export_groups"], UPSTREAM_GROUPS)
+
+    def test_an_export_without_quality_publishes_null_not_zeroes(self):
+        """A missing value renders as a visible absence, never as a number.
+
+        `{}` or a zero-filled object here would tell a consumer the export was
+        complete on the strength of nobody having counted.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            _, published, summary = self.build(
+                tmp, manifest={"replay_version": "5.3.2"}
+            )
+        self.assertIsNone(published["quality"])
+        self.assertIsNone(published["net_field_export_groups"])
+        self.assertIn("quality", published)
+        # Nothing was dropped, so this must NOT read as a lossy conversion.
+        self.assertEqual(summary["tally"].total, 0)
+
+    def test_account_subjects_are_not_forwarded(self):
+        """`players` is deliberately left behind; prove it stays behind.
+
+        vrfkit's manifest bridges actor guid -> account subject -> character
+        guid. valplay derives the same table from the same BombPlayerState
+        rows, and its version is strictly richer (a SET of characters, which is
+        what keeps a resurrected player's kills attributed). Forwarding a
+        poorer copy would add account UUIDs to a second file while offering a
+        tempting alternative that silently loses those kills.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            out, published, _ = self.build(tmp, manifest=self.full_manifest())
+            raw = (out / "manifest.json").read_text(encoding="utf-8")
+        self.assertNotIn("players", published)
+        self.assertNotIn("11111111-2222-3333-4444-555555555555", raw)
+
+    def test_the_manifest_key_set_is_pinned(self):
+        """The bundle's shape is a contract, so it is spelled out once."""
+        with tempfile.TemporaryDirectory() as tmp:
+            _, published, _ = self.build(tmp, manifest=self.full_manifest())
+        self.assertEqual(
+            sorted(published),
+            sorted([
+                "adapter",
+                "bundle_schema_version",
+                "converter",
+                "duration_ms",
+                "net_field_export_groups",
+                "quality",
+                "replay_build",
+                "replay_changelist",
+                "replay_version",
+                "source_file",
+                "source_size_bytes",
+            ]),
+        )
+
+
+class AdapterAccountingTests(SeamTestCase):
+    """What this adapter measured, kept apart from what vrfkit declared."""
+
+    def test_events_written_equals_the_lines_on_disk(self):
+        """The one identity a consumer can re-verify exactly.
+
+        valplay recounts events.ndjson; this is the number it recounts
+        against. If they ever differ, the bundle was truncated after it was
+        written, and no metric computed from it is worth publishing.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            out, published, _ = self.build(tmp, manifest=self.full_manifest())
+            lines = (out / "events.ndjson").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(published["adapter"]["events_written"], len(lines))
+        self.assertGreater(len(lines), 0)
+
+    def test_movement_rows_read_is_the_table_height_not_the_written_count(self):
+        """They differ by the intra-packet collapse, and both are published.
+
+        Comparing the WRITTEN count with `quality.movement_rows` would report
+        every healthy replay as lossy, because the collapse is intentional.
+        """
+        movement = [
+            {"time_ms": 1, "packet_id": 1, "char": 5, "pos_x": 1.0},
+            {"time_ms": 1, "packet_id": 1, "char": 5, "pos_x": 2.0},
+            {"time_ms": 2, "packet_id": 2, "char": 5, "pos_x": 3.0},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            _, published, _ = self.build(
+                tmp, movement_rows=movement, manifest=self.full_manifest()
+            )
+        adapter = published["adapter"]
+        self.assertEqual(adapter["movement_rows_read"], 3)
+        self.assertEqual(adapter["movement_rows_written"], 2)
+        self.assertTrue(adapter["upstream_row_counts"]["movement_rows"]["agrees"])
+
+    def test_a_declared_count_its_own_table_contradicts_is_reported(self):
+        """The producer disagreeing with itself is a signal, not a crash.
+
+        The adapter counts it and publishes both numbers. It does not repair
+        either -- which of the two is wrong is not knowable here -- and it does
+        not refuse: refusing is the consumer's call, at the point of
+        publication.
+        """
+        quality = json.loads(json.dumps(UPSTREAM_QUALITY))
+        quality["movement_rows"] = 999
+        with tempfile.TemporaryDirectory() as tmp:
+            _, published, summary = self.build(
+                tmp,
+                movement_rows=[{"time_ms": 1, "packet_id": 1, "char": 5}],
+                guid_rows=[{"net_guid": 1, "outer": 2, "path": "a"},
+                           {"net_guid": 2, "outer": 3, "path": "b"}],
+                manifest=self.full_manifest(quality=quality),
+            )
+        counts = published["adapter"]["upstream_row_counts"]
+        self.assertEqual(
+            counts["movement_rows"],
+            {"declared": 999, "observed": 1, "agrees": False},
+        )
+        # The table that DOES match must still read as agreement, so the
+        # signal names the one table that is wrong.
+        self.assertEqual(
+            counts["net_guid_rows"],
+            {"declared": 2, "observed": 2, "agrees": True},
+        )
+        self.assertEqual(summary["tally"]["upstream_row_count_disagreement"], 1)
+        self.assertGreater(summary["tally"].total, 0)
+
+    def test_a_declared_table_that_is_absent_is_a_disagreement(self):
+        """"vrfkit wrote 2 rows" and "the file is not there" cannot both hold.
+
+        An absent table used to convert silently -- weapon identity simply
+        went unresolved -- which is right when nothing claimed the table
+        existed. Once the export declares a row count, its absence is a
+        contradiction and has to be said out loud.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            _, published, summary = self.build(tmp, manifest=self.full_manifest())
+        check = published["adapter"]["upstream_row_counts"]["net_guid_rows"]
+        self.assertEqual(check, {"declared": 2, "observed": None, "agrees": False})
+        self.assertGreaterEqual(
+            summary["tally"]["upstream_row_count_disagreement"], 1
+        )
+
+    def test_nothing_declared_reads_as_unknown_not_as_agreement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, published, summary = self.build(
+                tmp, manifest={"replay_version": "5.3.2"}
+            )
+        for name in ("movement_rows", "net_guid_rows"):
+            check = published["adapter"]["upstream_row_counts"][name]
+            self.assertIsNone(check["declared"], name)
+            self.assertIsNone(
+                check["agrees"],
+                "an export that declared nothing must not certify itself",
+            )
+        self.assertEqual(summary["tally"]["upstream_row_count_disagreement"], 0)
+
+    def test_the_loss_tally_reaches_the_manifest(self):
+        rows = list(MINIMAL_FIELD_ROWS) + [
+            {
+                "time_ms": 10, "packet_id": 1, "actor": 101,
+                "group_path": "PlayerState", "field_name": None,
+                "bit_count": 3, "raw_bits": b"\x05",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            _, published, _ = self.build(
+                tmp, field_rows=rows, manifest=self.full_manifest()
+            )
+        losses = published["adapter"]["losses"]
+        self.assertEqual(losses["unnamed_property_rows"], 1)
+        # Present and zero, not absent: a key that appears only when non-zero
+        # cannot distinguish "clean" from "this counter stopped running".
+        self.assertEqual(losses["unnamed_rpc_rows"], 0)
+
+
+class EventOrderingContractTests(SeamTestCase):
+    """The order events.ndjson is written in, pinned at the layer that sets it.
+
+    valplay orders same-millisecond events by (time_ms, line index), which is
+    only a total order if this file's output is in wire order and its time_ms
+    column is non-decreasing. Neither was asserted anywhere, at any layer.
+    """
+
+    #: Two actors, three packets, deliberately supplied out of packet order in
+    #: the parquet so a test that merely echoed input order would pass by luck.
+    SHUFFLED = [
+        {"time_ms": 30, "packet_id": 3, "actor": 303,
+         "group_path": "PlayerState", "field_name": "Health",
+         "bit_count": 32, "value_i64": 3},
+        {"time_ms": 10, "packet_id": 1, "actor": 101,
+         "group_path": "PlayerState", "field_name": "Health",
+         "bit_count": 32, "value_i64": 1},
+        {"time_ms": 20, "packet_id": 2, "actor": 202,
+         "group_path": "PlayerState", "field_name": "Health",
+         "bit_count": 32, "value_i64": 2},
+    ]
+
+    def read_events(self, out):
+        text = (out / "events.ndjson").read_text(encoding="utf-8")
+        return [json.loads(line) for line in text.splitlines()]
+
+    def test_events_are_written_in_non_decreasing_time_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out, published, _ = self.build(
+                tmp, field_rows=self.SHUFFLED, manifest=self.full_manifest()
+            )
+            events = self.read_events(out)
+        times = [e["time_ms"] for e in events]
+        self.assertEqual(times, sorted(times), events)
+        self.assertEqual(published["adapter"]["events_time_ms_regressions"], 0)
+
+    def test_a_spawn_precedes_the_property_event_at_the_same_millisecond(self):
+        """The phase order (actors, properties, RPCs) is the tie-break.
+
+        A property event for an actor that has not spawned yet is a document
+        the consumer cannot read in one pass, so the stable sort's tie
+        behaviour is a contract, not an implementation detail.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            out, _, _ = self.build(
+                tmp, field_rows=self.SHUFFLED, manifest=self.full_manifest()
+            )
+            events = self.read_events(out)
+        for actor in (101, 202, 303):
+            same = [e for e in events if e.get("actor_net_guid") == actor]
+            types = [e["type"] for e in same]
+            self.assertEqual(
+                types[0], "actor_spawned",
+                f"actor {actor} is described before it exists: {types}",
+            )
+
+    def test_a_time_ms_regression_is_counted_and_published(self):
+        """A frame whose time is not finite exports time_ms = 0.
+
+        vrf-frame reads it with a bare read_f32 and substitutes 0 for anything
+        non-finite, so one bad frame mid-replay makes time_ms non-monotonic
+        while packet order stays correct. The adapter keeps packet order --
+        that is the wire -- and reports the regression instead of hiding it by
+        sorting on a value the replay does not guarantee.
+        """
+        rows = [
+            {"time_ms": 10, "packet_id": 1, "actor": 101,
+             "group_path": "PlayerState", "field_name": "Health",
+             "bit_count": 32, "value_i64": 1},
+            {"time_ms": 0, "packet_id": 2, "actor": 101,
+             "group_path": "PlayerState", "field_name": "Health",
+             "bit_count": 32, "value_i64": 2},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            out, published, summary = self.build(
+                tmp, field_rows=rows, manifest=self.full_manifest()
+            )
+            events = self.read_events(out)
+        self.assertGreater(published["adapter"]["events_time_ms_regressions"], 0)
+        self.assertGreater(summary["tally"]["events_time_ms_regressions"], 0)
+        # Packet order is preserved: the regression is reported, not repaired.
+        self.assertEqual(
+            [e["time_ms"] for e in events if e["type"] == "export_group_received"],
+            [10, 0],
+        )
 
 
 if __name__ == "__main__":

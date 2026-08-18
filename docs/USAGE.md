@@ -384,6 +384,25 @@ can.
 `timestamp_ticks` is a UE `FDateTime` (100-nanosecond ticks since 0001-01-01).
 It is **not** a Windows FILETIME -- reading it as one gives the year 3626.
 
+#### `quality` -- the completeness accounting
+
+Every loss and fallback counter for the run, including the checkpoint pass when
+`--checkpoints` is used. One key is the verdict and the rest are the evidence:
+
+| Field | Meaning |
+|---|---|
+| `content_blocks_lost` | Content blocks whose payload never reached the tables. **Non-zero means the exported tables are missing replicated state.** |
+
+It is `malformed_content_blocks + transform_failures + field_stream_failures +
+max(0, rpc_stream_failures - unresolved_rpc_payloads_preserved)`, computed by
+`NetStats::lost_content_blocks` and shared with `validate`'s summary so the two
+cannot drift.
+
+Read this rather than the oracle pass rate. On `02d4d478` the pass rate is
+98.94% and `content_blocks_lost` is 0: the 7,889 unattributed blocks all had
+their payloads preserved as reserved rows, so nothing was lost. Do not read
+`skipped_bits` as loss either -- it is 19,135,006 on that same healthy replay.
+
 ---
 
 ## 4. Using it as a library
@@ -509,6 +528,35 @@ python tools/check_docs.py --fast    # skip the count comparison
 | `to_valplay_bundle.py` | Parquet -> NDJSON bundle (events/movement/manifest). The format valplay's `compute_metrics.py` consumes |
 | `equippable_table.py` | **Generated file.** Weapon class path -> display name |
 
+#### What the bundle manifest carries
+
+The bundle's `manifest.json` forwards the export's `quality` object and its
+`net_field_export_groups` table **verbatim**, and adds an `adapter` object of
+its own measurements -- `events_written`, `events_time_ms_regressions`,
+`field_rows_read`, the movement/net_guid row counts read back against the ones
+the export declared, and the conversion `losses` tally. `bundle_schema_version`
+names the shape; valplay's resume marker records it and rebuilds when it moves.
+
+`players` is deliberately **not** forwarded: valplay derives the same table
+from the same `BombPlayerState` rows and its version keeps a *set* of character
+GUIDs, which is what attributes a resurrected player's kills. Forwarding the
+single-character copy would add account UUIDs to a second file and offer a
+lossy alternative to the richer table.
+
+An export with no `quality` object is forwarded as `"quality": null`, never as
+zeroes: a consumer must be able to tell "nothing was lost" from "nobody
+counted".
+
+The ordering contract is the adapter's: events are written in `(packet_id,
+time_ms)` order with a stable sort, so ties keep wire order (actors, then
+properties, then RPCs). `time_ms` is **not** guaranteed monotonic -- it comes
+from an unvalidated `read_f32` per demo frame and is 0 for a non-finite one --
+so a regression in written order is counted in
+`adapter.events_time_ms_regressions` rather than repaired by sorting away from
+packet order. `crates/vrfkit/tests/adapter_contract.rs` pins the two constants
+the adapter shares with the Rust side; `tools/tests/test_to_valplay_bundle.py`
+pins the manifest shape and the ordering.
+
 ```bash
 python tools/to_valplay_bundle.py <export_dir> -o <bundle_dir>
 python "<valplay>/pipeline/metrics/compute_metrics.py" <bundle_dir> -o metrics.json
@@ -551,12 +599,12 @@ deliberately sequential for accuracy.
 ### Quick sweep -- after any change
 
 ```bash
-cargo +1.86.0 test --workspace --locked                              # 555 passing
+cargo +1.86.0 test --workspace --locked                              # 563 passing
 cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.86.0 fmt --check
 python -W error tools/check_ascii.py --check                         # 117 files
 python -W error tools/check_effect_decoder.py --check                # 12 cases
-python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 467 passing
+python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 481 passing
 python -W error tools/check_docs.py --fast
 python -W error tools/apply_type_corrections.py --check              # 133 corrections
 python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
@@ -682,10 +730,12 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
   valplay is out of scope to fix.
 - **Non-Bomb game modes** -- five of the 215-corpus are Swiftplay, and **the
   parser side is done** (section 33): `GROUP_ALIASES` maps Swiftplay's
-  GameState/PlayerState to the Bomb classes, so the fields all gain types. All
-  that remains is that valplay's `compute_metrics.py` hardcodes class names in
-  five places; the patch is in `docs/swiftplay-metrics.patch`. valplay is out of
-  scope, so applying it is their call.
+  GameState/PlayerState to the Bomb classes, so the fields all gain types. The
+  five hardcoded class names in valplay's `compute_metrics.py` have been
+  replaced with `is_game_state` / `is_player_state`, so `docs/swiftplay-metrics.patch`
+  is applied and has been removed. valplay's sibling detail modules
+  (round_detail, economy_detail, objective_detail) still match the Bomb classes
+  directly and remain outstanding on the valplay side.
 - **Damage precision** -- vrfkit preserves the exact fractional wire damage.
   valplay additionally floors each final engagement segment before summing its
   scoreboard damage, which reproduces Tracker ADR without discarding the exact
