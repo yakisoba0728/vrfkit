@@ -19,7 +19,11 @@ about 0.3% less than its own `rows offered` line, and a reader could not make
 the numbers add up without going to read the Rust source. See `LIVE_EXPORT`
 and `ReconcileTests`.
 """
+import contextlib
+import io
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -315,6 +319,183 @@ class DeadCheckpointCounterTests(unittest.TestCase):
         totals = {"checkpoint_decoded": 500, "checkpoint_blobs_decoded": 0}
         dead = guard.dead_checkpoint_counters(totals)
         self.assertTrue(dead)
+
+
+#: Stand-in for `vrfkit.exe`, playing the part `_export_one` expects --
+#: `[str(exe), "export", str(replay), "--out", str(out)]`. Run under
+#: `sys.executable`, the "export" token becomes the script Python executes (the
+#: same trick `test_check_export_baseline.py` uses for its fake `export`), so a
+#: file literally named `export` in the process's cwd stands in for the real
+#: binary. Every helper above (`read_counters`, `dead_counters`, `reconcile`)
+#: is proven correct on synthetic text; none of that proves `main()` actually
+#: calls them and acts on what they return -- which is exactly the shape of
+#: this file's own recorded defect ("OK: every replay reported Decode errors:
+#: 0" printed over an exporter that never ran). These tests are that call.
+FAKE_EXPORT_SCRIPT = '''\
+import sys
+from pathlib import Path
+
+argv = sys.argv
+replay = Path(argv[1])
+out = Path(argv[argv.index("--out") + 1])
+out.mkdir(parents=True, exist_ok=True)
+name = replay.name
+
+if "badexit" in name:
+    print("exporter crashed", file=sys.stderr)
+    raise SystemExit(9)
+
+if "nothingran" in name:
+    # The 13.02 shape one level down: every counter a legitimate zero.
+    print("""
+Rows offered:      0
+Decoded OK:        0
+Decode errors:     0
+Raw/Skip:          0
+Not in table:      0
+No field name:     0
+Struct blobs:      0 decoded / 0 failed
+""")
+    raise SystemExit(0)
+
+if "decodeerr" in name:
+    print("""
+Rows offered:      100
+Decoded OK:        90
+Decode errors:     10
+Raw/Skip:          0
+Not in table:      0
+No field name:     0
+Struct blobs:      5 decoded / 0 failed
+""")
+    raise SystemExit(0)
+
+if "blobfail" in name:
+    print("""
+Rows offered:      100
+Decoded OK:        95
+Decode errors:     0
+Raw/Skip:          3
+Not in table:      2
+No field name:     0
+Struct blobs:      5 decoded / 1 failed
+""")
+    raise SystemExit(0)
+
+if "missingcounter" in name:
+    # "No field name" omitted entirely -- must not read as 0.
+    print("""
+Rows offered:      100
+Decoded OK:        100
+Decode errors:     0
+Raw/Skip:          0
+Not in table:      0
+Struct blobs:      5 decoded / 0 failed
+""")
+    raise SystemExit(0)
+
+if "mismatch" in name:
+    # Every REQUIRED counter present, but the five categories that make up
+    # "Rows offered" undercount it by one -- summary.rs grew a sixth category
+    # this tool does not know to parse yet.
+    print("""
+Rows offered:      100
+Decoded OK:        90
+Decode errors:     0
+Raw/Skip:          5
+Not in table:      3
+No field name:     1
+Struct blobs:      5 decoded / 0 failed
+""")
+    raise SystemExit(0)
+
+print("""
+Rows offered:      100
+Decoded OK:        90
+Decode errors:     0
+Raw/Skip:          5
+Not in table:      3
+No field name:     2
+Struct blobs:      5 decoded / 0 failed
+""")
+'''
+
+
+class MainWiringTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        (self.root / "export").write_text(FAKE_EXPORT_SCRIPT, encoding="utf-8")
+        self.corpus = self.root / "corpus"
+        self.corpus.mkdir()
+        self._previous_cwd = Path.cwd()
+        os.chdir(self.root)
+        self.addCleanup(os.chdir, self._previous_cwd)
+        self._argv = sys.argv
+
+    def make_replay(self, name: str) -> None:
+        (self.corpus / name).write_bytes(b"not a real replay")
+
+    def run_main(self, extra_args=()):
+        argv = [sys.executable, str(self.corpus), "--jobs", "1", *extra_args]
+        sys.argv = ["check_decode_errors_corpus.py", *argv]
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                code = guard.main()
+        finally:
+            sys.argv = self._argv
+        return code, out.getvalue()
+
+    def test_a_clean_corpus_exits_zero(self):
+        self.make_replay("a.vrf")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        self.assertIn("OK:", output)
+
+    def test_decode_errors_fail_the_run(self):
+        self.make_replay("decodeerr.vrf")
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("decode errors", output)
+
+    def test_struct_blob_failures_fail_the_run(self):
+        self.make_replay("blobfail.vrf")
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("struct-blob", output)
+
+    def test_an_exporter_that_decoded_nothing_fails_the_run(self):
+        """The 13.02 shape, one script down from the Rust regression: every
+        counter is a legitimate zero, `Decode errors: 0` is vacuously true,
+        and only `dead_counters` -- consulted by `main()` -- can catch it."""
+        self.make_replay("nothingran.vrf")
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("never moved", output)
+
+    def test_a_missing_required_counter_fails_the_run(self):
+        self.make_replay("missingcounter.vrf")
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("did not report the counter", output)
+
+    def test_a_nonzero_exporter_exit_fails_the_run(self):
+        self.make_replay("badexit.vrf")
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("did not report the counter", output)
+
+    def test_a_reconciliation_mismatch_fails_the_run(self):
+        self.make_replay("mismatch.vrf")
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("do not reconcile", output)
+
+    def test_no_vrf_files_is_a_controlled_failure(self):
+        code, output = self.run_main()
+        self.assertEqual(code, 2, output)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,11 @@ absent counter was printed as a WARNING and the run exited 0 anyway. Writing
 the argument down is not the same as acting on it.
 """
 import collections
+import contextlib
+import io
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -92,6 +96,99 @@ class ArgParsingTests(unittest.TestCase):
     def test_limit_is_optional(self):
         args = guard.parse_args(["validate_corpus.py", "vrfkit.exe", "corpus"])
         self.assertIsNone(args.limit)
+
+
+#: Stand-in for `vrfkit.exe`, invoked exactly as `_run_one` invokes the real
+#: one -- `[str(exe), "validate", str(path)]`. Run under `sys.executable`, the
+#: first argv token becomes the script Python executes (the same trick
+#: `test_check_export_baseline.py`'s `TransactionalOutputTests` uses for its
+#: fake `export`), so a file literally named `validate`, with no extension, in
+#: the process's cwd stands in for the real binary. What it prints depends on
+#: the replay's own filename, so one script can play every scenario below.
+FAKE_VALIDATE_SCRIPT = '''\
+import sys
+from pathlib import Path
+
+name = Path(sys.argv[1]).name
+
+if "badexit" in name:
+    print("oracle blew up", file=sys.stderr)
+    raise SystemExit(3)
+
+print("Branch: ++Ares-Core+release-13.01")
+print("Total content blocks: 100")
+if "missingmalformed" not in name:
+    print("Malformed framing:  0")
+print("Skipped bits:  0")
+print("Fields emitted: 50")
+print("RPCs emitted: 10")
+print("ORACLE PASS RATE: 100.000000%")
+'''
+
+
+class MainWiringTests(unittest.TestCase):
+    """`ProblemTests` above pins what `problems()` returns; nothing pinned
+    that `main()` actually reads it before choosing an exit code. That is
+    precisely the layer where the recorded defect lived: the absent-counter
+    case was computed, printed as a WARNING, and the process exited 0 anyway.
+    A helper that is provably correct in isolation says nothing about the
+    `if found: return 1` a few lines later in `main()` -- these tests are
+    that line.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        (self.root / "validate").write_text(FAKE_VALIDATE_SCRIPT, encoding="utf-8")
+        self.corpus = self.root / "corpus"
+        self.corpus.mkdir()
+        self._previous_cwd = Path.cwd()
+        os.chdir(self.root)
+        self.addCleanup(os.chdir, self._previous_cwd)
+
+    def make_replay(self, name: str) -> None:
+        (self.corpus / name).write_bytes(b"not a real replay")
+
+    def run_main(self, limit: str | None = None):
+        argv = ["validate_corpus.py", sys.executable, str(self.corpus)]
+        if limit is not None:
+            argv.append(limit)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = guard.main(argv)
+        return code, out.getvalue()
+
+    def test_a_clean_sweep_exits_zero(self):
+        self.make_replay("a.vrf")
+        self.make_replay("b.vrf")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        self.assertIn("OK:", output)
+
+    def test_an_oracle_that_could_not_validate_a_replay_fails_the_run(self):
+        self.make_replay("badexit.vrf")
+        code, output = self.run_main()
+        self.assertNotEqual(code, 0, output)
+        self.assertIn("FAILED", output)
+
+    def test_a_counter_the_oracle_stopped_printing_fails_the_run(self):
+        """The recorded defect, reproduced end to end: `missingmalformed.vrf`
+        exits 0 from the fake oracle and every OTHER counter is present, so
+        the only thing that can catch it is `main()` reading `problems()`'s
+        report on the absent `malformed` counter -- not a helper being
+        correct, but `main()` acting on what the helper says."""
+        self.make_replay("missingmalformed.vrf")
+        code, output = self.run_main()
+        self.assertNotEqual(code, 0, output)
+        self.assertIn("FAILED", output)
+        self.assertIn("malformed", output)
+
+    def test_an_empty_corpus_is_a_controlled_failure_not_a_silent_pass(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                guard.main(["validate_corpus.py", sys.executable, str(self.corpus)])
+        self.assertIn("no .vrf under", str(caught.exception))
 
 
 if __name__ == "__main__":
