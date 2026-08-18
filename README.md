@@ -19,7 +19,7 @@ by Michel Giehl; see [`NOTICE.md`](NOTICE.md). Not affiliated with, endorsed
 by, or approved by Riot Games.
 
 **Current state:** `cargo +1.86.0 test --workspace --locked` **563 passing**,
-`tools/tests` **481 passing** -- see [Status](#status) for the rest.
+`tools/tests` **503 passing** -- see [Status](#status) for the rest.
 
 - Run it: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable: [`docs/DATA.md`](docs/DATA.md)
@@ -281,7 +281,7 @@ it as one gives the year 3626.
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
 **563 passing**, strict workspace `clippy -D warnings` **0**, `cargo fmt` clean,
-and `check_ascii` on 117 files. The Python suite in `tools/tests` has 481 tests.
+and `check_ascii` on 118 files. The Python suite in `tools/tests` has 503 tests.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.
