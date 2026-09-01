@@ -243,9 +243,9 @@ impl NetGuidCache {
     ///
     /// A no-op write -- the same path and outer this GUID already has -- does
     /// not bump [`Self::guid_generation`]. This isn't only about the redundant
-    /// hashmap writes: [`crate::checkpoint`] reads a fresh `NetGuidCache` per
+    /// hashmap writes: [`crate::read_checkpoint_tables`] reads a fresh `NetGuidCache` per
     /// checkpoint, but the frame-level ExportData section
-    /// ([`crate::reader::read_export_guids`]) calls this once per exported
+    /// ([`crate::read_export_guids`]) calls this once per exported
     /// GUID on *every* frame that re-declares one, with no pre-check of its
     /// own (unlike `vrfkit`'s `register_path`, which skips the call entirely
     /// when nothing changed, for its own reason -- an allocation, not this
