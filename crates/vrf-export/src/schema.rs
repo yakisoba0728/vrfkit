@@ -76,7 +76,10 @@ pub fn fields_schema() -> Schema {
 /// structure, no nulls).
 ///
 /// The coordinate system matches Unreal Engine's left-handed Z-up convention.
-/// Positions are in centimetres; yaw/pitch are in degrees (-180..180).
+/// Positions are in centimetres; yaw/pitch are in degrees, unsigned and
+/// wrapped to `[0, 360)` -- decoded from a `u16` scaled by `360/65536`, never
+/// negative. A downward pitch near straight-down does not read as a small
+/// negative number here; it wraps to a value near 360.
 /// Velocity is cm/s as reported by the replication channel.
 ///
 /// The last three columns are appended rather than interleaved: existing
@@ -104,9 +107,12 @@ pub fn movement_schema() -> Schema {
         // Server-assigned tick from the move header. Distinct from `time_ms`,
         // which is the replay-relative packet time this crate stamps on.
         Field::new("timestamp", DataType::UInt32, false),
-        // Posture byte (crouch / walk / run / jump). One wire byte, so UInt8
-        // -- widening would cost 3 bytes per row before compression for no
-        // added range.
+        // Move-header byte at bits [9..17]. Named for a posture it has never
+        // been observed to carry: constant 0 on all 1,034,035,170 exported
+        // movement rows across 527 corpus replays -- see
+        // `MovementRecord::movement_state`. Do not read posture out of
+        // it. One wire byte, so UInt8 -- widening would cost 3 bytes per row
+        // before compression for no added range.
         Field::new("movement_state", DataType::UInt8, false),
         // 0 = variant0 (no velocity on the wire), 1 = variant1 (velocity
         // present). Effectively a bool, but kept as the decoder's u8 so the
@@ -140,7 +146,7 @@ pub fn actors_schema() -> Schema {
         Field::new("packet_id", DataType::UInt32, false),
         Field::new("channel_index", DataType::UInt32, false),
         Field::new("actor_net_guid", DataType::UInt32, false),
-        // "open" or "close" -- small cardinality, dictionary is overkill.
+        // "open", "close", or "dormant" -- small cardinality, dictionary is overkill.
         Field::new("event", DataType::Utf8, false),
         // Nullable: class path may be unresolvable for some actors.
         Field::new(

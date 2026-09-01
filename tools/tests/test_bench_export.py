@@ -5,6 +5,8 @@ noise into a verdict, or let a genuinely faster run pass silently -- a run well
 under the baseline means the baseline is stale, which is the same problem as a
 regression pointed the other way.
 """
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -206,8 +208,27 @@ class UpdateTests(unittest.TestCase):
 
     def test_checkpoints_without_update_still_reports_the_timing(self):
         """Refusing to RECORD must not stop the tool from measuring."""
-        code = self.run_bench(self.replay("m.vrf"), ["--checkpoints"])
+        argv = sys.argv
+        sys.argv = [
+            "bench_export.py",
+            "--exe", str(self.exe),
+            "--replay", str(self.replay("m.vrf")),
+            "--baseline", str(self.baseline),
+            "--repeats", "1",
+            "--checkpoints",
+        ]
+        buf = io.StringIO()
+        try:
+            with mock.patch.object(bench, "time_export",
+                                    return_value=[2.5]) as timer:
+                with contextlib.redirect_stdout(buf):
+                    code = bench.main()
+        finally:
+            sys.argv = argv
         self.assertEqual(code, 0)
+        timer.assert_called_once()
+        self.assertIn("export_checkpoints: median 2.500s", buf.getvalue(),
+                       buf.getvalue())
 
 
 if __name__ == "__main__":

@@ -77,26 +77,43 @@ def compare_totals(cs_manifest: dict, vk_manifest: dict) -> str:
     lines.append("-" * 55)
 
     def row(label, cs_val, vk_val):
-        match = "✓" if cs_val == vk_val else "✗"
-        lines.append(f"{label:<20} {cs_val:>12,} {vk_val:>12,} {match:>6}")
+        # A key absent from a manifest is not a measured zero. Comparing two
+        # `.get(key, 0)` defaults would silently declare "match" for a pair
+        # neither side actually produced (see coverage_problems() in section 3
+        # for the same principle). Render absence visibly instead of guessing.
+        if cs_val is None or vk_val is None:
+            match = "?"
+            cs_disp = f"{cs_val:>12,}" if cs_val is not None else f"{'?':>12}"
+            vk_disp = f"{vk_val:>12,}" if vk_val is not None else f"{'?':>12}"
+        else:
+            match = "✓" if cs_val == vk_val else "✗"
+            cs_disp = f"{cs_val:>12,}"
+            vk_disp = f"{vk_val:>12,}"
+        lines.append(f"{label:<20} {cs_disp} {vk_disp} {match:>6}")
 
-    row("Packets",       cs_stats.get("packet_count", 0),        vk_stats.get("packet_count", 0))
-    row("Bunches",       cs_stats.get("packets_with_bunches", cs_stats.get("bunch_count", 0)),
-                         vk_stats.get("bunch_count", vk_counts.get("bunch_count", 0)))
-    row("Actor opens",   cs_counts.get("actor_spawned", 0),      vk_counts.get("actor_opens", 0))
-    row("Actor closes",  cs_counts.get("actor_closed", 0),       vk_counts.get("actor_closes", 0))
+    row("Packets",       cs_stats.get("packet_count"),        vk_stats.get("packet_count"))
+    row("Bunches",       cs_stats.get("packets_with_bunches", cs_stats.get("bunch_count")),
+                         vk_stats.get("bunch_count", vk_counts.get("bunch_count")))
+    row("Actor opens",   cs_counts.get("actor_spawned"),      vk_counts.get("actor_opens"))
+    row("Actor closes",  cs_counts.get("actor_closed"),       vk_counts.get("actor_closes"))
 
     # Export groups — count from net_field_export_groups array length
     cs_groups = len(cs_manifest.get("net_field_export_groups", []))
     vk_groups = len(vk_manifest.get("net_field_export_groups", []))
     row("Export groups",  cs_groups, vk_groups)
 
-    # Additional counts
-    row("Movement rows", cs_counts.get("movement", 0),
-        vk_counts.get("movement_rows", vk_manifest.get("movement_rows", 0)))
-    row("Fields decoded", cs_counts.get("export_group_received", 0) + cs_counts.get("filtered_export_groups", 0),
-        vk_counts.get("fields", 0))
-    row("RPCs (total)",  cs_counts.get("rpc_received", 0),       vk_counts.get("rpcs", 0))
+    # Additional counts. vrfkit's movement row count lives under the
+    # top-level "quality" object (crates/vrfkit/src/manifest.rs), not under
+    # "counts" and not at the manifest's top level -- neither of which this
+    # tool's own `vk_counts`/`vk_manifest` lookups ever populate.
+    row("Movement rows", cs_counts.get("movement"),
+        vk_manifest.get("quality", {}).get("movement_rows"))
+    fields_decoded = cs_counts.get("export_group_received")
+    if fields_decoded is not None:
+        fields_decoded += cs_counts.get("filtered_export_groups", 0)
+    row("Fields decoded", fields_decoded,
+        vk_counts.get("fields"))
+    row("RPCs (total)",  cs_counts.get("rpc_received"),       vk_counts.get("rpcs"))
 
     lines.append("")
     return "\n".join(lines)
@@ -569,7 +586,7 @@ def main():
     report_parts.append("# vrfkit vs C# Parser Comparison Report\n")
     report_parts.append(f"Replay: {cs_manifest.get('source_file', 'unknown')}")
     report_parts.append(f"Build: {cs_manifest.get('replay_build', 'unknown')}")
-    report_parts.append(f"Duration: {cs_manifest.get('duration_ms', 0)} ms\n")
+    report_parts.append(f"Duration: {cs_manifest.get('duration_ms', 'unknown')} ms\n")
 
     # 1. Totals
     report_parts.append(compare_totals(cs_manifest, vk_manifest))

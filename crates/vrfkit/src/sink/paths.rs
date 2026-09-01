@@ -16,13 +16,20 @@
 //!   `object_net_guid`,
 //! - the channel index and actor GUID,
 //! - the cache's declared group paths (`schema_generation` tracks these),
-//! - the cache's GUID -> path and GUID -> outer maps, and
-//! - this crate's channel -> (actor, archetype) map.
+//! - the cache's GUID -> path and GUID -> outer maps (`guid_generation` tracks
+//!   these), and
+//! - this crate's channel -> (actor, archetype) map (`ChannelState::resolution_generation`
+//!   tracks this).
 //!
-//! The first two are the memo key. The third is `NetGuidCache::schema_generation`.
-//! The last two are what `ChannelState::resolution_generation` exists for --
-//! `schema_generation` explicitly does not cover them. A change in either stamp
-//! discards the whole memo, so a hit is indistinguishable from a recomputation.
+//! The first two are the memo key. The rest are three independent stamps --
+//! `NetGuidCache::schema_generation`, `NetGuidCache::guid_generation` and
+//! `ChannelState::resolution_generation` -- none of which covers another:
+//! `schema_generation` explicitly does not track field or GUID mutations, and
+//! `resolution_generation` is bumped only from this crate's own
+//! `register_path`/`on_actor_open`, not from the frame-level ExportData
+//! section that also calls `NetGuidCache::set_net_guid_path` directly. A
+//! change in any one of the three discards the whole memo, so a hit is
+//! indistinguishable from a recomputation.
 //!
 //! The value is the pair `(group path, function count)` rather than just the
 //! path, because `resolve_function_count` can *replace* the resolved path (the
@@ -239,17 +246,34 @@ pub(super) struct BlockPathMemo {
     schema_generation: u64,
     /// `ChannelState::resolution_generation` when `entries` was last valid.
     resolution_generation: u64,
+    /// `NetGuidCache::guid_generation` when `entries` was last valid. Needed
+    /// separately from `resolution_generation`: the frame-level ExportData
+    /// section (`vrf_frame::read_export_data` -> `NetGuidCache::set_net_guid_path`)
+    /// mutates the cache's GUID -> path / GUID -> outer maps directly, once per
+    /// frame, without going through `ExportSink::register_path` -- the only
+    /// place `resolution_generation` is bumped for a GUID registration.
+    guid_generation: u64,
     entries: FxHashMap<BlockKey, (Arc<str>, u32)>,
 }
 
 impl BlockPathMemo {
-    /// Drop everything if either stamp has moved, then report the current
-    /// entry for `key`.
-    fn get(&mut self, key: &BlockKey, schema: u64, resolution: u64) -> Option<(Arc<str>, u32)> {
-        if self.schema_generation != schema || self.resolution_generation != resolution {
+    /// Drop everything if any stamp has moved, then report the current entry
+    /// for `key`.
+    fn get(
+        &mut self,
+        key: &BlockKey,
+        schema: u64,
+        resolution: u64,
+        guid: u64,
+    ) -> Option<(Arc<str>, u32)> {
+        if self.schema_generation != schema
+            || self.resolution_generation != resolution
+            || self.guid_generation != guid
+        {
             self.entries.clear();
             self.schema_generation = schema;
             self.resolution_generation = resolution;
+            self.guid_generation = guid;
             return None;
         }
         self.entries
@@ -285,7 +309,12 @@ impl ExportSink<'_> {
         };
         let schema = self.cache.schema_generation();
         let resolution = self.channel_state.resolution_generation;
-        if let Some((path, count)) = self.channel_state.block_paths.get(&key, schema, resolution) {
+        let guid = self.cache.guid_generation();
+        if let Some((path, count)) = self
+            .channel_state
+            .block_paths
+            .get(&key, schema, resolution, guid)
+        {
             self.set_current_group_path(path);
             return count;
         }

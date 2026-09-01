@@ -60,6 +60,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -188,6 +189,21 @@ def invariants(v: dict) -> list[str]:
             f"stopped decoding while the kill timeline kept working."
         )
     return bad
+
+
+def invariant_count() -> int:
+    """How many checks `invariants()` runs, for the pass-message at the end.
+
+    `invariants()` returns only the FAILURES, so `len(invariants(v))` is 0 on
+    a clean build and cannot answer "how many checks ran". The call site used
+    to restate that as a bare literal `5`, a second number with no connection
+    to the first -- add an R6 (or drop one) and the pass message keeps
+    claiming the old count while having run a different one. Counting the
+    distinct `R<n>` labels `invariants()` itself prints keeps the two numbers
+    unable to disagree.
+    """
+    import inspect
+    return len(set(re.findall(r"\bR\d+\b", inspect.getsource(invariants))))
 
 
 # ---------------------------------------------------------------------------
@@ -369,7 +385,7 @@ def main() -> int:
         print("  If the change is intended, re-pin with --update.", file=sys.stderr)
         return 1
 
-    n_inv = len(results) * 5
+    n_inv = len(results) * invariant_count()
     print(f"\nOK: {len(results)} build(s) pass {n_inv} invariant checks and match "
           f"{sum(len(v) for v in results.values())} pinned metric values")
     return 0

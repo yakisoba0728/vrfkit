@@ -105,6 +105,7 @@ pub struct ReplayHeader {
     /// [`CheckpointChunk::trailing_bytes`] reports a checkpoint's.
     ///
     /// Expected to be zero. A non-zero value means the header grew.
+    /// Written to the manifest as `header_trailing_bytes`.
     ///
     /// [`CheckpointChunk::trailing_bytes`]: crate::CheckpointChunk::trailing_bytes
     pub trailing_bytes: usize,

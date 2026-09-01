@@ -61,8 +61,19 @@ pub struct NetStats {
     pub unfinished_partials: u64,
     /// Bits buffered by those unfinished partial bunches, and therefore lost.
     ///
-    /// Kept out of [`Self::skipped_bits`], which is the content-block tally the
-    /// oracle divides by failed blocks; these bits never reached framing.
+    /// Kept out of [`Self::skipped_bits`] -- but NOT because these bits never
+    /// reached framing; two other partial-reassembly discards (an overlapping
+    /// or out-of-sequence fragment rejected by `validate_sequence`, and a
+    /// channel destroyed with a reassembly still buffered) never reach framing
+    /// either, and both ARE added to `skipped_bits`, at the moment each is
+    /// discarded. The real distinction is *when* the loss becomes attributable:
+    /// those two are conclusive the instant they happen, during a specific
+    /// bunch's processing, same as any other framing loss `skipped_bits`
+    /// tallies. This field is not -- an in-progress reassembly is
+    /// indistinguishable from one still awaiting its next fragment until the
+    /// stream ends, so it cannot be charged to `skipped_bits` (which the
+    /// oracle divides by failed *blocks*, block by block) before then. It is
+    /// summed here, separately, only by [`crate::ReplicationReader::finish`].
     pub unfinished_partial_bits: u64,
     /// Bunch payloads whose header parse failed -- package-map exports,
     /// must-be-mapped GUIDs, or the channel-open block. The prior code did
@@ -85,6 +96,19 @@ pub struct NetStats {
     pub rpcs: u64,
     /// Bits skipped due to malformed content block payloads.
     pub skipped_bits: u64,
+    /// A content block's header, or its `content_bits` IntPacked field, could
+    /// not be read at all -- the two failure depths in `frame_content_blocks`
+    /// that ran before `malformed_content_blocks` or any other block-level
+    /// counter could apply. Both abandon the rest of the bunch (`skip_remaining`),
+    /// same loss as [`Self::malformed_content_blocks`], just one layer earlier;
+    /// counted here for the same reason that one is counted, and included in
+    /// [`Self::lost_content_blocks`] so `verdict_from_stats` can see it. Before
+    /// this existed, a build that shifted the header or `content_bits` grammar
+    /// by one bit moved `skipped_bits` and a diagnostics-only event (gated
+    /// behind `--diagnostics`, capped, and never read by the verdict) with
+    /// every other block-level counter left at zero -- a structurally
+    /// undetectable loss.
+    pub content_block_framing_failures: u64,
     /// Malformed content block payloads (overrun).
     pub malformed_content_blocks: u64,
     /// Content blocks whose payload transform or bit copy failed.
@@ -195,6 +219,7 @@ impl NetStats {
         self.fields += other.fields;
         self.rpcs += other.rpcs;
         self.skipped_bits += other.skipped_bits;
+        self.content_block_framing_failures += other.content_block_framing_failures;
         self.malformed_content_blocks += other.malformed_content_blocks;
         self.transform_failures += other.transform_failures;
         self.field_stream_failures += other.field_stream_failures;
@@ -250,7 +275,8 @@ impl NetStats {
         let rpc_payloads_lost = self
             .rpc_stream_failures
             .saturating_sub(self.unresolved_rpc_payloads_preserved);
-        self.malformed_content_blocks
+        self.content_block_framing_failures
+            + self.malformed_content_blocks
             + self.transform_failures
             + self.field_stream_failures
             + rpc_payloads_lost
@@ -586,6 +612,7 @@ mod tests {
             fields: 14,
             rpcs: 15,
             skipped_bits: 16,
+            content_block_framing_failures: 34,
             malformed_content_blocks: 17,
             transform_failures: 18,
             field_stream_failures: 19,
@@ -625,6 +652,7 @@ mod tests {
         assert_eq!(totals.fields, 28);
         assert_eq!(totals.rpcs, 30);
         assert_eq!(totals.skipped_bits, 32);
+        assert_eq!(totals.content_block_framing_failures, 68);
         assert_eq!(totals.malformed_content_blocks, 34);
         assert_eq!(totals.transform_failures, 36);
         assert_eq!(totals.field_stream_failures, 38);

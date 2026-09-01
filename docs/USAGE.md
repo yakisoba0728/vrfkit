@@ -351,7 +351,7 @@ The timeline the server wrote itself. One row per Event chunk.
 | `time1` / `time2` | | Timestamp pair |
 | `payload_size` | | Payload size |
 | `raw_payload` | bytes | Raw payload |
-| `word0` / `word1` | u32 | First two payload words |
+| `word0` / `word1` | u32? | First two payload words |
 | `payload_tag` | u32? | Stable group tag, only for an exact known layout |
 | `payload_name` | str? | Fixed public `EReplayEventGroup` enum name, only for an exact known layout |
 | `payload_seconds` | f32? | Payload time in seconds, only when it agrees with `time1` |
@@ -684,12 +684,12 @@ field meaning; the analyzer deliberately performs no type inference.
 ### Quick sweep -- after any change
 
 ```bash
-cargo +1.86.0 test --workspace --locked                              # 580 passing
+cargo +1.86.0 test --workspace --locked                              # 594 passing
 cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.86.0 fmt --check
 python -W error tools/check_ascii.py --check                         # 119 files
 python -W error tools/check_effect_decoder.py --check                # 12 cases
-python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 551 passing
+python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 553 passing
 python -W error tools/check_docs.py --fast
 python -W error tools/apply_type_corrections.py --check              # 133 corrections
 python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
@@ -740,7 +740,7 @@ rather than the exit code.
 | Check | Watches | Misses | Cost |
 |---|---|---|---|
 | `validate_corpus.py` | Framing (top level of the corpus dir; `--recursive` for subdirectories) | Type errors, broken semantics | ~30 s |
-| `check_export_baseline.py` | 25 export counters + per-file rows/bytes | Other builds | 1 s |
+| `check_export_baseline.py` | 28 export counters + per-file rows/bytes | Other builds | 1 s |
 | `check_decode_errors_corpus.py` | Overlay type errors + struct blob failures (top level; `--recursive` for subdirectories) | Broken semantics; Checkpoint chunks, unless `--checkpoints` | ~50 s |
 | `check_decode_errors_corpus.py --checkpoints` | The same, plus every Checkpoint chunk's overlay and struct-blob decode | Broken semantics | slower: `vrfkit export` also decodes every Checkpoint chunk per replay |
 | `check_metrics_baseline.py` | **Semantics** -- rounds, score, K/D/A (5 builds) | Errors in the metrics pipeline itself | ~46 s |
@@ -804,7 +804,7 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
 
 ## 8. Known limits
 
-- **Untyped residual** -- the [`export`](#export) `Typed` is ~72% (denominator
+- **Untyped residual** -- the [`export`](#export) `Typed` is ~75.1% (denominator
   including RPC parameters). **Untyped != lost** (`raw_bits` preserved). Typing
   the rest needs the game binary or UE headers -- this is not a table-editing
   problem (archive/PROJECT_STATUS.md section 24).

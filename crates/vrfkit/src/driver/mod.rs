@@ -396,6 +396,14 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
         },
     )?;
 
+    // Checked against the directory `publish` is about to replace, not the
+    // one that exists once it returns: publication is a single atomic
+    // rename of the whole destination, so a table this run did not rewrite
+    // can only still be found here, before that swap happens. See
+    // `summary::stale_checkpoint_note`'s own doc for why checking afterward
+    // could never see it.
+    let stale_checkpoint_note = summary::stale_checkpoint_note(&destination, with_checkpoints);
+
     // No handle remains open in staging at this point. Replace the destination
     // only after every table and the manifest are complete; a failed run before
     // here drops the guard and removes staging without touching the prior run.
@@ -420,6 +428,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
             event_payloads_decoded,
             event_payload_unknown_groups,
             sink: sink_totals,
+            stale_checkpoint_note,
         },
         &error_report,
         with_checkpoints.then_some(&cp_stats),

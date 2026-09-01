@@ -285,10 +285,6 @@ class ContradictingCountTests(unittest.TestCase):
         self.assertEqual(guard.contradicting_test_counts(docs), [])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class MeasuredCountTests(unittest.TestCase):
     """Counts that live somewhere runnable, quoted in prose that rots.
 
@@ -397,3 +393,7 @@ class DocCoverageTests(unittest.TestCase):
         for name in guard.ALL_DOCS:
             path = guard.REPO / name
             self.assertEqual(guard.check_links(path, guard.read(path)), [], name)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -66,6 +66,7 @@ pub(super) fn frame_content_blocks(
         let Ok(header) = content::read_content_block_header(payload, actor_net_guid, sink) else {
             let remaining = payload.bits_remaining();
             stage.stats.skipped_bits += remaining;
+            stage.stats.content_block_framing_failures += 1;
             diagnostics::header_read_error(
                 stage.stats,
                 ctx,
@@ -92,6 +93,7 @@ pub(super) fn frame_content_blocks(
         let Ok(content_bits) = payload.read_int_packed() else {
             let remaining = payload.bits_remaining();
             stage.stats.skipped_bits += remaining;
+            stage.stats.content_block_framing_failures += 1;
             diagnostics::content_bits_read_error(
                 stage.stats,
                 ctx,

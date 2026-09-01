@@ -199,17 +199,24 @@ impl NetGuidCache {
         // (those were already tried above).
         let trimmed = bare_name.trim_end_matches(|c: char| c.is_ascii_digit());
         if trimmed.len() < bare_name.len() && !trimmed.is_empty() {
-            // Also strip a trailing uppercase letter that acts as a site/variant
-            // marker (e.g. WindowShieldA1 -> WindowShieldA -> WindowShield).
-            let trimmed2 = trimmed.trim_end_matches(|c: char| c.is_ascii_uppercase());
-            if trimmed2.len() < trimmed.len() && !trimmed2.is_empty() {
-                if let Some(group) = self.try_cnc_leaf_candidates(trimmed2) {
-                    return Some(group);
-                }
+            // Longest stem first, matching the loop above: try the
+            // digit-only trim before the more aggressive one below.
+            if let Some(group) = self.try_cnc_leaf_candidates(trimmed) {
+                return Some(group);
             }
-            if trimmed != bare_name {
-                if let Some(group) = self.try_cnc_leaf_candidates(trimmed) {
-                    return Some(group);
+            // Also strip a trailing uppercase letter -- one, not the whole
+            // run -- that acts as a site/variant marker (e.g. WindowShieldA1
+            // -> WindowShieldA -> WindowShield).
+            if trimmed
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_uppercase())
+            {
+                let trimmed2 = &trimmed[..trimmed.len() - 1];
+                if !trimmed2.is_empty() {
+                    if let Some(group) = self.try_cnc_leaf_candidates(trimmed2) {
+                        return Some(group);
+                    }
                 }
             }
         }
@@ -460,6 +467,39 @@ mod tests {
         assert_eq!(
             g.path,
             "/Game/Interactable/WindowShield.WindowShield_C_ClassNetCache"
+        );
+    }
+
+    /// The longer digit-only trim must be tried before the more aggressive
+    /// uppercase-run trim, and that trim must remove one trailing uppercase
+    /// letter, not the whole run. Both groups below are real archive names
+    /// (`AudDeadeyeVOComponent_ClassNetCache` and a shorter, unrelated
+    /// `AudDeadeye*_ClassNetCache`); the instance name `AudDeadeyeVO2` must
+    /// resolve to the former. Before the fix, the shorter-first order and the
+    /// whole-run trim (`"AudDeadeyeVO"` -> `"AudDeadeye"`, stripping both `V`
+    /// and `O`) matched the wrong, shorter group first.
+    #[test]
+    fn cnc_resolve_tries_the_longer_stem_before_the_more_aggressive_trim() {
+        let mut cache = NetGuidCache::new();
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Game/Audio/VOComponent/AudDeadeye.AudDeadeye_ClassNetCache".into(),
+            90,
+            1,
+        ));
+        cache.add_export_group(NetFieldExportGroup::new(
+            "/Game/Audio/VOComponent/AudDeadeyeVoComponent.AudDeadeyeVOComponent_ClassNetCache"
+                .into(),
+            91,
+            3,
+        ));
+
+        let g = cache
+            .resolve_cnc_for_instance_name("AudDeadeyeVO2")
+            .unwrap();
+        assert_eq!(
+            g.path,
+            "/Game/Audio/VOComponent/AudDeadeyeVoComponent.AudDeadeyeVOComponent_ClassNetCache",
+            "must resolve through the longer stem, not the shorter unrelated group"
         );
     }
 

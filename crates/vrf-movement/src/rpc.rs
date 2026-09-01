@@ -73,6 +73,21 @@ pub fn decode_movement_rpc(
         decode_updates_array(&mut sub, &mut result, &mut emit)?;
     }
 
+    // The loop above can end two ways: `position >= end_bit` (fully
+    // consumed) or a `0` terminator handle that arrived early. The second
+    // leaves whatever is between that terminator and `end_bit` unread --
+    // and previously unreported. A grammar drift that moves the leading flag
+    // bit or the first handle number can make `read_int_packed()` return `0`
+    // immediately, breaking the loop on its first iteration with the whole
+    // payload still unconsumed; without this, that decoded to
+    // `RpcDecodeResult { total_moves: 0, update_count: 0, error_count: 0 }`,
+    // bit-for-bit indistinguishable from a genuinely empty RPC. Counted the
+    // same way every other framing anomaly in this result is, per
+    // `RpcDecodeResult::error_count`'s own doc.
+    if reader.position() < end_bit {
+        result.error_count += 1;
+    }
+
     Ok(result)
 }
 
@@ -199,16 +214,28 @@ fn decode_single_update(
 /// Decode a ComponentDataStream.
 ///
 /// The C# parser uses a checkpoint to try byte-wrapped parsing first, then
-/// falls back. Since our BitReader cannot rewind, we implement this by
-/// peeking at the structure: read the first u16 and check if it looks like
-/// a valid byte-count wrapper. If so, parse inner. Otherwise, treat the u16
-/// as the movementBitCount for direct parsing.
+/// rolls back and falls back to direct parsing. This decoder uses a single
+/// length-validity check instead of an actual checkpoint/rollback: read the
+/// first u16 and check if it looks like a valid byte-count wrapper. If so,
+/// parse inner. Otherwise, treat the u16 as the movementBitCount for direct
+/// parsing.
+///
+/// "`BitReader` cannot rewind" is not why: it derives `Clone`, and
+/// `sink::rpc::try_parse_rpc_params` already clones one for exactly this
+/// checkpoint/fallback pattern (`let whole_reader = reader.clone();`). A true
+/// rollback -- try the byte-wrapped parse on a clone, and if it fails or does
+/// not fully consume its declared window, retry direct parsing from the
+/// original position -- was never implemented here; whether it would ever
+/// decode anything differently from the length-validity heuristic below has
+/// not been measured against a corpus, so that equivalence is unverified, not
+/// established.
 ///
 /// Key insight: both paths start by reading a u16. In byte-wrapped mode, it's
 /// the byte count of the outer envelope. In direct mode, it's the
-/// movementBitCount. The C# checkpoint-rollback pattern is equivalent to:
-/// "if the first u16 passes the byte-wrapped validity check, use it as byte
-/// count; otherwise reinterpret it as movementBitCount."
+/// movementBitCount. The heuristic below assumes -- unverified -- that this is
+/// equivalent to the C# checkpoint-rollback pattern: "if the first u16 passes
+/// the byte-wrapped validity check, use it as byte count; otherwise
+/// reinterpret it as movementBitCount."
 fn decode_component_data_stream(
     reader: &mut BitReader<'_>,
     shooter_guid: u32,

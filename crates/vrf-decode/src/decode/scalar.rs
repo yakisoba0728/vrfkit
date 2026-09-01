@@ -251,8 +251,9 @@ pub(super) fn decode_byte_array(
 ) -> Result<DecodedValue, DecodeError> {
     let count = r.read_int_packed()?;
     if count > max_bytes {
-        return Err(DecodeError::NotFullyConsumed {
-            remaining: r.bits_remaining(),
+        return Err(DecodeError::ByteArrayLengthCapExceeded {
+            declared: count,
+            max: max_bytes,
         });
     }
     let mut hex = String::with_capacity(count as usize * 2);

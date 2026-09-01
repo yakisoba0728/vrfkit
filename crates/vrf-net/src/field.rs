@@ -78,6 +78,18 @@ pub fn parse_rep_layout(
         let record_start = reader.position();
         let encoded_handle = reader.read_int_packed()?;
         if encoded_handle == 0 {
+            // A well-formed stream ends exactly here: the block window was
+            // sized for this content, so nothing should remain. If something
+            // does -- a grammar drift that moves the terminator earlier than
+            // the declared `bit_count` -- those bits were about to vanish with
+            // neither `field_stream_failures` nor `skipped_bits` moving, same
+            // as the overrun case above counts what it abandons instead of
+            // dropping it via `skip_remaining` alone.
+            let leftover = reader.bits_remaining();
+            if leftover != 0 {
+                abandoned_bits = leftover;
+                reader.skip_remaining();
+            }
             break;
         }
 
@@ -448,8 +460,13 @@ mod tests {
         assert!(sink.fields.is_empty());
     }
 
-    /// A clean terminator (no overrun) reports zero abandoned bits, so the
-    /// caller does not inflate skipped_bits with ordinary block padding.
+    /// A clean terminator (no overrun) reports zero abandoned bits.
+    ///
+    /// Bound to the exact bit count, the way the framing layer does
+    /// (`decode_and_parse_rep_layout` always calls `with_bit_len(.., bit_count)`)
+    /// -- `BitReader::new` would round the window up to a whole number of
+    /// bytes, and that incidental byte-padding is not what this test is
+    /// about.
     #[test]
     fn rep_layout_clean_terminator_reports_zero_abandoned() {
         let mut bits = Vec::new();
@@ -460,10 +477,31 @@ mod tests {
         write_int_packed(&mut bits, 0); // terminator
 
         let data = bits_to_bytes(&bits);
-        let mut reader = BitReader::new(&data);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
         let mut sink = RecordingSink::default();
         let (_count, abandoned) = parse_rep_layout(&mut reader, &mut sink).unwrap();
         assert_eq!(abandoned, 0);
+    }
+
+    /// A terminator that arrives before the declared window ends -- the
+    /// window the caller bounds to `content_bits`, not a byte-rounded one --
+    /// must report the leftover as abandoned. This is the grammar-drift
+    /// shape: a build change moves the terminator earlier, and the tail was
+    /// previously dropped by the implicit `while !reader.at_end()` exit with
+    /// `abandoned_bits` left at its initial 0.
+    #[test]
+    fn rep_layout_terminator_before_window_end_returns_abandoned_bits() {
+        let mut bits = Vec::new();
+        bits.push(false); // checksum
+        write_int_packed(&mut bits, 0); // terminator, immediately
+        bits.extend(std::iter::repeat_n(false, 600)); // undeclared trailing bits
+
+        let data = bits_to_bytes(&bits);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
+        let mut sink = RecordingSink::default();
+        let (count, abandoned) = parse_rep_layout(&mut reader, &mut sink).unwrap();
+        assert_eq!(count, 0);
+        assert_eq!(abandoned, 600);
     }
 
     /// A ClassNetCache stream that EOFs before an IntPacked payload-length read

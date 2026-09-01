@@ -213,9 +213,12 @@ EXPECTED += [
 #: the smallest rows and mislabel every other row, so it stays raw until
 #: the array element type is worked out. Also deliberately not added:
 #: `FuelFull`/`FuelEmpty` (0-bit payloads, no value to decode) and
-#: `BlindManagerComponent.ActiveBlinds`/`LongestActiveBlindDuration`
-#: (ActiveBlinds is a variable-width array; the duration was outside the
-#: brief and its Float read is not yet corroborated against gameplay).
+#: `BlindManagerComponent.ActiveBlinds` (a variable-width array).
+#: `LongestActiveBlindDuration` was outside the brief and not yet
+#: corroborated when this note was written; it is now typed below, in the
+#: ADDITIONS list, once its Float read was confirmed (0.0..2.1 s, agent-
+#: common) -- see `blind_duration_is_typed` in
+#: crates/vrf-decode/src/tests/overlay.rs.
 #: Final-sweep ADDITIONS. Four descriptor-silent groups whose raw bits decode
 #: cleanly to real game values on the 98605b1b Demos export. Each is held to
 #: the same wire-evidence bar as Money/Ping: a single consistent bit width on

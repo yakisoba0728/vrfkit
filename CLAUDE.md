@@ -99,7 +99,7 @@ Consequences for how you work:
 - **MSRV 1.86 is not your local toolchain.** `let` chains have already broken a
   build this way. Run the sweep through `cargo +1.86.0`.
 - **`pip install -r requirements.txt`.** `pyarrow` and `numpy` are real
-  dependencies of `tools/`; without them eleven test modules fail to import and
+  dependencies of `tools/`; without them twelve test modules fail to import and
   the suite silently runs a subset.
 
 ## Measuring

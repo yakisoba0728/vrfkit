@@ -732,6 +732,11 @@ fn apply_overlay_inner(
                 DecodeError::NonFiniteComponent { .. } => DecodeErrorKind::Residual,
                 DecodeError::InvalidQuantizationScale { .. }
                 | DecodeError::InvalidFNameNumber { .. } => DecodeErrorKind::Residual,
+                // A value-range rejection like the five above it, not a
+                // bit-level framing failure -- no field/remaining bit count was
+                // even measured yet. See the variant's own doc for why this
+                // used to be `NotFullyConsumed` and why that mislabeled it.
+                DecodeError::ByteArrayLengthCapExceeded { .. } => DecodeErrorKind::Residual,
             };
             stats
                 .error_report

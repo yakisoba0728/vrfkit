@@ -127,8 +127,14 @@ pub struct FRepMovement {
     pub angular_velocity: Option<FVector>,
     pub simulated_physics_sleep: bool,
     pub rep_physics: bool,
-    pub server_frame: u32,
-    pub server_physics_handle: u32,
+    /// `None` when the wire's `bRepServerFrame` bit is clear -- no value was
+    /// sent, not a reported frame of 0. Mirrors `angular_velocity`'s use of
+    /// `Option` for the same reason: `bRepPhysics` gates that field the same
+    /// way `bRepServerFrame` gates this one.
+    pub server_frame: Option<u32>,
+    /// `None` when the wire's `bRepServerHandle` bit is clear. See
+    /// `server_frame`.
+    pub server_physics_handle: Option<u32>,
 }
 
 /// Writes an [`FVector`] as `{"x":..,"y":..,"z":..}`.
@@ -189,10 +195,16 @@ impl fmt::Display for FRepMovement {
             ",\"simulated_physics_sleep\":{},\"rep_physics\":{}",
             self.simulated_physics_sleep, self.rep_physics
         )?;
-        write!(
-            f,
-            ",\"server_frame\":{},\"server_physics_handle\":{}}}",
-            self.server_frame, self.server_physics_handle
-        )
+        f.write_str(",\"server_frame\":")?;
+        match self.server_frame {
+            Some(v) => write!(f, "{v}")?,
+            None => f.write_str("null")?,
+        }
+        f.write_str(",\"server_physics_handle\":")?;
+        match self.server_physics_handle {
+            Some(v) => write!(f, "{v}")?,
+            None => f.write_str("null")?,
+        }
+        f.write_str("}")
     }
 }

@@ -145,6 +145,14 @@ class AdditionsTests(unittest.TestCase):
         `HandleNumber`, whose 3,741 rows hold a dense 1..765. One entry each is
         enough -- checksum propagation carries both to their sibling RPCs.
 
+        70 -> 73 types the authoritative scoreboard counters.
+        `BasicCombatStatsComponent` carries the cumulative K/D/A the game's own
+        scoreboard reads from: on release-13.02 all 407 observed updates are
+        exactly 32 bits, and read little-endian as Int32 the final per-player
+        counters match the in-game scoreboard on all ten players, including two
+        post-round objective-bomb deaths that the kill RPC stream reports but
+        the scoreboard deliberately excludes.
+
         64 -> 70 is two findings, not six. Five entries type `249` as the
         rotation that pairs with the already-typed `248` on every RPC that
         sends the pair numbered -- 441,814 rows, whose 3/19/35/51-bit widths

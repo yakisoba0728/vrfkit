@@ -226,6 +226,7 @@ fn verdict_from_stats(stats: &NetStats, replay_data_trailing_bytes: u64) -> Verd
         + stats.channel_state_limit_failures
         + stats.partial_resource_limit_failures
         + stats.bunch_header_failures
+        + stats.content_block_framing_failures
         + stats.malformed_content_blocks
         + stats.transform_failures
         + stats.field_stream_failures
@@ -363,11 +364,20 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
     if total_with_content == 0 {
         println!("  No content blocks found - cannot validate.");
     } else {
+        // `failed` (`lost_content_blocks()`) is not a subset of
+        // `total_with_content`: a content-block framing failure (header or
+        // `content_bits` unreadable) is counted as lost without the block ever
+        // reaching `rep_layout_blocks`/`class_net_cache_blocks`, since framing
+        // failed before classification. So `failed` can exceed
+        // `total_with_content`, and the passed-block count is saturated at 0
+        // rather than wrapping to u64::MAX on the `- failed` a release build's
+        // disabled overflow checks would not catch.
+        let passed = total_with_content.saturating_sub(failed);
         let pass_rate = 1.0 - (failed as f64 / total_with_content as f64);
         println!(
             "  ORACLE PASS RATE:     {:.6}% ({} / {} blocks passed)",
             pass_rate * 100.0,
-            total_with_content - failed,
+            passed,
             total_with_content
         );
         if stats.skipped_bits > 0 {
@@ -501,20 +511,15 @@ fn print_skip_breakdown(events: &[DiagnosticEvent]) {
     }
 
     println!("  Skip breakdown:");
-    if overrun_count > 0 {
-        println!("    ContentBitsOverrun:   {overrun_count} events, {overrun_bits} bits");
-    }
-    if header_err_count > 0 {
-        println!("    HeaderReadError:      {header_err_count} events, {header_err_bits} bits");
-    }
-    if bits_read_err_count > 0 {
-        println!(
-            "    ContentBitsReadError: {bits_read_err_count} events, {bits_read_err_bits} bits"
-        );
-    }
-    if parse_fail_count > 0 {
-        println!("    ParseFailure:         {parse_fail_count} events, {parse_fail_bits} bits");
-    }
+    // Unconditional, zeros included: a category that stops being recorded (a
+    // renumbered `SkipReason`, a bypassed recording path) is otherwise
+    // indistinguishable from one that legitimately saw nothing -- the line
+    // just vanishes either way. See the module-level rule against counters
+    // that cannot move.
+    println!("    ContentBitsOverrun:   {overrun_count} events, {overrun_bits} bits");
+    println!("    HeaderReadError:      {header_err_count} events, {header_err_bits} bits");
+    println!("    ContentBitsReadError: {bits_read_err_count} events, {bits_read_err_bits} bits");
+    println!("    ParseFailure:         {parse_fail_count} events, {parse_fail_bits} bits");
 }
 
 /// Print full details for one diagnostic event.
@@ -653,6 +658,11 @@ mod tests {
             NetStats {
                 rep_layout_blocks: 1,
                 channel_state_limit_failures: 1,
+                ..NetStats::default()
+            },
+            NetStats {
+                rep_layout_blocks: 1,
+                content_block_framing_failures: 1,
                 ..NetStats::default()
             },
         ] {

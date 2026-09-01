@@ -25,6 +25,19 @@ use crate::sink::ExportStats;
 /// Everything a packet's sink counted, summed across packets.
 #[derive(Debug, Default)]
 pub(crate) struct SinkTotals {
+    /// The sink's own tally of fields/RPCs/actor opens+closes/content blocks
+    /// it saw, kept alongside (not instead of) `NetStats`'s independent count
+    /// of the same events at the framing layer. The two are computed by
+    /// different code from the same callback sequence, so a mismatch is a
+    /// real desync signal, not noise -- but only if this side is ever
+    /// summed. Before this field existed it was not: `ExportStats` counted
+    /// it and the caller never read it, on every one of ~530,000 rebuilt
+    /// sinks.
+    pub fields_emitted: u64,
+    pub rpcs_emitted: u64,
+    pub actor_opens: u64,
+    pub actor_closes: u64,
+    pub content_blocks: u64,
     pub overlay: OverlayStats,
     pub effect_blobs_decoded: u64,
     pub struct_blobs_decoded: u64,
@@ -57,6 +70,11 @@ impl SinkTotals {
         stats: &mut ExportStats,
         error_report: &mut OverlayErrorReport,
     ) {
+        self.fields_emitted += stats.fields_emitted;
+        self.rpcs_emitted += stats.rpcs_emitted;
+        self.actor_opens += stats.actor_opens;
+        self.actor_closes += stats.actor_closes;
+        self.content_blocks += stats.content_blocks;
         self.overlay.decoded_ok += stats.overlay.decoded_ok;
         self.overlay.decoded_err += stats.overlay.decoded_err;
         self.overlay.raw_or_skip += stats.overlay.raw_or_skip;
@@ -86,5 +104,49 @@ impl SinkTotals {
         self.rpc_suffix_bits_dropped += stats.rpc_suffix_bits_dropped;
         self.cnc_rpcs_emitted += stats.cnc_rpcs_emitted;
         error_report.merge_from(&stats.overlay.error_report);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vrf_decode::OverlayErrorReport;
+
+    /// `fields_emitted`/`rpcs_emitted`/`actor_opens`/`actor_closes`/
+    /// `content_blocks` must survive `absorb`, across more than one packet.
+    /// Before this test (and the fields it checks) existed, these five
+    /// counters were incremented on every packet's `ExportStats` and read by
+    /// nothing: `absorb` folded in every other field but these, so the sink's
+    /// own tally of what it saw never reached the summary.
+    #[test]
+    fn absorb_sums_the_per_packet_event_counters_across_packets() {
+        let mut totals = SinkTotals::default();
+        let mut report = OverlayErrorReport::default();
+
+        let mut packet_one = ExportStats {
+            fields_emitted: 3,
+            rpcs_emitted: 1,
+            actor_opens: 2,
+            actor_closes: 1,
+            content_blocks: 4,
+            ..ExportStats::default()
+        };
+        totals.absorb(&mut packet_one, &mut report);
+
+        let mut packet_two = ExportStats {
+            fields_emitted: 5,
+            rpcs_emitted: 2,
+            actor_opens: 0,
+            actor_closes: 3,
+            content_blocks: 6,
+            ..ExportStats::default()
+        };
+        totals.absorb(&mut packet_two, &mut report);
+
+        assert_eq!(totals.fields_emitted, 8);
+        assert_eq!(totals.rpcs_emitted, 3);
+        assert_eq!(totals.actor_opens, 2);
+        assert_eq!(totals.actor_closes, 4);
+        assert_eq!(totals.content_blocks, 10);
     }
 }

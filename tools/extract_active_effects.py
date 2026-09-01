@@ -139,11 +139,20 @@ def build_with_tally(out_dir: Path) -> tuple[list[dict], dict]:
             (time_ms[i], event[i], sx[i], sy[i], sz[i], cp)
         )
 
+    # `went_dormant` counts INSTANCES (a pending open that saw at least one
+    # `dormant` event), not raw `dormant` events: an instance that toggles
+    # dormant more than once before it finally closes or the export ends is
+    # one dormancy, not several. It is a general diagnostic on how many
+    # instances ever went dormant -- it does NOT gate on how the instance
+    # ends, so it counts both ones that later close normally and ones that
+    # end up open-ended. See `main()` below for why it must not be printed as
+    # if it were a decomposition of the open-ended count: it can exceed it.
     tally = {"went_dormant": 0}
     rows: list[dict] = []
     for g, evs in events.items():
         evs.sort(key=lambda e: e[0])
         pending = None  # (open_ms, sx, sy, sz, class_path) of the current open instance
+        pending_went_dormant = False  # did THIS instance see a dormant event
         for t, ev, x, y, z, cp in evs:
             if ev == "open":
                 if pending is not None:
@@ -151,10 +160,12 @@ def build_with_tally(out_dir: Path) -> tuple[list[dict], dict]:
                     # in this export. Emit it open-ended so it is not lost.
                     rows.append(_row(g, pending, None))
                 pending = (t, x, y, z, cp)
+                pending_went_dormant = False
             elif ev == "close":
                 if pending is not None:
                     rows.append(_row(g, pending, t))
                     pending = None
+                    pending_went_dormant = False
                 # A close with no pending open is an orphan (actor opened before
                 # the export window); drop it rather than invent an open time.
             elif ev == "dormant":
@@ -170,8 +181,11 @@ def build_with_tally(out_dir: Path) -> tuple[list[dict], dict]:
                 # as the bug this whole pass was fixing: an open-ended row
                 # because the actor went dormant and an open-ended row because
                 # the export window ended are indistinguishable in the table.
-                # Hence the tally.
-                tally["went_dormant"] += 1
+                # Hence the tally. Counted once per instance, on the first
+                # dormant event it sees, regardless of how it later ends.
+                if pending is not None and not pending_went_dormant:
+                    pending_went_dormant = True
+                    tally["went_dormant"] += 1
         if pending is not None:
             rows.append(_row(g, pending, None))
 
@@ -230,8 +244,15 @@ def main() -> int:
         print(f"  {t:12s} {n}")
     # Printed with its zero. An open-ended row can mean "the actor went dormant"
     # or "the export window ended first", and the table cannot tell them apart.
+    # `went_dormant` does NOT decompose `open_ended`: it counts every instance
+    # that ever went dormant, including ones that later closed normally and so
+    # are not open-ended, and it can exceed `open_ended`. Printed on its own
+    # line rather than as a parenthetical on `open_ended` so it does not read
+    # as "this many of these rows are because of dormancy".
     open_ended = sum(1 for r in rows if r["close_ms"] is None)
-    print(f"  {'open-ended':12s} {open_ended} ({tally['went_dormant']} actor(s) went dormant)")
+    print(f"  {'open-ended':12s} {open_ended}")
+    print(f"  {'':12s} ({tally['went_dormant']} instance(s) went dormant at "
+          f"some point, open-ended or not)")
     return 0
 
 

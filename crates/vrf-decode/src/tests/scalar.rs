@@ -136,6 +136,29 @@ fn byte_array_reads_packed_count_and_bytes() {
     assert_eq!(result, DecodedValue::Str("102030".into()));
 }
 
+/// A declared count over the table's `max_bytes` is refused with a dedicated
+/// variant, not `NotFullyConsumed` -- no payload byte has been read yet at
+/// this point, so a "bits left over after decode" label would be meaningless.
+#[test]
+fn byte_array_over_the_length_cap_is_refused_distinctly() {
+    // IntPacked 10 = byte (10 << 1) = 0x14. No payload bytes needed: the
+    // count alone must be enough to refuse before any are read.
+    let data = vec![0x14u8];
+    let bit_count = (data.len() * 8) as u32;
+    let err = decode_field(FieldType::ByteArray { max_bytes: 8 }, &data, bit_count)
+        .expect_err("a declared count over max_bytes must be refused");
+    assert!(
+        matches!(
+            err,
+            DecodeError::ByteArrayLengthCapExceeded {
+                declared: 10,
+                max: 8
+            }
+        ),
+        "got {err:?}"
+    );
+}
+
 #[test]
 fn guid_reads_four_le_words() {
     let mut data = Vec::new();
@@ -346,8 +369,11 @@ fn ftext_decodes_a_string_table_entry_to_its_key() {
 /// removed for in the first place.
 #[test]
 fn ftext_refuses_an_unobserved_history_type() {
-    let mut raw = vec![0u8; 16];
-    raw[4] = 0x0B; // shifts a history type of 6 into place, not 5
-    raw[5] = 0x02;
-    assert!(decode_field(FieldType::FText, &raw, 128).is_err());
+    // Zeroed except the history-type discriminator, so if the guard were
+    // removed the rest of the layout would decode cleanly (empty table path,
+    // number 0, empty key) rather than erroring out on a short buffer -- the
+    // guard is the only thing standing between this input and `Ok`.
+    let mut raw = vec![0u8; 18];
+    raw[4] = 0x0C; // shifts a history type of 6 into place, not 5
+    assert!(decode_field(FieldType::FText, &raw, 137).is_err());
 }

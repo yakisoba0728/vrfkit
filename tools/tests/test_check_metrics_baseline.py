@@ -196,9 +196,14 @@ class WiringTests(unittest.TestCase):
 
     def test_extract_and_invariants_agree_on_their_keys(self):
         """Every field the invariants read must be one extract() produces."""
+        produced = guard.extract(RAW_METRICS)
         for key in ("rounds_rpc", "rounds_objective", "team_score", "players",
                     "kills", "damage_dealt"):
-            self.assertIn(key, HEALTHY)
+            self.assertIn(key, produced)
+        # invariants() indexes with `[...]`, never `.get(..., default)`, so a
+        # key it reads that extract() does not produce raises KeyError here
+        # rather than passing silently.
+        guard.invariants(produced)
 
 
 #: A raw `compute_metrics.py` output, shaped exactly like the real valplay

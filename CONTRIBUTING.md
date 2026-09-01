@@ -110,7 +110,7 @@ them are needed for the sweep above; all of them are needed for §6.
 | `VRFKIT_CSHARP_DIR` | Checkout root of the C# reference parser | `analyze_coverage.py`, `extract_equippables.py` |
 | `VRFKIT_VALPLAY_DIR` | valplay checkout root | `check_metrics_baseline.py`, `validate_metrics_corpus.py`, `compare_combat_report.py`, `compare_rpc_params.py` |
 | `VRFKIT_JOBS` | Worker count for the corpus sweeps; default is cores - 2, capped at 16 | `validate_corpus.py` |
-| `VRFKIT_REQUIRE_CORPUS` | Set to anything to turn "corpus absent, skipping" into a failure | `crates/vrf-container/tests/corpus.rs` |
+| `VRFKIT_REQUIRE_CORPUS` | Set to anything to turn "corpus absent, skipping" into a failure | `crates/vrf-container/tests/corpus.rs`, `check_export_baseline.py`, `check_corpus_baseline.py` |
 
 The `compare_*.py` scripts were listed against `VRFKIT_CSHARP_DIR` here, which
 none of them reads. Two of them (`compare_combat_report.py`,

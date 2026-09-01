@@ -245,15 +245,15 @@ fn read_rep_movement(
     };
 
     let server_frame = if rep_server_frame {
-        r.read_int_packed()?
+        Some(r.read_int_packed()?)
     } else {
-        0
+        None
     };
 
     let server_physics_handle = if rep_server_handle {
-        r.read_int_packed()?
+        Some(r.read_int_packed()?)
     } else {
-        0
+        None
     };
 
     Ok(FRepMovement {

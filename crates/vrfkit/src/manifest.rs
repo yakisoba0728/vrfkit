@@ -162,6 +162,14 @@ pub fn write_manifest(
         &header.build_target_type.to_string(),
         1,
     );
+    // Reported so a header extension is visible rather than skipped in
+    // silence; see `ReplayHeader::trailing_bytes`'s own doc. Expected zero.
+    wkv(
+        &mut out,
+        "header_trailing_bytes",
+        &header.trailing_bytes.to_string(),
+        1,
+    );
     wkv(
         &mut out,
         "min_record_hz",
@@ -299,7 +307,10 @@ pub fn write_manifest(
             out.push_str("    { ");
             out.push_str(&format!(
                 "\"actor_net_guid\": {guid}, \"subject\": {}, \"character_net_guid\": {}",
-                json_str(subject.as_deref().unwrap_or("")),
+                match subject {
+                    Some(s) => json_str(s),
+                    None => String::from("null"),
+                },
                 match character {
                     Some(c) => c.to_string(),
                     None => String::from("null"),
@@ -313,6 +324,17 @@ pub fn write_manifest(
         }
         out.push_str("  ],\n");
     }
+
+    // Net-field exports the cache could not place -- an out-of-range handle
+    // (or, unreachably from this call site, an unknown group). The C#
+    // reference silently drops these; this is that drop made visible.
+    // Expected zero.
+    wkv(
+        &mut out,
+        "dropped_field_exports",
+        &cache.dropped_field_exports().to_string(),
+        1,
+    );
 
     // Export groups
     out.push_str("  \"net_field_export_groups\": [\n");
@@ -555,6 +577,10 @@ fn write_net_quality(
         ("fields", stats.fields),
         ("rpcs", stats.rpcs),
         ("skipped_bits", stats.skipped_bits),
+        (
+            "content_block_framing_failures",
+            stats.content_block_framing_failures,
+        ),
         ("malformed_content_blocks", stats.malformed_content_blocks),
         ("transform_failures", stats.transform_failures),
         ("field_stream_failures", stats.field_stream_failures),
@@ -820,6 +846,7 @@ mod tests {
             "fields",
             "rpcs",
             "skipped_bits",
+            "content_block_framing_failures",
             "malformed_content_blocks",
             "transform_failures",
             "field_stream_failures",
@@ -905,6 +932,7 @@ mod tests {
                 "fields",
                 "rpcs",
                 "skipped_bits",
+                "content_block_framing_failures",
                 "malformed_content_blocks",
                 "transform_failures",
                 "field_stream_failures",

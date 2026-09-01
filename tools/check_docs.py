@@ -27,7 +27,7 @@ and passes every test. So this reads the repo and the docs and compares:
      `CLAUDE.md` too
  11. generated-file inventories include every live target and generator
  12. README and USAGE export rows/bytes match the committed baseline JSON
- 13. the four overlay buckets in the committed baseline still partition
+ 13. the five overlay buckets in the committed baseline still partition
      `overlay_rows_offered` exactly, and every counter the docs quote is still
      present in it -- see `overlay_partition_problems`
  14. no quoted overlay counter or `Typed` ratio in any of `ALL_DOCS` is stale,
@@ -435,13 +435,22 @@ OVERLAY_COUNTER_KEYS = {
     "Effect blobs": "effect_blobs_decoded",
 }
 
-#: The four buckets that partition every row offered to the overlay. Their sum
-#: is `overlay_rows_offered` exactly -- not approximately -- so the relationship
-#: is checkable arithmetic rather than six independent equalities. A future
-#: baseline that breaks it means either a bucket was added or one of these
-#: stopped counting, and both are worth a red build.
-OVERLAY_PARTITION = ("overlay_decoded_ok", "overlay_raw_skip",
-                     "overlay_not_in_table", "overlay_no_field_name")
+#: The five buckets that partition every row offered to the overlay -- see
+#: `print_overlay` in crates/vrfkit/src/driver/summary.rs, which sums exactly
+#: these five (`decoded_ok + decoded_err + raw_or_skip + not_in_table +
+#: no_field_name`) to print `Rows offered`. `overlay_decode_errors` belongs
+#: here even though `OVERLAY_COUNTER_KEYS` above deliberately excludes it: that
+#: exclusion is about not flagging CLAUDE.md's generic "Decode errors: 0" text
+#: as stale, which has nothing to do with whether the five buckets actually
+#: sum to the total. Their sum is `overlay_rows_offered` exactly -- not
+#: approximately -- so the relationship is checkable arithmetic rather than
+#: six independent equalities. A future baseline that breaks it means either a
+#: bucket was added or one of these stopped counting, and both are worth a red
+#: build. Dropping `overlay_decode_errors` from this tuple made the check pass
+#: only because the pinned baseline's decode-error count happens to be 0.
+OVERLAY_PARTITION = ("overlay_decoded_ok", "overlay_decode_errors",
+                     "overlay_raw_skip", "overlay_not_in_table",
+                     "overlay_no_field_name")
 
 #: `Typed` is not stored; it is `Decoded OK / Rows offered` as a percentage, and
 #: it is quoted in both README and USAGE. Derived rather than pinned, so it
@@ -476,7 +485,7 @@ def overlay_partition_problems(counters: dict[str, int]) -> list[str]:
     offered = counters["overlay_rows_offered"]
     if total != offered:
         problems.append(
-            f"export_02d4d478.json: the four overlay buckets sum to {total:,} "
+            f"export_02d4d478.json: the five overlay buckets sum to {total:,} "
             f"but counters.overlay_rows_offered is {offered:,}; they are "
             f"documented as a partition of every row offered "
             f"({' + '.join(k.removeprefix('overlay_') for k in OVERLAY_PARTITION)})")
@@ -609,9 +618,20 @@ def measure_tests() -> tuple[int, int, list[str]]:
     r = subprocess.run(["cargo", "test", "--quiet"], cwd=REPO, capture_output=True,
                        text=True, encoding="utf-8", errors="replace", timeout=3600)
     out = (r.stdout or "") + (r.stderr or "")
-    rust = sum(int(m) for m in re.findall(r"(\d+) passed", out))
+    passed_matches = re.findall(r"(\d+) passed", out)
+    rust = sum(int(m) for m in passed_matches)
     if r.returncode != 0:
         problems.append("cargo test did not pass; doc counts not checked against it")
+    elif not passed_matches:
+        # `measured_counts` above already carries this rule for the ASCII
+        # count: a parse failure defaulting to 0 is indistinguishable from a
+        # genuinely empty suite, and everything downstream (`live`, the
+        # stale-count report) then treats every doc-quoted number as wrong for
+        # the wrong reason. `cargo test` exiting 0 with no "N passed" line
+        # means its output format changed, not that nothing ran.
+        problems.append(
+            "cargo test exited 0 but printed no 'N passed' line; the rust "
+            "test count (0) was not measured")
 
     r2 = subprocess.run([sys.executable, "-m", "unittest", "discover",
                          "-s", "tools/tests", "-p", "test_*.py"],
@@ -622,6 +642,10 @@ def measure_tests() -> tuple[int, int, list[str]]:
     tools_n = int(m.group(1)) if m else 0
     if r2.returncode != 0:
         problems.append("tools test suite did not pass")
+    elif m is None:
+        problems.append(
+            "the tools test suite exited 0 but printed no 'Ran N tests' "
+            "line; the tools test count (0) was not measured")
     return rust, tools_n, problems
 
 
@@ -676,8 +700,6 @@ def main() -> int:
         problems += run_problems
         for count, label in ((rust, "rust"), (tools_n, "tools")):
             for name, text in docs.items():
-                if label == "tools" and name == "README.md":
-                    continue  # README does not quote the tools suite
                 if str(count) not in text:
                     problems.append(
                         f"{name}: {label} test count is {count}, not quoted")

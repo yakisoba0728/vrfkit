@@ -246,6 +246,12 @@ ADD_PROP_LAMBDA_RE = re.compile(
 # no comma after `x`.
 HANDLE_ARG = r'(?:\d+|[A-Za-z_]\w*(?:\s*\+\s*\d+)?)'
 
+# Sentinel `rejected` label for an AddProperty whose type method IS classified
+# but whose export name could not be extracted (e.g. a named constant instead
+# of a string literal or lambda leaf). Distinct from a real type-method name so
+# the failure report below does not read as "add this method to PRIMITIVE_TYPES".
+_UNNAMED_FIELD = "<unresolvable field name>"
+
 # SerializedInt(maxValue: N) or SerializedInt(N)
 SERIALIZED_INT_RE = re.compile(
     r'\.SerializedInt\(\s*(?:maxValue:\s*)?(\d+)\s*\)'
@@ -349,6 +355,29 @@ def extract_class_info(source: str) -> tuple[str | None, str | None]:
     return (class_name, base)
 
 
+def _mask_raw_wrapper_definitions(code_view: str) -> str:
+    """Blank out a raw-wrapper's OWN definition, not any call to it.
+
+    `RAW_WRAPPER_DEF_RE` matches e.g. `protected void AddRaw(uint handle,
+    Expression<Func<T, ValorantRawPayload?>> property, string typeName) =>
+    AddPropertyHandle(handle, property, ExportCategory.Gunplay).Decode(` --
+    the SAME `AddPropertyHandle(...).Decode(` shape `extract_fields_from_block`
+    looks for on a real call site, except `property`/`typeName` here are the
+    wrapper's own formal parameters, not a field name. Left unmasked, the
+    trailing `AddPropertyHandle(...)` line starts a statement whose name this
+    file can never resolve -- not a dropped declaration, just the macro
+    defining itself. Blanking (not deleting, so line/column positions the rest
+    of this module relies on do not shift) keeps that line from ever looking
+    like the start of an AddProperty-shaped statement.
+    """
+    chars = list(code_view)
+    for m in RAW_WRAPPER_DEF_RE.finditer(code_view):
+        for i in range(m.start(), m.end()):
+            if chars[i] != "\n":
+                chars[i] = " "
+    return "".join(chars)
+
+
 def extract_fields_from_block(
     block: str,
     raw_wrapper_names: set[str] | None = None,
@@ -362,12 +391,15 @@ def extract_fields_from_block(
     concrete decimal handle; unresolved helper parameters remain ``None``.
 
     ``rejected`` collects ``(type_method, statement)`` for every AddProperty
-    whose type method this file cannot classify. Those used to fall off the end
-    of the ladder below and contribute nothing -- no entry, no counter, no
-    message -- so one new method upstream (`.Int64()`) would untype every field
-    that uses it while the run still reported success. The caller fails on a
-    non-empty set; passing ``None`` keeps the old silence for callers that only
-    want the fields.
+    whose type method this file cannot classify, and ``(_UNNAMED_FIELD,
+    statement)`` for every AddProperty whose type method IS classified but
+    whose export name could not be extracted (e.g. a named constant instead of
+    a string literal or lambda leaf). Both used to fall off the end of the
+    ladder below and contribute nothing -- no entry, no counter, no message --
+    so one new method upstream (`.Int64()`), or one declaration naming its
+    field through a constant, would untype a field while the run still
+    reported success. The caller fails on a non-empty set; passing ``None``
+    keeps the old silence for callers that only want the fields.
     """
     if raw_wrapper_names is None:
         raw_wrapper_names = set()
@@ -376,7 +408,7 @@ def extract_fields_from_block(
     # Join continuation lines: if a line starts with AddProperty but does not
     # end with ';', concatenate subsequent lines until we see one ending with ';'.
     raw_lines = block.splitlines()
-    code_lines = csharp_code_view(block).splitlines()
+    code_lines = _mask_raw_wrapper_definitions(csharp_code_view(block)).splitlines()
     statements: list[tuple[str, str]] = []
     current_raw: list[str] = []
     current_code: list[str] = []
@@ -435,6 +467,8 @@ def extract_fields_from_block(
                         _extract_literal_handle(code_line, raw_wrapper),
                     )
                 )
+            elif rejected is not None:
+                rejected.add((_UNNAMED_FIELD, " ".join(code_line.split())))
             continue
 
         # Check for SerializedInt with parameter
@@ -448,6 +482,8 @@ def extract_fields_from_block(
                     f"FieldType::SerializedInt {{ max: {max_val} }}",
                     _extract_literal_handle(code_line),
                 ))
+            elif rejected is not None:
+                rejected.add((_UNNAMED_FIELD, " ".join(code_line.split())))
             continue
 
         # Check for ByteArray with parameter
@@ -461,6 +497,8 @@ def extract_fields_from_block(
                     f"FieldType::ByteArray {{ max_bytes: {max_bytes} }}",
                     _extract_literal_handle(code_line),
                 ))
+            elif rejected is not None:
+                rejected.add((_UNNAMED_FIELD, " ".join(code_line.split())))
             continue
 
         # Check for ReplicatedMovement with quantization
@@ -477,6 +515,8 @@ def extract_fields_from_block(
                     f"FieldType::RepMovement {{ rotation: {rust_quant} }}",
                     _extract_literal_handle(code_line),
                 ))
+            elif rejected is not None:
+                rejected.add((_UNNAMED_FIELD, " ".join(code_line.split())))
             continue
 
         # Simple ReplicatedMovement()
@@ -488,6 +528,8 @@ def extract_fields_from_block(
                     "FieldType::RepMovement { rotation: RotatorQuantization::ShortComponents }",
                     _extract_literal_handle(code_line),
                 ))
+            elif rejected is not None:
+                rejected.add((_UNNAMED_FIELD, " ".join(code_line.split())))
             continue
 
         # RepLayoutDynamicArray<T>() -- treated as Raw (opaque TArray)
@@ -499,6 +541,8 @@ def extract_fields_from_block(
                     "FieldType::Raw",
                     _extract_literal_handle(code_line),
                 ))
+            elif rejected is not None:
+                rejected.add((_UNNAMED_FIELD, " ".join(code_line.split())))
             continue
 
         # Check for Decode(...) -- a named payload decoder carries its type,
@@ -517,6 +561,8 @@ def extract_fields_from_block(
                     field_type,
                     _extract_literal_handle(code_line),
                 ))
+            elif rejected is not None:
+                rejected.add((_UNNAMED_FIELD, " ".join(code_line.split())))
             continue
 
         # Try simple primitive type
@@ -529,6 +575,8 @@ def extract_fields_from_block(
                     PRIMITIVE_TYPES[type_name],
                     _extract_literal_handle(code_line),
                 ))
+            elif rejected is not None:
+                rejected.add((_UNNAMED_FIELD, " ".join(code_line.split())))
             continue
         if type_name is not None and rejected is not None:
             # A type method that reaches here is a declaration this file does
@@ -1553,7 +1601,8 @@ def main(argv: list[str]) -> int:
                             class_fields[class_name].append((n, t, h))
                             existing_names.add(n)
 
-    # A declared property whose type this file cannot classify is an unknown,
+    # A declared property whose type this file cannot classify -- or whose
+    # export name it cannot extract (see `_UNNAMED_FIELD`) -- is an unknown,
     # not an absence. Failing here rather than emitting a table that quietly
     # omits it is the same rule EXPORT_GROUP_KIND_POLICY applies to an
     # unclassified Kind -- and it fails BEFORE the output is written, so a run
@@ -1561,16 +1610,20 @@ def main(argv: list[str]) -> int:
     if rejected_types:
         methods = sorted({method for method, _stmt in rejected_types})
         print(
-            f"{len(rejected_types)} AddProperty declaration(s) use a type "
-            f"method this extractor does not know: {', '.join(methods)}",
+            f"{len(rejected_types)} AddProperty declaration(s) this "
+            f"extractor cannot fully classify: {', '.join(methods)}",
             file=sys.stderr,
         )
         for method, statement in sorted(rejected_types):
             print(f"  .{method}(): {statement}", file=sys.stderr)
         print(
-            "Add each to PRIMITIVE_TYPES (or to the ladder in "
-            "extract_fields_from_block) -- dropping them would ship a table "
-            "that silently omits every field declared that way.",
+            f"'{_UNNAMED_FIELD}' entries have a known type method but no "
+            "extractable field name (a named constant instead of a string "
+            "literal or lambda leaf) -- teach `_extract_field_name` that "
+            "shape. Every other entry needs its type method added to "
+            "PRIMITIVE_TYPES (or to the ladder in extract_fields_from_block) "
+            "-- dropping either kind would ship a table that silently omits "
+            "every field declared that way.",
             file=sys.stderr,
         )
         return 1
@@ -1778,10 +1831,16 @@ def main(argv: list[str]) -> int:
     print(f"  Skip (ignored): {skip_count}")
     print(f"  Typed: {len(entries) - raw_count - skip_count}")
     print(f"Handle aliases: {len(handle_entries)}")
-    if kind_dropped:
-        print("Declared properties dropped by ExportGroupKind:")
-        for kind, count in sorted(kind_dropped.items()):
-            print(f"  {kind}: {count}")
+    # Printed unconditionally, zero included: CLAUDE.md's rule verbatim --
+    # "A counter that cannot move is worse than one that reports a wrong
+    # number. Print zeros. A line that appears only when non-zero cannot
+    # distinguish 'nothing is wrong' from 'this code stopped running'." A
+    # regression in EXPORT_GROUP_KIND_POLICY that let everything through would
+    # otherwise look identical to a run that correctly dropped nothing.
+    print(f"Declared properties dropped by ExportGroupKind: "
+          f"{sum(kind_dropped.values())}")
+    for kind, count in sorted(kind_dropped.items()):
+        print(f"  {kind}: {count}")
     print("Type distribution:")
     for t, c in type_counts.most_common():
         print(f"  {t}: {c}")

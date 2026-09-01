@@ -204,13 +204,22 @@ impl ExportSink<'_> {
                 Some(gp) => group_hash_state(gp),
                 None => self.current_group_hash,
             };
-            let overlay_field = param_name.unwrap_or(&full_field_name);
+            // `param_name`, not `full_field_name`: when the group has no
+            // declared name at this handle, `full_field_name` is vrfkit's own
+            // synthesized `"{func}._h{N}"` placeholder for the emitted row's
+            // label, not a name the wire declared. Passing it here as though it
+            // were a wire-declared name trips `resolve_in_group`'s fail-closed
+            // conflict guard against its own placeholder, refusing the very
+            // handle fallback that guard exists to allow. `None` lets
+            // resolution fall through to the handle-based descriptor lookup
+            // with no name to (falsely) conflict against, same as the
+            // RepLayout field path in `stream.rs`.
             let (value_i64, value_f64, value_bool, mut value_str) =
                 match apply_overlay_with_checksum(
                     &TABLE,
                     overlay_group,
                     group_state,
-                    Some(overlay_field),
+                    param_name,
                     param_handle,
                     param_checksum,
                     raw_bits.as_deref(),
@@ -513,12 +522,6 @@ pub(super) fn copy_raw_bits(reader: BitReader<'_>, bit_count: u32) -> Option<Sma
 /// go away once the adapter reads the decoded JSON instead of the bits.
 const EFFECT_BLOB_RPC_LEFT_RAW_FOR_ADAPTER: &str = "ReplayPlayContinuousEffectAtLocation";
 
-/// Decide whether an RPC parameter should be decoded as an effect-array blob.
-///
-/// Eleven functions on `02d4d478` declare a parameter named `FloatValues`,
-/// `ObjectValues` or `VectorValues`, and all 61,617 of those payloads decode
-/// as this format and consume their window exactly. No other parameter name
-/// does, which is why the match is on the name and not on the function.
 /// Which life-change schema an RPC parameter takes, if any.
 ///
 /// Keyed on the function as well as the parameter, because the local handles
@@ -570,6 +573,12 @@ fn life_change_member_type(path: &str) -> Option<FieldType> {
     }
 }
 
+/// Decide whether an RPC parameter should be decoded as an effect-array blob.
+///
+/// Eleven functions on `02d4d478` declare a parameter named `FloatValues`,
+/// `ObjectValues` or `VectorValues`, and all 61,617 of those payloads decode
+/// as this format and consume their window exactly. No other parameter name
+/// does, which is why the match is on the name and not on the function.
 fn effect_array_kind_for_param(
     function_name: &str,
     param_name: Option<&str>,

@@ -257,15 +257,18 @@ impl ExportSink<'_> {
     ///
     /// The blob is a RepLayout dynamic array of object references
     /// (`TArray<AAresItem*>`); [`vrf_decode::decode_object_ref_array`] walks the
-    /// framing and returns the item actor NetGUIDs. Each lands as a
-    /// `MultiContents[i]` row with the NetGUID in `value_i64`, the same column
-    /// a single `ItemSlot.Contents` decode populates.
+    /// framing and returns `(wire element index, NetGUID)` pairs. Each lands as
+    /// a `MultiContents[index]` row with the NetGUID in `value_i64`, the same
+    /// column a single `ItemSlot.Contents` decode populates. The wire index,
+    /// not arrival order, has to label the row: dynamic arrays are
+    /// delta-replicated per element, so a re-send can carry only the changed
+    /// slot and an enumerate-based label would put that item's GUID in slot 0.
     pub(super) fn emit_multi_contents(&mut self, raw: &[u8], bit_count: u32) {
         let guids =
             vrf_decode::decode_object_ref_array_with_stats(raw, bit_count, &mut self.stats.array);
-        for (i, guid) in guids.iter().enumerate() {
+        for (index, guid) in &guids {
             self.emit_struct_sub_field(
-                |out| put(out, format_args!("MultiContents[{i}]")),
+                |out| put(out, format_args!("MultiContents[{index}]")),
                 Some(i64::from(*guid)),
                 None,
             );

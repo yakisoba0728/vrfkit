@@ -15,7 +15,7 @@
 - [ ] `python -W error tools/apply_type_corrections.py --check`
 - [ ] `python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check`
 - [ ] `python -W error tools/check_baseline_schemas.py`
-- [ ] `python -W error tools/check_docs.py --fast`
+- [ ] `python -W error tools/check_docs.py` (not `--fast`: that skips the count check)
 - [ ] `python -W error -m unittest discover -s tools/tests -p "test_*.py"`
 
 ## Invariant checklist (skip none that apply)

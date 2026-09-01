@@ -173,6 +173,12 @@ impl PartialBunchAccumulator {
         }
 
         if payload_bit_count == 0 {
+            // A zero-payload fragment is still a fragment that arrived: the
+            // non-empty path below always counts one here, unconditionally,
+            // before it looks at `b_partial_final`. Skipping it on this path
+            // undercounted a bunch that took two fragments to complete as
+            // having received only one.
+            *stats_partial_fragments += 1;
             if !header.b_partial_final {
                 return PartialBunchResult {
                     should_process: false,
@@ -261,17 +267,37 @@ impl PartialBunchAccumulator {
 
             *stats_partial_fragments += 1;
 
-            if header.b_partial_final {
+            // Not `if header.b_partial_final` alone: `has_partial_error` can
+            // already be set here (e.g. an overlapping `b_partial_initial`
+            // that `validate_sequence` flagged but still let through with a
+            // freshly-inserted state -- exactly what a header carrying both
+            // `b_partial_initial` and `b_partial_final` produces). Marking
+            // that state complete would be a lie `should_process` below
+            // immediately contradicts (it is `false` for an errored header),
+            // so the caller never calls `take_completed` for it -- and
+            // `drain_unfinished` at stream end skips anything already marked
+            // complete. The buffered bits would then reach no counter at all
+            // while `partial_completed` reported a success that never
+            // happened.
+            if header.b_partial_final && !header.has_partial_error {
                 state.is_complete = true;
                 *stats_partial_completed += 1;
             }
         }
 
+        // The error-final case above: discard rather than leave it to leak,
+        // and fold its bits into what this call reports lost.
+        let error_final_bits = if header.b_partial_final && header.has_partial_error {
+            self.discard(ch_index)
+        } else {
+            0
+        };
+
         PartialBunchResult {
             should_process: header.b_partial_final && !header.has_partial_error,
             header,
             resource_limit: None,
-            discarded_bits: sequence_discarded_bits,
+            discarded_bits: sequence_discarded_bits.saturating_add(error_final_bits),
         }
     }
 
@@ -483,6 +509,108 @@ mod tests {
         assert_eq!(buf[0], 0xAB);
         assert_eq!(buf[1], 0xCD);
         assert_eq!(acc.total_buffered_bits(), 0);
+    }
+
+    /// A zero-payload final fragment still took two fragments to complete the
+    /// bunch, and `partial_fragments` must say so -- not just
+    /// `partial_completed`. Before the fix, the zero-payload path never
+    /// touched `partial_fragments` at all, so this reported `fragments: 1,
+    /// completed: 1` for a bunch that arrived in two pieces.
+    #[test]
+    fn a_zero_payload_final_fragment_still_counts_as_a_fragment() {
+        let mut acc = PartialBunchAccumulator::new();
+        let mut errs = 0u64;
+        let mut frags = 0u64;
+        let mut comps = 0u64;
+
+        let h1 = RawBunchHeader {
+            ch_index: 1,
+            b_partial: true,
+            b_partial_initial: true,
+            b_reliable: true,
+            ch_sequence: 1,
+            ..Default::default()
+        };
+        acc.add_fragment(1, h1, &[0xAB], 8, &mut errs, &mut frags, &mut comps);
+        assert_eq!(frags, 1);
+
+        let h2 = RawBunchHeader {
+            ch_index: 1,
+            b_partial: true,
+            b_partial_final: true,
+            b_reliable: true,
+            ch_sequence: 2,
+            ..Default::default()
+        };
+        let r2 = acc.add_fragment(1, h2, &[], 0, &mut errs, &mut frags, &mut comps);
+        assert!(r2.should_process);
+        assert_eq!(errs, 0);
+        assert_eq!(comps, 1);
+        assert_eq!(
+            frags, 2,
+            "two fragments arrived to complete this bunch, not one"
+        );
+    }
+
+    /// A final fragment that arrives already carrying an error (here: it
+    /// re-declares `b_partial_initial` over an incomplete in-flight
+    /// reassembly, which `validate_sequence` flags but still lets through
+    /// with a freshly-inserted state) must not be reported as a completion.
+    /// Before the fix, `partial_completed` moved for it anyway, and the
+    /// buffered bits reached neither `take_completed` (`should_process` is
+    /// false) nor `drain_unfinished` (which skips anything already marked
+    /// complete) -- a leak with no counter.
+    #[test]
+    fn an_error_flagged_final_fragment_is_not_reported_as_a_completion() {
+        let mut acc = PartialBunchAccumulator::new();
+        let mut errs = 0u64;
+        let mut frags = 0u64;
+        let mut comps = 0u64;
+
+        let h1 = RawBunchHeader {
+            ch_index: 1,
+            b_partial: true,
+            b_partial_initial: true,
+            b_reliable: true,
+            ch_sequence: 1,
+            ..Default::default()
+        };
+        acc.add_fragment(1, h1, &[0xAA], 8, &mut errs, &mut frags, &mut comps);
+        assert_eq!(frags, 1);
+
+        // Overlapping initial: also final, on the same header.
+        let h2 = RawBunchHeader {
+            ch_index: 1,
+            b_partial: true,
+            b_partial_initial: true,
+            b_partial_final: true,
+            b_reliable: true,
+            ch_sequence: 2,
+            ..Default::default()
+        };
+        let r2 = acc.add_fragment(1, h2, &[0xBB], 8, &mut errs, &mut frags, &mut comps);
+
+        assert_eq!(errs, 1, "the overlapping initial must be flagged");
+        assert!(!r2.should_process);
+        assert_eq!(
+            comps, 0,
+            "an errored final must not be counted as a completion"
+        );
+        assert_eq!(frags, 2, "the second fragment still arrived");
+        assert_eq!(
+            r2.discarded_bits, 16,
+            "the discarded initial (8 bits) plus the errored final's own \
+             buffered bits (8 bits), not left to leak uncounted"
+        );
+        assert!(
+            acc.take_completed(1).is_none(),
+            "nothing was left behind to hand to a caller"
+        );
+        assert_eq!(
+            acc.drain_unfinished(),
+            (0, 0),
+            "nothing was left behind for drain_unfinished to skip, either"
+        );
     }
 
     #[test]

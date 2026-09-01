@@ -34,9 +34,18 @@ use crate::sink::{ChannelState, ExportSink, RecordBuffers};
 #[derive(Debug, Default)]
 pub(crate) struct CheckpointStats {
     pub chunks: u64,
+    /// Sum of [`CheckpointChunk::trailing_bytes`](vrf_container::CheckpointChunk::trailing_bytes)
+    /// across every chunk processed. Zero on every corpus checkpoint measured
+    /// so far; printed unconditionally in the summary so a format change that
+    /// starts leaving bytes after the archive is counted instead of silently
+    /// dropped on the floor, same as `replay_data_trailing_bytes` in the main
+    /// pass.
+    pub trailing_bytes: u64,
     pub guid_entries: u64,
     pub group_records: u64,
     pub exported_fields: u64,
+    /// DemoFrames walked, as `iter_demo_frames` actually counted them -- not
+    /// assumed to be one per chunk.
     pub frames: u64,
     pub packets: u64,
     pub field_rows: u64,
@@ -90,6 +99,7 @@ pub(super) fn process_chunk<W: Write + Send>(
     error_report: &mut OverlayErrorReport,
 ) -> Result<(), CliError> {
     let cp = parse_checkpoint_chunk(payload)?;
+    stats.trailing_bytes += cp.trailing_bytes as u64;
     let plain = decompress_checkpoint(cp.archive, ctx.compressed, ctx.encrypted)?;
 
     let mut cache = NetGuidCache::new();
@@ -103,7 +113,7 @@ pub(super) fn process_chunk<W: Write + Send>(
     let mut buffers = RecordBuffers::default();
     let mut packet_count = 0u64;
     let mut packet_error = None;
-    iter_demo_frames(frame, ctx.flags, &mut cache, |pkt, packet_cache| {
+    let (_, frame_count) = iter_demo_frames(frame, ctx.flags, &mut cache, |pkt, packet_cache| {
         if packet_error.is_some() {
             return;
         }
@@ -141,7 +151,12 @@ pub(super) fn process_chunk<W: Write + Send>(
     stats.guid_entries += u64::from(tables.guid_count);
     stats.group_records += u64::from(tables.group_count);
     stats.exported_fields += u64::from(tables.exported_fields);
-    stats.frames += 1;
+    // The actual DemoFrame count `iter_demo_frames` walked, not an assumed
+    // one-per-chunk. `tools/check_export_baseline.py`'s `cp_frames`/`cp_chunks`
+    // pin used to be a tautology -- always equal, because this line always
+    // added exactly 1 -- which could not have caught a build whose checkpoint
+    // carries more than one DemoFrame.
+    stats.frames += u64::from(frame_count);
     stats.packets += packet_count;
     Ok(())
 }

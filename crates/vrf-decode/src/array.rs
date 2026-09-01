@@ -219,7 +219,7 @@ pub fn decode_struct_array(
 /// them (element-index order on every payload seen). Malformed input returns
 /// whatever was decoded so far: the caller still emits the parent row from its
 /// own `raw_bits`, so a short `Vec` costs the typed leaves, not the bits.
-pub fn decode_object_ref_array(data: &[u8], bit_count: u32) -> Vec<u32> {
+pub fn decode_object_ref_array(data: &[u8], bit_count: u32) -> Vec<(u32, u32)> {
     let mut ignored = ArrayDecodeStats::default();
     decode_object_ref_array_with_stats(data, bit_count, &mut ignored)
 }
@@ -231,11 +231,18 @@ pub fn decode_object_ref_array(data: &[u8], bit_count: u32) -> Vec<u32> {
 /// is preserved by the caller, while these diagnostics state whether all typed
 /// item rows were recovered. [`decode_object_ref_array`] remains as the
 /// compatibility wrapper for callers that do not need diagnostics.
+///
+/// Returns `(wire element index, NetGUID)` pairs, not a dense `Vec<u32>` in
+/// arrival order. RepLayout dynamic arrays are delta-replicated per element --
+/// a re-send of a 3-slot array can carry only its changed element, at wire
+/// index 1 -- so the declared `encodedIndex` is the only thing that says which
+/// slot a GUID belongs in; dropping it and using arrival order relabels a
+/// sparse update into the wrong slots.
 pub fn decode_object_ref_array_with_stats(
     data: &[u8],
     bit_count: u32,
     stats: &mut ArrayDecodeStats,
-) -> Vec<u32> {
+) -> Vec<(u32, u32)> {
     let Ok(mut reader) = BitReader::with_bit_len(data, u64::from(bit_count)) else {
         stats.errors += 1;
         return Vec::new();
@@ -248,7 +255,7 @@ pub fn decode_object_ref_array_with_stats(
 fn decode_object_ref_array_reader(
     reader: &mut BitReader<'_>,
     stats: &mut ArrayDecodeStats,
-) -> Vec<u32> {
+) -> Vec<(u32, u32)> {
     let mut out = Vec::new();
 
     let Ok(element_count) = reader.read_int_packed() else {
@@ -351,7 +358,7 @@ fn decode_object_ref_array_reader(
         }
 
         if let Some(g) = guid {
-            out.push(g);
+            out.push((index, g));
             stats.fields_emitted += 1;
         }
         if !element_complete {
@@ -384,7 +391,7 @@ fn decode_array_level(
     if element_count > MAX_ELEMENTS {
         stats.truncations += 1;
         // Emit remaining as a single raw field at this level.
-        emit_remaining_raw(reader, walk);
+        emit_remaining_raw(reader, walk, stats);
         return;
     }
 
@@ -406,7 +413,7 @@ fn decode_array_level(
                 }
                 Ok(_) => {
                     stats.truncations += 1;
-                    emit_remaining_raw(reader, walk);
+                    emit_remaining_raw(reader, walk, stats);
                 }
                 Err(_) => stats.errors += 1,
             }
@@ -462,7 +469,7 @@ fn decode_struct_fields(
                 Ok(0) => *reader = probe,
                 Ok(_) => {
                     stats.truncations += 1;
-                    emit_remaining_raw(reader, walk);
+                    emit_remaining_raw(reader, walk, stats);
                 }
                 Err(_) => stats.errors += 1,
             }
@@ -582,7 +589,16 @@ fn emit(
 }
 
 /// Emit all remaining bits as a single raw field.
-fn emit_remaining_raw(reader: &mut BitReader<'_>, walk: &mut Walk<'_, '_>) {
+///
+/// Counts against `stats.fields_emitted` like [`emit`] does -- it pushes a
+/// `FlattenedField` into the same `walk.output` the sink writes one row per
+/// entry of, so a caller summing `fields_emitted` to predict row count must
+/// see this leaf too.
+fn emit_remaining_raw(
+    reader: &mut BitReader<'_>,
+    walk: &mut Walk<'_, '_>,
+    stats: &mut ArrayDecodeStats,
+) {
     let remaining = reader.bits_remaining();
     if remaining == 0 {
         return;
@@ -597,6 +613,7 @@ fn emit_remaining_raw(reader: &mut BitReader<'_>, walk: &mut Walk<'_, '_>) {
         bit_count: remaining as u32,
         raw_bits: raw,
     });
+    stats.fields_emitted += 1;
 }
 
 /// Append a LEAF handle's label, preferring the name the replay declares.
@@ -1014,7 +1031,27 @@ mod tests {
         let bit_count = bits.len() as u32;
         let guids = decode_object_ref_array(&data, bit_count);
 
-        assert_eq!(guids, vec![812, 25492]);
+        assert_eq!(guids, vec![(0, 812), (1, 25492)]);
+    }
+
+    /// A sparse re-send -- only wire index 1 of a 3-slot array present -- must
+    /// keep that index, not relabel the lone GUID onto slot 0.
+    #[test]
+    fn decode_object_ref_array_preserves_a_sparse_wire_index() {
+        let mut bits = Vec::new();
+        write_int_packed(&mut bits, 3); // elementCount (3-slot array)
+        write_int_packed(&mut bits, 2); // encodedIndex -> index 1 (only element sent)
+        write_int_packed(&mut bits, 3); // encodedHandle -> handle 2
+        write_int_packed(&mut bits, 16); // payloadBits
+        write_int_packed(&mut bits, 5150); // ObjectNetGuid payload
+        write_int_packed(&mut bits, 0); // element terminator
+        write_int_packed(&mut bits, 0); // array terminator
+
+        let data = bits_to_bytes(&bits);
+        let bit_count = bits.len() as u32;
+        let guids = decode_object_ref_array(&data, bit_count);
+
+        assert_eq!(guids, vec![(1, 5150)]);
     }
 
     /// An empty array (elementCount = 0, immediate terminator) decodes to nothing.

@@ -161,7 +161,11 @@ pub struct ActorRecord {
     pub packet_id: u32,
     pub channel_index: u32,
     pub actor_net_guid: u32,
-    /// "open" or "close".
+    /// "open", "close", or "dormant". Dormancy is not destruction: only
+    /// "close" is a despawn, and treating "dormant" as one truncates the
+    /// lifetime of anything that goes dormant instead of closing (e.g. a
+    /// persistent ability) and double-counts its later re-open as a second
+    /// spawn.
     pub event: &'static str,
     /// Resolved class path; `None` when the GUID cache lacks the mapping.
     pub class_path: Option<String>,

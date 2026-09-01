@@ -184,16 +184,22 @@ def build(out_dir: Path):
     pawn_subject = {p["character_net_guid"]: p["subject"]
                     for p in manifest.get("players", [])}
 
-    # Round boundaries from the replay's own roundStarted events.
-    round_starts: list[tuple[int, int]] = []
+    # Round boundaries from the replay's own roundStarted events. A
+    # `roundStarted` row whose metadata does not parse as an integer has no
+    # real round number to report -- None is written through to the
+    # `round_number` column (nullable int32) as a visible absence rather than
+    # a fabricated ordinal that a consumer cannot tell from a real round.
+    round_starts: list[tuple[int, int | None]] = []
+    malformed_round_meta = 0
     for grp, t1, meta in zip(events.get("group", []), events.get("time1", []),
                              events.get("metadata", [])):
         if grp == "roundStarted":
             try:
                 round_starts.append((t1, int(meta)))
             except (TypeError, ValueError):
-                round_starts.append((t1, len(round_starts)))
-    round_starts.sort()
+                malformed_round_meta += 1
+                round_starts.append((t1, None))
+    round_starts.sort(key=lambda r: r[0])
     round_ts = [t for t, _ in round_starts]
 
     def round_of(ms: int):
@@ -244,17 +250,27 @@ def build(out_dir: Path):
                 "to_ms": end,
                 "duration_ms": (end - t) if end is not None else None,
                 "owner_net_guid": owner,
-                "owner_class": leaf(cls),
+                # All six columns are nullable in SCHEMA. `leaf()` and
+                # `classify_owner()` both use "" as their own internal
+                # "nothing here" value (tested and relied on where they are
+                # called from each other), but at the row boundary that
+                # collapses "no lookup was possible" (owner_class: guid_class
+                # missed) into the same value as "resolved and genuinely
+                # empty" -- and reads, to a consumer grouping by owner_class,
+                # as a real category rather than a failed lookup. `to_ms`,
+                # `duration_ms` and `carrier_pawn_guid` already render that
+                # absence as None; these three now match.
+                "owner_class": leaf(cls) or None,
                 "holder_kind": kind,
                 "carrier_pawn_guid": carrier,
-                "carrier_subject": pawn_subject.get(carrier, ""),
-                "via_proxy_class": proxy,
+                "carrier_subject": pawn_subject.get(carrier, "") or None,
+                "via_proxy_class": proxy or None,
                 "in_hand": any(t <= h and (end is None or h <= end)
                                for h in held),
             })
 
     rows.sort(key=lambda r: (r["from_ms"], r["bomb_net_guid"]))
-    return rows, events
+    return rows, events, malformed_round_meta
 
 
 SCHEMA = pa.schema([
@@ -283,7 +299,7 @@ def main() -> int:
                     help="also print the timeline, carried intervals only")
     args = ap.parse_args()
 
-    rows, events = build(args.export)
+    rows, events, malformed_round_meta = build(args.export)
     cols = {name: [r[name] for r in rows] for name in SCHEMA.names}
     table = pa.Table.from_pydict(cols, schema=SCHEMA)
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -293,6 +309,8 @@ def main() -> int:
     print(f"wrote {args.out} ({len(rows)} custody intervals)")
     for k, n in sorted(by_kind.items()):
         print(f"  {k:8s} {n}")
+    print(f"  malformed roundStarted metadata: {malformed_round_meta} "
+          f"(round_number is null for the interval(s) it touches)")
 
     held = [r for r in rows if r["holder_kind"] in HELD_KINDS]
     print(f"  rounds {len({r['round_number'] for r in rows})}, "
@@ -307,17 +325,22 @@ def main() -> int:
         if grp != "spikePlanted":
             continue
         who = carrier_at(held, t1)
+        # `carrier_subject` is guaranteed non-None for the HELD_KINDS rows
+        # `held` is filtered to (both kinds only return a carrier already
+        # present in `pawn_subject`) -- guarded anyway now that the column
+        # can carry None, rather than relying on that invariant holding here.
         tag = "NO CARRIER" if who is None else (
-            f"{who['carrier_subject'][:8]} pawn={who['carrier_pawn_guid']}"
+            f"{(who['carrier_subject'] or '?')[:8]} pawn={who['carrier_pawn_guid']}"
             + (f" via {who['via_proxy_class']}" if who["via_proxy_class"] else ""))
-        print(f"  plant t={t1:>8}  round {who['round_number'] if who else '?'}  {tag}")
+        round_disp = who["round_number"] if who and who["round_number"] is not None else "?"
+        print(f"  plant t={t1:>8}  round {round_disp}  {tag}")
 
     if args.show:
         print()
         for r in held:
             print("  r%-3s %8d-%-8s %-6s %-8s pawn=%-5s %s%s" % (
                 r["round_number"], r["from_ms"], r["to_ms"], r["holder_kind"],
-                r["carrier_subject"][:8], r["carrier_pawn_guid"],
+                (r["carrier_subject"] or "?")[:8], r["carrier_pawn_guid"],
                 "in-hand " if r["in_hand"] else "",
                 "" if r["duration_ms"] is None
                 else f"({r['duration_ms'] / 1000:.1f}s)"))

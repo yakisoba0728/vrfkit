@@ -114,6 +114,19 @@ pub enum DecodeError {
     /// failure `LocalizedStat` was untyped for.
     #[error("FText history type {history_type} is not one this decoder has seen")]
     UnsupportedTextHistory { history_type: u8 },
+
+    /// A `ByteArray`'s declared element count (from its `IntPacked` prefix)
+    /// exceeded the table's configured `max_bytes`.
+    ///
+    /// Distinct from [`Self::NotFullyConsumed`], which this used to be
+    /// reported as: nothing has been decoded yet at this point (not one
+    /// payload byte has been read), so the bit position this carries is
+    /// meaningless as "bits left over after decode" -- it is measured right
+    /// after the count prefix, before the payload the count describes. A
+    /// widened field reads as a layout/bit-width mismatch under that label,
+    /// when the actual cause is a table constant that needs raising.
+    #[error("byte array declared {declared} bytes, exceeding the {max} configured for this field")]
+    ByteArrayLengthCapExceeded { declared: u32, max: u32 },
 }
 
 /// Decode raw bits according to the given [`FieldType`].

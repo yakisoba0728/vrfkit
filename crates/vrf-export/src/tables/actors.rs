@@ -34,8 +34,8 @@ impl Table for ActorsTable {
 
     const DEFAULT_ROW_GROUP_SIZE: usize = DEFAULT_ACTOR_ROW_GROUP_SIZE;
 
-    // `event` is deliberately absent: two distinct values ("open"/"close") are
-    // cheaper as plain Utf8 than as a dictionary.
+    // `event` is deliberately absent: three distinct values ("open"/"close"/
+    // "dormant") are cheaper as plain Utf8 than as a dictionary.
     const DICTIONARY_COLUMNS: &'static [&'static str] = &["class_path", "archetype_path"];
 
     fn schema() -> Arc<Schema> {

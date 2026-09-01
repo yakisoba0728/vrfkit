@@ -62,6 +62,22 @@ pub struct NetGuidCache {
     /// Bumped whenever the set of group paths changes. See
     /// [`Self::schema_generation`].
     schema_generation: u64,
+    /// Bumped whenever `guid_to_path` or `guid_to_outer` changes. See
+    /// [`Self::guid_generation`].
+    guid_generation: u64,
+    /// Net-field exports [`Self::set_field_on_group`] could not place --
+    /// either the group was not found or, the only way that can happen from
+    /// [`crate::reader::read_net_field_exports`] (which validates the group
+    /// exists before this is called), the handle exceeded the group's
+    /// declared length. The C# reference logs a warning and moves on; this
+    /// crate had no equivalent, so a field dropped this way vanished with no
+    /// counter. See [`Self::dropped_field_exports`].
+    ///
+    /// Scoped to whichever `NetGuidCache` this is: the checkpoint pass builds
+    /// a fresh one per chunk (`driver::checkpoints::process_chunk`) and drops
+    /// it after, so a drop there never reaches the ReplayData-pass cache this
+    /// counter is read from in the manifest.
+    dropped_field_exports: u64,
 }
 
 impl NetGuidCache {
@@ -80,6 +96,8 @@ impl NetGuidCache {
             guid_to_path: FxHashMap::default(),
             guid_to_outer: FxHashMap::default(),
             schema_generation: 0,
+            guid_generation: 0,
+            dropped_field_exports: 0,
         }
     }
 
@@ -129,11 +147,26 @@ impl NetGuidCache {
             }
         }
 
-        let idx = if let Some(idx) = existing_by_path.or(existing_by_index) {
-            // Merge: grow capacity and overwrite populated slots.
+        let idx = if let Some(idx) = existing_by_path {
+            // Same path: this is the same class re-declaring (or extending)
+            // its own export group, so its previously-set handle slots are
+            // still valid and are preserved.
             self.groups[idx].merge_from(&group);
             self.groups[idx].path = group.path;
             self.groups[idx].path_name_index = group.path_name_index;
+            idx
+        } else if let Some(idx) = existing_by_index {
+            // Index matched, path did not: `path_name_index` was reused for a
+            // path this cache has never seen, which the module doc says the
+            // engine does over a replay's lifetime as old FNames are freed and
+            // reassigned. The group at `idx` belongs to whatever class held
+            // that index before -- merging would let its handle slots (field
+            // names, `compatible_checksum`) survive into the new class, so a
+            // content block resolved against the new path would read the OLD
+            // class's field name/type at a handle the NEW class never
+            // declared. Replace the group outright instead of merging into
+            // it.
+            self.groups[idx] = group;
             idx
         } else {
             let idx = self.groups.len();
@@ -189,17 +222,54 @@ impl NetGuidCache {
         self.by_path.get(path).map(|&i| &self.groups[i])
     }
 
+    /// A counter that changes whenever a NetGUID -> path or NetGUID -> outer
+    /// mapping changes.
+    ///
+    /// `set_net_guid_path` is called both through
+    /// [`crate::reader::read_export_guids`] (frame-level ExportData, run once
+    /// per frame ahead of that frame's packet loop) and through per-block
+    /// export-GUID bunches during packet processing; neither caller routes
+    /// through the same object that owns a group-path resolution memo, so a
+    /// memo built from those resolutions has no other way to see this map
+    /// change. Callers that memoise a function of `guid_to_path` /
+    /// `guid_to_outer` must stamp with this and discard on a mismatch, the
+    /// same pattern as [`Self::schema_generation`].
+    #[must_use]
+    pub fn guid_generation(&self) -> u64 {
+        self.guid_generation
+    }
+
     /// Register a NetGUID -> path mapping (from export GUID bunches).
+    ///
+    /// A no-op write -- the same path and outer this GUID already has -- does
+    /// not bump [`Self::guid_generation`]. This isn't only about the redundant
+    /// hashmap writes: [`crate::checkpoint`] reads a fresh `NetGuidCache` per
+    /// checkpoint, but the frame-level ExportData section
+    /// ([`crate::reader::read_export_guids`]) calls this once per exported
+    /// GUID on *every* frame that re-declares one, with no pre-check of its
+    /// own (unlike `vrfkit`'s `register_path`, which skips the call entirely
+    /// when nothing changed, for its own reason -- an allocation, not this
+    /// one). Without the check here, a replay that keeps re-sending a GUID's
+    /// path bumps `guid_generation` every such frame, which -- now that a
+    /// group-path resolution memo keys on this generation -- would collapse
+    /// the memo's hit rate to near zero on exactly that traffic.
     pub fn set_net_guid_path(&mut self, net_guid: u32, path: String, outer: Option<NetworkGuid>) {
+        let outer = outer.filter(|g| g.is_valid());
+        if self.guid_to_path.get(&net_guid).map(String::as_str) == Some(path.as_str())
+            && self.guid_to_outer.get(&net_guid).copied() == outer
+        {
+            return;
+        }
         self.guid_to_path.insert(net_guid, path);
         match outer {
-            Some(g) if g.is_valid() => {
+            Some(g) => {
                 self.guid_to_outer.insert(net_guid, g);
             }
-            _ => {
+            None => {
                 self.guid_to_outer.remove(&net_guid);
             }
         }
+        self.guid_generation = self.guid_generation.wrapping_add(1);
     }
 
     /// Resolve a NetGUID to its object path.
@@ -251,16 +321,27 @@ impl NetGuidCache {
     ///
     /// Returns `true` if the group was found and the field handle was in range.
     pub fn set_field_on_group(&mut self, path_name_index: u32, field: NetFieldExport) -> bool {
-        if let Some(group) = self.get_group_by_index_mut(path_name_index) {
+        let placed = if let Some(group) = self.get_group_by_index_mut(path_name_index) {
             group.set_field(field)
         } else {
             false
+        };
+        if !placed {
+            self.dropped_field_exports += 1;
         }
+        placed
+    }
+
+    /// Net-field exports dropped by [`Self::set_field_on_group`]. See its doc.
+    #[must_use]
+    pub fn dropped_field_exports(&self) -> u64 {
+        self.dropped_field_exports
     }
 
     /// Remove all state. Intended for tests or replay-boundary resets.
     pub fn clear(&mut self) {
         self.schema_generation = self.schema_generation.wrapping_add(1);
+        self.guid_generation = self.guid_generation.wrapping_add(1);
         self.by_path.clear();
         self.by_index.clear();
         self.by_leaf.clear();
@@ -405,12 +486,69 @@ mod tests {
         );
     }
 
+    /// A `path_name_index` reused for a genuinely different path must not
+    /// hand the new class the old class's handle table. Before the fix, the
+    /// index-only match merged into the existing group (preserving whatever
+    /// slots the old class had set), so a content block resolved against the
+    /// new path could read the old class's field name/type at a handle the
+    /// new class never declared.
+    #[test]
+    fn same_index_with_new_path_does_not_inherit_old_fields() {
+        let mut cache = NetGuidCache::new();
+        cache
+            .add_export_group(NetFieldExportGroup::new("/Script/G.Old".into(), 7, 2))
+            .unwrap();
+        cache.set_field_on_group(
+            7,
+            NetFieldExport {
+                handle: 0,
+                compatible_checksum: 111,
+                name: "OldFieldZero".into(),
+            },
+        );
+
+        cache
+            .add_export_group(NetFieldExportGroup::new("/Script/G.New".into(), 7, 2))
+            .unwrap();
+
+        let group = cache.get_group_by_index(7).unwrap();
+        assert_eq!(group.path, "/Script/G.New");
+        assert!(
+            group.get_field(0).is_none(),
+            "handle 0 must not carry the old class's field after the index was reused: {:?}",
+            group.get_field(0)
+        );
+    }
+
     #[test]
     fn cache_set_net_guid_path_stores_and_resolves() {
         let mut cache = NetGuidCache::new();
         cache.set_net_guid_path(17, "/Game/Test.Test_C".into(), None);
 
         assert_eq!(cache.get_path_by_guid(17).unwrap(), "/Game/Test.Test_C");
+    }
+
+    /// A redundant `set_net_guid_path` call -- same path, same outer -- must
+    /// not bump `guid_generation`. Frame-level ExportData re-declares a GUID's
+    /// path on every frame that re-exports it, with no pre-check of its own
+    /// (unlike `vrfkit::sink::register_path`'s deliberate one); without this,
+    /// a memo keyed on `guid_generation` would be invalidated on every such
+    /// frame regardless of whether the mapping actually changed.
+    #[test]
+    fn a_redundant_set_net_guid_path_call_does_not_bump_guid_generation() {
+        let mut cache = NetGuidCache::new();
+        cache.set_net_guid_path(17, "/Game/Test.Test_C".into(), None);
+        let after_first = cache.guid_generation();
+
+        cache.set_net_guid_path(17, "/Game/Test.Test_C".into(), None);
+        assert_eq!(cache.guid_generation(), after_first, "no change, no bump");
+
+        cache.set_net_guid_path(17, "/Game/Test.Other_C".into(), None);
+        assert_ne!(
+            cache.guid_generation(),
+            after_first,
+            "a real change must still bump"
+        );
     }
 
     #[test]

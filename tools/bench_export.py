@@ -189,6 +189,25 @@ def main() -> int:
         return 0
 
     data = json.loads(args.baseline.read_text(encoding="utf-8"))
+
+    # The baseline's timing means nothing unless it was recorded against THIS
+    # replay -- a shorter or longer replay times faster or slower for reasons
+    # that have nothing to do with the code, and `--update` above already
+    # treats `replay` and its timing as one fact that must come from the same
+    # run. A baseline with no `replay` at all (an older file, or one written
+    # before this check existed) is not "assume it matches" -- that is exactly
+    # the unmeasured comparison this check exists to refuse.
+    baseline_replay = data.get("replay")
+    if baseline_replay != args.replay.name:
+        recorded = repr(baseline_replay) if baseline_replay is not None else \
+            "(no replay recorded)"
+        print(f"SKIP: baseline was recorded against {recorded}, not "
+              f"{args.replay.name!r} -- comparing them would time two "
+              f"different replays against each other. Record a baseline for "
+              f"this replay with --update, or pass the replay the baseline "
+              f"names.")
+        return 0
+
     if key not in data:
         # No "record one with --update" here for the checkpoint key: that is
         # advice this tool cannot honour (see BASELINE_KEYS), and pointing a

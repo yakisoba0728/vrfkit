@@ -161,6 +161,17 @@ class CliGuardTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("OK:", result.stdout)
         self.assertNotIn("SKIP:", result.stdout + result.stderr)
+        # returncode==0 and "OK:" are also what an EMPTY overlap prints --
+        # `verdict.ok` is vacuously True when nothing was compared. Confirm
+        # the fixture actually shares checksums with the committed table, or
+        # this gate is a guard over nothing.
+        table = gen.load_overlay_table()
+        resolved, conflicts = gen.learn([export / "manifest.json"], table)
+        overlap = gen.load_committed().keys() & resolved.keys()
+        self.assertGreater(
+            len(overlap), 0,
+            "fixture and committed table share no checksums -- the CI gate "
+            "is comparing nothing")
 
 
 if __name__ == "__main__":

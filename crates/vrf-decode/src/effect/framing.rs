@@ -182,9 +182,11 @@ pub fn scan_element_handles(raw: &[u8], bit_count: u32) -> Result<Option<EffectH
         };
 
         let mut seen = [0u32; 2];
-        for slot in &mut seen {
+        for (found, slot) in seen.iter_mut().enumerate() {
             let Some((handle, payload_bits)) = read_field_header(&mut reader)? else {
-                return Err(EffectBlobError::ElementFieldCount { found: 0 });
+                return Err(EffectBlobError::ElementFieldCount {
+                    found: found as u32,
+                });
             };
             reader.skip_bits(u64::from(payload_bits))?;
             *slot = handle;

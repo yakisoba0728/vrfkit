@@ -47,6 +47,14 @@ pub(super) struct RunTotals {
     /// exists on `ExportStats` and reaches no summary line. See
     /// [`super::totals`].
     pub sink: SinkTotals,
+    /// [`stale_checkpoint_note`], computed by the caller against the
+    /// PRE-publish destination -- the directory `OutputTransaction::publish`
+    /// is about to atomically replace -- before that swap happens. `print` is
+    /// only ever called after publish, by which point the old directory (and
+    /// any table it held that this run did not rewrite) is gone; checking
+    /// `out_path` at that point can never see a file this run did not itself
+    /// just write.
+    pub stale_checkpoint_note: Option<String>,
 }
 
 /// Print the whole `=== Export complete ===` report.
@@ -71,6 +79,20 @@ pub(super) fn print(
     eprintln!("  RPCs:             {}", net_stats.rpcs);
     eprintln!("  Actor opens:      {}", net_stats.actor_opens);
     eprintln!("  Actor closes:     {}", net_stats.actor_closes);
+    // The sink's own tally of the same five events, computed independently at
+    // the vrfkit layer rather than the vrf-net framing layer above. Not
+    // redundant to drop: a mismatch against the five lines above is a real
+    // desync between what vrf-net framed and what the sink actually saw, and
+    // before this line existed these counters were summed on `ExportStats`
+    // and read by nothing (see `driver::totals`).
+    eprintln!(
+        "  Sink tally:       {} fields / {} RPCs / {} opens / {} closes / {} content blocks",
+        totals.sink.fields_emitted,
+        totals.sink.rpcs_emitted,
+        totals.sink.actor_opens,
+        totals.sink.actor_closes,
+        totals.sink.content_blocks
+    );
     eprintln!("  Bunches:          {}", net_stats.bunches);
     eprintln!("  Malformed pkts:   {}", net_stats.malformed_packets);
     eprintln!(
@@ -87,6 +109,17 @@ pub(super) fn print(
             .rpc_stream_failures
             .saturating_sub(net_stats.unresolved_rpc_payloads_preserved),
         net_stats.unresolved_rpc_payloads_preserved
+    );
+    // A separate line, not folded into "Content failures" above: that line's
+    // exact format is read by `tools/check_export_baseline.py`. This counts
+    // content blocks whose header or `content_bits` field could not even be
+    // read -- the failure depths that ran before any of the four above could
+    // apply, and before this counter existed, zero on every counter here
+    // (including `lost_content_blocks` and the oracle verdict) regardless of
+    // how many of these happened.
+    eprintln!(
+        "  Content framing fails: {}",
+        net_stats.content_block_framing_failures
     );
     eprintln!("  Skipped bits:     {}", net_stats.skipped_bits);
     // Unconditional, zeros included, for the reason spelled out on the struct
@@ -198,9 +231,14 @@ pub(super) fn print(
         print_checkpoints(cp);
     }
 
-    print_file_sizes(out_path, checkpoints.is_some(), manifest_path);
+    print_file_sizes(
+        out_path,
+        checkpoints.is_some(),
+        manifest_path,
+        totals.stale_checkpoint_note.as_deref(),
+    );
     print_overlay(overlay, totals.sink.effect_blobs_decoded);
-    print_decode_errors(overlay, error_report);
+    print_decode_errors(error_report);
 }
 
 fn print_checkpoints(cp: &CheckpointStats) {
@@ -211,6 +249,7 @@ fn print_checkpoints(cp: &CheckpointStats) {
     eprintln!();
     eprintln!("=== Checkpoints ===");
     eprintln!("  Checkpoints:      {}", cp.chunks);
+    eprintln!("  Trailing bytes:   {}", cp.trailing_bytes);
     eprintln!("  GUID entries:     {}", cp.guid_entries);
     eprintln!("  Group records:    {}", cp.group_records);
     eprintln!("  Exported fields:  {}", cp.exported_fields);
@@ -236,6 +275,10 @@ fn print_checkpoints(cp: &CheckpointStats) {
         cp.net.unfinished_partials,
         cp.net.unfinished_partial_bits,
         cp.net.skipped_bits
+    );
+    eprintln!(
+        "  Checkpoint framing fails: {}",
+        cp.net.content_block_framing_failures
     );
     eprintln!(
         "  Checkpoint raw:   {} unresolved RPC payloads preserved whole",
@@ -334,32 +377,45 @@ fn print_checkpoints(cp: &CheckpointStats) {
 /// The one table that is written only when `--checkpoints` is given.
 const CHECKPOINT_TABLE: &str = "checkpoint_fields.parquet";
 
-/// A warning line when this run left a checkpoint table it did not write.
+/// A warning line when this run drops a checkpoint table an earlier run at
+/// this destination had.
 ///
 /// The five main tables and the manifest are recreated on every export, but
-/// [`CHECKPOINT_TABLE`] is only opened when the flag asks for it. Export replay
-/// A with checkpoints and replay B without, into the same directory, and six
-/// files then describe B while a seventh valid-looking Parquet still describes
-/// A -- exit 0, nothing said, and the next consumer joins the two.
+/// [`CHECKPOINT_TABLE`] is only opened when the flag asks for it. Export
+/// replay A with checkpoints and replay B without, into the same directory,
+/// and `OutputTransaction::publish` atomically replaces the whole
+/// destination with B's staging -- A's checkpoint table is not merged in and
+/// not left behind mixed with B's other six files; it is gone, along with
+/// the rest of A's directory, the same way any file `--checkpoints` did not
+/// ask this run to write would be. That silent loss, not a leftover file
+/// surviving to confuse a later reader, is what this reports.
 ///
-/// Deleting it is deliberately not done here: the command was asked to write
-/// output, not to remove files it does not own, and a silent delete of
-/// somebody's data is a worse failure than a stale file. Naming it is enough
-/// to stop it being read by accident.
-fn stale_checkpoint_note(out_path: &Path, with_checkpoints: bool) -> Option<String> {
+/// `out_path` must be checked BEFORE `OutputTransaction::publish` runs, on
+/// the directory about to be replaced. By the time `print` -- the only
+/// caller in production -- runs, that directory is already gone; checking
+/// `out_path` at that point sees only what this run just published, which
+/// can never contain a table this run did not write.
+pub(super) fn stale_checkpoint_note(out_path: &Path, with_checkpoints: bool) -> Option<String> {
     if with_checkpoints {
         return None;
     }
     let path = out_path.join(CHECKPOINT_TABLE);
     path.exists().then(|| {
         format!(
-            "{} is left over from an earlier run (this export had no --checkpoints) and does NOT describe this replay",
+            "{} from a previous export to this destination is being dropped: this run has no \
+             --checkpoints, and publishing replaces the whole destination directory rather than \
+             merging into it",
             path.display()
         )
     })
 }
 
-fn print_file_sizes(out_path: &Path, with_checkpoints: bool, manifest_path: &Path) {
+fn print_file_sizes(
+    out_path: &Path,
+    with_checkpoints: bool,
+    manifest_path: &Path,
+    stale_checkpoint_note: Option<&str>,
+) {
     let size = |name: &str| {
         fs::metadata(out_path.join(name))
             .map(|m| m.len())
@@ -376,8 +432,8 @@ fn print_file_sizes(out_path: &Path, with_checkpoints: bool, manifest_path: &Pat
         eprintln!("  {CHECKPOINT_TABLE}: {} bytes", size(CHECKPOINT_TABLE));
     }
     eprintln!("  manifest.json:    {}", manifest_path.display());
-    if let Some(note) = stale_checkpoint_note(out_path, with_checkpoints) {
-        eprintln!("  STALE FILE:       {note}");
+    if let Some(note) = stale_checkpoint_note {
+        eprintln!("  DROPPED TABLE:    {note}");
     }
 }
 
@@ -430,8 +486,13 @@ fn print_overlay(overlay: &OverlayStats, effect_blobs_decoded: u64) {
 
 /// Top-15 decode error breakdown. Always shown when there are any -- this is a
 /// permanent diagnostic for schema-drift detection across game builds.
-fn print_decode_errors(overlay: &OverlayStats, error_report: &OverlayErrorReport) {
-    if overlay.decoded_err == 0 {
+fn print_decode_errors(error_report: &OverlayErrorReport) {
+    // Gated on the report itself, not `overlay.decoded_err` -- that counter is
+    // the ReplayData pass alone, while `error_report` is ReplayData and
+    // checkpoints merged (see `process_chunk`'s doc). A checkpoint-only error
+    // burst with a clean ReplayData pass used to suppress this whole section,
+    // hiding exactly the breakdown an operator needs to find it.
+    if error_report.total_errors() == 0 {
         return;
     }
     eprintln!();
@@ -479,17 +540,10 @@ mod tests {
         dir
     }
 
-    /// An export without `--checkpoints` must not leave a checkpoint table from
-    /// a different replay sitting silently in the output directory.
-    ///
-    /// The five main tables and the manifest are recreated on every run, but
-    /// `checkpoint_fields.parquet` is only ever *opened* when the flag is
-    /// given. Export replay A with checkpoints and replay B without into the
-    /// same directory and the directory then describes two different matches:
-    /// six files about B, one valid-looking Parquet about A, exit 0, and
-    /// nothing said. Deleting it is not this command's business -- it was asked
-    /// to write, not to clean up -- but staying quiet about it is how the wrong
-    /// file gets read.
+    /// This is a check of `stale_checkpoint_note` in isolation, against a
+    /// plain directory -- see its own doc for why the real call site checks
+    /// the pre-publish destination, not this test's `dir`, which is never
+    /// touched by `OutputTransaction::publish` at all.
     #[test]
     fn a_leftover_checkpoint_table_is_named_when_this_run_did_not_write_one() {
         let dir = temp_dir("stale_cp");

@@ -42,8 +42,15 @@
 //! question. The reasoning says these fire on nothing well-formed -- an
 //! `IntPacked` is self-delimiting, and every pinned wire vector in
 //! the module's test fixtures still pass -- but that is an argument and a fixture set, not the
-//! census. Re-run `tools/check_effect_decoder.py` over the corpus to restore
-//! the claim to a measurement.
+//! census. `tools/check_effect_decoder.py` does NOT restore it: it has no
+//! corpus mode (it self-checks nine wire fixtures pinned from this module
+//! plus two from the C# reference bundle) and it deliberately never calls
+//! this Rust decoder at all -- it calls the Python port in
+//! `to_valplay_bundle.py`, which is the OTHER side of the comparison this
+//! paragraph is about. Restoring the claim needs a differential harness this
+//! repo does not currently have: something that runs *this* decoder and the
+//! Python port over the same corpus of real blobs and diffs their outputs,
+//! the way the original 100,997/2,045,428 measurement did.
 //!
 //! This module's own tests are the repo's only executable specification of this
 //! wire format: eight pinned hex vectors lifted from real packets, with values

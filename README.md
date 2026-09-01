@@ -18,8 +18,8 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 by Michel Giehl; see [`NOTICE.md`](NOTICE.md). Not affiliated with, endorsed
 by, or approved by Riot Games.
 
-**Current state:** `cargo +1.86.0 test --workspace --locked` **580 passing**,
-`tools/tests` **551 passing** -- see [Status](#status) for the rest.
+**Current state:** `cargo +1.86.0 test --workspace --locked` **594 passing**,
+`tools/tests` **553 passing** -- see [Status](#status) for the rest.
 
 - Run it: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable: [`docs/DATA.md`](docs/DATA.md)
@@ -93,7 +93,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **580 tests** plus a layered validation suite (framing / bytes / decode
+- **594 tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -297,8 +297,8 @@ it as one gives the year 3626.
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**580 passing**, strict workspace `clippy -D warnings` **0**, `cargo fmt` clean,
-and `check_ascii` on 119 files. The Python suite in `tools/tests` has 551 tests.
+**594 passing**, strict workspace `clippy -D warnings` **0**, `cargo fmt` clean,
+and `check_ascii` on 119 files. The Python suite in `tools/tests` has 553 tests.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.
@@ -789,7 +789,7 @@ layered, and the layers catch different things:
 - **Framing** (`validate_corpus.py`, all 527 files) -- content-block framing,
   loss accounting and unresolved-payload preservation.
 - **Bytes** (`check_export_baseline.py`, per-file row and byte counts) --
-  regression in any of the 25 export counters.
+  regression in any of the 28 export counters.
 - **Decode** (`check_decode_errors_corpus.py`, scoped export corpora) -- overlay
   type errors and struct-blob failures; the current 13.04 scope is all 108 files
   with checkpoints enabled.
@@ -804,7 +804,7 @@ that way is a trap:
   rows cannot yet be split into named properties. `Malformed framing`,
   `Transform failed`, and `RPC payload lost` must remain zero; a non-zero
   `RPC unresolved/raw` count describes preserved, uninterpreted data.
-- The **~72% `Typed`** ratio reads low because of the *RPC-parameter
+- The **~75.1% `Typed`** ratio reads low because of the *RPC-parameter
   denominator* -- most of `Not in table` is RPC parameters with no C#
   descriptor. A low ratio is uninterpreted, not lost: those rows still carry
   `raw_bits`, and additive decoders (effects, structs, the economy typing)

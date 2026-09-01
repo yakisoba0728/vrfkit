@@ -30,7 +30,13 @@
 pub(crate) fn render_fname(name: String, number: i32) -> String {
     match number {
         0 => name,
-        n => format!("{name}_{}", n.wrapping_sub(1)),
+        // `wrapping_sub` here would turn `i32::MIN` into `i32::MAX` -- exactly
+        // the "plausible positive suffix" the doc above says this must not
+        // produce for a value with no display form. A plain subtraction would
+        // panic in a debug build over the same input, so the positive branch
+        // still needs a variant that cannot; only the negative one is exempt.
+        n if n > 0 => format!("{name}_{}", n - 1),
+        n => format!("{name}_{n}"),
     }
 }
 
@@ -153,5 +159,27 @@ impl NetFieldExportGroup {
                 self.fields[i] = Some(field.clone());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_fname;
+
+    #[test]
+    fn render_fname_positive_and_zero() {
+        assert_eq!(render_fname("Foo".into(), 0), "Foo");
+        assert_eq!(render_fname("Foo".into(), 1), "Foo_0");
+        assert_eq!(render_fname("Foo".into(), 3), "Foo_2");
+    }
+
+    /// A negative number has no display form; it must render distinguishably
+    /// wrong, not wrap into a value that reads as a normal instance suffix.
+    /// `i32::MIN.wrapping_sub(1)` is `i32::MAX` -- exactly such a value -- so
+    /// this is the case that would have caught the bug directly.
+    #[test]
+    fn render_fname_negative_is_not_wrapped_into_a_plausible_suffix() {
+        assert_eq!(render_fname("Foo".into(), -1), "Foo_-1");
+        assert_eq!(render_fname("Foo".into(), i32::MIN), "Foo_-2147483648");
     }
 }

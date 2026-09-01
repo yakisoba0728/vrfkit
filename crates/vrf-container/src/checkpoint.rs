@@ -68,8 +68,10 @@ pub struct CheckpointChunk<'a> {
     /// The Oodle archive, exactly `size_in_bytes` bytes.
     pub archive: &'a [u8],
     /// Bytes after the archive this layout does not account for. Zero for all
-    /// 4,024 corpus checkpoints; reported so a format change is counted rather
-    /// than discarded in silence.
+    /// 4,024 corpus checkpoints; summed into
+    /// `driver::checkpoints::CheckpointStats::trailing_bytes` and printed
+    /// unconditionally in the checkpoint summary, so a format change is
+    /// counted rather than discarded in silence.
     pub trailing_bytes: usize,
 }
 

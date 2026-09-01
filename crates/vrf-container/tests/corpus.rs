@@ -347,7 +347,16 @@ fn parse_all_vrf_files() {
     }
     // Measured, not asserted. Both counts are new; if either is ever non-zero
     // that is the evidence needed to decide whether it should be a failure.
-    eprintln!("Unaccounted trailing bytes: {} file(s)", notes.len());
+    // `notes.len()` is a note count, not a file count -- one file can push a
+    // header note and a ReplayData note both -- so the file count is the
+    // distinct set of names instead.
+    let notes_files: std::collections::BTreeSet<&str> =
+        notes.iter().map(|(file, _)| file.as_str()).collect();
+    eprintln!(
+        "Unaccounted trailing bytes: {} note(s) across {} file(s)",
+        notes.len(),
+        notes_files.len()
+    );
     for (file, note) in &notes {
         eprintln!("  {file}: {note}");
     }
@@ -371,6 +380,16 @@ fn parse_all_vrf_files() {
         "{} problem(s) across {total} files: {failures:#?}",
         failures.len()
     );
+    // `assert_eq!(event_observations, event_rows)` below is satisfied by
+    // 0 == 0, which would make the whole Event-timeline guard pass silently
+    // if the Event chunk path stopped running (a renumbered discriminant, a
+    // `ChunkType::from_raw` regression). This is what actually requires the
+    // path to have run at all.
+    assert!(
+        event_rows > 0,
+        "no Event chunk was seen across {total} corpus files -- the Event-timeline \
+         assertions below would pass vacuously"
+    );
     assert_eq!(
         unknown_event_groups, 0,
         "{unknown_event_groups} Event chunk(s) use a group outside the measured vocabulary"
@@ -378,6 +397,15 @@ fn parse_all_vrf_files() {
     assert_eq!(
         event_observations, event_rows,
         "only {event_observations}/{event_rows} Event payloads matched the exact known layout"
+    );
+    // Same shape: `oodle_ok` is printed above but nothing previously required
+    // it to be non-zero, so "no file ever decompressed" (a renumbered
+    // ReplayData discriminant, or a regression in the
+    // `chunk.chunk_type != ChunkType::ReplayData` guard in `scan_file`) was a
+    // pass.
+    assert!(
+        oodle_ok > 0,
+        "no file decompressed a ReplayData chunk across {total} corpus files"
     );
 }
 

@@ -144,20 +144,26 @@ pub struct DemoPacket<'a> {
 /// visible to the next packet before a later frame's ExportData is applied.
 /// This is allocation-free for the packet data (slices into `data`).
 ///
-/// Returns the total number of packets yielded.
+/// Returns `(total packets yielded, total DemoFrames walked)`. The frame
+/// count is not derivable from the packet count -- a frame can carry zero,
+/// one, or many packets -- and a caller that assumes "one frame per chunk"
+/// (as `driver::checkpoints` used to) has no way to notice that assumption
+/// break without this.
 pub fn iter_demo_frames(
     data: &[u8],
     flags: u32,
     cache: &mut NetGuidCache,
     mut on_packet: impl FnMut(DemoPacket<'_>, &mut NetGuidCache),
-) -> Result<u32, FrameError> {
+) -> Result<(u32, u32), FrameError> {
     let has_streaming_fixes = (flags & FLAG_HAS_STREAMING_FIXES) != 0;
     let has_game_specific = (flags & FLAG_GAME_SPECIFIC_FRAME_DATA) != 0;
 
     let mut reader = BitReader::new(data);
     let mut packet_index: u32 = 0;
+    let mut frame_count: u32 = 0;
 
     while !reader.at_end() {
+        frame_count += 1;
         // -- Frame header --------------------------------------------------
         let _current_level_index = reader.read_i32().map_err(FrameError::bit)?;
         let time_seconds = reader.read_f32().map_err(FrameError::bit)?;
@@ -264,7 +270,7 @@ pub fn iter_demo_frames(
         }
     }
 
-    Ok(packet_index)
+    Ok((packet_index, frame_count))
 }
 
 #[cfg(test)]
@@ -387,12 +393,13 @@ mod tests {
         let mut cache = NetGuidCache::new();
         let mut received = Vec::new();
 
-        let count = iter_demo_frames(&data, flags, &mut cache, |pkt, _| {
+        let (count, frame_count) = iter_demo_frames(&data, flags, &mut cache, |pkt, _| {
             received.push((pkt.time_ms, pkt.data.to_vec()));
         })
         .unwrap();
 
         assert_eq!(count, 1);
+        assert_eq!(frame_count, 1);
         assert_eq!(received.len(), 1);
         assert_eq!(received[0].0, 12500);
         assert_eq!(received[0].1, packet_payload);
@@ -460,7 +467,7 @@ mod tests {
     }
 
     /// Run one frame and return the whole result, so a rejection is inspectable.
-    fn run_frame(time_secs: f32) -> Result<u32, FrameError> {
+    fn run_frame(time_secs: f32) -> Result<(u32, u32), FrameError> {
         let flags = FLAG_HAS_STREAMING_FIXES | FLAG_GAME_SPECIFIC_FRAME_DATA;
         let data = build_minimal_frame(time_secs, &[0x00], flags);
         let mut cache = NetGuidCache::new();
@@ -517,7 +524,7 @@ mod tests {
     #[test]
     fn empty_data_yields_zero_packets() {
         let mut cache = NetGuidCache::new();
-        let count = iter_demo_frames(
+        let (count, frame_count) = iter_demo_frames(
             &[],
             FLAG_HAS_STREAMING_FIXES | FLAG_GAME_SPECIFIC_FRAME_DATA,
             &mut cache,
@@ -525,6 +532,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(count, 0);
+        assert_eq!(frame_count, 0);
     }
 
     #[test]

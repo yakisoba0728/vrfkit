@@ -238,7 +238,7 @@ fn rep_movement_decodes_required_fields() {
                 r#""location":{"x":1.23,"y":-4.56,"z":7.89},"#,
                 r#""rotation":{"pitch":0,"yaw":0,"roll":0},"#,
                 r#""simulated_physics_sleep":false,"rep_physics":false,"#,
-                r#""server_frame":0,"server_physics_handle":0}"#
+                r#""server_frame":null,"server_physics_handle":null}"#
             )
         ),
         _ => panic!("expected Str"),

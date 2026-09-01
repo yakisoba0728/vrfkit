@@ -86,9 +86,11 @@ pub fn run(path: &str, redact_identifiers: bool) -> Result<(), CliError> {
     println!("  ReplayData:   {replay_data_count:>6} chunks ({total_replay_data_bytes} bytes)");
     println!("  Checkpoint:   {checkpoint_count:>6} chunks");
     println!("  Event:        {event_count:>6} chunks");
-    if unknown_count > 0 {
-        println!("  Unknown:      {unknown_count:>6} chunks");
-    }
+    // Unconditional, zero included: this was the only chunk line that could
+    // vanish, and "no line" is indistinguishable from "zero unknown chunks"
+    // -- exactly the ambiguity a regression in `ChunkType::from_raw` needs to
+    // hide behind.
+    println!("  Unknown:      {unknown_count:>6} chunks");
 
     Ok(())
 }

@@ -267,6 +267,15 @@ class _Tally(dict):
             "rows with more than one typed column set (extras discarded)",
         "fabricated_shot_locations":
             "shot locations fabricated as the world origin",
+        "fabricated_shot_rotations":
+            "shot rotations fabricated as (0,0,0), indistinguishable from a "
+            "real aim of world +X",
+        "effect_half_read_pairs":
+            "shot effect (tag, value) pairs with one half unreadable "
+            "(pair dropped, e.g. a missing FiringState.AttackVector.N)",
+        "effect_array_residual_bits":
+            "shot effect blobs with more than a byte left over after "
+            "decoding (framing did not end where this parse expected)",
         "missing_manifest":
             "manifest.json absent (replay metadata substituted)",
         "empty_gameplay_tag_table":
@@ -300,14 +309,14 @@ class _Tally(dict):
                 for name, reason in self.REASONS.items() if self[name]]
 
 
-def _bump(tally, name: str) -> None:
+def _bump(tally, name: str, n: int = 1) -> None:
     """Increment a counter if one is being kept; a `None` tally is a no-op.
 
     The leaf helpers take an optional tally so they stay callable -- and
     testable -- on their own. The conversion phases always pass a real one.
     """
     if tally is not None:
-        tally.bump(name)
+        tally.bump(name, n)
 
 
 # ---------------------------------------------------------------------------
@@ -463,8 +472,9 @@ def _parse_vector_or_zero(val, tally=None) -> dict:
     double (559.962145690918).
 
     Callers expect a dict, so an unparseable value still yields a zero vector
-    rather than None. That is a fabricated value and the one place in this
-    adapter that has one.
+    rather than None. That is a fabricated value, tallied as
+    `fabricated_shot_locations` -- `_parse_rotation` below does the same for
+    the paired Rotation parameter, under `fabricated_shot_rotations`.
 
     It used to be justified by "the shot filter upstream already guarantees a
     location is present, so it should be unreachable". There is no such
@@ -487,9 +497,18 @@ def _parse_vector_or_zero(val, tally=None) -> dict:
     return parsed
 
 
-def _parse_rotation(val) -> dict:
-    """Parse a Rotation value into {pitch, yaw, roll}."""
+def _parse_rotation(val, tally=None) -> dict:
+    """Parse a Rotation value into {pitch, yaw, roll}.
+
+    Mirrors `_parse_vector_or_zero`: an absent or unparseable Rotation still
+    yields {pitch:0, yaw:0, roll:0} rather than None, because callers (and
+    valplay's spray_control, which reads `shot.rotation` as the real aim
+    direction) expect a dict. That is a fabricated value indistinguishable
+    from a genuine (0,0,0) aim, so both fallback paths below tally it as
+    `fabricated_shot_rotations` rather than shipping it uncounted.
+    """
     if val is None:
+        _bump(tally, "fabricated_shot_rotations")
         return {"pitch": 0, "yaw": 0, "roll": 0}
     if isinstance(val, dict):
         return val
@@ -516,6 +535,7 @@ def _parse_rotation(val) -> dict:
                         "roll": components[2]}
             except ValueError:
                 pass
+    _bump(tally, "fabricated_shot_rotations")
     return {"pitch": 0, "yaw": 0, "roll": 0}
 
 
@@ -722,7 +742,8 @@ _EFFECT_VECTORS = _EffectArraySpec(11, 12, _read_effect_vector)
 _EFFECT_OBJECTS = _EffectArraySpec(15, 16, _read_effect_object)
 
 
-def _decode_effect_elements(data: bytes, bit_count: int, spec: _EffectArraySpec):
+def _decode_effect_elements(data: bytes, bit_count: int, spec: _EffectArraySpec,
+                            tally=None):
     """Decode one effect value array -> list of (tag_index, value) tuples.
 
     ``spec.read_value`` must raise on a short read rather than return a
@@ -730,6 +751,21 @@ def _decode_effect_elements(data: bytes, bit_count: int, spec: _EffectArraySpec)
     handle already stored untouched, and the reader's position is still
     advanced by however much the partial read consumed. Both are relied on by
     the ``consumed``/``skip_bits`` resynchronisation below.
+
+    This is the ONLY decoder for the shot RPC's blobs -- the Rust twin in
+    crates/vrf-decode/src/effect.rs is deliberately not wired up for
+    `ReplayPlayContinuousEffectAtLocation` (see that module's doc comment).
+    Where the Rust decoder rejects a blob outright on a shape it names
+    (`PayloadUnderread`, `PayloadOverread`, `ResidualBits`, ...), this port
+    keeps going and returns what it already decoded -- correct for a shot
+    stream that must not go missing whole, but only if the two shapes that
+    correspond to fabricated *downstream* values are counted rather than
+    absorbed: a (tag, value) pair where one half's read failed (dropped
+    silently by `_decode_effect_blob`, same as a missing `FiringState
+    .AttackVector.N` -- see `spray_control.py`), and bits left over after the
+    element loop ends that are too many to be sub-byte padding (Rust's own
+    `ResidualBits` threshold: more than a byte means the framing did not end
+    where this parse thinks it did).
     """
     r = _BitReader(data, bit_count)
     try:
@@ -785,15 +821,36 @@ def _decode_effect_elements(data: bytes, bit_count: int, spec: _EffectArraySpec)
             if consumed < payload_bits:
                 r.skip_bits(payload_bits - consumed)
         elements[idx] = (tag, val)
+    # Every declared slot with one or both halves still missing -- whether an
+    # index the array never got around to visiting before truncating, or one
+    # that was reached but lost its tag or value mid-read -- is a pair
+    # `_decode_effect_blob` drops silently below. Tallied once, by count, in
+    # one place, rather than re-deriving the same "one half missing" test
+    # (and risking a second, disagreeing count) at every call site.
+    half_read = sum(1 for tag, val in elements if tag is None or val is None)
+    if half_read:
+        _bump(tally, "effect_half_read_pairs", half_read)
+    # Rust's `ResidualBits`: more than a byte of unconsumed window after the
+    # element loop ends -- by a clean terminator, an index/handle out of
+    # range, or simply running out of bits -- means this blob's framing did
+    # not end where this parse thinks it did. Sub-byte padding is normal and
+    # not counted, matching the Rust guard's own tolerance.
+    if r.bits_remaining() > 7:
+        _bump(tally, "effect_array_residual_bits")
     return elements
 
 
 def _decode_effect_blob(blob: _EffectBlob | None, spec: _EffectArraySpec,
-                        tag_table: dict) -> dict:
+                        tag_table: dict, tally=None) -> dict:
     """Decode one effect blob into {tag_name: value}, dropping half-read pairs.
 
     An absent blob and a blob that decodes to nothing are the same thing to
-    every caller: an empty mapping.
+    every caller: an empty mapping. A half-read pair and residual framing bits
+    are NOT the same thing to every caller -- see `_decode_effect_elements`,
+    which tallies both -- so this still drops them from the returned mapping
+    (a `FiringState.AttackVector.N` a caller cannot find is exactly how
+    `_build_shot_event` is meant to notice one is missing) but no longer
+    without a count reaching the summary.
 
     The bit length comes from the parser's `bit_count` column, not from
     `len(data) * 8`. Those two agree on every effect blob measured -- 692,840
@@ -805,7 +862,8 @@ def _decode_effect_blob(blob: _EffectBlob | None, spec: _EffectArraySpec,
     if blob is None:
         return {}
     decoded = {}
-    for tag_idx, val in _decode_effect_elements(blob.data, blob.bit_count, spec):
+    for tag_idx, val in _decode_effect_elements(blob.data, blob.bit_count, spec,
+                                                tally):
         if tag_idx is not None and val is not None:
             decoded[tag_table.get(tag_idx, str(tag_idx))] = val
     return decoded
@@ -893,9 +951,9 @@ def _build_shot_event(
     """
     # Decode blobs: tag_name -> value
     tag_table = ctx.tag_table
-    floats = _decode_effect_blob(blobs.floats, _EFFECT_FLOATS, tag_table)
-    objects = _decode_effect_blob(blobs.objects, _EFFECT_OBJECTS, tag_table)
-    vectors = _decode_effect_blob(blobs.vectors, _EFFECT_VECTORS, tag_table)
+    floats = _decode_effect_blob(blobs.floats, _EFFECT_FLOATS, tag_table, tally)
+    objects = _decode_effect_blob(blobs.objects, _EFFECT_OBJECTS, tag_table, tally)
+    vectors = _decode_effect_blob(blobs.vectors, _EFFECT_VECTORS, tag_table, tally)
 
     # Events with no firing state are emitted too, not filtered out.
     #
@@ -949,7 +1007,7 @@ def _build_shot_event(
 
     # Parse location/rotation from value_str compact format if needed
     loc_obj = _parse_vector_or_zero(location, tally)
-    rot_obj = _parse_rotation(rotation)
+    rot_obj = _parse_rotation(rotation, tally)
 
     # Build attack vectors
     attack_vectors = []
@@ -1720,7 +1778,13 @@ def _write_manifest(manifest: dict, output_dir: Path, adapter: dict):
     levels = _public_level_names(manifest.get("level_names_and_times"))
     out_manifest = {
         "replay_version": manifest.get("replay_version", "unknown"),
-        "duration_ms": manifest.get("duration_ms", 0),
+        # No default: an absent duration_ms is a visible null, not a
+        # fabricated 0 ms match -- see `source_size_bytes` below and the
+        # `quality` note above for the same rule. valplay's
+        # pipeline/metrics/compute_metrics.py reads `duration_ms` with no
+        # default of its own, so a 0 here would ship as a real, plausible
+        # match length instead of surfacing as missing.
+        "duration_ms": manifest.get("duration_ms"),
         "replay_build": manifest.get("replay_build", ""),
         "replay_changelist": manifest.get("replay_changelist", 0),
         "source_file": manifest.get("source_file", ""),

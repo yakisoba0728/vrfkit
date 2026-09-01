@@ -446,18 +446,16 @@ impl ReplicationSink for ExportSink<'_> {
     fn on_actor_close(&mut self, channel_index: u32, actor_net_guid: NetworkGuid, dormant: bool) {
         self.stats.actor_closes += 1;
 
-        // Resolve class_path from the channel's archetype (same logic as open).
+        // Resolve class_path from the channel's archetype (same logic as
+        // open, and the same absence for a static actor: no archetype means
+        // no class_path, full stop). The actor's own GUID path used to fill
+        // this gap, but that path is the level's instance name, not a class --
+        // exactly the fallback `on_actor_open` above dropped, for the same
+        // reason. Keeping it here meant the open row for a static actor
+        // shipped `class_path = NULL` while its close row shipped an instance
+        // name in the same column.
         let archetype = channel_archetype(self.channel_state, channel_index, actor_net_guid);
-        let class_path = match self.actor_class_path(archetype) {
-            Some(path) => Some(path),
-            // No archetype on this channel: a close still names the actor, and
-            // its own GUID path is the only label left.
-            None if archetype.is_none() && actor_net_guid.is_valid() => self
-                .cache
-                .get_path_by_guid(actor_net_guid.0)
-                .map(str::to_owned),
-            None => None,
-        };
+        let class_path = self.actor_class_path(archetype);
 
         // Archetype path from channel state.
         let archetype_path =
@@ -1084,8 +1082,26 @@ mod tests {
 
     /// An unresolved payload for a group OTHER than AbilitiesAndBuffsComponent
     /// must not produce CNC rows -- the brute-force is gated.
+    ///
+    /// The payload is the exact one
+    /// `unresolved_abilities_and_buffs_emits_cnc_rpc_row` proves walks cleanly
+    /// under fc=34 -- deliberately, not `[0xFF; 8]` (which
+    /// `decode_cnc_payload(&[0xFF; 8], 64, 34)` returns `None` for, i.e. it
+    /// does not walk at all). With a non-walking payload this test would stay
+    /// green even if the `current_group_path.contains("AbilitiesAndBuffsComponent")`
+    /// guard above were deleted, because `decode_cnc_payload` alone would
+    /// still refuse it -- so it would not be testing the gate.
     #[test]
     fn unresolved_payload_for_other_group_emits_no_cnc_rows() {
+        // Same construction as the fc=34 walking test: handle=1, 6 bits;
+        // payload_bits=32; 32 bits of 1s.
+        let mut bits = Vec::new();
+        write_serialized_int(&mut bits, 1, 34);
+        write_int_packed(&mut bits, 32);
+        bits.extend(std::iter::repeat_n(true, 32));
+        let data = bits_to_bytes(&bits);
+        let bit_count = bits.len() as u32;
+
         let mut cache = NetGuidCache::new();
         let mut channel_state = ChannelState::new();
         let mut records = RecordBuffers::default();
@@ -1105,15 +1121,15 @@ mod tests {
         let failure = StreamFailure {
             kind: vrf_net::pipeline::StreamKind::Rpc,
             actor_net_guid: NetworkGuid(89),
-            bit_count: 64,
+            bit_count,
             function_count: 0,
             consumed_bits: 0,
-            remaining_bits: 64,
+            remaining_bits: u64::from(bit_count),
         };
-        // A random payload that happens to be walkable.
-        sink.on_unresolved_class_net_cache_payload(failure, &[0xFF; 8]);
+        sink.on_unresolved_class_net_cache_payload(failure, &data);
 
-        // Only the preservation row, no CNC rows.
+        // Only the preservation row, no CNC rows: the payload walks (proven
+        // above), so only the group-path gate can be what stops it here.
         assert_eq!(sink.records.fields.len(), 1);
         assert_eq!(sink.stats.cnc_rpcs_emitted, 0);
     }
@@ -1152,6 +1168,46 @@ mod tests {
         );
         // Both still count as closes: the actor channel did close.
         assert_eq!(sink.stats.actor_closes, 2);
+    }
+
+    /// A static actor (no archetype) must not get its class_path filled in
+    /// from its own GUID path on close, the same way `on_actor_open` already
+    /// refuses to: that path is the level's instance name, not a class, and
+    /// filling it in only on close made the open and close rows for the same
+    /// static actor disagree.
+    #[test]
+    fn a_static_actors_close_row_does_not_fabricate_a_class_path_from_its_own_guid() {
+        let mut cache = NetGuidCache::new();
+        // The actor's own GUID path -- an instance name, e.g. what a level
+        // placement looks like on the wire -- must not read back as a class.
+        cache.set_net_guid_path(42, "WindowShieldA1".to_owned(), None);
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+
+        // No archetype: `NetworkGuid(0)` is invalid, so `on_actor_open` never
+        // registers a channel archetype for it.
+        sink.on_actor_open(&ActorChannelState {
+            channel_index: 3,
+            is_open: true,
+            is_dormant: false,
+            actor_net_guid: NetworkGuid(42),
+            archetype_net_guid: NetworkGuid(0),
+            level_guid: NetworkGuid(0),
+            spawn_location: None,
+            spawn_rotation: None,
+            spawn_scale: None,
+            spawn_velocity: None,
+            open_packet_id: 0,
+        });
+        sink.on_actor_close(3, NetworkGuid(42), false);
+
+        assert_eq!(sink.records.actors[0].class_path, None, "open row");
+        assert_eq!(
+            sink.records.actors[1].class_path, None,
+            "close row must agree with the open row, not fabricate a class \
+             from the actor's own instance-name path"
+        );
     }
 
     #[test]

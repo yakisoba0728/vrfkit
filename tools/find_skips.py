@@ -39,6 +39,7 @@ def main(argv: list[str]) -> int:
     offenders: list[tuple[int, int, float, str]] = []
     total_skipped = 0
     clean = 0
+    crashed = 0
     for i, f in enumerate(files, 1):
         r = subprocess.run(
             [str(exe), "validate", str(f)],
@@ -49,9 +50,17 @@ def main(argv: list[str]) -> int:
             timeout=300,
         )
         out = (r.stdout or "") + (r.stderr or "")
+        # A nonzero exit means `validate` did not run to completion -- any
+        # counters it happened to print before crashing are not trustworthy.
+        # Left unchecked, every file crashing looks identical to a corpus with
+        # nothing left to fix: `total skipped bits: 0`.
+        if r.returncode != 0:
+            crashed += 1
+            offenders.append((-1, -1, -1.0, f.name))
+            continue
         m = SKIPPED.search(out)
         if not m:
-            offenders.append((-1, -1, 0.0, f.name))
+            offenders.append((-1, -1, -1.0, f.name))
             continue
         skipped = int(m.group(1))
         total_skipped += skipped
@@ -59,12 +68,16 @@ def main(argv: list[str]) -> int:
             clean += 1
         else:
             mal = int(MALFORMED.search(out).group(1)) if MALFORMED.search(out) else -1
-            rate = float(RATE.search(out).group(1)) if RATE.search(out) else 0.0
+            # -1 marks "ORACLE PASS RATE not printed" (e.g. no content blocks
+            # to validate) as a visible absence, the same convention `mal`
+            # already uses -- 0.0 would read as a measured, passing 0% rate.
+            rate = float(RATE.search(out).group(1)) if RATE.search(out) else -1.0
             offenders.append((skipped, mal, rate, f.name))
         if i % 25 == 0 or i == len(files):
             print(f"  [{i}/{len(files)}] clean={clean} with_skips={len(offenders)}")
 
     print(f"\nfiles checked      : {len(files)}")
+    print(f"subprocess crashes : {crashed}")
     print(f"zero skipped bits  : {clean}")
     print(f"nonzero            : {len(offenders)}")
     print(f"total skipped bits : {total_skipped:,}")
@@ -72,6 +85,13 @@ def main(argv: list[str]) -> int:
         print("\nfiles that still skip bits (descending):")
         for skipped, mal, rate, name in sorted(offenders, reverse=True):
             print(f"  {skipped:>7} bits  malformed={mal:<3} rate={rate:.6f}%  {name}")
+    if crashed:
+        print(
+            f"\n{crashed} file(s) made `vrfkit validate` exit nonzero -- "
+            "their counters were not measured and are excluded above.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
