@@ -684,7 +684,7 @@ field meaning; the analyzer deliberately performs no type inference.
 ### Quick sweep -- after any change
 
 ```bash
-cargo +1.86.0 test --workspace --locked                              # 594 passing
+cargo +1.86.0 test --workspace --locked                              # 595 passing
 cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.86.0 fmt --check
 python -W error tools/check_ascii.py --check                         # 119 files
@@ -782,6 +782,7 @@ silent change must be impossible.
 | 13.01 | 215-replay portion of the current multi-build sweep |
 | 13.02 | Preserved replay + 204-replay portion of the current sweep |
 | 13.04 | Upstream golden vectors + 108-replay export/checkpoint sweep |
+| 13.05 | Reference C# fixture vectors + 4-replay export and oracle check |
 
 The current machine-local multi-build sweep (2026-08-31) reports:
 

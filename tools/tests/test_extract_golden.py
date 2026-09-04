@@ -14,6 +14,7 @@ BRANCHES = [
     "++Ares-Core+release-13.01",
     "++Ares-Core+release-13.02",
     "++Ares-Core+release-13.04",
+    "++Ares-Core+release-13.05",
 ]
 BOUNDARIES = [0, 1, 7, 8, 31, 32, 63, 64, 65, 287, 288]
 
@@ -53,18 +54,18 @@ class GoldenOracleContractTests(unittest.TestCase):
     def valid_cases():
         return [(branch, bits) for branch in BRANCHES for bits in BOUNDARIES]
 
-    def test_exact_six_build_by_eleven_boundary_oracle_succeeds(self):
+    def test_exact_seven_build_by_eleven_boundary_oracle_succeeds(self):
         result, output = self.run_generator(self.valid_cases())
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("66 vectors across 6 builds", output)
+        self.assertIn("77 vectors across 7 builds", output)
 
-    def test_non_66_oracle_is_rejected_without_replacing_previous_output(self):
+    def test_non_77_oracle_is_rejected_without_replacing_previous_output(self):
         result, output = self.run_generator(
             self.valid_cases()[:-1], previous_output="previous oracle\n"
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(output, "previous oracle\n")
-        self.assertIn("66", result.stderr)
+        self.assertIn("77", result.stderr)
 
     def test_each_promised_build_must_have_the_full_boundary_set(self):
         cases = self.valid_cases()

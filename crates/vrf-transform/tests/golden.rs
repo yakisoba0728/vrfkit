@@ -1,4 +1,4 @@
-//! Bit-exactness check for all six per-build payload transforms.
+//! Bit-exactness check for all seven per-build payload transforms.
 //!
 //! The vectors are lifted mechanically from the reference implementation's test
 //! fixture (see `tools/extract_golden.py`), so a passing run means our port

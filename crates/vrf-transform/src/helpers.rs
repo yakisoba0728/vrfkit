@@ -3,7 +3,7 @@
 //! The interesting observation about VALORANT's payload obfuscation is how
 //! little of it changes between game builds. The PRNG, its multiplier, the seed
 //! mixing skeleton, the 64/32/8-bit staging and the tail handling have been
-//! byte-identical across release-12.10 through release-13.04. What a new build
+//! byte-identical across release-12.10 through release-13.05. What a new build
 //! rotates is two constants and the *order* in which these primitives are
 //! applied inside each word loop.
 //!
