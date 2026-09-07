@@ -2,14 +2,15 @@
 //!
 //! # What it proves, and over what
 //!
-//! The scope is the **ReplayData** stream. Checkpoint chunks are counted and
-//! skipped -- a checkpoint is an independent archive with its own GUID cache
+//! The scored scope is framed content blocks in the **ReplayData** stream.
+//! Checkpoint chunks are counted and skipped -- a checkpoint is an independent
+//! archive with its own GUID cache
 //! and export map, and decoding one is what `export --checkpoints` is for. This
 //! used to go unsaid while the run announced it was checking "all content
 //! blocks", which is why the skip now prints its own size under `NOT COVERED`.
 //!
-//! If the payload transform is correct, every decoded RepLayout content block
-//! satisfies this grammar:
+//! A decoded RepLayout property prefix satisfies this grammar. A valid zero
+//! terminator may be followed by a separate ClassNetCache tail in the block:
 //!
 //! ```text
 //! checksum_bit : 1 bit
@@ -17,34 +18,28 @@
 //!   handle = IntPacked   (0 -> end)
 //!   payload_bits = IntPacked
 //!   consume payload_bits
-//! total consumed == declared bit_count
+//! property prefix + decoded or preserved tail == declared bit_count
 //! ```
 //!
 //! When the transform is wrong, `IntPacked` returns nonsense (enormous handles
 //! or payload sizes) or the total consumed bits don't match the declared block
-//! size. A correct transform with lossless unresolved-payload preservation yields
-//! 100%; an incorrect one collapses toward 0%.
+//! size. This is evidence about content blocks that reached framing; it is not
+//! a whole-file losslessness proof.
 //!
-//! This oracle uses every `ReplicationReader` counter that means bytes present
-//! in ReplayData could not be consumed: packet/header/framing failures,
-//! transform or inner-stream failures, unfinished reassembly state, and bytes
-//! trailing the declared ReplayData payload all fail the verdict. An unresolved
-//! ClassNetCache table is reported separately when the sink retained the whole
-//! decoded block; unsupported attribution with a recoverable raw payload is not
-//! treated as data loss.
-//!
-//! The current machine-local sweep on 2026-08-31 validates 527/527 replays at
-//! 100.000000%: 215 release-13.01, 204 release-13.02 and 108 release-13.04,
-//! covering 344,569,357 content blocks with zero malformed framing. This is a
-//! losslessness result, not a claim that every raw preservation row has a known
-//! property type.
+//! Packet/header/framing failures, transform or inner-stream failures,
+//! unfinished reassembly state, and bytes trailing the declared ReplayData
+//! payload fail the verdict. Partial reassembly rejections are discarded before
+//! content-block framing and are explicitly reported as not covered by the block
+//! score or verdict. An unresolved ClassNetCache table is reported separately
+//! when the sink retained the whole decoded block; unsupported attribution with
+//! a recoverable raw payload is not treated as block loss.
 //!
 //! # Diagnostics
 //!
-//! Every malformed or skipped event is captured with full context (packet id,
-//! bunch index, channel, actor, header fields, bit positions). This is the
-//! primary tool for debugging new game builds where the transform may be
-//! partially incorrect. Use `validate --diagnostics` to see the full dump.
+//! Retained framing diagnostic events carry packet, bunch, channel, actor,
+//! header and bit-position context. Their list is capped, with omitted counts
+//! reported separately; partial reassembly has aggregate counters. Use
+//! `validate --diagnostics` to see the retained event details.
 //!
 //! # Resolved: the one-block-per-replay residue
 //!
@@ -207,14 +202,13 @@ impl Verdict {
     }
 }
 
-/// Decide from every counter that means the validation walk lost or could not
-/// consume replay data.
+/// Decide from the hard-failure counters inside the scored validation scope.
 ///
-/// `partial_errors` is reported but is not a decoder verdict: it means the
-/// captured stream supplied a continuation without the earlier fragment (or a
-/// mismatched continuation), so there is no complete payload for this process
-/// to validate. An accumulator still holding bytes at EOF is different --
-/// those bytes were present and the walk abandoned them, hence
+/// `partial_errors` is reported but is not currently a decoder verdict. It
+/// counts partial reassembly rejections discarded before a complete bunch
+/// reaches content-block framing, so those rejected inputs are outside the
+/// scored block population. An accumulator still holding bytes at EOF is
+/// different -- those bytes were present and the walk abandoned them, hence
 /// `unfinished_partials` is a hard failure.
 fn verdict_from_stats(stats: &NetStats, replay_data_trailing_bytes: u64) -> Verdict {
     let total_with_content = stats.rep_layout_blocks + stats.class_net_cache_blocks;
@@ -253,7 +247,7 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
     let encrypted = preamble.info.encrypted;
 
     eprintln!("branch: {branch}");
-    eprintln!("validating RepLayout grammar on every ReplayData content block...");
+    eprintln!("validating RepLayout grammar on framed ReplayData content blocks...");
 
     let mut cache = NetGuidCache::new();
     let mut repl_reader = ReplicationReader::new(branch)
@@ -354,11 +348,15 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
     if let Some(note) = checkpoint_scope_note(checkpoint_chunks) {
         println!("  NOT COVERED:          {note}");
     }
+    if let Some(note) = partial_reassembly_scope_note(stats.partial_errors) {
+        println!("  NOT COVERED:          {note}");
+    }
     println!();
 
-    // Oracle verdict: the fraction of content blocks (RepLayout + ClassNetCache)
-    // that framed, decoded and walked cleanly. With a correct transform this
-    // should be 100%; a wrong one collapses it toward zero.
+    // Oracle verdict: the fraction of classified content blocks (RepLayout +
+    // ClassNetCache) that framed, decoded and walked cleanly. Partial
+    // reassembly rejections never reach this population and are reported as a
+    // scope exclusion above.
     let total_with_content = rep_layout + class_net;
     let verdict = verdict_from_stats(stats, replay_data_trailing_bytes);
     if total_with_content == 0 {
@@ -381,10 +379,7 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
             total_with_content
         );
         if stats.skipped_bits > 0 {
-            println!(
-                "  (skipped {} bits across {} failed blocks)",
-                stats.skipped_bits, failed
-            );
+            println!("  (skipped_bits counter: {} bits)", stats.skipped_bits);
         }
     }
 
@@ -469,10 +464,23 @@ fn checkpoint_scope_note(checkpoint_chunks: u64) -> Option<String> {
     })
 }
 
+fn partial_reassembly_scope_note(partial_errors: u64) -> Option<String> {
+    (partial_errors > 0).then(|| {
+        let rejection = if partial_errors == 1 {
+            "rejection was"
+        } else {
+            "rejections were"
+        };
+        format!(
+            "{partial_errors} partial reassembly {rejection} discarded before content-block framing - excluded from the block score and verdict"
+        )
+    })
+}
+
 /// The one-line conclusion printed under `VERDICT:`.
 fn verdict_line(verdict: Verdict) -> &'static str {
     match verdict {
-        Verdict::Passed => "PASS - all ReplayData was consumed and decoded (exit 0)",
+        Verdict::Passed => "PASS - ReplayData block validation passed (exit 0)",
         Verdict::ValidationFailed => "FAIL - ReplayData validation found loss (exit 1)",
         Verdict::NoContentBlocks => "CANNOT VALIDATE - no content blocks found (exit 2)",
     }
@@ -580,7 +588,9 @@ fn print_diagnostic_event(index: usize, ev: &DiagnosticEvent) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Verdict, checkpoint_scope_note, verdict_from_stats};
+    use super::{
+        Verdict, checkpoint_scope_note, partial_reassembly_scope_note, verdict_from_stats,
+    };
     use vrf_net::stats::NetStats;
 
     /// The chunks this oracle does not walk have to say so themselves.
@@ -600,6 +610,25 @@ mod tests {
         );
         let note = checkpoint_scope_note(37).expect("37 skipped chunks must be reported");
         assert!(note.contains("37"), "the note must carry the count: {note}");
+    }
+
+    #[test]
+    fn partial_reassembly_rejections_are_named_as_unscored_input() {
+        assert_eq!(partial_reassembly_scope_note(0), None);
+        let note = partial_reassembly_scope_note(125_037)
+            .expect("a non-zero rejected population must be disclosed");
+        assert!(
+            note.contains("125037"),
+            "the note must carry the count: {note}"
+        );
+        assert!(
+            note.contains("before content-block framing"),
+            "the note must identify the scope boundary: {note}"
+        );
+        assert!(
+            note.contains("excluded from the block score and verdict"),
+            "the note must state the scoring consequence: {note}"
+        );
     }
 
     /// `vrfkit validate` has to be able to report failure.
@@ -686,15 +715,15 @@ mod tests {
             "an unresolved RPC whose whole decoded payload was preserved is not data loss"
         );
 
-        let missing_prior_fragments = NetStats {
+        let reassembly_rejection = NetStats {
             rep_layout_blocks: 1,
             partial_errors: 1,
             ..NetStats::default()
         };
         assert_eq!(
-            verdict_from_stats(&missing_prior_fragments, 0),
+            verdict_from_stats(&reassembly_rejection, 0),
             Verdict::Passed,
-            "a missing earlier network fragment is reported, but does not prove this decoder lost bytes"
+            "partial reassembly rejections are reported as unscored, not silently treated as validated blocks"
         );
     }
 

@@ -178,6 +178,7 @@ class MainWiringTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         root = Path(self._tmp.name)
+        self.root = root
 
         vrf_dir = root / "vrf"
         exports = root / "exports"
@@ -221,6 +222,22 @@ class MainWiringTests(unittest.TestCase):
         (exports / "a").mkdir()
         (exports / "a" / "metrics.json").write_text("{}", encoding="utf-8")
 
+        self.run_calls = []
+
+        def run_stub(cmd, **kwargs):
+            """Model successful external stages without executing platform code."""
+            self.run_calls.append((cmd, kwargs))
+            if cmd[0] == str(vrfkit):
+                Path(cmd[cmd.index("--out") + 1]).mkdir(parents=True, exist_ok=True)
+            elif cmd[1] == str(adapter):
+                Path(cmd[cmd.index("-o") + 1]).mkdir(parents=True, exist_ok=True)
+            elif cmd[1] == str(compute):
+                bundle = Path(cmd[2])
+                (bundle / "metrics.json").write_text("{}", encoding="utf-8")
+            else:  # pragma: no cover - the assertions below name every stage
+                self.fail(f"unexpected subprocess command: {cmd}")
+            return guard.subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
         self._patches = [
             mock.patch.object(guard, "REPO", root),
             mock.patch.object(guard, "VRF_DIR", vrf_dir),
@@ -228,6 +245,7 @@ class MainWiringTests(unittest.TestCase):
             mock.patch.object(guard, "VRFKIT", vrfkit),
             mock.patch.object(guard, "ADAPTER", adapter),
             mock.patch.object(guard, "COMPUTE", compute),
+            mock.patch.object(guard, "run", side_effect=run_stub),
             mock.patch.object(guard, "ProcessPoolExecutor", _SyncPool),
         ]
         for p in self._patches:
@@ -258,6 +276,18 @@ class MainWiringTests(unittest.TestCase):
     def test_all_replays_completing_exits_zero(self):
         code, output = self.run_main(only=("a",))
         self.assertEqual(code, 0, output)
+        export_dir = self.root / "out" / "xval" / "a"
+        bundle_dir = self.root / "out" / "xval_bundle" / "a"
+        self.assertEqual(
+            [cmd for cmd, _ in self.run_calls],
+            [
+                [str(guard.VRFKIT), "export", str(guard.VRF_DIR / "a.vrf"),
+                 "--out", str(export_dir)],
+                [sys.executable, str(guard.ADAPTER), str(export_dir), "-o",
+                 str(bundle_dir)],
+                [sys.executable, str(guard.COMPUTE), str(bundle_dir)],
+            ],
+        )
 
 
 if __name__ == "__main__":

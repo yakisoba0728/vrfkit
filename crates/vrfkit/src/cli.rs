@@ -1,8 +1,9 @@
 //! Argument parsing -- hand-rolled, no external dependencies.
 //!
-//! Three subcommands:
+//! Four subcommands:
 //!   inspect `<file>`
 //!   validate `<file>`
+//!   diag `<file>` [--json `<path>`] [--include-payloads]
 //!   export `<file>` --out `<dir>`      (feature `export`)
 
 use crate::error::CliError;
@@ -15,6 +16,7 @@ vrfkit -- VALORANT replay (.vrf) toolkit
 USAGE:
     vrfkit inspect  <file.vrf> [--redact-identifiers]
     vrfkit validate <file.vrf> [--diagnostics]
+    vrfkit diag     <file.vrf> [--json <path>] [--include-payloads]
     vrfkit export   <file.vrf> --out <dir> [--checkpoints]
 
 SUBCOMMANDS:
@@ -24,6 +26,11 @@ SUBCOMMANDS:
               block. Exits 0 when all of them framed, 1 when any did not,
               and 2 when the file carried no content blocks to check.
               --diagnostics  Print full context for every malformed/skipped event
+    diag      Walk ReplayData and every Checkpoint chunk and aggregate every
+              stream failure (kind, cause, group, function count, handle)
+              into one bounded JSON document. Writes no table.
+              --json  Write the aggregate to a file instead of stdout
+              --include-payloads  Include bounded raw payload samples
     export    Write five Parquet tables (fields, movement, actors,
               net_guids, events) + manifest.json
               --checkpoints  Also parse Checkpoint chunks into
@@ -90,6 +97,39 @@ pub fn run(args: &[String]) -> Result<u8, CliError> {
                 }
             }
             oracle::run(file, diagnostics).map(oracle::Verdict::exit_code)
+        }
+        "diag" => {
+            let file = args
+                .get(2)
+                .ok_or_else(|| CliError::Usage("diag requires <file.vrf>".to_string()))?;
+            let mut json: Option<&str> = None;
+            let mut include_payloads = false;
+            let mut i = 3;
+            while i < args.len() {
+                if args[i] == "--json" {
+                    if json.is_some() {
+                        return Err(CliError::Usage("duplicate option: --json".to_string()));
+                    }
+                    i += 1;
+                    json = Some(args.get(i).map(String::as_str).ok_or_else(|| {
+                        CliError::Usage("--json requires a file path".to_string())
+                    })?);
+                } else if args[i] == "--include-payloads" {
+                    if include_payloads {
+                        return Err(CliError::Usage(
+                            "duplicate option: --include-payloads".to_string(),
+                        ));
+                    }
+                    include_payloads = true;
+                } else {
+                    return Err(CliError::Usage(format!(
+                        "unknown diag option or surplus argument: {}",
+                        args[i]
+                    )));
+                }
+                i += 1;
+            }
+            crate::diagnose::run(file, json, include_payloads).map(|()| 0)
         }
         "export" => export(args).map(|()| 0),
         "help" | "--help" | "-h" => {

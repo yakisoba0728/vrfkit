@@ -14,6 +14,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import to_valplay_bundle as bundle  # noqa: E402
 
 
+OLD_GUARDIAN = "/Game/Equippables/Guns/SniperRifles/Dmr/DMR.DMR_C"
+NEW_GUARDIAN = "/Game/Equippables/Guns/SniperRifles/DMR/DMR.DMR_C"
+
+
+class EquippableResolutionTests(unittest.TestCase):
+    def test_guardian_directory_alias_resolves_at_firing_state_seam(self):
+        resolved = bundle._resolve_equippable(
+            41,
+            {41: 42},
+            {},
+            {42: NEW_GUARDIAN},
+        )
+
+        self.assertEqual(
+            resolved,
+            (42, "Guardian", "rifle", OLD_GUARDIAN),
+        )
+
+    def test_unmeasured_guardian_case_variant_stays_unresolved(self):
+        resolved = bundle._resolve_equippable(
+            41,
+            {41: 42},
+            {},
+            {42: NEW_GUARDIAN.replace("/DMR/", "/dMR/")},
+        )
+
+        self.assertIsNone(resolved)
+
+
 def write_fields_parquet(path: Path, rows: list[dict]) -> None:
     """Write a fields.parquet with the column set the bundle reads.
 

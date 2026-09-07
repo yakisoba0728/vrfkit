@@ -47,6 +47,16 @@ DEFINE_RE = re.compile(
     r"ValorantEquippableCategory\.(\w+)\s*\)"
 )
 
+# The game renamed this one asset directory between the 13.01 and 13.02
+# recordings. Both spellings occur in the corpus and identify the same class;
+# keep the equivalence exact so an unrelated path's casing is never guessed.
+PATH_VARIANTS = (
+    (
+        "/Game/Equippables/Guns/SniperRifles/Dmr/DMR.DMR_C",
+        "/Game/Equippables/Guns/SniperRifles/DMR/DMR.DMR_C",
+    ),
+)
+
 
 def pascal_to_snake(name: str) -> str:
     """SniperRifle -> sniper_rifle, Smg -> smg.
@@ -66,6 +76,14 @@ def parse_definitions(source: str) -> list[tuple[str, str, str]]:
     return out
 
 
+def path_aliases(class_path: str) -> tuple[str, ...]:
+    """Return the other measured spellings of one source-defined path."""
+    for variants in PATH_VARIANTS:
+        if class_path in variants:
+            return tuple(path for path in variants if path != class_path)
+    return ()
+
+
 def render(definitions: list[tuple[str, str, str]], source_rel: str) -> str:
     """Render the generated Python module."""
     lines = [
@@ -77,7 +95,8 @@ def render(definitions: list[tuple[str, str, str]], source_rel: str) -> str:
         "",
         "Keys cover the three path shapes that appear in replay data, mirroring",
         "the C# CreateDefinitions(): the full 'Package.Class_C' path, the package",
-        "path alone, and the 'Default__Class_C' archetype form.",
+        "path alone, and the 'Default__Class_C' archetype form. Measured, exact",
+        "path aliases cover known game asset renames without case-folding keys.",
         '"""',
         "",
         "# fmt: off",
@@ -89,9 +108,18 @@ def render(definitions: list[tuple[str, str, str]], source_rel: str) -> str:
     lines += [
         "]",
         "",
+        "EQUIPPABLE_PATH_ALIASES = {",
+    ]
+    for class_path, _, _ in definitions:
+        aliases = path_aliases(class_path)
+        if aliases:
+            lines.append(f"    {class_path!r}: {aliases!r},")
+    lines += [
+        "}",
+        "",
         "",
         "def _build_lookup():",
-        '    """class path (all three shapes) -> (name, category, canonical path)."""',
+        '    """Known path shapes -> (name, category, canonical source path)."""',
         "    out = {}",
         "    for class_path, name, category in EQUIPPABLE_DEFINITIONS:",
         "        value = (name, category, class_path)",
@@ -100,6 +128,11 @@ def render(definitions: list[tuple[str, str, str]], source_rel: str) -> str:
         "            package, _, class_name = class_path.rpartition('.')",
         "            out[package] = value",
         "            out['Default__' + class_name] = value",
+        "        for alias in EQUIPPABLE_PATH_ALIASES.get(class_path, ()):",
+        "            out[alias] = value",
+        "            if '.' in alias:",
+        "                package, _, _ = alias.rpartition('.')",
+        "                out[package] = value",
         "    return out",
         "",
         "",

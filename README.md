@@ -18,8 +18,8 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 by Michel Giehl; see [`NOTICE.md`](NOTICE.md). Not affiliated with, endorsed
 by, or approved by Riot Games.
 
-**Current state:** `cargo +1.86.0 test --workspace --locked` **595 passing**,
-`tools/tests` **553 passing** -- see [Status](#status) for the rest.
+**Current state:** `cargo +1.86.0 test --workspace --locked` **623 passing**,
+`tools/tests` **583 passing** -- see [Status](#status) for the rest.
 
 - Run it: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable: [`docs/DATA.md`](docs/DATA.md)
@@ -33,16 +33,18 @@ design premise is the opposite: **export every value the replay carries.** This
 is possible because Unreal's property stream is self-describing -- each field
 carries a handle and a bit-length *before* its value, so field boundaries are
 walkable without knowing the type, and the handle-to-name map ships inside the
-replay itself (`NetFieldExportGroup`). The names come for free; only the types
-are unknown. So vrfkit always emits the raw bits and layers typed values on top
-as an additive overlay. Nothing is dropped because its format is not yet
-understood.
+replay itself (`NetFieldExportGroup`). Where that map is available, names can
+be resolved independently of types. Unknown properties retain raw payloads;
+typed values are an additive overlay. This is a preservation strategy, not a
+claim that every stream is currently understood: framing failures and missing
+schema attribution are measured separately, and successful movement decodes
+can be represented by their rows instead of a duplicate raw RPC.
 
 ## Supported VALORANT builds
 
 | Build | Branch | Status | Verified by |
 |---|---|---|---|
-| **13.05** | `release-13.05` | ✅ Supported | Golden vectors + 51-replay oracle sweep |
+| **13.05** | `release-13.05` | ✅ Supported | Golden vectors + 187-file portion of the 714-file main/checkpoint audit |
 | **13.04** | `release-13.04` | ✅ Supported | Upstream golden vectors + 108-replay full export/checkpoint sweep |
 | **13.02** | `release-13.02` | ✅ Supported | Preserved replay + 204-replay oracle sweep |
 | **13.01** | `release-13.01` | ✅ Supported | 215-replay full corpus |
@@ -56,11 +58,10 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 
 ## Highlights
 
-- **Lossless by construction** — every field's raw bits are always exported,
-  even when the type is unknown or decoding fails. Typed values are an
-  *additive* overlay on top, and each row carries the replay's own
-  `compatible_checksum`, so an untyped field can be told apart from an
-  undescribed one without guessing.
+- **Preservation with explicit accounting** — unknown property payloads and
+  unresolved whole RPCs remain raw; stream failures remain visible. Typed
+  values are an *additive* overlay, and the nullable `compatible_checksum`
+  column helps distinguish untyped fields from fields lacking a descriptor.
 - **Self-describing stream** — field names come from the replay itself
   (`NetFieldExportGroup`); no hardcoded agent or map names in the parser.
 - **Six Parquet tables + manifest** — `fields`, `movement`, `actors`,
@@ -71,14 +72,12 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Combat & abilities** — per-player economy, magazine and reserve ammo,
   equipped weapon over time, cooldowns, and absolute health, armour and overheal
   from the damage log — the value after each change, not a running subtraction.
-- **Every ability cast** — one record per cast with the caster's account UUID,
-  slot, round, time and world location, plus the statistics it produced and the
-  players each one landed on: `EnemiesSuppressed`, `EnemiesSlowed`,
-  `EnemiesVulnerabled`, `EnemiesBlinded` and 27 more.
-- **Status effects per player** — nearsight, slow, detain, suppress and the rest
-  arrive as start/stop pairs on the *affected* player's actor, so each one is an
-  interval with a victim. Slows are independently legible from movement speed,
-  which sits on a lattice off 675 cm/s and halves exactly inside a slow.
+- **Ability observations** — cast time/location and replicated ability
+  statistics can be joined to actors and rounds. Repeated snapshots require
+  deduplication; unresolved ownership and incomplete effect pairs remain gaps.
+- **Status-effect observations** — nearsight, slow, detain and suppress can
+  arrive on affected actors. Matched start/stop records support intervals;
+  unmatched records must not be assigned an invented duration.
 - **Persistent effects** — smoke / wall / molly / slow / trap position and
   lifetime from actor lifecycles; one command via
   `tools/extract_active_effects.py`.
@@ -94,7 +93,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **595 tests** plus a layered validation suite (framing / bytes / decode
+- **623 tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -148,12 +147,12 @@ produces seven files:
 
 | File | Rows | Bytes |
 |---|---|---|
-| `fields.parquet` | 1,277,658 | 15,880,976 |
+| `fields.parquet` | 1,277,983 | 16,119,220 |
 | `movement.parquet` | 1,839,607 | 31,835,557 |
 | `actors.parquet` | 3,827 | 87,281 |
 | `net_guids.parquet` | 16,167 | 153,606 |
 | `events.parquet` | 195 | 13,411 |
-| `checkpoint_fields.parquet` | 78,850 | 231,320 |
+| `checkpoint_fields.parquet` | 78,924 | 234,673 |
 | `manifest.json` |  | ~660,030 |
 
 `checkpoint_fields.parquet` requires `--checkpoints`; with or without it, **the
@@ -188,9 +187,11 @@ with ZSTD.
 | `raw_bits` | bytes? | Raw payload |
 | `value_i64` / `value_f64` / `value_bool` / `value_str` | | Only when the type is known |
 
-**`raw_bits` is always present, even when the type is unknown or decoding
-fails.** At most one `value_*` column is filled. If a field's format is worked
-out later, rows already exported never need re-parsing.
+`raw_bits` is nullable. Unnamed replicated properties and unresolved whole
+RPC payloads retain their raw representation; successfully decoded movement
+RPCs and synthesized child rows may instead be represented by their decoded
+output. At most one `value_*` column is filled per row. Reinterpretation
+without re-parsing is possible only where the required raw payload survives.
 
 On top of `raw_bits`, the overlay types per-player economy
 (`MoneyManagementComponent.{Money,StartOfRoundMoney,TotalMoneyGranted}` as
@@ -298,8 +299,8 @@ it as one gives the year 3626.
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**595 passing**, strict workspace `clippy -D warnings` **0**, `cargo fmt` clean,
-and `check_ascii` on 120 files. The Python suite in `tools/tests` has 553 tests.
+**623 passing**, strict workspace `clippy -D warnings` **0**, `cargo fmt` clean,
+and `check_ascii` on 122 files. The Python suite in `tools/tests` has 583 tests.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.
@@ -357,9 +358,10 @@ EOF
 
 ## Performance
 
-On `02d4d478` (48,215,213 bytes):
+Historical optimization measurement on `02d4d478` (48,215,213 bytes), August
+2026. These timings predate the current decoding additions:
 
-| | Before | Now |
+| | Before optimization | After optimization |
 |---|---|---|
 | `export` | 1.64 s / 201 MB | **0.85 s / 109 MB** |
 | `validate` | 1.42 s / 65 MB | **0.693 s / 65 MB** |
@@ -373,8 +375,9 @@ in `docs/archive/PROJECT_STATUS.md` section 25.
 > 0.85 s and 0.693 s. This is machine state, not code -- confirmed by A/B-ing
 > before/after binaries at section 36-F.
 
-Every chunk kind in the file is read -- ReplayData, Event, and Checkpoint.
-There are no unopened regions.
+`inspect` inventories every chunk kind. `validate` walks ReplayData;
+`export --checkpoints` additionally walks checkpoint replication and writes
+its fields separately. A ReplayData verdict does not validate checkpoints.
 
 ## Comparison with the C# reference parser
 
@@ -483,8 +486,25 @@ original is always left intact in `raw_payload`.
 
 ## Whole-corpus robustness
 
-On 2026-08-31, all 527 machine-local `.vrf` files were run through the current
-preservation-aware oracle (`tools/validate_corpus.py`).
+The September 2026 follow-up re-exported and retained all 714 replays
+(13.01: 215, 13.02: 204, 13.04: 108, 13.05: 187), with checkpoints.
+ReplayData block validation passes on every file. Separate main/checkpoint
+diagnostics reduce block loss from 240,679 / 53,582 to zero by recovering or
+preserving post-RepLayout tails. Unknown payloads remain explicitly raw.
+This is not end-to-end losslessness: 125,037 main and 835,967 checkpoint partial
+reassembly rejections discard payloads before content-block framing and are
+excluded from that block score. Their successful-fragment counters are zero.
+
+Main physical typed coverage increases from 66.18% to **69.92%**; checkpoint
+from 41.24% to **41.30%**. These percentages count non-null value columns, not
+game facts understood. The time fields add 37,601,710 typed rows across the
+two streams. Three analysis helpers expose physical coverage, the observed
+32-ID ability-stat dictionary, and conservative match observations.
+See [implementation and measurement notes](docs/FOLLOWUP.md) for exact
+denominators, raw/decoded distinctions and before/after evidence.
+
+The historical 2026-08-31 run covered 527 machine-local `.vrf` files with its
+then-current preservation-aware oracle (`tools/validate_corpus.py`).
 
 ```
 succeeded: 527/527        failed: 0
@@ -495,9 +515,10 @@ pass rate: min 100.000000%  median 100.000000%  max 100.000000%
 totals   : 344,569,357 content blocks / malformed framing 0
 ```
 
-`malformed framing 0` means the container, bunch, and content-block framing did
-not disagree once. A 100% current pass rate additionally means every decoded
-block reached either ordinary field/RPC rows or an explicit preservation row.
+`malformed framing 0` is the content-block framing counter; it does not prove
+that earlier transport stages retained every payload. A 100% block pass rate
+means the measured blocks reached ordinary field/RPC rows or an explicit
+preservation row. Partial reassembly rejections are outside that score.
 It does **not** mean every property is typed: when a block cannot be assigned to
 a `_ClassNetCache` group, its inner handles cannot be named, so vrfkit emits one
 reserved row (`handle = u32::MAX`) with the complete decoded payload in
@@ -520,8 +541,13 @@ totals   : 136,545,822 content blocks / 98,884,839 fields / 75,571,092 RPCs
 An even older implementation also printed 100%, but for the wrong reason: it
 silently dropped blocks whose group it could not find and incremented no
 counter. Exposing that path first produced the historical 97--99% figures;
-preserving every unresolved decoded payload is what makes the current 100%
-score lossless rather than silent.
+preserving unresolved decoded payloads removed that attribution loss. It
+did not address the separate field-stream tails until this follow-up.
+The exact `185d452`/`a73ee3a` comparison now reproduces the accounting change
+on two 13.01 inputs with unchanged block populations and emitted row counts.
+That experiment is scoped in [FOLLOWUP.md](docs/FOLLOWUP.md); it does not
+establish regression absence for all historical changes or for 13.05, which
+both old revisions reject.
 
 In that historical 13.01 measurement, **97.283437% of unattributed bits were
 `AbilitiesAndBuffsComponent`**; the replay declared no cache group for that
@@ -574,7 +600,7 @@ cannot be expanded into fields, so it emits one preservation row (`handle` =
 diagnostic rather than pretending the properties were decoded.
 
 The overlay table is extracted mechanically from the C# descriptors
-(`tools/extract_descriptors.py`) -- 199 groups, 1,258 entries, 84 handles.
+(`tools/extract_descriptors.py`) -- 199 groups, 1,271 entries, 84 handles.
 Nothing is transcribed by hand, for the same reason S-boxes and golden vectors
 are not: it is the kind of constant where a typo is invisible in review.
 
@@ -593,14 +619,14 @@ committed export baseline `tools/baselines/export_02d4d478.json` (pinned in
 `ee34e9a`) -- not retyped from a console:
 
 ```
-Decoded OK:   743,036      Decode errors:      0
-Raw/Skip:      72,644      Not in table: 171,307
-No field name:  1,996      Typed:          75.1%
+Decoded OK:   789,029      Decode errors:      0
+Raw/Skip:      31,793      Not in table: 166,134
+No field name:  2,027      Typed:          79.8%
 Effect blobs:  53,908
 ```
 
-The four buckets partition `Rows offered` exactly (743,036 + 72,644 + 171,307 +
-1,996 = 988,983), and `Typed` is `Decoded OK / Rows offered`. The figures this
+The four buckets partition `Rows offered` exactly (789,029 + 31,793 + 166,134 +
+2,027 = 988,983), and `Typed` is `Decoded OK / Rows offered`. The figures this
 block held until 2026-08-30 partitioned the same 988,983 rows differently -- they
 were an older snapshot, taken before overlay entries that moved rows out of `Not
 in table`, and they contradicted the baseline this repo commits for the same
@@ -616,19 +642,18 @@ prints identically. (The bucket counts themselves do move as overlay entries
 are added, which is exactly how the figures above went stale once; they are
 whatever `tools/baselines/export_02d4d478.json` currently records.)
 
-The real coverage figure is the fraction of all 1,277,658 rows in
-`fields.parquet` with a filled `value_*`. Against the baseline above, overlay
-typing alone leaves **41.8%** untyped (`1 - 743,036/1,277,658`); adding the
-53,908 effect blobs brings it to **37.6%**. Both are derived from
-`tools/baselines/export_02d4d478.json` -- `overlay_decoded_ok`,
-`effect_blobs_decoded` and `parquet.fields.rows` -- so they can be recomputed
-without a replay on disk:
+Physical value coverage is the fraction of `fields.parquet` rows with at
+least one non-null `value_*` column. It cannot be computed by adding overlay,
+effect-blob or struct counters: these count different units and may describe
+parent/child expansions of the same input. The post-time-typing baseline has
+887,592 typed rows out of 1,277,983 (69.45%), measured directly from its columns.
+That snapshot is not a fraction of all game information understood.
+
+Measure the files you actually use, with checkpoint rows reported separately:
 
 ```bash
-python -c "import json; c=json.load(open('tools/baselines/export_02d4d478.json')); \
-n=c['parquet']['fields']['rows']; k=c['counters']; \
-print('overlay only %.1f%%' % (100*(1-k['overlay_decoded_ok']/n))); \
-print('with effects %.1f%%' % (100*(1-(k['overlay_decoded_ok']+k['effect_blobs_decoded'])/n)))"
+python tools/summarize_value_coverage.py <export-directory> > coverage.json
+python tools/summarize_value_coverage.py <parent-of-export-directories> --jobs 4
 ```
 
 **These numbers change often; re-measure before quoting** -- four of the six
@@ -644,9 +669,10 @@ successfully (`Decoded OK`) over rows it examined (`Rows offered`). The
 denominator includes every RPC parameter, so it reads low -- most of `Not in
 table` is RPC parameters without a C# descriptor, plus the groups the replay
 declares (475) that are not in the table. (Rows with a filled `value_*` also
-include additive decoders like effects and structs, so real value coverage is
-wider than this ratio -- see the 37.6% untyped figure above.) A row whose type
-is unknown still ships with `raw_bits`, so it is **uninterpreted, not lost.**
+include additive decoders like effects and structs, so that is a different
+population from the overlay's input rows.) Unknown ordinary properties retain
+raw bytes. The absence of a typed value does not by itself establish loss;
+conversely, a high typing ratio does not establish complete block preservation.
 
 `fields.parquet` also carries the replay's own `compatible_checksum` per row,
 which turns that leftover into something searchable. Unreal hashes a property's
@@ -665,7 +691,7 @@ checkpoint decode failures. This separate check exists because `vrfkit
 validate` does not print overlay counters, so `validate_corpus.py` alone cannot
 see a wrong type. Reaching zero found three places where the wire disagreed
 with the C# declarations; they are recorded with evidence in
-`tools/apply_type_corrections.py` (133 corrections, verified with `--check`).
+`tools/apply_type_corrections.py` (147 corrections, verified with `--check`).
 
 | Symptom | Actual | Evidence |
 |---|---|---|
@@ -730,7 +756,7 @@ The 768-byte S-box is shared across builds, which makes it usable as a
 
 ## Design
 
-### 1. Losslessness is structurally impossible to violate
+### 1. Separate preservation, framing and typing
 
 Unreal's property stream is **self-describing.** Each field carries a handle
 and a bit-length before its value:
@@ -745,7 +771,8 @@ and a bit-length before its value:
 
 Field boundaries can be walked exactly without knowing the type. The
 `handle -> name` map is the dynamic schema the replay itself delivers
-(`NetFieldExportGroup`). **Names are free; only types are unknown.**
+(`NetFieldExportGroup`) where the group and handle are declared. Missing group
+attribution and unnamed handles are explicit cases, not guaranteed names.
 
 So decoding is split into two layers:
 
@@ -755,10 +782,10 @@ So decoding is split into two layers:
 - **Overlay** -- if a type is registered for `(group, handle)`, the decoded
   value is emitted alongside it.
 
-If a field's format is discovered later, rows already exported need no
-re-parsing. The unresolved-ClassNetCache caveat still applies: those blocks
-emit only a preservation row (full payload), so re-interpreting them at field
-resolution requires re-exporting from the original `.vrf`.
+If a field's format is discovered later, retained raw payloads can be
+reinterpreted. Unresolved ClassNetCache blocks have a whole-payload row rather
+than named parameters; interpreting them requires the corresponding schema
+and framing. Payloads lost before export require parsing the original replay.
 
 ### 2. Minimal cost per build update
 
@@ -801,12 +828,13 @@ layered, and the layers catch different things:
 Two of the headline metrics are **not** "100% / high is good" and reading them
 that way is a trap:
 
-- The current **pass rate is 100%** because unresolved ClassNetCache payloads
-  are preserved whole as marked raw rows. This is not a typing claim: those
+- Unresolved ClassNetCache payloads are preserved whole as marked raw rows
+  and therefore do not lower the oracle score. Current field-stream failures
+  still keep the score below 100%. This is not a typing claim: those
   rows cannot yet be split into named properties. `Malformed framing`,
   `Transform failed`, and `RPC payload lost` must remain zero; a non-zero
   `RPC unresolved/raw` count describes preserved, uninterpreted data.
-- The **~75.1% `Typed`** ratio reads low because of the *RPC-parameter
+- The **~79.8% `Typed`** ratio reads low because of the *RPC-parameter
   denominator* -- most of `Not in table` is RPC parameters with no C#
   descriptor. A low ratio is uninterpreted, not lost: those rows still carry
   `raw_bits`, and additive decoders (effects, structs, the economy typing)
@@ -818,7 +846,7 @@ Five files in the tree are generated and must never be edited by hand:
 
 | Generated file | Generator | Notes |
 |---|---|---|
-| `crates/vrf-decode/src/table.rs` | `tools/extract_descriptors.py` then `tools/apply_type_corrections.py` | The overlay table (1,258 entries, 199 groups, 84 handles) and handle table |
+| `crates/vrf-decode/src/table.rs` | `tools/extract_descriptors.py` then `tools/apply_type_corrections.py` | The overlay table (1,271 entries, 199 groups, 84 handles) and handle table |
 | `crates/vrf-decode/src/checksum_table.rs` | `tools/extract_checksum_types.py` | Replay-observed checksum-to-type propagation table; conflicting donors are omitted |
 | `crates/vrf-transform/src/sbox.rs` | `tools/extract_sboxes.py` | 768-byte S-box, shared across builds |
 | `crates/vrf-transform/tests/data/golden_vectors.rs` | `tools/extract_golden.py` | Per-build golden test vectors |

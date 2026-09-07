@@ -31,7 +31,9 @@ use crate::field;
 use crate::stats::NetStats;
 use crate::types::NetworkGuid;
 
-use super::{ReplicationSink, Stage, StreamFailure, StreamKind};
+use super::{
+    RepLayoutTailOutcome, ReplicationSink, Stage, StreamFailure, StreamFailureCause, StreamKind,
+};
 
 /// Per-bunch context carried through content-block framing for diagnostics.
 ///
@@ -231,41 +233,133 @@ pub(super) fn decode_and_parse_rep_layout(
     stage: &mut Stage<'_>,
     sink: &mut dyn ReplicationSink,
 ) {
-    if decode_into_scratch(payload, bit_count, actor_net_guid, stage).is_none() {
+    let Some(byte_count) = decode_into_scratch(payload, bit_count, actor_net_guid, stage) else {
         return;
-    }
+    };
 
     let Ok(mut field_reader) = BitReader::with_bit_len(stage.scratch, bit_count as u64) else {
+        // Diagnostics only, and the one arm that never told the sink: the
+        // scratch buffer is sized by the same bit count, so this has never
+        // fired. Naming it rather than leaving the sink unaware keeps the
+        // sink-side failure aggregate reconcilable with `field_stream_failures`.
+        sink.on_stream_failure(StreamFailure {
+            kind: StreamKind::RepLayout,
+            actor_net_guid,
+            bit_count: bit_count as u32,
+            function_count: 0,
+            consumed_bits: 0,
+            remaining_bits: bit_count as u64,
+            cause: StreamFailureCause::WindowOpenFailed,
+            record_handle: None,
+            record_offset: None,
+            payload_preserved: false,
+        });
         stage.stats.field_stream_failures += 1;
         stage.stats.skipped_bits += bit_count as u64;
         return;
     };
-    match field::parse_rep_layout(&mut field_reader, sink) {
-        Ok((count, abandoned_bits)) => {
+    let detailed = sink.wants_stream_failure_details();
+    let mut walk = field::WalkContext::default();
+    let context = if detailed { Some(&mut walk) } else { None };
+    let result = field::parse_rep_layout_content_block(&mut field_reader, sink, context);
+    match result {
+        field::WalkOutcome::Complete {
+            count,
+            remainder: field::RepLayoutRemainder::None,
+        } => {
             stage.stats.fields += u64::from(count);
-            if abandoned_bits != 0 {
-                sink.on_stream_failure(StreamFailure {
-                    kind: StreamKind::RepLayout,
-                    actor_net_guid,
-                    bit_count: bit_count as u32,
-                    function_count: 0,
-                    consumed_bits: (bit_count as u64).saturating_sub(abandoned_bits),
-                    remaining_bits: abandoned_bits,
-                });
-                stage.stats.field_stream_failures += 1;
+        }
+        field::WalkOutcome::Complete {
+            count,
+            remainder: field::RepLayoutRemainder::ClassNetCache(tail_bits),
+        } => {
+            stage.stats.fields += u64::from(count);
+            let tail_reader = field_reader.clone();
+            match sink.on_rep_layout_tail(actor_net_guid, tail_bits as u32, tail_reader.clone()) {
+                RepLayoutTailOutcome::Decoded { rpc_count } => {
+                    stage.stats.rpcs += u64::from(rpc_count);
+                }
+                outcome => {
+                    let (cause, payload_preserved) = match outcome {
+                        RepLayoutTailOutcome::Preserved { cause } => (cause, true),
+                        RepLayoutTailOutcome::Unpreserved { cause } => (cause, false),
+                        RepLayoutTailOutcome::Decoded { .. } => unreachable!(),
+                    };
+                    let failure = StreamFailure {
+                        kind: StreamKind::Rpc,
+                        actor_net_guid,
+                        bit_count: tail_bits as u32,
+                        function_count: 0,
+                        consumed_bits: 0,
+                        remaining_bits: tail_bits,
+                        cause,
+                        record_handle: None,
+                        record_offset: None,
+                        payload_preserved,
+                    };
+                    if detailed {
+                        sink.on_rep_layout_tail_failure_payload(failure, tail_reader);
+                    }
+                    sink.on_stream_failure(failure);
+                    stage.stats.rpc_stream_failures += 1;
+                    stage.stats.skipped_bits += tail_bits;
+                    if payload_preserved {
+                        stage.stats.unresolved_rpc_payloads_preserved += 1;
+                    }
+                }
             }
+        }
+        field::WalkOutcome::Complete {
+            count,
+            remainder: field::RepLayoutRemainder::Malformed(abandoned_bits),
+        } => {
+            stage.stats.fields += u64::from(count);
+            let failure = StreamFailure {
+                kind: StreamKind::RepLayout,
+                actor_net_guid,
+                bit_count: bit_count as u32,
+                function_count: 0,
+                consumed_bits: (bit_count as u64).saturating_sub(abandoned_bits),
+                remaining_bits: abandoned_bits,
+                cause: StreamFailureCause::AbandonedTail,
+                record_handle: if detailed { walk.last_handle } else { None },
+                record_offset: if detailed {
+                    Some(walk.record_offset)
+                } else {
+                    None
+                },
+                payload_preserved: false,
+            };
+            sink.on_stream_failure(failure);
+            if detailed {
+                sink.on_stream_failure_payload(failure, &stage.scratch[..byte_count]);
+            }
+            stage.stats.field_stream_failures += 1;
             stage.stats.skipped_bits += abandoned_bits;
         }
-        Err(_) => {
+        field::WalkOutcome::Failed { count, .. } => {
+            stage.stats.fields += u64::from(count);
             let remaining = field_reader.bits_remaining();
-            sink.on_stream_failure(StreamFailure {
+            let failure = StreamFailure {
                 kind: StreamKind::RepLayout,
                 actor_net_guid,
                 bit_count: bit_count as u32,
                 function_count: 0,
                 consumed_bits: field_reader.position(),
                 remaining_bits: remaining,
-            });
+                cause: StreamFailureCause::ReadError,
+                record_handle: if detailed { walk.last_handle } else { None },
+                record_offset: if detailed {
+                    Some(walk.record_offset)
+                } else {
+                    None
+                },
+                payload_preserved: false,
+            };
+            sink.on_stream_failure(failure);
+            if detailed {
+                sink.on_stream_failure_payload(failure, &stage.scratch[..byte_count]);
+            }
             stage.stats.field_stream_failures += 1;
             stage.stats.skipped_bits += abandoned_on_error(bit_count);
         }
@@ -285,28 +379,69 @@ pub(super) fn decode_and_parse_class_net_cache(
     };
 
     let Ok(mut rpc_reader) = BitReader::with_bit_len(stage.scratch, bit_count as u64) else {
+        // Diagnostics only, and the one arm that never told the sink; see the
+        // RepLayout twin above for why it is named rather than silent.
+        sink.on_stream_failure(StreamFailure {
+            kind: StreamKind::Rpc,
+            actor_net_guid,
+            bit_count: bit_count as u32,
+            function_count,
+            consumed_bits: 0,
+            remaining_bits: bit_count as u64,
+            cause: StreamFailureCause::WindowOpenFailed,
+            record_handle: None,
+            record_offset: None,
+            payload_preserved: false,
+        });
         stage.stats.rpc_stream_failures += 1;
         stage.stats.skipped_bits += bit_count as u64;
         return;
     };
-    match field::parse_class_net_cache(&mut rpc_reader, function_count, sink) {
-        Ok((count, abandoned_bits)) => {
+    let detailed = sink.wants_stream_failure_details();
+    let mut walk = field::WalkContext::default();
+    let context = if detailed { Some(&mut walk) } else { None };
+    let result =
+        field::parse_class_net_cache_content_block(&mut rpc_reader, function_count, sink, context);
+    match result {
+        field::WalkOutcome::Complete {
+            count,
+            remainder: abandoned_bits,
+        } => {
             stage.stats.rpcs += u64::from(count);
             if abandoned_bits != 0 {
-                sink.on_stream_failure(StreamFailure {
+                let failure = StreamFailure {
                     kind: StreamKind::Rpc,
                     actor_net_guid,
                     bit_count: bit_count as u32,
                     function_count,
                     consumed_bits: (bit_count as u64).saturating_sub(abandoned_bits),
                     remaining_bits: abandoned_bits,
-                });
+                    cause: StreamFailureCause::AbandonedTail,
+                    record_handle: if detailed { walk.last_handle } else { None },
+                    record_offset: if detailed {
+                        Some(walk.record_offset)
+                    } else {
+                        None
+                    },
+                    payload_preserved: false,
+                };
+                sink.on_stream_failure(failure);
+                if detailed {
+                    sink.on_stream_failure_payload(failure, &stage.scratch[..byte_count]);
+                }
                 stage.stats.rpc_stream_failures += 1;
             }
             stage.stats.skipped_bits += abandoned_bits;
         }
-        Err(error) => {
+        field::WalkOutcome::Failed { count, error } => {
+            stage.stats.rpcs += u64::from(count);
             let remaining = rpc_reader.bits_remaining();
+            let unresolved = matches!(error, NetError::UnresolvedFunctionCount);
+            let cause = if unresolved {
+                StreamFailureCause::UnresolvedFunctionCount
+            } else {
+                StreamFailureCause::ReadError
+            };
             let failure = StreamFailure {
                 kind: StreamKind::Rpc,
                 actor_net_guid,
@@ -314,10 +449,20 @@ pub(super) fn decode_and_parse_class_net_cache(
                 function_count,
                 consumed_bits: rpc_reader.position(),
                 remaining_bits: remaining,
+                cause,
+                record_handle: if detailed { walk.last_handle } else { None },
+                record_offset: if detailed {
+                    Some(walk.record_offset)
+                } else {
+                    None
+                },
+                payload_preserved: unresolved,
             };
-            if matches!(error, NetError::UnresolvedFunctionCount) {
+            if unresolved {
                 sink.on_unresolved_class_net_cache_payload(failure, &stage.scratch[..byte_count]);
                 stage.stats.unresolved_rpc_payloads_preserved += 1;
+            } else if detailed {
+                sink.on_stream_failure_payload(failure, &stage.scratch[..byte_count]);
             }
             sink.on_stream_failure(failure);
             stage.stats.rpc_stream_failures += 1;

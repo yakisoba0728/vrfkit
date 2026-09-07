@@ -53,6 +53,62 @@ pub trait FieldSink {
     fn on_rpc(&mut self, handle: u32, bit_count: u32, reader: BitReader<'_>);
 }
 
+/// What the parsers track about the record they are currently inside, so the
+/// caller can attach the failing record's identity to a `StreamFailure`.
+///
+/// Diagnostics only. The ordinary parser entry points do not update it;
+/// callers explicitly choose the `_tracked` variants when a diagnostic sink
+/// requests the extra per-record work.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WalkContext {
+    /// Bit offset inside the block where the current record begins. Set before
+    /// any read of the record, so it is exact even when the failing read is the
+    /// record's own handle.
+    pub record_offset: u64,
+    /// Handle of the current non-terminator record once its handle read
+    /// succeeds. Cleared at every record boundary, so a failed handle read or
+    /// an early zero terminator never inherits the previous successful field.
+    pub last_handle: Option<u32>,
+}
+
+/// What remains after a RepLayout walk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepLayoutRemainder {
+    /// The stream ended exactly at its zero terminator.
+    None,
+    /// A valid zero terminator was followed by the ClassNetCache portion of
+    /// the same `FObjectReplicator::ReceivedBunch` payload.
+    ClassNetCache(u64),
+    /// A field header or declared payload overran the block.
+    Malformed(u64),
+}
+
+impl RepLayoutRemainder {
+    fn bit_count(self) -> u64 {
+        match self {
+            Self::None => 0,
+            Self::ClassNetCache(bits) | Self::Malformed(bits) => bits,
+        }
+    }
+}
+
+/// Internal walk result that preserves the number of records already emitted
+/// when a later read fails. Public parser APIs still return their established
+/// `Result<(count, remainder)>` shape.
+pub(crate) enum WalkOutcome<R> {
+    Complete { count: u32, remainder: R },
+    Failed { count: u32, error: NetError },
+}
+
+impl<R> WalkOutcome<R> {
+    fn into_result(self) -> Result<(u32, R)> {
+        match self {
+            Self::Complete { count, remainder } => Ok((count, remainder)),
+            Self::Failed { error, .. } => Err(error),
+        }
+    }
+}
+
 /// Parse a RepLayout property stream, emitting every field to the sink.
 ///
 /// Returns the number of fields emitted and the count of bits the stream
@@ -64,11 +120,46 @@ pub fn parse_rep_layout(
     reader: &mut BitReader<'_>,
     sink: &mut dyn FieldSink,
 ) -> Result<(u32, u64)> {
+    let (count, remainder) = parse_rep_layout_impl(reader, sink, None, false).into_result()?;
+    Ok((count, remainder.bit_count()))
+}
+
+/// [`parse_rep_layout`] with failure-position tracking. See [`WalkContext`].
+pub fn parse_rep_layout_tracked(
+    reader: &mut BitReader<'_>,
+    sink: &mut dyn FieldSink,
+    ctx: &mut WalkContext,
+) -> Result<(u32, u64)> {
+    let (count, remainder) = parse_rep_layout_impl(reader, sink, Some(ctx), false).into_result()?;
+    Ok((count, remainder.bit_count()))
+}
+
+/// Parse the RepLayout prefix of a content block without consuming a valid
+/// post-terminator ClassNetCache tail.
+pub(crate) fn parse_rep_layout_content_block(
+    reader: &mut BitReader<'_>,
+    sink: &mut dyn FieldSink,
+    ctx: Option<&mut WalkContext>,
+) -> WalkOutcome<RepLayoutRemainder> {
+    parse_rep_layout_impl(reader, sink, ctx, true)
+}
+
+fn parse_rep_layout_impl(
+    reader: &mut BitReader<'_>,
+    sink: &mut dyn FieldSink,
+    mut ctx: Option<&mut WalkContext>,
+    retain_class_net_cache_tail: bool,
+) -> WalkOutcome<RepLayoutRemainder> {
     // Property checksum bit -- always present, always ignored.
-    let _checksum = reader.read_bit()?;
+    if let Err(error) = reader.read_bit() {
+        return WalkOutcome::Failed {
+            count: 0,
+            error: error.into(),
+        };
+    }
 
     let mut field_count = 0u32;
-    let mut abandoned_bits = 0u64;
+    let mut remainder = RepLayoutRemainder::None;
 
     while !reader.at_end() {
         // Where this record starts. The handle and length reads below are
@@ -76,44 +167,76 @@ pub fn parse_rep_layout(
         // record they described, so they are part of what was abandoned.
         // Counting only `bits_remaining` reported less loss than occurred.
         let record_start = reader.position();
-        let encoded_handle = reader.read_int_packed()?;
+        if let Some(ctx) = ctx.as_deref_mut() {
+            ctx.record_offset = record_start;
+            ctx.last_handle = None;
+        }
+        let encoded_handle = match reader.read_int_packed() {
+            Ok(handle) => handle,
+            Err(error) => {
+                return WalkOutcome::Failed {
+                    count: field_count,
+                    error: error.into(),
+                };
+            }
+        };
         if encoded_handle == 0 {
-            // A well-formed stream ends exactly here: the block window was
-            // sized for this content, so nothing should remain. If something
-            // does -- a grammar drift that moves the terminator earlier than
-            // the declared `bit_count` -- those bits were about to vanish with
-            // neither `field_stream_failures` nor `skipped_bits` moving, same
-            // as the overrun case above counts what it abandons instead of
-            // dropping it via `skip_remaining` alone.
+            // `FObjectReplicator::ReceivedBunch` may place a ClassNetCache
+            // stream after the RepLayout terminator in this same window.
             let leftover = reader.bits_remaining();
             if leftover != 0 {
-                abandoned_bits = leftover;
-                reader.skip_remaining();
+                remainder = RepLayoutRemainder::ClassNetCache(leftover);
+                if !retain_class_net_cache_tail {
+                    reader.skip_remaining();
+                }
             }
             break;
         }
 
         let handle = encoded_handle - 1;
+        if let Some(ctx) = ctx.as_deref_mut() {
+            ctx.last_handle = Some(handle);
+        }
         // A zero-bit payload is valid (an empty field) and is emitted like any
         // other: `sub_reader(0)` yields an empty window and the overrun test
         // below is trivially false for it, so it needs no special case.
-        let payload_bits = reader.read_int_packed()?;
+        let payload_bits = match reader.read_int_packed() {
+            Ok(bits) => bits,
+            Err(error) => {
+                return WalkOutcome::Failed {
+                    count: field_count,
+                    error: error.into(),
+                };
+            }
+        };
 
         if payload_bits as u64 > reader.bits_remaining() {
             // Malformed: declared more bits than available. Hand the abandoned
             // remainder back to the caller so it lands in `skipped_bits`
             // rather than vanishing from every counter.
-            abandoned_bits = (reader.position() - record_start) + reader.bits_remaining();
+            let abandoned_bits = (reader.position() - record_start) + reader.bits_remaining();
+            remainder = RepLayoutRemainder::Malformed(abandoned_bits);
             reader.skip_remaining();
             break;
         }
 
-        let sub = reader.sub_reader(payload_bits as u64)?;
+        let sub = match reader.sub_reader(payload_bits as u64) {
+            Ok(sub) => sub,
+            Err(error) => {
+                return WalkOutcome::Failed {
+                    count: field_count,
+                    error: error.into(),
+                };
+            }
+        };
         sink.on_field(handle, payload_bits, sub);
         field_count += 1;
     }
 
-    Ok((field_count, abandoned_bits))
+    WalkOutcome::Complete {
+        count: field_count,
+        remainder,
+    }
 }
 
 /// Parse a ClassNetCache RPC stream, emitting every invocation to the sink.
@@ -157,6 +280,34 @@ pub fn parse_class_net_cache(
     function_count: u32,
     sink: &mut dyn FieldSink,
 ) -> Result<(u32, u64)> {
+    parse_class_net_cache_impl(reader, function_count, sink, None).into_result()
+}
+
+/// [`parse_class_net_cache`] with failure-position tracking. See [`WalkContext`].
+pub fn parse_class_net_cache_tracked(
+    reader: &mut BitReader<'_>,
+    function_count: u32,
+    sink: &mut dyn FieldSink,
+    ctx: &mut WalkContext,
+) -> Result<(u32, u64)> {
+    parse_class_net_cache_impl(reader, function_count, sink, Some(ctx)).into_result()
+}
+
+pub(crate) fn parse_class_net_cache_content_block(
+    reader: &mut BitReader<'_>,
+    function_count: u32,
+    sink: &mut dyn FieldSink,
+    ctx: Option<&mut WalkContext>,
+) -> WalkOutcome<u64> {
+    parse_class_net_cache_impl(reader, function_count, sink, ctx)
+}
+
+fn parse_class_net_cache_impl(
+    reader: &mut BitReader<'_>,
+    function_count: u32,
+    sink: &mut dyn FieldSink,
+    mut ctx: Option<&mut WalkContext>,
+) -> WalkOutcome<u64> {
     if function_count == 0 {
         // Zero does not mean "a class with no functions", it means the export
         // group could not be resolved, so the handle width is unknown and the
@@ -164,7 +315,10 @@ pub fn parse_class_net_cache(
         // payload without it appearing in any counter, leaving the oracle to
         // report a clean run over data it silently threw away. Fail instead:
         // the caller counts the bits and names the group.
-        return Err(NetError::UnresolvedFunctionCount);
+        return WalkOutcome::Failed {
+            count: 0,
+            error: NetError::UnresolvedFunctionCount,
+        };
     }
 
     // Unreal clamps the serialized-int maximum to at least 2 so that even a
@@ -184,7 +338,22 @@ pub fn parse_class_net_cache(
         // zero RPCs, zero abandoned bits, no error, which is the same signal a
         // perfectly parsed empty block gives.
         let record_start = reader.position();
-        let handle = reader.read_serialized_int(handle_max)?;
+        if let Some(ctx) = ctx.as_deref_mut() {
+            ctx.record_offset = record_start;
+            ctx.last_handle = None;
+        }
+        let handle = match reader.read_serialized_int(handle_max) {
+            Ok(handle) => handle,
+            Err(error) => {
+                return WalkOutcome::Failed {
+                    count: rpc_count,
+                    error: error.into(),
+                };
+            }
+        };
+        if let Some(ctx) = ctx.as_deref_mut() {
+            ctx.last_handle = Some(handle);
+        }
 
         if reader.bits_remaining() < 8 {
             // Not enough bits for a payload length -- malformed tail. Account
@@ -195,7 +364,15 @@ pub fn parse_class_net_cache(
             break;
         }
 
-        let payload_bits = reader.read_int_packed()?;
+        let payload_bits = match reader.read_int_packed() {
+            Ok(bits) => bits,
+            Err(error) => {
+                return WalkOutcome::Failed {
+                    count: rpc_count,
+                    error: error.into(),
+                };
+            }
+        };
 
         if payload_bits as u64 > reader.bits_remaining() {
             abandoned_bits = (reader.position() - record_start) + reader.bits_remaining();
@@ -203,12 +380,23 @@ pub fn parse_class_net_cache(
             break;
         }
 
-        let sub = reader.sub_reader(payload_bits as u64)?;
+        let sub = match reader.sub_reader(payload_bits as u64) {
+            Ok(sub) => sub,
+            Err(error) => {
+                return WalkOutcome::Failed {
+                    count: rpc_count,
+                    error: error.into(),
+                };
+            }
+        };
         sink.on_rpc(handle, payload_bits, sub);
         rpc_count += 1;
     }
 
-    Ok((rpc_count, abandoned_bits))
+    WalkOutcome::Complete {
+        count: rpc_count,
+        remainder: abandoned_bits,
+    }
 }
 
 #[cfg(test)]
@@ -481,6 +669,61 @@ mod tests {
         let mut sink = RecordingSink::default();
         let (_count, abandoned) = parse_rep_layout(&mut reader, &mut sink).unwrap();
         assert_eq!(abandoned, 0);
+    }
+
+    /// A successful field before an early terminator must not be named as the
+    /// failed record. This is the measured CachedAttributeSet shape: handle 61
+    /// decodes successfully, then a zero terminator leaves a tail behind.
+    #[test]
+    fn tracked_early_terminator_clears_previous_handle() {
+        let mut bits = Vec::new();
+        bits.push(false); // checksum
+        write_int_packed(&mut bits, 62); // encoded handle 62 -> handle 61
+        write_int_packed(&mut bits, 16);
+        bits.extend(std::iter::repeat_n(false, 16));
+        let terminator_offset = bits.len() as u64;
+        write_int_packed(&mut bits, 0);
+        bits.extend(std::iter::repeat_n(true, 8));
+
+        let data = bits_to_bytes(&bits);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
+        let mut sink = RecordingSink::default();
+        let mut context = WalkContext::default();
+        let (count, abandoned) =
+            parse_rep_layout_tracked(&mut reader, &mut sink, &mut context).unwrap();
+
+        assert_eq!(count, 1);
+        assert_eq!(sink.fields, vec![(61, 16)]);
+        assert_eq!(abandoned, 8);
+        assert_eq!(context.record_offset, terminator_offset);
+        assert_eq!(context.last_handle, None);
+    }
+
+    #[test]
+    fn content_block_walk_leaves_a_valid_tail_positioned_after_the_terminator() {
+        let mut bits = Vec::new();
+        bits.push(false); // checksum
+        write_int_packed(&mut bits, 62); // handle 61
+        write_int_packed(&mut bits, 16);
+        bits.extend(std::iter::repeat_n(false, 16));
+        write_int_packed(&mut bits, 0);
+        let tail_offset = bits.len() as u64;
+        bits.extend(std::iter::repeat_n(true, 13));
+
+        let data = bits_to_bytes(&bits);
+        let mut reader = BitReader::with_bit_len(&data, bits.len() as u64).unwrap();
+        let mut sink = RecordingSink::default();
+        let WalkOutcome::Complete { count, remainder } =
+            parse_rep_layout_content_block(&mut reader, &mut sink, None)
+        else {
+            panic!("valid prefix and tail must complete")
+        };
+
+        assert_eq!(count, 1);
+        assert_eq!(sink.fields, vec![(61, 16)]);
+        assert_eq!(remainder, RepLayoutRemainder::ClassNetCache(13));
+        assert_eq!(reader.position(), tail_offset);
+        assert_eq!(reader.bits_remaining(), 13);
     }
 
     /// A terminator that arrives before the declared window ends -- the

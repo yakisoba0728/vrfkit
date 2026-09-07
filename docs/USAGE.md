@@ -13,7 +13,7 @@ record, not things to run.
 ## Table of contents
 
 1. [Build](#1-build)
-2. [CLI](#2-cli) -- [`inspect`](#inspect) / [`validate`](#validate) / [`export`](#export)
+2. [CLI](#2-cli) -- [`inspect`](#inspect) / [`validate`](#validate) / [`diag`](#diag) / [`export`](#export)
 3. [Output](#3-output) -- [`fields`](#fieldsparquet) / [`movement`](#movementparquet) / [`actors`](#actorsparquet) / [`net_guids`](#net_guidsparquet) / [`events`](#eventsparquet) / [`checkpoint_fields`](#checkpoint_fieldsparquet) / [`manifest.json`](#manifestjson)
 4. [Using it as a library](#4-using-it-as-a-library)
 5. [`tools/` reference](#5-tools-reference) -- [Generators](#generators) / [Validation](#validation) / [Downstream conversion](#downstream-conversion) / [Analysis helpers](#analysis-helpers)
@@ -48,6 +48,7 @@ indistinguishable from one that wrote the files.
 ```
 vrfkit inspect  <file.vrf> [--redact-identifiers]
 vrfkit validate <file.vrf> [--diagnostics]
+vrfkit diag     <file.vrf> [--json <path>] [--include-payloads]
 vrfkit export   <file.vrf> --out <dir> [--checkpoints]
 ```
 
@@ -75,39 +76,68 @@ available for diagnosis.
 
 ### `validate`
 
-Grammar oracle. It walks every content block through the RepLayout grammar and
-reports a pass rate. **It writes no files.**
+Grammar oracle. It walks ReplayData payloads that reach content-block framing
+and reports a block pass rate. **It writes no files.**
 
 ```
-  Total content blocks: 743110
+  Total content blocks: 608020
   Malformed framing:  0          <- blocks whose framing slipped. Nonzero is serious
   Transform failed:   0          <- payload transform failed. Signals an unsupported build
   RPC payload lost:   0          <- unresolved payloads that were not preserved. Must stay zero
-  RPC unresolved/raw: 7889       <- full decoded payload preserved, but inner handles cannot be named
+  RPC unresolved/raw: 6471       <- full decoded payload preserved, but inner handles cannot be named
   NOT COVERED:          18 Checkpoint chunk(s) were NOT walked
-  ORACLE PASS RATE:     100.000000% (743110 / 743110 blocks passed)
-  VERDICT: PASS - all ReplayData was consumed and decoded (exit 0)
+  Field stream failed: 0
+  ORACLE PASS RATE:     100.000000% (608011 / 608011 blocks passed)
+  VERDICT: PASS - ReplayData block validation passed (exit 0)
 ```
 
-**Exit code**: `0` all ReplayData was consumed or explicitly preserved, `1`
-validation found data loss, `2` there was nothing to validate (no ReplayData
+**Exit code**: `0` ReplayData block validation passed, `1`
+validation found a counted failure, `2` there was nothing to validate (no ReplayData
 blocks). Those are three different outcomes and are kept apart deliberately --
 a file this command cannot read must not be reported as a file that passed.
 
 The oracle walks the **ReplayData stream only**. Checkpoint chunks carry their
 own replication framing and are not covered by this verdict; the count above
 says how many were skipped. Use `export --checkpoints` to decode them.
+Partial reassembly rejections discard payloads before block framing and are
+also reported under `NOT COVERED`. They are excluded from the block score and
+exit verdict; a pass does not establish end-to-end preservation. Other counted
+transport failures, including unfinished partials and resource limits, fail
+the verdict.
 
-The current healthy pass rate is **100%**. Some blocks still cannot be
-definitively assigned to a `_ClassNetCache` group -- notably
-`AbilitiesAndBuffsComponent` -- but each complete decoded payload is emitted as
-one reserved `raw_bits` row. `RPC unresolved/raw` therefore means preserved but
-uninterpreted; it does not reduce the score. `Malformed framing`, `Transform
-failed`, and `RPC payload lost` must all be zero. A score below 100% is a
-regression or unsupported input, not the expected attribution gap.
+The example is the preserved `02d4d478` replay after the September 2026
+tail-preservation change. All 714 current ReplayData block runs pass, and the
+separate checkpoint diagnostic reports no lost framed blocks. Main/checkpoint
+partial reassembly rejection totals remain 125,037 / 835,967. Unknown inner payloads still
+exist: a pass means each measured block was decoded or explicitly preserved, not that
+all values have known types or meanings. `RPC unresolved/raw` includes whole
+unparsed tails as well as unresolved standalone RPC blocks. See
+[the measured before/after results](FOLLOWUP.md).
 
 `--diagnostics` prints context for every failed block. By default it shows up to
 32 lines and prints totals / shown / omitted counts in the header.
+
+### `diag`
+
+Walk ReplayData and checkpoint streams without writing Parquet:
+
+```bash
+vrfkit diag match.vrf --json failures.json
+vrfkit diag match.vrf --json failure-samples.json --include-payloads
+```
+
+JSON schema version 2 separates main/checkpoint counters and aggregates by
+stream kind, cause, resolved group, function count, handle and consumed bits.
+Totals include every failure. Distinct cells are bounded; an explicit overflow
+bucket accounts for additional keys. Check overflow before treating the listed
+groups as a complete distribution. Whole RPC payloads preserved by the parser
+are counted separately from lost streams.
+
+Payload samples are disabled by default. `--include-payloads` adds bounded
+decoded byte samples; prefixes are marked as truncated. The file path and group
+identifiers remain in either output. The diagnostic command's successful exit
+means it completed its walk, not that the replay was lossless. Use `validate`
+for the ReplayData verdict. Ordinary exports do not enable this aggregation.
 
 ### `export`
 
@@ -142,11 +172,11 @@ member and handle by name.
 #### Reading the `Typed` ratio
 
 ```
-  Typed:            75.1% (properties + RPC parameters)
+  Typed:            79.8% (properties + RPC parameters)
 ```
 
 (That figure is `02d4d478`'s, from `tools/baselines/export_02d4d478.json`:
-`overlay_decoded_ok / overlay_rows_offered` = 743,036 / 988,983. It moves as
+`overlay_decoded_ok / overlay_rows_offered` = 789,029 / 988,983. It moves as
 overlay entries are added -- re-measure before quoting it.)
 
 The denominator is **every row offered** to the overlay, and thanks to RPC
@@ -154,7 +184,7 @@ parameter expansion it includes both replicated properties and RPC parameters.
 The two populations have very different type coverage -- the descriptor set grew
 up property-first -- so writing "against all fields" without naming the
 denominator makes added parameters read like a regression. **Untyped != lost.**
-Even when the type is unknown, `raw_bits` is always preserved (see
+For unknown properties, `raw_bits` preserves the input (see
 [`fields.parquet`](#fieldsparquet)).
 
 ---
@@ -165,17 +195,16 @@ Measured on `02d4d478` (48,215,213 bytes):
 
 | File | Rows | Bytes | Notes |
 |---|---|---|---|
-| `fields.parquet` | 1,277,658 | 15,880,976 | |
+| `fields.parquet` | 1,277,983 | 16,119,220 | |
 | `movement.parquet` | 1,839,607 | 31,835,557 | |
 | `actors.parquet` | 3,827 | 87,281 | |
 | `net_guids.parquet` | 16,167 | 153,606 | |
 | `events.parquet` | 195 | 13,411 | |
-| `checkpoint_fields.parquet` | 78,850 | 231,320 | requires `--checkpoints` |
+| `checkpoint_fields.parquet` | 78,924 | 234,673 | requires `--checkpoints` |
 | `manifest.json` | -- | ~660,030 | varies: it records `elapsed_ms` |
 
-`export` takes 0.79 s (median of 5; re-measure with
-[`bench_export.py`](#analysis-helpers)). String columns are dictionary-encoded
-+ ZSTD.
+Use [`bench_export.py`](#analysis-helpers) to measure runtime on your machine.
+String columns are dictionary-encoded + ZSTD.
 
 ### `fields.parquet`
 
@@ -225,9 +254,10 @@ Its largest members over those 20 replays:
 | 114,299 | `TransitionContext` |
 | 97,573 | `MulticastStopContinuousEffect.StopEffectType` |
 
-`ServerMovementTime` is the reminder that this is not a bug list: `docs/DATA.md`
-records it as untyped on purpose, its epoch being unknown. The bucket says a
-property is described and unclaimed, not that it should be claimed.
+This is a historical raw inventory, not the current typing state.
+`ServerMovementTime` and `ReplayLastTransformUpdateTimeStamp` are now Float
+after the 714-file wire audit; see [time-field limits](DATA.md). A raw bucket
+alone is not evidence that a field should be assigned a type.
 
 Note what separates the second and third buckets among RPCs, since both hold
 `ClassNetCache` rows: an RPC whose parameters were resolved gets a checksum per
@@ -242,9 +272,11 @@ wall sat in the middle bucket for the life of the project -- 2,791 rows of null
 with decode errors at 0 -- and was found only because a sibling class happened
 to share its RPC name.
 
-**`raw_bits` is always present, even when the type is unknown or decoding
-fails.** At most one `value_*` column is filled. If a field's format is worked
-out later, rows already exported need no re-parsing.
+`raw_bits` is nullable. Unnamed replicated properties and unresolved whole
+RPC payloads retain their raw representation; successfully decoded movement
+RPCs and synthesized child rows may instead be represented by their decoded
+output. At most one `value_*` column is filled per row. Reinterpretation
+without re-parsing is possible only where the required raw payload survives.
 
 One exception: a ClassNetCache block whose group cannot be identified cannot be
 walked as an inner stream, so it is emitted only as a single **preservation
@@ -256,8 +288,25 @@ row** and cannot be expanded into fields.
 | `handle` | `u32::MAX` |
 | `raw_bits` | Full payload |
 
-These blocks are counted under `validate`'s `RPC stream failed`, and
-re-interpreting them as fields requires re-exporting from the original `.vrf`.
+These blocks are counted under `validate`'s `RPC stream failed`. Their retained
+raw bytes can be investigated directly; naming their inner fields also needs
+the correct class/function schema and replication context.
+
+A content block can contain a RepLayout prefix followed by a ClassNetCache
+tail. Prefix properties keep their original rows. Two reserved names identify
+additional raw rows from that tail:
+
+| `field_name` | Meaning |
+|---|---|
+| `__vrfkit_chained_cnc_h1__` | Exact handle-1 RPC body, recognized only with the direct pre-remap `AbilitiesAndBuffsComponent` identity and the measured frame/flag checks. This is structural recovery; no GAS word semantics are assigned. |
+| `__vrfkit_unparsed_rep_layout_tail__` | Entire remaining bit window when its inner framing is unknown or rejected. It remains an unresolved RPC failure, counted as preserved when the complete raw copy succeeds. |
+
+Both have exact `bit_count`/`raw_bits`, null `compatible_checksum` and null
+typed values. Treat these names as export metadata rather than native game
+properties. `RepLayout tails` and `Checkpoint tails` print the decoded/preserved
+split; manifest quality uses `rep_layout_cnc_tails_decoded` and
+`rep_layout_cnc_tails_preserved` in each stream. A malformed property length
+does not become a valid tail merely because bytes remain.
 
 Arrays are flattened, so names come out like
 `Rounds[3].Reports[1].Interactions[0].DamageDealt`. Filter with
@@ -421,11 +470,11 @@ max(0, rpc_stream_failures - unresolved_rpc_payloads_preserved)`, computed by
 `NetStats::lost_content_blocks` and shared with `validate`'s summary so the two
 cannot drift.
 
-Read this together with the oracle pass rate. On `02d4d478`, both now report a
-complete run: the pass rate is 100% and `content_blocks_lost` is 0 because all
-7,889 unattributed blocks had their complete decoded payloads preserved as
-reserved rows. Do not read `skipped_bits` as loss either -- it is 19,135,006 on
-that same healthy replay and records the inner stream that could not be named.
+Read this together with the oracle pass rate. The current `02d4d478` run has
+zero lost blocks and 6,471 preserved unresolved RPC payloads. Its previous
+325 field-stream failures were post-terminator tails: 218 now have verified
+RPC framing and 107 are preserved whole. `skipped_bits` still includes
+preserved, uninterpreted streams, so it is not a count of lost payload bits.
 
 ---
 
@@ -468,7 +517,7 @@ needs it.
 
 | Script | Produces |
 |---|---|
-| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,258 + 84 handles) |
+| `extract_descriptors.py` | `crates/vrf-decode/src/table.rs` (overlay table 1,271 + 84 handles) |
 | `apply_type_corrections.py` | Applies verified corrections/additions to that file and recomputes the two-line generation header |
 | `extract_checksum_types.py` | `crates/vrf-decode/src/checksum_table.rs` -- `compatible_checksum` -> `FieldType`, learned from the fields the overlay table already declares. Needs an export directory rather than the C# tree, since checksums come from the replay. Checksums whose donors disagree are dropped, which is the safety property. Repeat `--export` to widen the basis; the run **merges** into the committed table rather than replacing it, because a checksum this basis did not happen to see is still correct. `--check` asks whether the two agree *where they overlap* -- not whether they are byte-identical, which a content-addressed table cannot be across different sets of replays. |
 | `extract_sboxes.py` | `crates/vrf-transform/src/sbox.rs` |
@@ -482,15 +531,15 @@ the script does not trust its own apply count -- it **re-verifies the final
 state after applying** and fails if it disagrees.
 
 ```bash
-python tools/apply_type_corrections.py           # apply, then verify (133 corrections)
+python tools/apply_type_corrections.py           # apply, then verify (147 corrections)
 python tools/apply_type_corrections.py --check   # verify only
 ```
 
-Those 133 corrections are the whole live expectation set the script re-verifies; `ADDITIONS` is the
+Those 147 corrections are the whole live expectation set the script re-verifies; `ADDITIONS` is the
 subset of it that has no C# descriptor behind it at all.
 
 The `ADDITIONS` pass inserts items the C# descriptor is **silent on**. There are
-currently 73 of them, and every one is admitted on wire evidence written into the
+currently 86 of them, and every one is admitted on wire evidence written into the
 comment above the list -- bit width, value range, distribution -- and nothing else.
 The original three still show the bar: `BaseTeamState.LoadoutValue` /
 `AverageLoadoutValue` (26-I, where the reference declares the type of the same
@@ -530,7 +579,7 @@ m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); print(len(m
 | `compare_rpc_params.py` | RPC parameter comparison |
 | `compare_with_csharp.py` | Diff against the C# parser |
 | `check_effect_decoder.py` | Effect decoder (12 cases) |
-| `check_ascii.py` | Rust source ASCII sweep (120 files) |
+| `check_ascii.py` | Rust source ASCII sweep (122 files) |
 | `check_docs.py` | This document itself (below) |
 | `atomic_io.py` | Internal containment, recursive-removal and atomic-replacement helpers shared by mutating tools |
 
@@ -638,14 +687,35 @@ deliberately sequential for accuracy.
 
 ### Analysis helpers
 
+`summarize_value_coverage.py <export-or-parent> [--jobs 4]` reads the physical
+`value_i64/f64/bool/str` columns and emits JSON to stdout. It counts each row
+once if any typed column is non-null, including zero, false and empty strings.
+Main and checkpoint denominators stay separate; missing checkpoint tables are
+reported by the number of exports containing them. Malformed inputs produce
+`complete: false` and a nonzero exit, rather than an apparently complete total.
+This measures value presence, not semantic understanding or block preservation.
+
 | Script | What it does |
 |---|---|
 | `analyze_coverage.py` | Coverage analysis |
+| `extract_ability_stats.py` | Validates a build-scoped Statistic/FText dictionary from exact cast/effect array slots, with main and checkpoint observations separate. Unknown IDs, changed names, missing partners and conflicts remain visible and return a nonzero exit. Counts are snapshots, not casts. |
+| `extract_match_observations.py` | Exports evidence-labelled ammo changes, equip/reload intervals, round balances, team loadouts, defuse observations and economic state. Money decreases and transaction snapshots remain separate; temporal association is not a verified purchase ledger. |
 | `analyze_raw_properties.py` | Streams a deterministic size-stratified corpus sample (or `--all`) one temporary export at a time and inventories preserved unnamed/raw replicated properties. Reports only build-level counts, bit widths, and anonymous recurrence ranks; it never prints replay paths/names, group/actor/object/handle/checksum identifiers, hashes, or payloads. Exits nonzero if an unnamed property row lacks exact-length `raw_bits`. Use `--format json` for a deterministic, versioned aggregate document. |
 | `find_skips.py` | Finds skipped bits |
 | `bench_export.py` | Times a full `export` against `tools/baselines/bench.json`. A smoke detector, not a profiler -- wall clock is noisy, so the default tolerance is 25% and it answers "did something get twice as slow", nothing finer. Reports a run *faster* than the baseline too: that means the recorded number no longer describes the code. |
 | `extract_active_effects.py` | Derives an `active_effects.parquet` view from an export -- one row per persistent ability instance (smoke/wall/molly/slow/trap/recon/orb) with class, spawn position, and open/close lifetime. A `dormant` event does NOT end an instance -- a settled smoke that stops replicating has not despawned -- so those instances stay open-ended and the summary counts them. The data already lives in `actors.parquet`; this filters and pairs it. |
 | `extract_spike_carrier.py` | Derives a `spike_carrier.parquet` view -- one row per spike custody interval, resolved through to the manifest `subject`. Reads `BombEquippable_C.Owner` on the spike's own channel rather than the inventory side, so it covers carrying-in-the-backpack and not just in-hand, and it follows proxy carriers (Gekko's Wingman) back through `Instigator`. |
+
+```bash
+python tools/extract_ability_stats.py --export <export-directory> --out ability-stats.json
+python tools/extract_match_observations.py --export <export-directory> --out observations.json
+```
+
+Repeat `--export` for the stat dictionary when comparing builds. The observed
+13.01, 13.02 and 13.04 dictionaries contain 31 IDs each; 13.05 adds ID 27,
+`TimeSprinting`, for a union of 32. The previous investigation's 33-ID headline
+did not reproduce in the full 714-export scan. These names are wire FText keys,
+not independently validated units or causal interpretations of their values.
 
 The raw-property inventory defaults to six size-stratified replays per selected
 build and holds only one temporary export at a time. Select builds explicitly,
@@ -684,14 +754,14 @@ field meaning; the analyzer deliberately performs no type inference.
 ### Quick sweep -- after any change
 
 ```bash
-cargo +1.86.0 test --workspace --locked                              # 595 passing
+cargo +1.86.0 test --workspace --locked                              # 623 passing
 cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.86.0 fmt --check
-python -W error tools/check_ascii.py --check                         # 120 files
+python -W error tools/check_ascii.py --check                         # 122 files
 python -W error tools/check_effect_decoder.py --check                # 12 cases
-python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 553 passing
+python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 583 passing
 python -W error tools/check_docs.py --fast
-python -W error tools/apply_type_corrections.py --check              # 133 corrections
+python -W error tools/apply_type_corrections.py --check              # 147 corrections
 python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
 python -W error tools/check_baseline_schemas.py
 ```
@@ -782,9 +852,17 @@ silent change must be impossible.
 | 13.01 | 215-replay portion of the current multi-build sweep |
 | 13.02 | Preserved replay + 204-replay portion of the current sweep |
 | 13.04 | Upstream golden vectors + 108-replay export/checkpoint sweep |
-| 13.05 | Golden vectors + 51-replay oracle sweep |
+| 13.05 | Golden vectors + 187-file portion of the 714-file sweep |
 
-The current machine-local multi-build sweep (2026-08-31) reports:
+The current 714-file sweep passes ReplayData block validation and separately
+reports zero checkpoint block loss. Both exclude rejected partial bunches
+before block framing. Physical typed coverage is 69.92% main and 41.30%
+checkpoint; [FOLLOWUP.md](FOLLOWUP.md) gives exact denominators and limitations.
+Historical measurements follow; their percentages are not current results. The 2026-09-07 full sweep exported all 714
+files but found field-stream loss in every `validate` run. The main weighted
+block preservation rate was 99.949053%; checkpoint was 99.589353%.
+
+The earlier multi-build sweep (2026-08-31) reported:
 
 ```
 527/527 oracle passes at 100%: 215 build 13.01 + 204 build 13.02 + 108 build 13.04
@@ -803,10 +881,14 @@ validated the same day with the same binary.
 same-day samples: 13.01 99.933-99.947%, 13.02 99.953-99.961%, 13.04 99.941-99.959%
 ```
 
-The residual loss is not build-specific: it is the `AresAbilitySystemComponent`
-field stream that stops at `consumed=185` on every build, plus RPC handles with
-no known signature. 13.05 shows the same shapes in the same proportion, which is
-what a correct transform on a build with no new content looks like.
+Before this tail-preservation change, the uncapped audit found Ares accounted for
+239,134 of the 240,679 main field-stream failures. The largest shape stops
+after 9 bits (142,025 blocks); 185 bits is only one of several shapes.
+The old checkpoint loss was 53,582 blocks: 52,201 at 185 bits, 105 at 217 and 1,276
+at 233. These are
+failure locations, not proof that CachedAttributeSet itself was broken.
+The current implementation retains those tails; the measured decoded/raw split
+is in FOLLOWUP.md. Unresolved RPC payloads are not additional lost blocks.
 
 Adding a new build takes one `SeededTransform` impl -- two constants and three
 word functions. See the README's
@@ -822,7 +904,7 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
 
 ## 8. Known limits
 
-- **Untyped residual** -- the [`export`](#export) `Typed` is ~75.1% (denominator
+- **Untyped residual** -- the [`export`](#export) `Typed` is ~79.8% (denominator
   including RPC parameters). **Untyped != lost** (`raw_bits` preserved). Typing
   the rest needs the game binary or UE headers -- this is not a table-editing
   problem (archive/PROJECT_STATUS.md section 24).
@@ -830,22 +912,22 @@ live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
   for that class at all. The historical 13.01 checkpoint sweep confirmed it
   across 4,024 checkpoints. Its complete block payload is now preserved in one
   marked raw row, so this typing/attribution gap no longer lowers the current
-  100% `validate` pass rate.
+  `validate` score. Separate field-stream failures still lower that score.
 - **Scoreboard stats** -- release-13.02 replicates cumulative K/D/A through
   `BasicCombatStatsComponent` and cumulative combat score through
   `PlayerScoreComponent`. vrfkit types all four as `Int32`; valplay computes
   ACS as final Score divided by played rounds.
-- **`economy.per_round` (13.02)** -- team economy moved to `BaseTeamState` and
-  the values decode, but valplay's `compute_economy` looks at the old path.
-  valplay is out of scope to fix.
+- **Team economy schemas** -- legacy `TeamEconomy` and newer `BaseTeamState`
+  values require separate joins. Availability in vrfkit does not establish
+  that a downstream metrics deployment consumes both schemas.
 - **Non-Bomb game modes** -- five of the 215-corpus are Swiftplay, and **the
   parser side is done** (section 33): `GROUP_ALIASES` maps Swiftplay's
   GameState/PlayerState to the Bomb classes, so the fields all gain types. The
   five hardcoded class names in valplay's `compute_metrics.py` have been
   replaced with `is_game_state` / `is_player_state`, so `docs/swiftplay-metrics.patch`
-  is applied and has been removed. valplay's sibling detail modules
-  (round_detail, economy_detail, objective_detail) still match the Bomb classes
-  directly and remain outstanding on the valplay side.
+  is applied and has been removed. The inspected valplay detail modules also
+  use those shared helpers; the earlier claim that all three remained
+  Bomb-only was stale. Deployment and UI verification belong to valplay.
 - **Damage precision** -- vrfkit preserves the exact fractional wire damage.
   valplay additionally floors each final engagement segment before summing its
   scoreboard damage, which reproduces Tracker ADR without discarding the exact

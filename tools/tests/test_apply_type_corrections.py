@@ -153,6 +153,12 @@ class AdditionsTests(unittest.TestCase):
         post-round objective-bomb deaths that the kill RPC stream reports but
         the scoreboard deliberately excludes.
 
+        73 -> 86 types two time fields verified across all 714 exports. Four
+        additions cover every group carrying `ServerMovementTime`; nine cover
+        the descriptor-silent pawn groups carrying
+        `ReplayLastTransformUpdateTimeStamp`. The other 33 timestamp groups are
+        corrections from the descriptor's Skip, so they do not count here.
+
         64 -> 70 is two findings, not six. Five entries type `249` as the
         rotation that pairs with the already-typed `248` on every RPC that
         sends the pair numbered -- 441,814 rows, whose 3/19/35/51-bit widths
@@ -197,7 +203,7 @@ class AdditionsTests(unittest.TestCase):
         2 as `AuthResourceAmount`, so the leaf remap in `sink/paths.rs` now
         reaches a real declaration and the guessed name is gone.
         """
-        self.assertEqual(len(atc.ADDITIONS), 73, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 86, atc.ADDITIONS)
 
     def test_handle_additions_stay_the_narrow_exception(self):
         """Same guardrail for the handle -> name additions.

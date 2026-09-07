@@ -669,6 +669,14 @@ fn write_sink_quality(
         ("truncated_rpcs", sink.truncated_rpcs),
         ("rpc_suffix_bits_dropped", sink.rpc_suffix_bits_dropped),
         ("cnc_rpcs_emitted", sink.cnc_rpcs_emitted),
+        (
+            "rep_layout_cnc_tails_decoded",
+            sink.rep_layout_cnc_tails_decoded,
+        ),
+        (
+            "rep_layout_cnc_tails_preserved",
+            sink.rep_layout_cnc_tails_preserved,
+        ),
     ] {
         wkv(out, key, &value.to_string(), inner);
     }
@@ -891,6 +899,8 @@ mod tests {
             "truncated_rpcs",
             "rpc_suffix_bits_dropped",
             "cnc_rpcs_emitted",
+            "rep_layout_cnc_tails_decoded",
+            "rep_layout_cnc_tails_preserved",
             // Run-level completeness and checkpoint-only accounting.
             "content_blocks_lost",
             "chunks_processed",
@@ -974,6 +984,8 @@ mod tests {
                 "truncated_rpcs",
                 "rpc_suffix_bits_dropped",
                 "cnc_rpcs_emitted",
+                "rep_layout_cnc_tails_decoded",
+                "rep_layout_cnc_tails_preserved",
             ]
             .contains(&key)
             {
@@ -986,6 +998,46 @@ mod tests {
                 expected,
                 "quality manifest omitted or duplicated {key}: {json}"
             );
+        }
+    }
+
+    #[test]
+    fn rep_layout_tail_counters_publish_main_and_checkpoint_values() {
+        let net = NetStats::default();
+        let sink = SinkTotals {
+            rep_layout_cnc_tails_decoded: 2,
+            rep_layout_cnc_tails_preserved: 3,
+            ..SinkTotals::default()
+        };
+        let mut checkpoints = CheckpointStats::default();
+        checkpoints.sink.rep_layout_cnc_tails_decoded = 5;
+        checkpoints.sink.rep_layout_cnc_tails_preserved = 7;
+        let errors = OverlayErrorReport::default();
+        let json = quality_json(&ManifestQuality {
+            chunks_processed: 0,
+            export_groups: 0,
+            movement_rows: 0,
+            net_guid_rows: 0,
+            event_rows: 0,
+            event_trailing_bytes: 0,
+            replay_data_trailing_bytes: 0,
+            event_layout_mismatches: 0,
+            event_first_layout_mismatch: None,
+            event_payloads_decoded: 0,
+            event_payload_unknown_groups: 0,
+            net: &net,
+            sink: &sink,
+            error_report: &errors,
+            checkpoints: Some(&checkpoints),
+        });
+
+        for expected in [
+            "\"rep_layout_cnc_tails_decoded\": 2",
+            "\"rep_layout_cnc_tails_preserved\": 3",
+            "\"rep_layout_cnc_tails_decoded\": 5",
+            "\"rep_layout_cnc_tails_preserved\": 7",
+        ] {
+            assert!(json.contains(expected), "missing {expected}: {json}");
         }
     }
 

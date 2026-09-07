@@ -71,6 +71,8 @@ for _group in (
     for _field in ("215", "216"):
         EXPECTED.append((_group, _field, "FieldType::EnumRemainingBits"))
 EXPECTED += [
+    ("/Game/Characters/", "ReplayLastTransformUpdateTimeStamp",
+     "FieldType::Float"),
     ("SmokeScreen", "ReplicatedMovement",
      "FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents }"),
     ("AresEquippableDataTracker", "OriginalBuyerTeam", "FieldType::Raw"),
@@ -267,12 +269,30 @@ EXPECTED += [
 #: distance in Unreal units. No descriptor declares the group. 32 bits on all
 #: 11699 rows, reads as Float 397.6..49986.1 with the mode at ~19993 UU
 #: (~500 m), the right order of magnitude for a Valorant projectile.
-#: Deliberately NOT added: bIsActive (1 bit but all 574 rows are 0x01 -- a
-#: constant that carries no consumer information), ServerMovementTime (a
-#: movement-clock timestamp whose epoch is undocumented, so the Float read is
-#: correct but the values are not interpretable), NumCollisions (32 bits but
-#: the i32 values are all 0/1, indistinguishable from a Bool widened to 32
-#: bits by the property block -- not worth a guess), and RequestedIgnoreActors
+#:
+#: Two time fields were verified across all 714 release-13.01--13.05 exports.
+#: `ServerMovementTime` is 32 bits on all 4,571,175 rows in exactly the four
+#: movement-component groups listed below. An independent little-endian Float
+#: read is finite everywhere and monotonic for all 337,754 actors. It is an
+#: movement clock in seconds: values begin near 1/128 second and are consistent
+#: with an actor-relative clock, but the exact epoch (including whether it is
+#: actor spawn) is not established. Small residuals reflect the 128 Hz value
+#: grid and replication delay; Phoenix FlareCurve actors can open their channels
+#: about 0.65 seconds after the movement clock starts.
+#:
+#: `ReplayLastTransformUpdateTimeStamp` is 32 bits on all 32,978,229 rows in 42
+#: character/pawn groups and reads as a finite, actor-monotonic Float in seconds.
+#: The descriptor emitted 33 of these as Skip; the correction pass below changes
+#: those entries, and the nine descriptor-silent pawn groups are added here.
+#: The value behaves as server world time with a file-specific offset from
+#: replay time: 672/714 files have an offset around 10 seconds, while 42 range
+#: from 10.8 to 110.1 seconds. A consumer must estimate the per-file offset
+#: rather than subtracting 10.
+#:
+#: Deliberately NOT added: FiniteSpeedMovementComponent.bIsActive (1 bit but all
+#: 574 rows are 0x01 -- a constant that carries no consumer information),
+#: NumCollisions (32 bits but the i32 values are all 0/1, indistinguishable from
+#: a Bool widened to 32 bits by the property block), and RequestedIgnoreActors
 #: (a variable-width array).
 ADDITIONS = [
     ("/Game/GameModes/Bomb/BombGameState.BombGameState_C",
@@ -350,6 +370,43 @@ ADDITIONS = [
      "DecayApplied", "FieldType::Float"),
     ("/Script/ShooterGame.FiniteSpeedMovementComponent",
      "MaximumRange", "FieldType::Float"),
+    ("/Script/ShooterGame.FiniteSpeedMovementComponent",
+     "ServerMovementTime", "FieldType::Float"),
+    ("/Script/ShooterGame.SplineMovementComponent",
+     "ServerMovementTime", "FieldType::Float"),
+    ("/Script/ShooterGame.PrecalculatedProjectileMovementComponent",
+     "ServerMovementTime", "FieldType::Float"),
+    ("/Game/Characters/Components/Comp_Projectile_FloatCurveMovement."
+     "Comp_Projectile_FloatCurveMovement_C",
+     "ServerMovementTime", "FieldType::Float"),
+    ("/Game/Characters/Cashew/S0/Ability_E/"
+     "AIPawn_Cashew_E_SeekingTargetMissile."
+     "AIPawn_Cashew_E_SeekingTargetMissile_C",
+     "ReplayLastTransformUpdateTimeStamp", "FieldType::Float"),
+    ("/Game/Characters/Clay/S0/Ability_E/Pawn_Clay_E_Boomba."
+     "Pawn_Clay_E_Boomba_C",
+     "ReplayLastTransformUpdateTimeStamp", "FieldType::Float"),
+    ("/Game/Characters/Guide/S0/Ability_Q/Pawn_Guide_Q_PossessableScout."
+     "Pawn_Guide_Q_PossessableScout_C",
+     "ReplayLastTransformUpdateTimeStamp", "FieldType::Float"),
+    ("/Game/Characters/Gumshoe/S0/Ability_E/"
+     "Pawn_Gumshoe_E_PossessableCamera.Pawn_Gumshoe_E_PossessableCamera_C",
+     "ReplayLastTransformUpdateTimeStamp", "FieldType::Float"),
+    ("/Game/Characters/Killjoy/S0/Ability_E/Pawn_Killjoy_E_Turret."
+     "Pawn_Killjoy_E_Turret_C",
+     "ReplayLastTransformUpdateTimeStamp", "FieldType::Float"),
+    ("/Game/Characters/Killjoy/S0/Ability_Q/"
+     "Pawn_Killjoy_Q_StealthAlarmbot.Pawn_Killjoy_Q_StealthAlarmbot_C",
+     "ReplayLastTransformUpdateTimeStamp", "FieldType::Float"),
+    ("/Game/Characters/Pine/S0/Ability_E/Pawn_Pine_E_RadEater."
+     "Pawn_Pine_E_RadEater_C",
+     "ReplayLastTransformUpdateTimeStamp", "FieldType::Float"),
+    ("/Game/Characters/Rift/S0/Ability_X/WorldTargeting/"
+     "Rift_TargetingForm_PC.Rift_TargetingForm_PC_C",
+     "ReplayLastTransformUpdateTimeStamp", "FieldType::Float"),
+    ("/Game/Characters/Stealth/S0/Ability_4/Pawn_Stealth_4_Decoy_V2."
+     "Pawn_Stealth_4_Decoy_V2_C",
+     "ReplayLastTransformUpdateTimeStamp", "FieldType::Float"),
     ("/Script/ShooterGame.MoneyManagementComponent", "Money", "FieldType::Int32"),
     ("/Script/ShooterGame.MoneyManagementComponent", "StartOfRoundMoney", "FieldType::Int32"),
     ("/Script/ShooterGame.MoneyManagementComponent", "TotalMoneyGranted", "FieldType::Int32"),
@@ -973,6 +1030,20 @@ def main():
         if old in content:
             content = content.replace(old, new)
             count += 1
+
+    # Fix: the descriptor marks the replay transform timestamp as Skip even
+    # though every observed payload is a 32-bit Float. Work per entry block so
+    # the correction remains effective after rustfmt splits generated entries.
+    blocks = content.split("    OverlayEntry {")
+    for i, block in enumerate(blocks):
+        if i == 0:
+            continue
+        if 'field_name: "ReplayLastTransformUpdateTimeStamp"' not in block:
+            continue
+        if "FieldType::Skip" in block:
+            blocks[i] = block.replace("FieldType::Skip", "FieldType::Float")
+            count += 1
+    content = "    OverlayEntry {".join(blocks)
 
     # Fix: every group's "215"/"216" is EnumRemainingBits, weapons included.
     #

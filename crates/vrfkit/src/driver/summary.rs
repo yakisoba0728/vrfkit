@@ -225,6 +225,10 @@ pub(super) fn print(
     // AbilitiesAndBuffs brute-force decodes anything, so a build that stopped
     // reaching it would otherwise leave every line on this summary unchanged.
     eprintln!("  CNC RPC rows:     {}", totals.sink.cnc_rpcs_emitted);
+    eprintln!(
+        "  RepLayout tails:  {} decoded / {} preserved",
+        totals.sink.rep_layout_cnc_tails_decoded, totals.sink.rep_layout_cnc_tails_preserved
+    );
     eprintln!("  Elapsed:          {:.2?}", totals.elapsed);
 
     if let Some(cp) = checkpoints {
@@ -372,6 +376,10 @@ fn print_checkpoints(cp: &CheckpointStats) {
         cp.sink.multi_contents_items_emitted
     );
     eprintln!("  Checkpoint CNC:   {} RPC rows", cp.sink.cnc_rpcs_emitted);
+    eprintln!(
+        "  Checkpoint tails: {} decoded / {} preserved",
+        cp.sink.rep_layout_cnc_tails_decoded, cp.sink.rep_layout_cnc_tails_preserved
+    );
 }
 
 /// The one table that is written only when `--checkpoints` is given.

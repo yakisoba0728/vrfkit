@@ -1,11 +1,13 @@
 # Extractable data
 
 What you can get out of a VALORANT replay with vrfkit. The export is six
-Parquet tables plus `manifest.json`; every field's raw bits are always present
-even when the type is unknown, so "untyped" below means *not yet decoded*, not
-*missing*.
+Parquet tables plus `manifest.json`. Unknown property payloads and unresolved
+whole RPCs retain raw bytes, but successfully decoded movement and synthesized
+child rows may not duplicate their input bytes. "Untyped" is not synonymous
+with "lost"; check stream-loss counters separately.
 
-Legend: ✅ typed (value decoded) · ◐ raw or derivable · ❌ not in the replay.
+Legend: ✅ typed (value decoded) · ◐ raw or derivable · ❌ unavailable in the
+stated observation scope. Absence in a sample is not proof of format-wide absence.
 
 ---
 
@@ -35,28 +37,28 @@ replays joined all ten and the worst managed 7; after it, 71 of 71 do.
 | Start-of-round credits | `StartOfRoundMoney` | ✅ |
 | Total granted | `TotalMoneyGranted` | ✅ |
 | Team loadout value | `BaseTeamState.LoadoutValue` / `AverageLoadoutValue` | ✅ |
-| Per-round spend | `StartOfRoundMoney` − `EndOfRoundMoney` (OwnerExclusivePlayerInfo) | ◐ derivable |
+| Per-round balance change | `StartOfRoundMoney` − `EndOfRoundMoney` (OwnerExclusivePlayerInfo) | ◐ net balance change; grants, rewards, refunds and purchases must be separated before calling it spend |
 | K / D / A | `BasicCombatStatsComponent.Aggregate*` | ✅ Int32 cumulative counters |
 | ACS (combat score) | `PlayerScoreComponent.Score / rounds` | ✅ Int32 cumulative score |
 
-## Purchases (full buy log)
+## Purchase and inventory observations
 
 | Data | Source | Status |
 |---|---|---|
-| What was bought (item) | `PurchasedItemComponent.Purchaseable` → `net_guids.path` / `equippable_table.py` | ✅ all 10 players; on `02d4d478` 576 purchases over 52 distinct item GUIDs, 20 of which resolve to a class path |
+| Reported item | `PurchasedItemComponent.Purchaseable` → `net_guids.path` / `equippable_table.py` | ◐ replicated item state; repeated rows do not establish separate purchases |
 | Who bought it | `PurchasedItemComponent.PurchasingPlayerState` → `manifest.players.subject` | ✅ |
-| When | `fields.time_ms` of the purchase row | ✅ |
+| Observation time | `fields.time_ms` of the state update | ✅ replication time, not a guaranteed transaction timestamp |
 | Which round | `time_ms` vs `events.roundStarted` | ◐ derivable |
-| Cost | Money delta around the purchase, or per-round spend | ◐ derivable |
+| Cost | Temporally matched credit changes and item evidence | ◐ ambiguous grants/refunds and unmatched candidates must remain explicit |
 | Source (buy/ability/etc.) | `PurchasableTransactionSource` | ◐ partial (some rows) |
 | Inventory slot → item | `ItemSlot.Contents`, `AresInventory.ItemSlots` | ✅ / ◐ (MultiItemSlot raw) |
 | Charges purchasable this round | `EquipmentChargeComponent.TotalChargesAllowedToPurchaseThisRound` | ✅ |
 
-**Purchase-history recipe:** filter `fields` to `group_path = PurchasedItemComponent`,
-then per row join `Purchaseable` → `net_guids` (item path → display name via
-`equippable_table.py`), `PurchasingPlayerState` → `manifest.players` (account
-identity), and `time_ms` → nearest `roundStarted` (round number). One row per
-purchase; all ten players' purchases are replicated.
+Join `Purchaseable` to `net_guids`, `PurchasingPlayerState` to player identity,
+and update time to the latest preceding round boundary. Fields arrive as
+separate updates: assemble component state and distinguish initialization or
+round-start re-emission from a new item transition. A complete purchase ledger
+requires corroborating credit changes; state rows alone are not that ledger.
 
 ## Combat — kills & deaths
 
@@ -148,11 +150,11 @@ Phoenix -- Run It Back, not a decode fault. On the reset broadcast
 |---|---|---|
 | Ultimate cast corroboration | `events.characterUltimateUsed` (word0 resolves to a character on 15,699/15,768 rows) | ◐ do not count Event rows as casts: they outnumber `UltimateActive` False→True transitions by 51.5%; use the transition as authority and Event only as a ±100 ms cross-check |
 | Cooldown / start time | `Comp_Ability_CooldownComponent` | ✅ Double |
-| Ability cast count / cast log | `Comp_AbilityStatisticsReplicator.AbilityCastsThisRound[]` — `Player` (subject UUID), `Slot`, `Round`, `RoundPhase`, `CastTime`, `CastLocation` | ✅ one record per cast, all ten players; `Player` matches a manifest subject 352/352 |
+| Ability cast observations | `Comp_AbilityStatisticsReplicator.AbilityCastsThisRound[]` — `Player` (subject UUID), `Slot`, `Round`, `RoundPhase`, `CastTime`, `CastLocation` | ✅ cast records repeated in array snapshots; deduplicate by cast identity before counting. In the reference sample, `Player` matches a manifest subject 352/352. |
 | Ability state stream | `AbilitiesAndBuffsComponent` (`_cnc_h1`) | ◐ fc=34 brute-forced, inner decomposed (flag + u32 stream); semantics need game assets |
 | GAS owner / avatar / attribute sets | `AresAbilitySystemComponent` (OwnerActor, AvatarActor, SpawnedAttributes, CachedAttributeSet) | ✅ via AbilitiesAndBuffsComponent->AresAbilitySystemComponent remap |
 | Status effects on a player (nearsight / slow / detain / ...) | `EffectManagerComponent:MulticastPlayContinuousEffect` + `MulticastStopContinuousEffect`, on the **affected** player's actor | ✅ named, with start and end — see below |
-| Active gameplay effects (GAS array) | `AresAbilitySystemComponent.ActiveGameplayEffects` | ❌ **not replicated.** The manifest declares the property and the wire never carries it: across 71 exports, checkpoints included, `fields.parquet` holds zero rows for it -- not empty rows, no rows. The GAS spec handles the group declares (`Def`, `Duration`, `StackCount`, `StartServerWorldTime`, ...) are absent the same way |
+| Active gameplay effects (GAS array) | `AresAbilitySystemComponent.ActiveGameplayEffects` | ❌ **No named property rows observed.** The 714-file audit (2026-09-08, checkpoints included) found none in the property group. Entries with the same name and child handles occur under `AresAbilitySystemComponent_ClassNetCache` (49,076 rows); these do not establish that the property array was decoded. The function payload's meaning remains unverified. |
 | GAS attribute values | `AresAttributeSet.{BaseValue,CurrentValue}` per handle | ◐ **checkpoints only.** The live stream sends each attribute once when the channel opens and never updates it; `CurrentValue` does move (Reyna's ultimate puts handles at 1.1/0.9) but only checkpoint snapshots show it, and those are written at round transitions, so transient debuffs are gone by then |
 | Persistent effect position (smoke/wall/molly/slow/trap) | `actors.parquet` class_path + spawn xyz | ✅ every spawned effect actor |
 | Persistent effect lifetime | `actors.time_ms` paired across `event` `open`/`close` (non-fuel; a `dormant` event does not end the instance); `CurrentFuelLevel`+`WallActivated` (Viper) | ✅ |
@@ -537,8 +539,13 @@ guessing -- which is the only reason the failure was findable.
 
 ## What's next (where to start)
 
-Most of what this list used to hold is done. What remains is short, and two of
-them are limits rather than tasks.
+The current implementation and remaining evidence requirements are tracked in
+[`FOLLOWUP.md`](FOLLOWUP.md). Three analysis helpers now turn the existing
+tables into inspectable outputs: `summarize_value_coverage.py` measures physical
+typed rows; `extract_ability_stats.py` validates the observed 32-ID stat
+dictionary; `extract_match_observations.py` joins conservative match observations.
+Their outputs distinguish replicated snapshots from events and leave unresolved
+ownership or semantics explicit.
 
 **Start by bucketing the untyped rows on `compatible_checksum`.** That column
 exists so this list can be found rather than stumbled on: a checksum the
@@ -574,9 +581,12 @@ direction.
 
 **And check the reason you gave for not doing something.** `LocalizedStat` was
 left untyped on the grounds that `Statistic` already carried the same fact.
-`Statistic` decodes to a bare integer, and this repository maps those integers
-to names only in a source comment -- so the export carried the fact in a form
-no consumer could read, and the stated reason had never been checked either.
+`Statistic` decodes to a bare integer; that historical argument ignored whether
+consumers had a usable dictionary. The current `extract_ability_stats.py` pairs
+it with `LocalizedStat` inside the same serialized cast/effect slot and exposes
+a build-scoped mapping. All 714 exports yielded 155,150 paired observations,
+with no missing partners or mapping conflicts: 31 IDs in each of 13.01, 13.02
+and 13.04, and 32 in 13.05. Unobserved IDs remain unknown.
 
 ### Done, and where the reasoning lives
 
@@ -675,9 +685,9 @@ by why:
 | 173,535 | has a `compatible_checksum`, but no declared field donates that checksum |
 | 17,403 | no checksum at all (the unresolved `AbilitiesAndBuffs` payload) |
 
-The first bucket is 60% of it and is nothing to fix: `BaseReplayController`'s
-4kbit blob alone is 225,808 rows, and the per-agent
-`ReplayLastTransformUpdateTimeStamp` rows are declared raw on purpose.
+The first bucket was 60% of that historical sample: `BaseReplayController`'s
+4kbit blob alone contributed 225,808 rows. The previously skipped per-agent
+`ReplayLastTransformUpdateTimeStamp` is now typed after the broader wire audit.
 
 Two ordinary additions came out of the second bucket and are now typed --
 `StopMovementTime` and `HandleNumber`, above. The largest remaining item does
@@ -704,10 +714,26 @@ decoder written now would produce seven anonymous payloads, which is what
 `raw_bits` already gives. Left alone until there is a source for the tag
 meanings.
 
-`ServerMovementTime` (4,654 rows) reads cleanly as Float and is still
-deliberately untyped: the epoch is undocumented, so the values are not
-interpretable. That decision is recorded with the other declined fields in the
-`ADDITIONS` comment.
+The September 2026 audit supersedes the earlier decision to leave two time
+fields untyped. Both are now `Float`, exposed through `value_f64` while their
+ordinary property payloads remain raw as well:
+
+- `ReplayLastTransformUpdateTimeStamp`: 32-bit payloads on 32,978,229 main
+  rows across 42 observed character/pawn groups. Values track server time in
+  seconds with a file-specific offset from replay time. The audit's median
+  offset was near 10 seconds in 672/714 files and 10.8--110.1 seconds in the
+  remaining 42. Do not hardcode subtracting 10. Checkpoint rows also exist;
+  continuity across checkpoint restoration remains unverified.
+- `ServerMovementTime`: 32-bit payloads on 4,571,175 main rows in FiniteSpeed,
+  Spline, FloatCurve and Precalculated movement groups. Values behave as an
+  actor-relative movement clock in seconds. Channel-open time is an approximate
+  reference, not proof of the exact spawn instant; some observed FlareCurve
+  actors already report about 0.65 seconds when the channel opens. No named
+  checkpoint rows were observed for this field.
+
+These measurements establish wire typing. Game-side epoch semantics and the
+cause of recording offsets should not be inferred more precisely than the
+observed correlations allow.
 
 ### Closed: RPC signature aliasing
 

@@ -33,10 +33,13 @@
 //! the measured entry counts in those two modules.
 
 mod blobs;
+mod failure_stats;
 mod intern;
 mod paths;
 mod rpc;
 mod stream;
+
+pub use failure_stats::FailureAggregate;
 
 use std::sync::Arc;
 
@@ -108,6 +111,9 @@ pub struct ChannelState {
     /// whose transform is wrong would fail on essentially every block, and the
     /// first few dozen say everything the later million would.
     stream_failures: Vec<String>,
+    /// Failure aggregation is opt-in for `diag`; ordinary decode and export
+    /// paths keep this as `None` and pay no map or payload-sampling cost.
+    failures: Option<FailureAggregate>,
     /// BombPlayerState identity capture for the manifest `players` array. Keyed
     /// by the PlayerState actor's NetGUID; filled in `on_field` as `Subject`
     /// and `SpawnedCharacter` arrive, drained once at the end of the replay.
@@ -132,6 +138,25 @@ impl ChannelState {
     #[must_use]
     pub fn stream_failures(&self) -> &[String] {
         &self.stream_failures
+    }
+
+    /// Enable bounded failure aggregation for a diagnostic pass.
+    pub fn enable_failure_aggregate(&mut self, retain_payloads: bool) {
+        self.failures = Some(FailureAggregate::new(retain_payloads));
+    }
+
+    /// Whether the current pass requested detailed failure positions and
+    /// optional payload callbacks from the replication layer.
+    pub fn failure_aggregate_enabled(&self) -> bool {
+        self.failures.is_some()
+    }
+
+    /// Take the failure aggregate out, leaving it empty. The checkpoint pass
+    /// builds one channel state per chunk, so its totals are gathered by
+    /// draining each chunk's aggregate into the caller's.
+    #[must_use]
+    pub fn take_failure_aggregate(&mut self) -> FailureAggregate {
+        self.failures.take().unwrap_or_default()
     }
 
     /// Captured player identities (PlayerState actor NetGUID -> identity), for
@@ -197,6 +222,14 @@ pub struct ExportStats {
     /// counter is the only signal that the additive decoder produced RPC
     /// structure rather than silently leaving the opaque blob.
     pub cnc_rpcs_emitted: u64,
+
+    /// Post-RepLayout ClassNetCache tails decoded under verified component
+    /// provenance and strict one-RPC framing.
+    pub rep_layout_cnc_tails_decoded: u64,
+
+    /// Post-RepLayout tails retained whole because their provenance or framing
+    /// was not sufficient for the verified decoder.
+    pub rep_layout_cnc_tails_preserved: u64,
 
     /// Struct-blob decodes that returned an error.
     ///
@@ -383,6 +416,9 @@ pub struct ExportSink<'a> {
     current_actor_guid: u32,
     /// Subobject GUID of the block being walked; `None` for actor blocks.
     current_object_guid: Option<u32>,
+    /// True only when the replay's direct, pre-remap object path is exactly the
+    /// measured component that carries the chained fc=34 ClassNetCache stream.
+    current_is_abilities_and_buffs: bool,
     /// Interned, so a block's rows share one allocation instead of each
     /// carrying its own copy of the path. See [`intern`].
     current_group_path: Arc<str>,
@@ -427,6 +463,7 @@ impl<'a> ExportSink<'a> {
             current_channel: 0,
             current_actor_guid: 0,
             current_object_guid: None,
+            current_is_abilities_and_buffs: false,
             current_group_path,
             current_group_hash,
         }

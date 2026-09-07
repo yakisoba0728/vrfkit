@@ -4,6 +4,13 @@ Thanks for your interest. vrfkit is a reverse-engineered parser for a format
 that changes every game build, so it has a few unusual rules. Please read these
 before opening a PR.
 
+## Maintenance and response times
+
+I am a student maintaining vrfkit in my spare time. Contributions and bug
+reports are welcome, but replies and PR reviews may take some time while I
+balance the project with my studies. There is no guaranteed response time.
+Thank you for your patience and for helping improve the project.
+
 ## Build
 
 ```bash
@@ -97,6 +104,30 @@ If your change affects exported output, also run the regression guards in
 `check_decode_errors_corpus.py`, `validate_corpus.py`) against a replay, and
 update baselines with `--update` only after explaining each changed line. Those
 need a corpus — see [Environment](#environment) below.
+
+### Replay evidence for parser changes
+
+For changes to parsing, payload transforms, decoding, or exported output,
+including support for a new game build, include actual replay validation
+results in the PR. Passing CI alone does not establish that real replays
+decode correctly. Before merging, the contributor or maintainer should run
+the affected validation and export paths on real replays and record:
+
+- The tested game build/branch and replay count for each build.
+- The code commit and exact commands used, including whether checkpoint
+  decoding was exercised when the change affects it.
+- Successful and failed replay counts, relevant transform/framing/decode
+  failure counts, and oracle pass rates where available.
+- A before/after comparison on the same replays, including a previously
+  supported build when shared parser code changes, with any output differences
+  or remaining failures explained.
+
+State the scope of the check: a few samples or a full available corpus. If no
+replay is available, you can still open a PR; say that replay validation was
+not run and what input is needed so a maintainer can complete it before
+merging. A skipped corpus check is not replay validation. You do not need to
+upload replay files publicly to contribute; recorded commands and results
+can document a local run.
 
 ## Environment
 

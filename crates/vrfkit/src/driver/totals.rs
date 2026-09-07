@@ -53,6 +53,10 @@ pub(crate) struct SinkTotals {
     pub truncated_rpcs: u64,
     pub rpc_suffix_bits_dropped: u64,
     pub cnc_rpcs_emitted: u64,
+    /// Post-RepLayout ClassNetCache tails decoded as verified RPC structure.
+    pub rep_layout_cnc_tails_decoded: u64,
+    /// Post-RepLayout tails retained as whole raw payloads.
+    pub rep_layout_cnc_tails_preserved: u64,
 }
 
 impl SinkTotals {
@@ -103,6 +107,8 @@ impl SinkTotals {
         self.truncated_rpcs += stats.truncated_rpcs;
         self.rpc_suffix_bits_dropped += stats.rpc_suffix_bits_dropped;
         self.cnc_rpcs_emitted += stats.cnc_rpcs_emitted;
+        self.rep_layout_cnc_tails_decoded += stats.rep_layout_cnc_tails_decoded;
+        self.rep_layout_cnc_tails_preserved += stats.rep_layout_cnc_tails_preserved;
         error_report.merge_from(&stats.overlay.error_report);
     }
 }

@@ -18,6 +18,21 @@
 - [ ] `python -W error tools/check_docs.py` (not `--fast`: that skips the count check)
 - [ ] `python -W error -m unittest discover -s tools/tests -p "test_*.py"`
 
+## Replay validation (parser changes)
+
+<!-- Required for parsing, payload transforms, decoding, export behavior, and
+new-build support. For unrelated changes, write "Not applicable".
+If no replay is available, write "Not run", explain what input is needed,
+and leave validation for the maintainer to complete before merging.
+CI or a skipped corpus check does not replace a real replay run.
+See CONTRIBUTING.md, "Replay evidence for parser changes". -->
+
+- Game build/branch and replay count per build:
+- Tested commit and exact commands (include checkpoint coverage if affected):
+- Results: successful/failed replays, transform/framing/decode failures, and oracle pass rates where available:
+- Before/after comparison on the same replays (include an older supported build for shared parser changes):
+- Output differences, remaining failures, and scope or limitations of validation:
+
 ## Invariant checklist (skip none that apply)
 
 - [ ] No field's `raw_bits` is dropped because its type is unknown (no skip path).

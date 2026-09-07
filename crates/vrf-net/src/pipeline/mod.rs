@@ -86,12 +86,60 @@ pub struct ActorChannelState {
 }
 
 /// Which stream grammar failed to parse inside a decoded content block.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StreamKind {
     /// A property (RepLayout) stream.
     RepLayout,
     /// An RPC (ClassNetCache) stream.
     Rpc,
+}
+
+/// Where inside the walk a stream failure happened.
+///
+/// Purely diagnostic: nothing on a decode, success or verdict path reads it.
+/// It exists so an aggregate keyed on group path can also separate the distinct
+/// shapes that all land in the same `field_stream_failures` /
+/// `rpc_stream_failures` counters today -- in particular an unresolved
+/// ClassNetCache group (whose payload the sink preserves whole) from a stream
+/// that genuinely lost structure, which `NetStats::lost_content_blocks`
+/// already distinguishes for the totals but no per-group view could before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StreamFailureCause {
+    /// The walk returned `Ok` but abandoned bits mid-block: a record declared
+    /// more payload than the block had left, or an RPC record was too short to
+    /// carry its length. Records emitted before the break are good; only the
+    /// abandoned tail is lost.
+    AbandonedTail,
+    /// The walk returned `Err` -- a read inside the block ran off the end (or
+    /// otherwise failed) and the rest of the block is unframeable.
+    ReadError,
+    /// The ClassNetCache function count was 0: the group could not be resolved,
+    /// so the handle width is unknown. The sink received the whole decoded
+    /// payload through `on_unresolved_class_net_cache_payload`, so this shape
+    /// is preserved, not lost.
+    UnresolvedFunctionCount,
+    /// A valid post-RepLayout bit window was retained whole because its source
+    /// provenance or strict ClassNetCache shape was not verified. This names
+    /// uncertainty rather than asserting that a read failed or a descriptor
+    /// count was unavailable.
+    UnverifiedRepLayoutTail,
+    /// The decoded payload could not be opened as a bit window at all. The
+    /// scratch buffer is sized by the same bit count, so this has never been
+    /// observed; it is named rather than folded into [`StreamFailureCause::ReadError`]
+    /// so that a future grammar change that does trigger it is countable on
+    /// its own.
+    WindowOpenFailed,
+}
+
+/// Result of handing a valid post-RepLayout tail to the sink.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepLayoutTailOutcome {
+    /// The tail was strictly decoded as this many ClassNetCache RPCs.
+    Decoded { rpc_count: u32 },
+    /// The tail could not be decoded, but its complete raw bits were retained.
+    Preserved { cause: StreamFailureCause },
+    /// The tail could neither be decoded nor retained by this sink.
+    Unpreserved { cause: StreamFailureCause },
 }
 
 /// Context for a content block that framed and decoded but whose inner stream
@@ -120,6 +168,18 @@ pub struct StreamFailure {
     pub consumed_bits: u64,
     /// Bits abandoned as a result.
     pub remaining_bits: u64,
+    /// Which stage of the walk failed. See [`StreamFailureCause`].
+    pub cause: StreamFailureCause,
+    /// Handle of the non-terminator record the walk was inside, when its handle
+    /// read succeeded. `None` for a failed handle read and for an early zero
+    /// terminator, so the previous successful field is never misidentified as
+    /// the failure. `record_offset` is exact in every case.
+    pub record_handle: Option<u32>,
+    /// Bit offset inside the block where the failing record begins, when the
+    /// parser tracked one.
+    pub record_offset: Option<u64>,
+    /// Whether the complete failed stream reached a raw preservation row.
+    pub payload_preserved: bool,
 }
 
 /// Trait for receiving all replication events.
@@ -127,6 +187,33 @@ pub struct StreamFailure {
 /// The caller implements this to process fields, RPCs, and actor lifecycle
 /// without any data being silently discarded.
 pub trait ReplicationSink: GuidPathSink + FieldSink {
+    /// Whether the sink wants per-record failure positions and decoded-payload
+    /// callbacks. The default keeps the normal pipeline on its original walk.
+    fn wants_stream_failure_details(&self) -> bool {
+        false
+    }
+
+    /// Handle a ClassNetCache stream that follows a valid RepLayout zero
+    /// terminator in the same content block. The reader is bounded to the tail.
+    fn on_rep_layout_tail(
+        &mut self,
+        _actor_net_guid: NetworkGuid,
+        _bit_count: u32,
+        _reader: BitReader<'_>,
+    ) -> RepLayoutTailOutcome {
+        RepLayoutTailOutcome::Unpreserved {
+            cause: StreamFailureCause::UnverifiedRepLayoutTail,
+        }
+    }
+
+    /// Optional raw diagnostic sample for a chained tail that was not decoded.
+    fn on_rep_layout_tail_failure_payload(
+        &mut self,
+        _failure: StreamFailure,
+        _reader: BitReader<'_>,
+    ) {
+    }
+
     /// An actor channel was opened (new actor spawned or re-opened).
     fn on_actor_open(&mut self, state: &ActorChannelState);
 
@@ -157,6 +244,16 @@ pub trait ReplicationSink: GuidPathSink + FieldSink {
     /// way. Override it to attach the names the sink holds -- the resolved group
     /// path in particular, which the replication layer does not know.
     fn on_stream_failure(&mut self, _failure: StreamFailure) {}
+
+    /// The decoded payload of a block whose inner stream could not be walked.
+    ///
+    /// Follows [`Self::on_stream_failure`] for the same block whenever the
+    /// decoded bytes exist -- not for a window that failed to open, and not
+    /// for unresolved ClassNetCache blocks, which deliver theirs through
+    /// [`Self::on_unresolved_class_net_cache_payload`] instead. Diagnostics
+    /// only, failure paths only, so a sink may keep a bounded sample of the
+    /// bytes that actually failed to walk; default no-op.
+    fn on_stream_failure_payload(&mut self, _failure: StreamFailure, _payload: &[u8]) {}
 
     /// Preserve one whole decoded ClassNetCache payload whose function table
     /// could not be resolved.
@@ -633,6 +730,8 @@ mod tests {
         guid_paths: std::collections::HashMap<u32, String>,
         /// Content-block headers, in arrival order.
         content_blocks: Vec<ContentBlockHeader>,
+        rep_layout_tails: Vec<(u32, Vec<u8>)>,
+        rep_layout_tail_outcome: Option<RepLayoutTailOutcome>,
     }
 
     impl GuidPathSink for TestSink {
@@ -654,8 +753,29 @@ mod tests {
     }
 
     impl ReplicationSink for TestSink {
+        fn wants_stream_failure_details(&self) -> bool {
+            true
+        }
+
         fn on_actor_open(&mut self, state: &ActorChannelState) {
             self.opens.push(state.channel_index);
+        }
+
+        fn on_rep_layout_tail(
+            &mut self,
+            _actor_net_guid: NetworkGuid,
+            bit_count: u32,
+            mut reader: BitReader<'_>,
+        ) -> RepLayoutTailOutcome {
+            let mut bytes = vec![0; (bit_count as usize).div_ceil(8)];
+            reader
+                .copy_bits_to(&mut bytes, u64::from(bit_count))
+                .expect("tail reader is bounded to the reported bit count");
+            self.rep_layout_tails.push((bit_count, bytes));
+            self.rep_layout_tail_outcome
+                .unwrap_or(RepLayoutTailOutcome::Unpreserved {
+                    cause: StreamFailureCause::UnverifiedRepLayoutTail,
+                })
         }
         fn on_actor_close(&mut self, channel_index: u32, _: NetworkGuid, _: bool) {
             self.closes.push(channel_index);
@@ -1680,6 +1800,103 @@ mod tests {
         wire
     }
 
+    /// A zero handle closes only the RepLayout prefix. Bits after it belong to
+    /// the chained ClassNetCache stream and must reach the sink exactly.
+    #[test]
+    fn rep_layout_zero_terminator_hands_the_exact_tail_to_the_sink() {
+        let mut decoded_bits = Vec::new();
+        decoded_bits.push(false); // property checksum
+        write_int_packed(&mut decoded_bits, 0); // RepLayout terminator
+        decoded_bits.extend((0..13).map(|index| index % 2 == 0));
+
+        let mut decoded = vec![0u8; decoded_bits.len().div_ceil(8)];
+        for (index, bit) in decoded_bits.iter().copied().enumerate() {
+            if bit {
+                decoded[index / 8] |= 1 << (index % 8);
+            }
+        }
+        let wire = wire_for_short_decoded(&decoded, decoded_bits.len(), 2);
+        let mut payload = BitReader::with_bit_len(&wire, decoded_bits.len() as u64).unwrap();
+        let mut scratch = Vec::new();
+        let mut stats = NetStats::default();
+        let mut channels = ChannelTable::default();
+        let mut sink = TestSink {
+            rep_layout_tail_outcome: Some(RepLayoutTailOutcome::Decoded { rpc_count: 1 }),
+            ..TestSink::default()
+        };
+        let mut stage = Stage {
+            stats: &mut stats,
+            channels: &mut channels,
+            transform: TransformVersion::V1301,
+            scratch: &mut scratch,
+        };
+
+        framing::decode_and_parse_rep_layout(
+            &mut payload,
+            decoded_bits.len(),
+            NetworkGuid(2),
+            &mut stage,
+            &mut sink,
+        );
+
+        assert!(sink.fields.is_empty());
+        assert_eq!(sink.rep_layout_tails, vec![(13, vec![0x55, 0x15])]);
+        assert!(sink.stream_failures.is_empty());
+        assert_eq!(stats.fields, 0);
+        assert_eq!(stats.rpcs, 1);
+        assert_eq!(stats.field_stream_failures, 0);
+        assert_eq!(stats.rpc_stream_failures, 0);
+        assert_eq!(stats.skipped_bits, 0);
+    }
+
+    #[test]
+    fn a_wholly_preserved_rep_layout_tail_is_an_rpc_failure_not_field_loss() {
+        let mut decoded_bits = vec![false]; // property checksum
+        write_int_packed(&mut decoded_bits, 0); // RepLayout terminator
+        decoded_bits.extend((0..13).map(|index| index % 2 == 0));
+        let mut decoded = vec![0u8; decoded_bits.len().div_ceil(8)];
+        for (index, bit) in decoded_bits.iter().copied().enumerate() {
+            if bit {
+                decoded[index / 8] |= 1 << (index % 8);
+            }
+        }
+        let wire = wire_for_short_decoded(&decoded, decoded_bits.len(), 2);
+        let mut payload = BitReader::with_bit_len(&wire, decoded_bits.len() as u64).unwrap();
+        let mut scratch = Vec::new();
+        let mut stats = NetStats::default();
+        let mut channels = ChannelTable::default();
+        let mut sink = TestSink {
+            rep_layout_tail_outcome: Some(RepLayoutTailOutcome::Preserved {
+                cause: StreamFailureCause::UnverifiedRepLayoutTail,
+            }),
+            ..TestSink::default()
+        };
+        let mut stage = Stage {
+            stats: &mut stats,
+            channels: &mut channels,
+            transform: TransformVersion::V1301,
+            scratch: &mut scratch,
+        };
+
+        framing::decode_and_parse_rep_layout(
+            &mut payload,
+            decoded_bits.len(),
+            NetworkGuid(2),
+            &mut stage,
+            &mut sink,
+        );
+
+        assert_eq!(stats.field_stream_failures, 0);
+        assert_eq!(stats.rpc_stream_failures, 1);
+        assert_eq!(stats.unresolved_rpc_payloads_preserved, 1);
+        assert_eq!(stats.skipped_bits, 13);
+        assert_eq!(sink.stream_failures.len(), 1);
+        let failure = sink.stream_failures[0];
+        assert_eq!(failure.kind, StreamKind::Rpc);
+        assert_eq!(failure.bit_count, 13);
+        assert!(failure.payload_preserved);
+    }
+
     #[test]
     fn rep_layout_overrun_ok_path_is_a_stream_failure() {
         let mut decoded_bits = Vec::new();
@@ -1721,6 +1938,87 @@ mod tests {
         assert_eq!(sink.stream_failures[0].kind, StreamKind::RepLayout);
         assert_eq!(sink.stream_failures[0].consumed_bits, 1);
         assert_eq!(sink.stream_failures[0].remaining_bits, 24);
+        assert!(
+            sink.rep_layout_tails.is_empty(),
+            "a declared-length overrun is malformed RepLayout, not a chained tail"
+        );
+    }
+
+    /// The `cause` field must attribute each failure to the arm that produced
+    /// it, and name the record the walk stopped in. The aggregate keyed on
+    /// these values is what separates preserved-unresolved blocks from real
+    /// loss per group; a cause that did not match its arm would misfile
+    /// millions of blocks.
+    #[test]
+    fn stream_failures_carry_their_cause_and_failing_record() {
+        // Arm 1: an unresolved ClassNetCache group (function_count = 0). The
+        // walk never begins, so the failing record is offset 0, no handle --
+        // and the payload reached the sink as preserved.
+        let wire = [0xBF];
+        let mut payload = BitReader::with_bit_len(&wire, 7).unwrap();
+        let mut scratch = vec![0xFF; 16];
+        let mut stats = NetStats::default();
+        let mut channels = ChannelTable::default();
+        let mut sink = TestSink::default();
+        let mut stage = Stage {
+            stats: &mut stats,
+            channels: &mut channels,
+            transform: TransformVersion::V1301,
+            scratch: &mut scratch,
+        };
+        framing::decode_and_parse_class_net_cache(
+            &mut payload,
+            7,
+            NetworkGuid(2),
+            0,
+            &mut stage,
+            &mut sink,
+        );
+        assert_eq!(sink.stream_failures.len(), 1);
+        let failure = &sink.stream_failures[0];
+        assert_eq!(failure.cause, StreamFailureCause::UnresolvedFunctionCount);
+        assert_eq!(failure.record_handle, None);
+        assert_eq!(failure.record_offset, Some(0));
+        assert_eq!(sink.unresolved_payloads.len(), 1, "payload preserved");
+
+        // Arm 2: a RepLayout Ok walk that abandoned a tail. The failing
+        // record -- handle 0, which began at bit 1 after the checksum -- is
+        // named exactly.
+        let mut decoded_bits = Vec::new();
+        decoded_bits.push(false); // property checksum
+        write_int_packed(&mut decoded_bits, 1); // handle 0
+        write_int_packed(&mut decoded_bits, 32); // overruns the remaining 8 bits
+        decoded_bits.extend(std::iter::repeat_n(false, 8));
+        let mut decoded = vec![0u8; decoded_bits.len().div_ceil(8)];
+        for (index, bit) in decoded_bits.iter().copied().enumerate() {
+            if bit {
+                decoded[index / 8] |= 1 << (index % 8);
+            }
+        }
+        let wire = wire_for_short_decoded(&decoded, decoded_bits.len(), 2);
+        let mut payload = BitReader::with_bit_len(&wire, decoded_bits.len() as u64).unwrap();
+        let mut scratch = Vec::new();
+        let mut stats = NetStats::default();
+        let mut channels = ChannelTable::default();
+        let mut sink = TestSink::default();
+        let mut stage = Stage {
+            stats: &mut stats,
+            channels: &mut channels,
+            transform: TransformVersion::V1301,
+            scratch: &mut scratch,
+        };
+        framing::decode_and_parse_rep_layout(
+            &mut payload,
+            decoded_bits.len(),
+            NetworkGuid(2),
+            &mut stage,
+            &mut sink,
+        );
+        assert_eq!(sink.stream_failures.len(), 1);
+        let failure = &sink.stream_failures[0];
+        assert_eq!(failure.cause, StreamFailureCause::AbandonedTail);
+        assert_eq!(failure.record_handle, Some(0));
+        assert_eq!(failure.record_offset, Some(1));
     }
 
     /// The `Err` arm must charge the block, not the reader's remainder.
@@ -1787,6 +2085,51 @@ mod tests {
         );
     }
 
+    #[test]
+    fn rep_layout_read_error_keeps_an_already_emitted_prefix_counted() {
+        let mut decoded_bits = vec![false]; // property checksum
+        write_int_packed(&mut decoded_bits, 1); // handle 0
+        write_int_packed(&mut decoded_bits, 0); // valid zero-bit payload
+        for index in 0..8 {
+            decoded_bits.push((0x01u8 & (1 << index)) != 0);
+        }
+        assert_eq!(decoded_bits.len(), 25);
+        let mut decoded = vec![0u8; decoded_bits.len().div_ceil(8)];
+        for (index, bit) in decoded_bits.iter().copied().enumerate() {
+            if bit {
+                decoded[index / 8] |= 1 << (index % 8);
+            }
+        }
+        let wire = wire_for_short_decoded(&decoded, decoded_bits.len(), 2);
+        let mut payload = BitReader::with_bit_len(&wire, decoded_bits.len() as u64).unwrap();
+        let mut scratch = Vec::new();
+        let mut stats = NetStats::default();
+        let mut channels = ChannelTable::default();
+        let mut sink = TestSink::default();
+        let mut stage = Stage {
+            stats: &mut stats,
+            channels: &mut channels,
+            transform: TransformVersion::V1301,
+            scratch: &mut scratch,
+        };
+
+        framing::decode_and_parse_rep_layout(
+            &mut payload,
+            decoded_bits.len(),
+            NetworkGuid(2),
+            &mut stage,
+            &mut sink,
+        );
+
+        assert_eq!(sink.fields, vec![(0, 0)], "the valid prefix row remains");
+        assert_eq!(stats.fields, 1, "NetStats matches the emitted prefix");
+        assert_eq!(stats.field_stream_failures, 1);
+        assert!(sink.rep_layout_tails.is_empty());
+        assert_eq!(sink.stream_failures[0].cause, StreamFailureCause::ReadError);
+        assert_eq!(sink.stream_failures[0].record_handle, None);
+        assert_eq!(sink.stream_failures[0].record_offset, Some(17));
+    }
+
     /// The RPC parser's `Err` arm, same shape and same reason.
     ///
     /// One handle bit (max clamped to 2) then 0x01, an `IntPacked` that claims
@@ -1842,6 +2185,52 @@ mod tests {
             stats.skipped_bits, 9,
             "a stream failure with no bits behind it is the defect this pins"
         );
+    }
+
+    #[test]
+    fn class_net_cache_read_error_keeps_an_already_emitted_prefix_counted() {
+        let mut decoded_bits = Vec::new();
+        write_serialized_int(&mut decoded_bits, 0, 2);
+        write_int_packed(&mut decoded_bits, 0); // valid zero-bit RPC
+        write_serialized_int(&mut decoded_bits, 0, 2);
+        for index in 0..8 {
+            decoded_bits.push((0x01u8 & (1 << index)) != 0);
+        }
+        assert_eq!(decoded_bits.len(), 18);
+        let mut decoded = vec![0u8; decoded_bits.len().div_ceil(8)];
+        for (index, bit) in decoded_bits.iter().copied().enumerate() {
+            if bit {
+                decoded[index / 8] |= 1 << (index % 8);
+            }
+        }
+        let wire = wire_for_short_decoded(&decoded, decoded_bits.len(), 2);
+        let mut payload = BitReader::with_bit_len(&wire, decoded_bits.len() as u64).unwrap();
+        let mut scratch = Vec::new();
+        let mut stats = NetStats::default();
+        let mut channels = ChannelTable::default();
+        let mut sink = TestSink::default();
+        let mut stage = Stage {
+            stats: &mut stats,
+            channels: &mut channels,
+            transform: TransformVersion::V1301,
+            scratch: &mut scratch,
+        };
+
+        framing::decode_and_parse_class_net_cache(
+            &mut payload,
+            decoded_bits.len(),
+            NetworkGuid(2),
+            2,
+            &mut stage,
+            &mut sink,
+        );
+
+        assert_eq!(sink.rpcs, vec![(0, 0)], "the valid prefix row remains");
+        assert_eq!(stats.rpcs, 1, "NetStats matches the emitted prefix");
+        assert_eq!(stats.rpc_stream_failures, 1);
+        assert_eq!(sink.stream_failures[0].cause, StreamFailureCause::ReadError);
+        assert_eq!(sink.stream_failures[0].record_handle, Some(0));
+        assert_eq!(sink.stream_failures[0].record_offset, Some(9));
     }
 
     /// Verifies that a content-block overrun produces a DiagnosticEvent with

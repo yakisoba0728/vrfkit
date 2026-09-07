@@ -3,15 +3,17 @@
 //! Subcommands:
 //!   inspect <file.vrf>           -- print replay info, header, and chunk summary
 //!   validate <file.vrf>          -- run the transform-validation oracle
+//!   `diag <file.vrf> [--json <path>] [--include-payloads]` -- failure aggregate
 //!   export `<file.vrf>` --out `<dir>` -- emit five Parquet tables + manifest.json
 //!
 //! `export` is behind the `export` feature (on by default). With it off the
-//! binary still inspects and validates -- both drive the whole decode pipeline
-//! -- and nothing links arrow, parquet or zstd.
+//! binary still inspects, validates and runs diag -- all three drive the whole
+//! decode pipeline -- and nothing links arrow, parquet or zstd.
 
 #![forbid(unsafe_code)]
 
 mod cli;
+mod diagnose;
 #[cfg(feature = "export")]
 mod driver;
 mod error;

@@ -14,7 +14,9 @@ use vrf_decode::cnc::decode_cnc_payload;
 use vrf_export::{ActorRecord, MovementRecord, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME};
 use vrf_net::content::ContentBlockHeader;
 use vrf_net::field::FieldSink;
-use vrf_net::pipeline::{ActorChannelState, ReplicationSink, StreamFailure};
+use vrf_net::pipeline::{
+    ActorChannelState, RepLayoutTailOutcome, ReplicationSink, StreamFailure, StreamFailureCause,
+};
 use vrf_net::types::NetworkGuid;
 
 use super::intern::put;
@@ -24,6 +26,19 @@ use super::{ExportSink, FieldValues, TABLE};
 
 /// The RPC whose payload is a movement batch rather than a parameter list.
 const MOVEMENT_RPC: &str = "ReplaysClientReceiveRemoteCharacterUpdatesSingleArrayNoAutonomous";
+const ABILITIES_AND_BUFFS_COMPONENT: &str = "AbilitiesAndBuffsComponent";
+const CHAINED_CNC_H1_FIELD_NAME: &str = "__vrfkit_chained_cnc_h1__";
+const UNPARSED_REP_LAYOUT_TAIL_FIELD_NAME: &str = "__vrfkit_unparsed_rep_layout_tail__";
+
+fn copy_exact_raw_bits(mut reader: BitReader<'_>, bit_count: u32) -> Option<SmallVec<[u8; 16]>> {
+    if bit_count == 0 {
+        return None;
+    }
+    let mut raw = SmallVec::with_capacity((bit_count as usize).div_ceil(8));
+    raw.resize((bit_count as usize).div_ceil(8), 0);
+    reader.copy_bits_to(&mut raw, u64::from(bit_count)).ok()?;
+    Some(raw)
+}
 
 impl ExportSink<'_> {
     /// Resolve a field or function name from the current block's group.
@@ -521,8 +536,93 @@ impl ReplicationSink for ExportSink<'_> {
         } else {
             Some(header.object_net_guid.0)
         };
+        self.current_is_abilities_and_buffs = !header.is_actor
+            && self.cache.get_path_by_guid(header.object_net_guid.0)
+                == Some(ABILITIES_AND_BUFFS_COMPONENT);
         self.stats.content_blocks += 1;
         self.resolve_block(channel_index, actor_net_guid, header)
+    }
+
+    fn on_rep_layout_tail(
+        &mut self,
+        _actor_net_guid: NetworkGuid,
+        bit_count: u32,
+        reader: BitReader<'_>,
+    ) -> RepLayoutTailOutcome {
+        let Some(raw_tail) = copy_exact_raw_bits(reader, bit_count) else {
+            return RepLayoutTailOutcome::Unpreserved {
+                cause: StreamFailureCause::ReadError,
+            };
+        };
+
+        if self.current_is_abilities_and_buffs {
+            // 34 is the minimum compatible capacity in the measured 34..=65
+            // band, not a declared function count. It is safe only with the
+            // direct pre-remap component identity above and the strict shape
+            // checks below: one handle-1 RPC, exact end, set body flag.
+            if let Some(rpcs) = decode_cnc_payload(&raw_tail, bit_count, ABILITIES_AND_BUFFS_FC) {
+                if let [rpc] = rpcs.as_slice() {
+                    let raw_body = (|| {
+                        if rpc.handle != 1 || rpc.payload_bits == 0 {
+                            return None;
+                        }
+                        let mut body =
+                            BitReader::with_bit_len(&raw_tail, u64::from(bit_count)).ok()?;
+                        body.skip_bits(rpc.payload_offset).ok()?;
+                        let body = body.sub_reader(u64::from(rpc.payload_bits)).ok()?;
+                        let mut flag = body.clone();
+                        if !flag.read_bit().ok()? {
+                            return None;
+                        }
+                        copy_exact_raw_bits(body, rpc.payload_bits)
+                    })();
+                    if let Some(raw_body) = raw_body {
+                        let field_name = self.channel_state.names.intern(CHAINED_CNC_H1_FIELD_NAME);
+                        self.push_field(FieldValues {
+                            handle: rpc.handle,
+                            field_name: Some(field_name),
+                            bit_count: rpc.payload_bits,
+                            raw_bits: Some(raw_body),
+                            ..FieldValues::default()
+                        });
+                        self.stats.fields_emitted += 1;
+                        self.stats.rpcs_emitted += 1;
+                        self.stats.cnc_rpcs_emitted += 1;
+                        self.stats.rep_layout_cnc_tails_decoded += 1;
+                        return RepLayoutTailOutcome::Decoded { rpc_count: 1 };
+                    }
+                }
+            }
+        }
+
+        let field_name = self
+            .channel_state
+            .names
+            .intern(UNPARSED_REP_LAYOUT_TAIL_FIELD_NAME);
+        self.push_field(FieldValues {
+            field_name: Some(field_name),
+            bit_count,
+            raw_bits: Some(raw_tail),
+            ..FieldValues::default()
+        });
+        self.stats.fields_emitted += 1;
+        self.stats.rep_layout_cnc_tails_preserved += 1;
+        RepLayoutTailOutcome::Preserved {
+            cause: StreamFailureCause::UnverifiedRepLayoutTail,
+        }
+    }
+
+    fn on_rep_layout_tail_failure_payload(
+        &mut self,
+        failure: StreamFailure,
+        reader: BitReader<'_>,
+    ) {
+        let Some(raw) = copy_exact_raw_bits(reader, failure.bit_count) else {
+            return;
+        };
+        if let Some(failures) = self.channel_state.failures.as_mut() {
+            failures.note_payload(&failure, Arc::clone(&self.current_group_path), &raw);
+        }
     }
 
     fn on_deleted_block(
@@ -535,6 +635,10 @@ impl ReplicationSink for ExportSink<'_> {
     }
 
     fn on_unresolved_class_net_cache_payload(&mut self, failure: StreamFailure, payload: &[u8]) {
+        if let Some(failures) = self.channel_state.failures.as_mut() {
+            failures.note_payload(&failure, Arc::clone(&self.current_group_path), payload);
+        }
+
         let field_name = self
             .channel_state
             .names
@@ -554,6 +658,23 @@ impl ReplicationSink for ExportSink<'_> {
         self.emit_brute_forced_cnc_rpcs(payload, failure.bit_count);
     }
 
+    /// Sample the decoded bytes of a block whose inner stream failed to walk.
+    ///
+    /// Framing calls this right after `on_stream_failure` for the same block
+    /// whenever the decoded bytes exist, so the aggregate's samples for the
+    /// real-loss shapes carry the payload that actually failed -- the
+    /// evidence a cause hypothesis needs. Bounded like every sample: the
+    /// first few per cell, payloads truncated.
+    fn on_stream_failure_payload(&mut self, failure: StreamFailure, payload: &[u8]) {
+        if let Some(failures) = self.channel_state.failures.as_mut() {
+            failures.note_payload(&failure, Arc::clone(&self.current_group_path), payload);
+        }
+    }
+
+    fn wants_stream_failure_details(&self) -> bool {
+        self.channel_state.failure_aggregate_enabled()
+    }
+
     /// Attach the resolved group path to a stream failure.
     ///
     /// The replication layer knows the bit offsets but not the names; this is the
@@ -562,6 +683,12 @@ impl ReplicationSink for ExportSink<'_> {
     /// group, while a wrong non-zero count can still select the wrong handle
     /// width. Counts 1 and 2 both use the parser's required minimum of 2 and are
     /// therefore not distinguishable from this diagnostic alone.
+    ///
+    /// When diagnostics are enabled, the failure is also recorded into the
+    /// bounded [`FailureAggregate`](super::failure_stats::FailureAggregate), which makes population counts available
+    /// per group. `failure.payload_preserved` is the authoritative flag for
+    /// whether the failed stream reached a whole-payload raw row, including
+    /// unresolved ClassNetCache blocks and unparsed post-RepLayout tails.
     fn on_stream_failure(&mut self, failure: StreamFailure) {
         let line = format!(
             "{:?} actor={} bits={} function_count={} consumed={} skipped={} group={}",
@@ -574,6 +701,9 @@ impl ReplicationSink for ExportSink<'_> {
             self.current_group_path,
         );
         self.channel_state.push_stream_failure(line);
+        if let Some(failures) = self.channel_state.failures.as_mut() {
+            failures.note_failure(&failure, Arc::clone(&self.current_group_path));
+        }
     }
 }
 
@@ -701,6 +831,10 @@ mod tests {
             function_count: 0,
             consumed_bits: 0,
             remaining_bits: 7,
+            cause: vrf_net::pipeline::StreamFailureCause::UnresolvedFunctionCount,
+            record_handle: None,
+            record_offset: Some(0),
+            payload_preserved: true,
         };
         sink.on_unresolved_class_net_cache_payload(failure, &[0x66]);
 
@@ -760,6 +894,162 @@ mod tests {
             }
         }
         bytes
+    }
+
+    fn one_h1_cnc_tail(body: &[bool]) -> Vec<bool> {
+        let mut bits = Vec::new();
+        write_serialized_int(&mut bits, 1, ABILITIES_AND_BUFFS_FC);
+        write_int_packed(&mut bits, body.len() as u32);
+        bits.extend_from_slice(body);
+        bits
+    }
+
+    #[test]
+    fn verified_abilities_tail_emits_one_raw_structural_h1_row() {
+        let body = [true, false, true, false, true, false, true, false, true];
+        let tail = one_h1_cnc_tail(&body);
+        let tail_bytes = bits_to_bytes(&tail);
+        let mut cache = NetGuidCache::new();
+        cache.set_net_guid_path(144, ABILITIES_AND_BUFFS_COMPONENT.to_owned(), None);
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        let header = ContentBlockHeader {
+            has_rep_layout: true,
+            is_actor: false,
+            object_net_guid: NetworkGuid(144),
+            ..ContentBlockHeader::default()
+        };
+        sink.on_content_block(3, NetworkGuid(89), &header);
+
+        let outcome = sink.on_rep_layout_tail(
+            NetworkGuid(89),
+            tail.len() as u32,
+            BitReader::with_bit_len(&tail_bytes, tail.len() as u64).unwrap(),
+        );
+
+        assert_eq!(outcome, RepLayoutTailOutcome::Decoded { rpc_count: 1 });
+        assert_eq!(sink.records.fields.len(), 1);
+        let row = &sink.records.fields[0];
+        assert_eq!(row.handle, 1);
+        assert_eq!(row.field_name.as_deref(), Some(CHAINED_CNC_H1_FIELD_NAME));
+        assert_eq!(row.bit_count, body.len() as u32);
+        assert_eq!(
+            row.raw_bits.as_deref(),
+            Some(bits_to_bytes(&body).as_slice())
+        );
+        assert!(row.compatible_checksum.is_none());
+        assert!(row.value_i64.is_none());
+        assert!(row.value_f64.is_none());
+        assert!(row.value_bool.is_none());
+        assert!(row.value_str.is_none());
+        assert_eq!(sink.stats.rep_layout_cnc_tails_decoded, 1);
+        assert_eq!(sink.stats.rep_layout_cnc_tails_preserved, 0);
+    }
+
+    #[test]
+    fn matching_tail_shape_without_raw_component_provenance_stays_whole_and_raw() {
+        let body = [true, false, true, false, true, false, true, false, true];
+        let tail = one_h1_cnc_tail(&body);
+        let tail_bytes = bits_to_bytes(&tail);
+        let mut cache = NetGuidCache::new();
+        cache.set_net_guid_path(145, ABILITIES_AND_BUFFS_COMPONENT.to_owned(), None);
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        let known_header = ContentBlockHeader {
+            has_rep_layout: true,
+            is_actor: false,
+            object_net_guid: NetworkGuid(145),
+            ..ContentBlockHeader::default()
+        };
+        sink.on_content_block(3, NetworkGuid(89), &known_header);
+        assert!(sink.current_is_abilities_and_buffs);
+
+        let header = ContentBlockHeader {
+            has_rep_layout: true,
+            is_actor: false,
+            object_net_guid: NetworkGuid(144),
+            ..ContentBlockHeader::default()
+        };
+        sink.on_content_block(3, NetworkGuid(89), &header);
+        assert!(
+            !sink.current_is_abilities_and_buffs,
+            "a following unresolved block must clear prior provenance"
+        );
+
+        let outcome = sink.on_rep_layout_tail(
+            NetworkGuid(89),
+            tail.len() as u32,
+            BitReader::with_bit_len(&tail_bytes, tail.len() as u64).unwrap(),
+        );
+
+        assert_eq!(
+            outcome,
+            RepLayoutTailOutcome::Preserved {
+                cause: StreamFailureCause::UnverifiedRepLayoutTail,
+            }
+        );
+        assert_eq!(sink.records.fields.len(), 1);
+        let row = &sink.records.fields[0];
+        assert_eq!(
+            row.field_name.as_deref(),
+            Some(UNPARSED_REP_LAYOUT_TAIL_FIELD_NAME)
+        );
+        assert_eq!(row.bit_count, tail.len() as u32);
+        assert_eq!(row.raw_bits.as_deref(), Some(tail_bytes.as_slice()));
+        assert!(row.compatible_checksum.is_none());
+        assert!(row.value_i64.is_none());
+        assert!(row.value_f64.is_none());
+        assert!(row.value_bool.is_none());
+        assert!(row.value_str.is_none());
+        assert_eq!(sink.stats.rep_layout_cnc_tails_decoded, 0);
+        assert_eq!(sink.stats.rep_layout_cnc_tails_preserved, 1);
+    }
+
+    #[test]
+    fn verified_component_preserves_exact_but_unverified_tail_shapes_whole() {
+        let first = one_h1_cnc_tail(&[true, false, true]);
+        let mut two_rpcs = first.clone();
+        two_rpcs.extend(one_h1_cnc_tail(&[true, true, false]));
+        let false_flag = one_h1_cnc_tail(&[false, true, true]);
+
+        let mut cache = NetGuidCache::new();
+        cache.set_net_guid_path(144, ABILITIES_AND_BUFFS_COMPONENT.to_owned(), None);
+        let mut channel_state = ChannelState::new();
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        let header = ContentBlockHeader {
+            has_rep_layout: true,
+            is_actor: false,
+            object_net_guid: NetworkGuid(144),
+            ..ContentBlockHeader::default()
+        };
+        sink.on_content_block(3, NetworkGuid(89), &header);
+
+        for tail in [&two_rpcs, &false_flag] {
+            let bytes = bits_to_bytes(tail);
+            let outcome = sink.on_rep_layout_tail(
+                NetworkGuid(89),
+                tail.len() as u32,
+                BitReader::with_bit_len(&bytes, tail.len() as u64).unwrap(),
+            );
+            assert_eq!(
+                outcome,
+                RepLayoutTailOutcome::Preserved {
+                    cause: StreamFailureCause::UnverifiedRepLayoutTail,
+                }
+            );
+            let row = sink.records.fields.last().unwrap();
+            assert_eq!(
+                row.field_name.as_deref(),
+                Some(UNPARSED_REP_LAYOUT_TAIL_FIELD_NAME)
+            );
+            assert_eq!(row.bit_count, tail.len() as u32);
+            assert_eq!(row.raw_bits.as_deref(), Some(bytes.as_slice()));
+        }
+        assert_eq!(sink.stats.rep_layout_cnc_tails_decoded, 0);
+        assert_eq!(sink.stats.rep_layout_cnc_tails_preserved, 2);
     }
 
     /// A truncated RPC payload -- the first parameter declares more bits than
@@ -1050,6 +1340,10 @@ mod tests {
             function_count: 0,
             consumed_bits: 0,
             remaining_bits: u64::from(bit_count),
+            cause: vrf_net::pipeline::StreamFailureCause::UnresolvedFunctionCount,
+            record_handle: None,
+            record_offset: Some(0),
+            payload_preserved: true,
         };
         sink.on_unresolved_class_net_cache_payload(failure, &data);
 
@@ -1125,6 +1419,10 @@ mod tests {
             function_count: 0,
             consumed_bits: 0,
             remaining_bits: u64::from(bit_count),
+            cause: vrf_net::pipeline::StreamFailureCause::UnresolvedFunctionCount,
+            record_handle: None,
+            record_offset: Some(0),
+            payload_preserved: true,
         };
         sink.on_unresolved_class_net_cache_payload(failure, &data);
 
@@ -1301,6 +1599,161 @@ mod tests {
 
         let players = sink.channel_state.players.clone();
         assert_eq!(players.get(&42).unwrap().character_net_guid, Some(1368));
+    }
+
+    /// The 32-line failure window is a display buffer, and the aggregate must
+    /// not inherit its cap: a replay that fails 100 blocks keeps all 100 in
+    /// the aggregate while the line list stops at the usual 32. This is the
+    /// property the 2026-09-07 corpus lacked -- 714 saturated windows, no
+    /// population counts.
+    #[test]
+    fn failures_past_the_line_cap_are_all_aggregated() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        channel_state.enable_failure_aggregate(false);
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        sink.set_current_group_path(Arc::from("/Script/ShooterGame.AresAbilitySystemComponent"));
+        let failure = |consumed: u64| StreamFailure {
+            kind: vrf_net::pipeline::StreamKind::RepLayout,
+            actor_net_guid: NetworkGuid(7),
+            bit_count: 200,
+            function_count: 0,
+            consumed_bits: consumed,
+            remaining_bits: 200 - consumed,
+            cause: vrf_net::pipeline::StreamFailureCause::AbandonedTail,
+            record_handle: Some(3),
+            record_offset: Some(consumed),
+            payload_preserved: false,
+        };
+
+        for i in 0..100 {
+            sink.on_stream_failure(failure(i % 2));
+        }
+
+        assert_eq!(
+            sink.channel_state.stream_failures().len(),
+            32,
+            "the line window stays capped"
+        );
+        let agg = sink.channel_state.failures.as_ref().unwrap();
+        assert_eq!(agg.total_failures(), 100, "the aggregate never caps");
+        assert_eq!(agg.real_loss(), 100);
+        // Two cells: consumed_bits is a key dimension, so the 50 failures that
+        // stopped at 0 and the 50 that stopped at 1 stay apart, and each cell
+        // still counts its whole population.
+        let cells = agg.cells_sorted();
+        assert_eq!(cells.len(), 2, "two distinct consumed values, two cells");
+        let counted: u64 = cells.iter().map(|(_, cell)| cell.count).sum();
+        assert_eq!(counted, 100, "the cells together hold every failure");
+        for (key, cell) in &cells {
+            assert_eq!(cell.count, 50, "{:?}", key.consumed_bits);
+        }
+        assert_eq!(
+            cells[0].0.cause,
+            vrf_net::pipeline::StreamFailureCause::AbandonedTail
+        );
+        assert_eq!(cells[0].0.record_handle, Some(3));
+    }
+
+    /// A preserved unresolved RPC failure and a genuinely lost RepLayout
+    /// failure must land in separate aggregate buckets, so real loss is never
+    /// inflated by payloads that are on disk as preservation rows.
+    #[test]
+    fn preserved_unresolved_failures_are_separated_from_real_loss() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        channel_state.enable_failure_aggregate(true);
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        sink.set_current_group_path(Arc::from("AbilitiesAndBuffsComponent"));
+
+        // The framing layer's exact sequence for an unresolved block:
+        // on_unresolved_class_net_cache_payload, then on_stream_failure.
+        let unresolved = StreamFailure {
+            kind: vrf_net::pipeline::StreamKind::Rpc,
+            actor_net_guid: NetworkGuid(9),
+            bit_count: 64,
+            function_count: 0,
+            consumed_bits: 0,
+            remaining_bits: 64,
+            cause: vrf_net::pipeline::StreamFailureCause::UnresolvedFunctionCount,
+            record_handle: None,
+            record_offset: Some(0),
+            payload_preserved: true,
+        };
+        for i in 0..40 {
+            let _ = i;
+            sink.on_unresolved_class_net_cache_payload(unresolved, &[0xDE, 0xAD]);
+            sink.on_stream_failure(unresolved);
+        }
+
+        // ...plus a real RepLayout loss.
+        sink.set_current_group_path(Arc::from("/Script/ShooterGame.AresAbilitySystemComponent"));
+        sink.on_stream_failure(StreamFailure {
+            kind: vrf_net::pipeline::StreamKind::RepLayout,
+            actor_net_guid: NetworkGuid(7),
+            bit_count: 200,
+            function_count: 0,
+            consumed_bits: 185,
+            remaining_bits: 15,
+            cause: vrf_net::pipeline::StreamFailureCause::AbandonedTail,
+            record_handle: Some(3),
+            record_offset: Some(185),
+            payload_preserved: false,
+        });
+
+        let agg = sink.channel_state.failures.as_ref().unwrap();
+        assert_eq!(agg.total_failures(), 41);
+        assert_eq!(agg.preserved_unresolved(), 40);
+        assert_eq!(agg.real_loss(), 1, "only the RepLayout block is loss");
+        let cells = agg.cells_sorted();
+        assert_eq!(cells.len(), 2);
+        // Sorted by count: the preserved cell first, its samples carrying the
+        // real payload bytes recorded by on_unresolved.
+        assert_eq!(
+            cells[0].0.cause,
+            vrf_net::pipeline::StreamFailureCause::UnresolvedFunctionCount
+        );
+        assert_eq!(cells[0].1.samples.len(), 3, "sample cap, not 40");
+        assert_eq!(cells[0].1.samples[0].payload_hex.as_deref(), Some("dead"));
+        assert_eq!(cells[1].0.kind, vrf_net::pipeline::StreamKind::RepLayout);
+        assert_eq!(
+            cells[1].0.group_path.as_ref(),
+            "/Script/ShooterGame.AresAbilitySystemComponent"
+        );
+    }
+
+    /// Taking the aggregate drains it, so a checkpoint pass that creates one
+    /// channel state per chunk cannot double-count a chunk's failures into
+    /// the caller's totals.
+    #[test]
+    fn taking_the_aggregate_drains_it() {
+        let mut cache = NetGuidCache::new();
+        let mut channel_state = ChannelState::new();
+        channel_state.enable_failure_aggregate(false);
+        let mut records = RecordBuffers::default();
+        let mut sink = ExportSink::new(&mut cache, &mut channel_state, &mut records);
+        sink.set_current_group_path(Arc::from("SomeGroup"));
+        sink.on_stream_failure(StreamFailure {
+            kind: vrf_net::pipeline::StreamKind::RepLayout,
+            actor_net_guid: NetworkGuid(1),
+            bit_count: 16,
+            function_count: 0,
+            consumed_bits: 8,
+            remaining_bits: 8,
+            cause: vrf_net::pipeline::StreamFailureCause::ReadError,
+            record_handle: Some(0),
+            record_offset: Some(1),
+            payload_preserved: false,
+        });
+
+        let taken = sink.channel_state.take_failure_aggregate();
+        assert_eq!(taken.total_failures(), 1);
+        assert!(
+            sink.channel_state.failures.is_none(),
+            "taking disables the drained aggregate"
+        );
     }
 
     /// ...but a character that never spawned still reports nothing, rather

@@ -8,23 +8,23 @@
   "rep_layout_blocks": 258892,
   "class_net_cache_blocks": 349119,
   "fields": 429637,
-  "rpcs": 342735,
+  "rpcs": 342953,
   "actor_opens": 2028,
   "actor_closes": 1799,
   "bunches": 530401,
   "malformed_packets": 0,
-  "skipped_bits": 19135006,
+  "skipped_bits": 19239874,
   "movement_rows": 1839607,
   "net_guid_rows": 16167,
   "event_rows": 195,
   "event_layout_mismatches": 0,
   "event_payloads_decoded": 195,
   "event_payload_unknown_groups": 0,
-  "overlay_decoded_ok": 743036,
+  "overlay_decoded_ok": 789029,
   "overlay_decode_errors": 0,
-  "overlay_raw_skip": 72644,
-  "overlay_not_in_table": 171307,
-  "overlay_no_field_name": 1996,
+  "overlay_raw_skip": 31793,
+  "overlay_not_in_table": 166134,
+  "overlay_no_field_name": 2027,
   "overlay_rows_offered": 988983,
   "effect_blobs_decoded": 53908,
   "struct_blobs_decoded": 207,
@@ -35,15 +35,15 @@
   "cp_exported_fields": 49314,
   "cp_frames": 18,
   "cp_frame_packets": 3691,
-  "cp_field_rows": 78850,
+  "cp_field_rows": 78924,
   "cp_struct_blobs_decoded": 35,
   "cp_struct_blobs_failed": 0
  },
  "parquet": {
   "fields": {
-   "rows": 1277658,
-   "bytes": 15880976,
-   "sha256": "3f16866b326a59aaa8408bef038f059a0f6fbd439459defde714dab70b52c85a"
+   "rows": 1277983,
+   "bytes": 16119220,
+   "sha256": "fc8b5c4822a8ab9036327e021297afb9c6de7d0b22f45c106541b22f2edf3b38"
   },
   "movement": {
    "rows": 1839607,
@@ -66,9 +66,9 @@
    "sha256": "e3879e2aabfc83ecae48be30ef8056fc8ec10ee1dab50c3882dc2b72d0f12af2"
   },
   "checkpoint_fields": {
-   "rows": 78850,
-   "bytes": 231320,
-   "sha256": "269ba8311a5a41cfae69ca1ed75fb2b60797eddad66fa047297027f30c41cc25"
+   "rows": 78924,
+   "bytes": 234673,
+   "sha256": "5e40548ccd79a7ae334bc0443b14779dbce31df3c9578ae48f9e7bfe43a9a157"
   }
  }
 }

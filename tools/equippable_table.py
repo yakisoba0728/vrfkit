@@ -6,7 +6,8 @@ Source: src/Replay.Valorant/Combat/ValorantEquippableResolver.cs
 
 Keys cover the three path shapes that appear in replay data, mirroring
 the C# CreateDefinitions(): the full 'Package.Class_C' path, the package
-path alone, and the 'Default__Class_C' archetype form.
+path alone, and the 'Default__Class_C' archetype form. Measured, exact
+path aliases cover known game asset renames without case-folding keys.
 """
 
 # fmt: off
@@ -38,9 +39,13 @@ EQUIPPABLE_DEFINITIONS = [
     ('/Game/Characters/Deadeye/S0/Ability_X/Gun_Giantslayer/Gun_Deadeye_X_Giantslayer_Prototype_FIreRatePrototype.Gun_Deadeye_X_Giantslayer_Prototype_FireRatePrototype_C', 'Tour de Force', 'ability'),
 ]
 
+EQUIPPABLE_PATH_ALIASES = {
+    '/Game/Equippables/Guns/SniperRifles/Dmr/DMR.DMR_C': ('/Game/Equippables/Guns/SniperRifles/DMR/DMR.DMR_C',),
+}
+
 
 def _build_lookup():
-    """class path (all three shapes) -> (name, category, canonical path)."""
+    """Known path shapes -> (name, category, canonical source path)."""
     out = {}
     for class_path, name, category in EQUIPPABLE_DEFINITIONS:
         value = (name, category, class_path)
@@ -49,6 +54,11 @@ def _build_lookup():
             package, _, class_name = class_path.rpartition('.')
             out[package] = value
             out['Default__' + class_name] = value
+        for alias in EQUIPPABLE_PATH_ALIASES.get(class_path, ()):
+            out[alias] = value
+            if '.' in alias:
+                package, _, _ = alias.rpartition('.')
+                out[package] = value
     return out
 
 
