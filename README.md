@@ -54,7 +54,7 @@ can be represented by their rows instead of a duplicate raw RPC.
 
 ## Supported VALORANT builds
 
-| Build | Branch | Clean/checked | Verified by |
+| 🎮 Build | 🌿 Branch | ✅ Clean/checked | 🔎 Verified by |
 |---|---|---:|---|
 | **13.06** | `release-13.06` | 6/6 | Validation + checkpoints + typed/raw |
 | **13.05** | `release-13.05` | 401/401 | Validation + checkpoints + typed/raw |
@@ -84,7 +84,7 @@ can be represented by their rows instead of a duplicate raw RPC.
 Measured 2026-09-25 on all **986 unique available replays**, across all 24
 supported branches. Every row uses the [same acceptance rule](docs/BUILD_VERIFICATION.md).
 **Clean/checked** includes the strict array and array-leaf error counters:
-**986/986** are clean after the ActiveBlinds empty-delta and null-reference
+✅ **986/986** are clean after the ActiveBlinds empty-delta and null-reference
 fixes. All 986 pass ReplayData validation, checkpoint-enabled export and
 the independent comparisons on observed evidence fields. The full report
 records counts and limits; this is not a claim that every field is understood.
