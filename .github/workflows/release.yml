@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify tagged commit
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Publish verified Windows release
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-release
+          path: release-dist
+      - name: verify the assets and publish without rebuilding
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 -W error tools/package_release.py verify --directory release-dist --tag "$RELEASE_TAG" --commit "$GITHUB_SHA"
+          archive="release-dist/vrfkit-$RELEASE_TAG-windows-x64.zip"
+          flags=()
+          version="${RELEASE_TAG%%+*}"
+          if [[ "$version" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" "$archive" "$archive.sha256" --verify-tag --generate-notes --title "$RELEASE_TAG" "${flags[@]}"

@@ -19,7 +19,7 @@ by Michel Giehl; see [`NOTICE.md`](NOTICE.md). Not affiliated with, endorsed
 by, or approved by Riot Games.
 
 **Verified state (2026-09-25):** Rust has **714 passing** tests; Python has
-**891 passing** tests. All 24 supported builds received the same verification
+**910 passing** tests. All 24 supported builds received the same verification
 on **986 unique replays**; all **986** meet every strict criterion after fixing
 the two ActiveBlinds decoding errors found by the first audit. See [build verification](docs/BUILD_VERIFICATION.md)
 for the measured scope, common checks and remaining limits.
@@ -379,10 +379,16 @@ it as one gives the year 3626.
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**714 passing**; the full Python suite also has **891 passing** tests. The
+**714 passing**; the full Python suite also has **910 passing** tests. The
 full documentation check passes. The latest [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export, independent value checks and
 the resolved array findings and remaining semantic limits for each supported build.
+
+Tagged Windows releases provide a ZIP and SHA-256 checksum. The release
+workflow runs the complete CI on the tagged commit, checks the packaged binary
+against a public replay, and publishes the verified ZIP without rebuilding it.
+The same packaging checks run on PRs. See [release maintenance](CONTRIBUTING.md#tagged-windows-releases)
+for tag naming and validation before publishing.
 
 CI measures these test counts, runs Python checks on Windows and Ubuntu
 with Python 3.12/3.13, and tests Rust stable with all features and core-only CLI
