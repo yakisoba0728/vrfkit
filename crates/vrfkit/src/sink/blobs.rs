@@ -308,9 +308,31 @@ fn blind_member_width_valid(handle: u32, width: u32) -> bool {
         6 | 7 => width == 1,
         8 | 9 => width == 32,
         10 => width == 16,
-        11 => matches!(width, 16 | 24),
+        // Object references use IntPacked. A null actor is the one-byte zero,
+        // observed in 59 main/checkpoint windows across the 81-file audit.
+        11 => matches!(width, 8 | 16 | 24),
         _ => false,
     }
+}
+
+/// ActiveBlinds empty deltas may carry one extra zero IntPacked after the
+/// index terminator (57 observed windows in 13.01/13.02/13.04/13.05). Consume
+/// that exact trailer before the strict walker; the exported parent still
+/// retains the original bit count and bytes. Populated arrays, nonzero tails
+/// and multiple/truncated trailers keep the ordinary exact-window checks.
+fn active_blind_array_bits(raw: &[u8], bit_count: u32) -> u32 {
+    let without_empty_trailer = (|| {
+        let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count)).ok()?;
+        let capacity = reader.read_int_packed().ok()?;
+        if capacity > vrf_decode::MAX_ELEMENTS || reader.read_int_packed().ok()? != 0 {
+            return None;
+        }
+        if reader.bits_remaining() != 8 || reader.read_int_packed().ok()? != 0 {
+            return None;
+        }
+        Some(bit_count - 8)
+    })();
+    without_empty_trailer.unwrap_or(bit_count)
 }
 
 /// `TrackedRewards` leaf types have independent full-corpus evidence. The
@@ -738,9 +760,14 @@ impl ExportSink<'_> {
         let parent_name = field_name.unwrap_or("_array");
         let measured = self.measured_array_routes
             && measured_array_route(&self.current_group_path, parent_name, checksum);
+        let array_bits = if measured && parent_name == "ActiveBlinds" {
+            active_blind_array_bits(raw, bit_count)
+        } else {
+            bit_count
+        };
         if measured
             && parent_name == "ActiveBlinds"
-            && !strict_nested_array_preflight(raw, bit_count, &[3, 4, 5, 6, 7, 8, 9, 10, 11])
+            && !strict_nested_array_preflight(raw, array_bits, &[3, 4, 5, 6, 7, 8, 9, 10, 11])
         {
             self.stats.array.errors += 1;
             return;
@@ -759,7 +786,7 @@ impl ExportSink<'_> {
         }
         let mut isolated = vrf_decode::ArrayDecodeStats::default();
         let flattened = if measured {
-            vrf_decode::decode_struct_array_exact(raw, bit_count, &declared, &mut isolated)
+            vrf_decode::decode_struct_array_exact(raw, array_bits, &declared, &mut isolated)
         } else {
             vrf_decode::decode_struct_array(
                 raw,
@@ -2275,6 +2302,137 @@ mod tests {
             field_limit.len() as u32,
             &[7]
         ));
+    }
+
+    #[test]
+    fn active_blinds_empty_delta_with_zero_trailer_is_complete() {
+        let identity = (
+            "/Script/ShooterGame.BlindManagerComponent",
+            "ActiveBlinds",
+            3_853_965_310,
+        );
+        // Captured 57 times across 13.01/13.02/13.04/13.05: capacity
+        // one (56 cases) or two (one case), no changed elements, zero trailer.
+        for capacity in [1, 2] {
+            let mut bits = Vec::new();
+            packed(&mut bits, capacity);
+            packed(&mut bits, 0);
+            let (_, control) =
+                export_array_with_declarations(identity, &[], &bits, Some(MEASURED_BUILD));
+            assert_eq!(control.array.errors, 0);
+            packed(&mut bits, 0);
+            let (records, stats) =
+                export_array_with_declarations(identity, &[], &bits, Some(MEASURED_BUILD));
+            assert_eq!(stats.array.errors, 0, "capacity {capacity}");
+            assert_eq!(stats.array.unconsumed_root_bits, 0);
+            assert_eq!(stats.array_leaf_decode_errors, 0);
+            assert_eq!(
+                records.fields.len(),
+                1,
+                "unchanged elements add no children"
+            );
+            assert_eq!(
+                records.fields[0].raw_bits.as_deref(),
+                Some(bytes(&bits).as_slice())
+            );
+        }
+    }
+
+    #[test]
+    fn active_blinds_null_causing_actor_is_a_decoded_reference() {
+        let identity = (
+            "/Script/ShooterGame.BlindManagerComponent",
+            "ActiveBlinds",
+            3_853_965_310,
+        );
+        // The 59 rejected value windows contain a one-byte IntPacked zero.
+        // Keep the positive reference as a control through the same sink.
+        for reference in [257, 0] {
+            let mut payload = Vec::new();
+            packed(&mut payload, reference);
+            let bits = one_leaf(11, &payload);
+            let (records, stats) = export_array_with_declarations(
+                identity,
+                &[(11, "CausingActor", 2_370_661_694)],
+                &bits,
+                Some(MEASURED_BUILD),
+            );
+            assert_eq!(stats.array.errors, 0);
+            assert_eq!(stats.array_leaf_decode_errors, 0, "reference {reference}");
+            assert_eq!(records.fields.len(), 2);
+            assert_eq!(records.fields[0].value_i64, Some(i64::from(reference)));
+            assert_eq!(
+                records.fields[0].raw_bits.as_deref(),
+                Some(bytes(&payload).as_slice())
+            );
+            assert_eq!(
+                records.fields[1].raw_bits.as_deref(),
+                Some(bytes(&bits).as_slice())
+            );
+        }
+    }
+
+    #[test]
+    fn active_blinds_invalid_trailers_and_references_still_fail() {
+        let identity = (
+            "/Script/ShooterGame.BlindManagerComponent",
+            "ActiveBlinds",
+            3_853_965_310,
+        );
+        let mut empty = Vec::new();
+        packed(&mut empty, 1);
+        packed(&mut empty, 0);
+        for trailer in [
+            vec![true; 8],
+            bits_from_bytes(&[2]),
+            bits_from_bytes(&[0, 0]),
+        ] {
+            let mut bits = empty.clone();
+            bits.extend(trailer);
+            let (records, stats) =
+                export_array_with_declarations(identity, &[], &bits, Some(MEASURED_BUILD));
+            assert_eq!(stats.array.errors, 1);
+            assert_eq!(records.fields.len(), 1);
+            assert_eq!(
+                records.fields[0].raw_bits.as_deref(),
+                Some(bytes(&bits).as_slice())
+            );
+        }
+        for payload in [
+            bits_from_bytes(&[1]),
+            bits_from_bytes(&[0, 0]),
+            vec![false; 7],
+        ] {
+            let bits = one_leaf(11, &payload);
+            let (records, stats) = export_array_with_declarations(
+                identity,
+                &[(11, "CausingActor", 2_370_661_694)],
+                &bits,
+                Some(MEASURED_BUILD),
+            );
+            assert_eq!(stats.array_leaf_decode_errors, 1);
+            assert!(records.fields.iter().all(|row| row.value_i64.is_none()));
+            assert_eq!(
+                records.fields.last().unwrap().raw_bits.as_deref(),
+                Some(bytes(&bits).as_slice())
+            );
+        }
+        let mut populated = one_leaf(11, &bits_from_bytes(&[0]));
+        packed(&mut populated, 0);
+        let (_, stats) = export_array_with_declarations(
+            identity,
+            &[(11, "CausingActor", 2_370_661_694)],
+            &populated,
+            Some(MEASURED_BUILD),
+        );
+        assert_eq!(
+            stats.array.errors, 1,
+            "only empty deltas admit the zero trailer"
+        );
+        assert!(
+            !strict_nested_array_preflight(&[2, 0, 0], 24, &[11]),
+            "other array routes retain the exact-window contract"
+        );
     }
 
     #[test]

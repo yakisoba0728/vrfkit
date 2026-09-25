@@ -160,7 +160,7 @@ def inspect(row: dict, spec: dict) -> tuple[int, Counter, dict]:
             if expected is not None and width != expected:
                 raise ValueError(f"{name} width {width}, expected {expected}")
             if not path_point and handle in (3, 4, 5, 10, 11):
-                allowed = {3: (32,), 4: (64,), 5: (297,), 10: (16,), 11: (16, 24)}[handle]
+                allowed = {3: (32,), 4: (64,), 5: (297,), 10: (16,), 11: (8, 16, 24)}[handle]
                 if width not in allowed:
                     raise ValueError(f"{name} width {width}, expected {allowed}")
             start = bits.pos
@@ -176,9 +176,15 @@ def inspect(row: dict, spec: dict) -> tuple[int, Counter, dict]:
             fields += 1
             if fields > 128:
                 raise ValueError("too many member fields")
+    # ActiveBlinds is delta-replicated: a frame can update only selected
+    # members, or change no elements and include one additional zero trailer.
+    # Projectile path points still require all three members and no trailer.
+    if not path_point and seen == 0 and bits.length - bits.pos == 8:
+        if bits.packed() != 0:
+            raise ValueError("nonzero empty-array trailer")
     if bits.pos != bits.length:
         raise ValueError(f"{bits.length - bits.pos} unconsumed bits")
-    if len(children) != seen * (3 if path_point else 9):
+    if path_point and len(children) != seen * 3:
         raise ValueError(f"{len(children)} members for {seen} elements")
     return seen, observations, children
 
