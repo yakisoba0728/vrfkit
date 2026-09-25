@@ -6,6 +6,8 @@ therefore the thing that must not rot into something that passes everything.
 """
 import sys
 import unittest
+from unittest.mock import patch
+from subprocess import CompletedProcess
 from pathlib import Path
 
 
@@ -185,6 +187,42 @@ class SourceTableSizeTests(unittest.TestCase):
 
     def test_the_shipped_crates_quote_the_live_size(self):
         self.assertEqual(guard.check_source_table_size(), [])
+
+
+class SuiteMeasurementTests(unittest.TestCase):
+    RUST = "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n"
+    PYTHON = "Ran 4 tests in 0.01s\n\nOK\n"
+
+    def measure(self, rust=None, python=None, rust_exit=0, python_exit=0):
+        with patch.object(guard.subprocess, "run", side_effect=[
+            CompletedProcess([], rust_exit, stdout=self.RUST if rust is None else rust, stderr=""),
+            CompletedProcess([], python_exit, stdout="", stderr=self.PYTHON if python is None else python),
+        ]) as run:
+            result = guard.measure_tests()
+        return result, run
+
+    def test_measures_both_suites_and_promotes_python_warnings(self):
+        result, run = self.measure(rust=self.RUST * 2)
+        self.assertEqual(result, (6, 4, []))
+        self.assertEqual(run.call_args_list[1].args[0][1:3], ["-W", "error"])
+
+    def test_empty_output_and_zero_tests_are_not_successful_measurements(self):
+        for label, output in (("rust", ""), ("python", ""),
+                              ("rust", self.RUST.replace("3 passed", "0 passed")),
+                              ("python", self.PYTHON.replace("4 tests", "0 tests"))):
+            with self.subTest(label=label, output=output):
+                self.assertTrue(self.measure(**{label: output})[0][2])
+
+    def test_passing_text_cannot_hide_a_failed_process(self):
+        for kwargs in ({"rust_exit": 1}, {"python_exit": 1}):
+            with self.subTest(kwargs=kwargs):
+                self.assertTrue(self.measure(**kwargs)[0][2])
+
+    def test_skipped_python_tests_are_not_reported_as_all_passing(self):
+        self.assertTrue(self.measure(python=self.PYTHON.replace("OK", "OK (skipped=1)"))[0][2])
+
+    def test_unrelated_passing_text_is_not_a_rust_suite_summary(self):
+        self.assertTrue(self.measure(rust="an example says 999 passed\n")[0][2])
 
 
 class TestCountTests(unittest.TestCase):

@@ -18,15 +18,17 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 by Michel Giehl; see [`NOTICE.md`](NOTICE.md). Not affiliated with, endorsed
 by, or approved by Riot Games.
 
-**Verified state:** Rust has **707 passing** tests; Python has **850 passing**
-tests. The historical 714-file comparison and corpus guards passed. The latest
-upstream changes were checked on a smaller preserved sample; see
-[current status](docs/CURRENT_STATUS.md) for the evidence boundary.
+**Verified state (2026-09-25):** Rust has **714 passing** tests; Python has
+**891 passing** tests. All 24 supported builds received the same verification
+on **986 unique replays**; all **986** meet every strict criterion after fixing
+the two ActiveBlinds decoding errors found by the first audit. See [build verification](docs/BUILD_VERIFICATION.md)
+for the measured scope, common checks and remaining limits.
 
 - Run it: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable: [`docs/DATA.md`](docs/DATA.md)
 - Current corpus status and remaining work: [`docs/CURRENT_STATUS.md`](docs/CURRENT_STATUS.md)
-- Latest parser corpus results: [`docs/TARGETING_AND_HEAL_VALUES.md`](docs/TARGETING_AND_HEAL_VALUES.md)
+- Latest build verification: [`docs/BUILD_VERIFICATION.md`](docs/BUILD_VERIFICATION.md)
+- Historical field inventory: [`docs/TARGETING_AND_HEAL_VALUES.md`](docs/TARGETING_AND_HEAL_VALUES.md)
 - Upstream parity and 13.06 validation: [`docs/UPSTREAM_PARITY.md`](docs/UPSTREAM_PARITY.md)
 - Character-death and KillData state: [`docs/KILL_LEDGER.md`](docs/KILL_LEDGER.md)
 - Damage, healing, decay and reset observations: [`docs/SECTION_OBSERVATIONS.md`](docs/SECTION_OBSERVATIONS.md)
@@ -52,40 +54,43 @@ can be represented by their rows instead of a duplicate raw RPC.
 
 ## Supported VALORANT builds
 
-| Build | Branch | Status | Verified by |
-|---|---|---|---|
-| **13.06** | `release-13.06` | ✅ Supported | 11 upstream golden vectors + six real replays with checkpoint export; see [scope](docs/UPSTREAM_PARITY.md) |
-| **13.05** | `release-13.05` | ✅ Supported | Preserved fixture + golden vectors + 187-file portion of the 714-file main/checkpoint audit |
-| **13.04** | `release-13.04` | ✅ Supported | Preserved fixture + upstream golden vectors + 108-replay full export/checkpoint sweep |
-| **13.02** | `release-13.02` | ✅ Supported | Preserved replay + 204-replay oracle sweep |
-| **13.01** | `release-13.01` | ✅ Supported | 215-replay full corpus |
-| **13.00** | `release-13.00` | ✅ Supported | Preserved fixture + golden vectors |
-| **12.11** | `release-12.11` | ✅ Supported | Preserved fixture + golden vectors |
-| **12.10** | `release-12.10` | ✅ Supported | Preserved fixture + golden vectors |
-| **12.09** | `release-12.09` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **12.08** | `release-12.08` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **12.07** | `release-12.07` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **12.06** | `release-12.06` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **12.05** | `release-12.05` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **12.04** | `release-12.04` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **12.03** | `release-12.03` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **12.02** | `release-12.02` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **12.01** | `release-12.01` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **12.00** | `release-12.00` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **11.11** | `release-11.11` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **11.10** | `release-11.10` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **11.09** | `release-11.09` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **11.08** | `release-11.08` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **11.07** | `release-11.07` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
-| **11.06** | `release-11.06` | ✅ Supported | 79 native golden vectors + three real replays with checkpoint export |
+| 🎮 Build | 🌿 Branch | ✅ Clean/checked | 🔎 Verified by |
+|---|---|---:|---|
+| **13.06** | `release-13.06` | 6/6 | Validation + checkpoints + typed/raw |
+| **13.05** | `release-13.05` | 401/401 | Validation + checkpoints + typed/raw |
+| **13.04** | `release-13.04` | 108/108 | Validation + checkpoints + typed/raw |
+| **13.02** | `release-13.02` | 205/205 | Validation + checkpoints + typed/raw |
+| **13.01** | `release-13.01` | 215/215 | Validation + checkpoints + typed/raw |
+| **13.00** | `release-13.00` | 1/1 | Validation + checkpoints + typed/raw |
+| **12.11** | `release-12.11` | 1/1 | Validation + checkpoints + typed/raw |
+| **12.10** | `release-12.10` | 1/1 | Validation + checkpoints + typed/raw |
+| **12.09** | `release-12.09` | 3/3 | Validation + checkpoints + typed/raw |
+| **12.08** | `release-12.08` | 3/3 | Validation + checkpoints + typed/raw |
+| **12.07** | `release-12.07` | 3/3 | Validation + checkpoints + typed/raw |
+| **12.06** | `release-12.06` | 3/3 | Validation + checkpoints + typed/raw |
+| **12.05** | `release-12.05` | 3/3 | Validation + checkpoints + typed/raw |
+| **12.04** | `release-12.04` | 3/3 | Validation + checkpoints + typed/raw |
+| **12.03** | `release-12.03` | 3/3 | Validation + checkpoints + typed/raw |
+| **12.02** | `release-12.02` | 3/3 | Validation + checkpoints + typed/raw |
+| **12.01** | `release-12.01` | 3/3 | Validation + checkpoints + typed/raw |
+| **12.00** | `release-12.00` | 3/3 | Validation + checkpoints + typed/raw |
+| **11.11** | `release-11.11` | 3/3 | Validation + checkpoints + typed/raw |
+| **11.10** | `release-11.10` | 3/3 | Validation + checkpoints + typed/raw |
+| **11.09** | `release-11.09` | 3/3 | Validation + checkpoints + typed/raw |
+| **11.08** | `release-11.08` | 3/3 | Validation + checkpoints + typed/raw |
+| **11.07** | `release-11.07` | 3/3 | Validation + checkpoints + typed/raw |
+| **11.06** | `release-11.06` | 3/3 | Validation + checkpoints + typed/raw |
+
+Measured 2026-09-25 on all **986 unique available replays**, across all 24
+supported branches. Every row uses the [same acceptance rule](docs/BUILD_VERIFICATION.md).
+**Clean/checked** includes the strict array and array-leaf error counters:
+✅ **986/986** are clean after the ActiveBlinds empty-delta and null-reference
+fixes. All 986 pass ReplayData validation, checkpoint-enabled export and
+the independent comparisons on observed evidence fields. The full report
+records counts and limits; this is not a claim that every field is understood.
 
 All branches are `++Ares-Core+release-<build>`. Adding a build is one
-`SeededTransform` impl (two constants + three word functions); see
-[Adding a new build](#supported-builds-and-the-cost-of-a-new-build).
-
-All 48 available samples from 11.06 through 12.09 pass validation and
-checkpoint-enabled export. The [build support report](docs/LEGACY_BUILD_SUPPORT.md)
-records native-function comparisons, replay counts and independent value checks.
+`SeededTransform` impl; see [Adding a new build](#supported-builds-and-the-cost-of-a-new-build).
 
 ## Highlights
 
@@ -129,7 +134,7 @@ records native-function comparisons, replay counts and independent value checks.
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **707 Rust tests** plus a layered validation suite (framing / bytes / decode
+- **714 Rust tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -262,7 +267,7 @@ fields requires re-exporting from the original `.vrf`.
   boundary.** Use it for in-round alignment; use `time_ms` for a global
   timeline.
 - `movement_state` and `move_type` are constant (0, 1) across all
-  1,034,035,170 exported rows in the current 527-replay corpus (builds 13.01,
+  1,034,035,170 exported rows in the historical 2026-08-31 527-replay corpus (builds 13.01,
   13.02 and 13.04). A future build may break that invariant, so both bytes are
   exported verbatim.
 - **Posture detail is `bCrouchHeld`, not `movement_state`.** It already ships
@@ -374,8 +379,16 @@ it as one gives the year 3626.
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**707 passing**; the full Python suite also has **850 passing** tests. The
-all-corpus guards, all-file comparison, and full documentation check pass.
+**714 passing**; the full Python suite also has **891 passing** tests. The
+full documentation check passes. The latest [common build audit](docs/BUILD_VERIFICATION.md)
+records replay validation, checkpoint export, independent value checks and
+the resolved array findings and remaining semantic limits for each supported build.
+
+CI measures these test counts, runs Python checks on Windows and Ubuntu
+with Python 3.12/3.13, and tests Rust stable with all features and core-only CLI
+support. Three pinned public replays pass through the common checkpoint audit
+on every run. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full CI gates and
+the separate private-corpus checks.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.
@@ -383,7 +396,7 @@ from the table below on purpose -- they go stale, and re-measuring is one line.
 | Layer | Crate | Feature flags |
 |---|---|---|
 | Bit reader / UE wire format | `vrf-bitio` | `alloc` (default; drop it for `no_std`) |
-| Payload transform (8 builds) | `vrf-transform` | none (`ALL_VERSIONS` is a length-independent slice) |
+| Payload transform (24 builds) | `vrf-transform` | none (`ALL_VERSIONS` is a length-independent slice) |
 | Container (info/header/chunk/event/checkpoint, Oodle) | `vrf-container` | `oodle` `event` `checkpoint` |
 | DemoFrame traversal | `vrf-frame` | none (sections are byte ranges for cursor alignment) |
 | Replay dynamic schema + GUID cache + checkpoint tables | `vrf-schema` | `checkpoint` |
@@ -580,6 +593,17 @@ original is always left intact in `raw_payload`.
 
 ## Whole-corpus robustness
 
+The 2026-09-25 [common audit](docs/BUILD_VERIFICATION.md) checks 986 unique
+replays across 24 builds. Every ReplayData validation and checkpoint export
+succeeds. Independent typed/raw comparisons match 12,917,904
+observed values. All 986 pass the strict quality gate. The two ActiveBlinds
+fixes resolve the earlier 81-file findings and recover 522 additional typed
+children; an independent before/after comparison verifies those values and
+preserves every existing field row and raw payload.
+
+The measurements below describe earlier corpus revisions.
+
+
 The September 2026 follow-up re-exported and retained all 714 replays
 (13.01: 215, 13.02: 204, 13.04: 108, 13.05: 187), with checkpoints.
 ReplayData block validation passes on every file. Separate main/checkpoint
@@ -745,7 +769,7 @@ Physical value coverage is the fraction of `fields.parquet` rows with at
 least one non-null `value_*` column. It cannot be computed by adding overlay,
 effect-blob or struct counters: these count different units and may describe
 parent/child expansions of the same input. The current reference
-baseline has 914,001 typed rows out of 1,296,660 (70.49%), measured directly
+baseline has 914,117 typed rows out of 1,296,660 (70.50%), measured directly
 from its columns.
 Adding raw child windows changes this denominator even when every old typed
 value survives; compare raw preservation and newly typed values separately.
@@ -753,9 +777,9 @@ That snapshot is not a fraction of all game information understood.
 
 The historical [array and checkpoint expansion](docs/ARRAY_CONTEXT_EXPANSION.md)
 predates the [structured-array expansion](docs/STRUCTURED_ARRAY_EXPANSION.md),
-which adds 75,275,443 raw child windows and 3,510,015 typed reward windows in
-the completed export. Both 714-file corpus guards pass; its all-file comparison
-passed on all 714 files.
+which added 75,275,443 raw child windows and 3,510,015 typed reward windows in
+that completed export. Both 714-file corpus guards and the all-file comparison
+passed at that phase revision.
 
 The earlier [714-replay schema expansion](docs/SCHEMA_EXPANSION.md) independently
 verified 6,805,323 additional typed values, with physical coverage of 69.98%
@@ -797,7 +821,7 @@ bucket is supposed to be empty. The recipe is in
 [`docs/USAGE.md`](docs/USAGE.md#fieldsparquet).
 
 The historical 215-replay release-13.01 export sweep had **zero decode
-errors**, checked by `tools/check_decode_errors_corpus.py`. The current 108-file
+errors**, checked by `tools/check_decode_errors_corpus.py`. The historical 108-file
 release-13.04 export/checkpoint sweep likewise reports zero overlay, struct and
 checkpoint decode failures. This separate check exists because `vrfkit
 validate` does not print overlay counters, so `validate_corpus.py` alone cannot
@@ -860,7 +884,7 @@ functions (`word64` / `word32` / `byte`); everything else is shared.
 
 **13.02 and 13.04 are confirmed by live measurement, not only golden
 vectors.** A 527-replay machine-local sweep on 2026-08-31 covered all three
-current branches:
+then-available branches:
 
 ```
 215  ++Ares-Core+release-13.01
@@ -950,12 +974,15 @@ movement stream, JSON parsing was measured at 84% of processing time.
 Full detail is in [`docs/USAGE.md`](docs/USAGE.md) section 6. The checks are
 layered, and the layers catch different things:
 
-- **Framing** (`validate_corpus.py`, all 527 files) -- content-block framing,
-  loss accounting and unresolved-payload preservation.
+- **Common build audit** (`verify_build_corpus.py`) -- identical validation,
+  checkpoint export, quality-counter and independent typed/raw checks on
+  every available replay; per-build clean/checked counts are in the support table.
+- **Framing** (`validate_corpus.py`) -- content-block framing, loss accounting
+  and unresolved-payload preservation.
 - **Bytes** (`check_export_baseline.py`, per-file row and byte counts) --
   regression in any of the 28 export counters.
 - **Decode** (`check_decode_errors_corpus.py`, scoped export corpora) -- overlay
-  type errors and struct-blob failures; the current 13.04 scope is all 108 files
+  type errors and struct-blob failures; the recorded 13.04 scope is all 108 files
   with checkpoints enabled.
 - **Semantics** (`check_metrics_baseline.py`, 7 builds) -- round count,
   score, K/D/A invariants that need no baseline.
@@ -964,8 +991,8 @@ Two of the headline metrics are **not** "100% / high is good" and reading them
 that way is a trap:
 
 - Unresolved ClassNetCache payloads are preserved whole as marked raw rows
-  and therefore do not lower the oracle score. Current field-stream failures
-  still keep the score below 100%. This is not a typing claim: those
+  and therefore do not lower the oracle score. Field-stream failures
+  lower the score when present. This is not a typing claim: those
   rows cannot yet be split into named properties. `Malformed framing`,
   `Transform failed`, and `RPC payload lost` must remain zero; a non-zero
   `RPC unresolved/raw` count describes preserved, uninterpreted data.

@@ -1,0 +1,1155 @@
+{
+  "before_parser_commit": "bf8ab9c94b602061bcd65c606f116aabb82a0c9a",
+  "after_parser_commit": "91dc679ccdfa2e1ef5e7f241d1bdc4087b743016",
+  "after_parser_sources_sha256": "28310ef9d5b46e73a8a8704876dfad1b81e8f2d9692b25948c046826a703c0c7",
+  "after_exe_sha256": "21c75e916c965f5ee8425e370dff496e4326239dab2bd4153d43f6cd52fbd911",
+  "corpus_sha256": "87f950f834d71adb64839612ce179faf193ea5c2838e8d37026315d7d57dc8b5",
+  "before_clean": 905,
+  "after_clean": 986,
+  "input_replays": 986,
+  "causes": {
+    "empty_delta_zero_trailer": 57,
+    "null_causing_actor_reference": 59
+  },
+  "comparison": {
+    "replays": 986,
+    "identical_tables": 12729,
+    "main_added_rows": 18,
+    "checkpoint_added_rows": 504,
+    "recovered_parents": 59,
+    "checkpoint_range_tables_updated": 43,
+    "original_rows_unchanged": true,
+    "all_new_values_independently_matched": true
+  },
+  "changed_exports": [
+    {
+      "sha256": "110b6126c8348e0354eb68fcb10561a89b10f7d066171846e8152a04225dc86a",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "169b9b5598d0553bf7207bb51ba91d4a3c62f940626129586fabbd7757851cec",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 18,
+          "parents": 2,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 2,
+            "ActiveBlinds[0].EffectID": 2,
+            "ActiveBlinds[0].SourceID": 2,
+            "ActiveBlinds[0].bLocalEffect": 2,
+            "ActiveBlinds[0].bTransient": 2,
+            "ActiveBlinds[0].InitialDuration": 2,
+            "ActiveBlinds[0].StartNetMovementTime": 2,
+            "ActiveBlinds[0].BlindConfig": 2,
+            "ActiveBlinds[0].CausingActor": 2
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 18
+      }
+    },
+    {
+      "sha256": "171cfe83340cf990585c96874bd6421999bf7725b278d5bb23d2d80144740881",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "1769932cf879279250de759ccc1a698020a2139005cc5431706c7e17ad6393b4",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "198eca1597ebd567fcb910e412e4d324a7a56117209b0dc856cec67ca4698912",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "1aabf0161d36db3cabaf5fa7f8d8aa8c8e71f396710279e819834c62b3492d17",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "1b11a4f9e6d0237800278869d727f077bda81089c1807fe1a6e0decf2b82660f",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "223385089527736eb7f3bc0bbb42a829624bced3016bd4761c866f092f8d592a",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "2790692a601a0eb062a4672d9dedbfe174dbf6ec797520c0d312a1ffb0227eaa",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 18,
+          "parents": 2,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 2,
+            "ActiveBlinds[0].EffectID": 2,
+            "ActiveBlinds[0].SourceID": 2,
+            "ActiveBlinds[0].bLocalEffect": 2,
+            "ActiveBlinds[0].bTransient": 2,
+            "ActiveBlinds[0].InitialDuration": 2,
+            "ActiveBlinds[0].StartNetMovementTime": 2,
+            "ActiveBlinds[0].BlindConfig": 2,
+            "ActiveBlinds[0].CausingActor": 2
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 18
+      }
+    },
+    {
+      "sha256": "2ca56a3fc477d75c23390e7a287009e020396257b841832596031417538b6a80",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "35b268024cefa68038bee6b4f0cbb7a001dc401a29d21ac051baa8ec2b1303ec",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 18,
+          "parents": 2,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 2,
+            "ActiveBlinds[0].EffectID": 2,
+            "ActiveBlinds[0].SourceID": 2,
+            "ActiveBlinds[0].bLocalEffect": 2,
+            "ActiveBlinds[0].bTransient": 2,
+            "ActiveBlinds[0].InitialDuration": 2,
+            "ActiveBlinds[0].StartNetMovementTime": 2,
+            "ActiveBlinds[0].BlindConfig": 2,
+            "ActiveBlinds[0].CausingActor": 2
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 18
+      }
+    },
+    {
+      "sha256": "43572ce7b713996f43a9b252edf680bccf20d6a556c3bc9ced2f6fa6403c1853",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 18,
+          "parents": 2,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 2,
+            "ActiveBlinds[0].EffectID": 2,
+            "ActiveBlinds[0].SourceID": 2,
+            "ActiveBlinds[0].bLocalEffect": 2,
+            "ActiveBlinds[0].bTransient": 2,
+            "ActiveBlinds[0].InitialDuration": 2,
+            "ActiveBlinds[0].StartNetMovementTime": 2,
+            "ActiveBlinds[0].BlindConfig": 2,
+            "ActiveBlinds[0].CausingActor": 2
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 18
+      }
+    },
+    {
+      "sha256": "48bcba0b31cbad125fed43261054a5bead3ebc5c9229d060aa6d8424d0b65f07",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "4afc8ffcf05beaca81f0cb96504d29c2dc2f9b0f09bb0d00fcf4f820f339c4dd",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "4b13ff0dddb8de65be15b83d8126432b18b43ce61b24b3730779efd617ee86e4",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "541613d53f24e7a58f0728a08f2b645099454e6bd2e0ce656488a2fb1b234f90",
+      "identical_tables": 12,
+      "changed": {
+        "fields.parquet": {
+          "added_rows": 6,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      }
+    },
+    {
+      "sha256": "57441635037a0196092e44ab02d9b21d720f833ab585fa706bb494df7ba10f36",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 18,
+          "parents": 2,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 2,
+            "ActiveBlinds[0].EffectID": 2,
+            "ActiveBlinds[0].SourceID": 2,
+            "ActiveBlinds[0].bLocalEffect": 2,
+            "ActiveBlinds[0].bTransient": 2,
+            "ActiveBlinds[0].InitialDuration": 2,
+            "ActiveBlinds[0].StartNetMovementTime": 2,
+            "ActiveBlinds[0].BlindConfig": 2,
+            "ActiveBlinds[0].CausingActor": 2
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 18
+      }
+    },
+    {
+      "sha256": "57c7120213280e1d07b961a1d64a8696951eed44f490575f1e2a041a4eb64b6a",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "5a4d6d8b5eb43a5573eb7ba06bffd6c035f01274db05211c88885ad16bf4695d",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "6666ededb716f0764086e8471122c4520c9345d013eeb84a1ae20c4a7e0b02dc",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "713a9521af57e403e83079eaa7922b3c6218adf65fc037c1ab93486636d2ddae",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 18,
+          "parents": 2,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 2,
+            "ActiveBlinds[0].EffectID": 2,
+            "ActiveBlinds[0].SourceID": 2,
+            "ActiveBlinds[0].bLocalEffect": 2,
+            "ActiveBlinds[0].bTransient": 2,
+            "ActiveBlinds[0].InitialDuration": 2,
+            "ActiveBlinds[0].StartNetMovementTime": 2,
+            "ActiveBlinds[0].BlindConfig": 2,
+            "ActiveBlinds[0].CausingActor": 2
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 18
+      }
+    },
+    {
+      "sha256": "7f36450e627bc7571b63b399083666d51929e78a713f4191a30d5f1c187ad855",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "845fda209fa448a5c75b76b00642a360370d225efb5189be984631266ddada6f",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "89bc826f99471dbf8eec82c301626bd07a248c6ffe61b67087105b780d4f50c4",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "8db583642afef8edf95b90ac34ae62d7376ffe4d9f225c4cc3a13502cbc02237",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 18,
+          "parents": 2,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 2,
+            "ActiveBlinds[0].EffectID": 2,
+            "ActiveBlinds[0].SourceID": 2,
+            "ActiveBlinds[0].bLocalEffect": 2,
+            "ActiveBlinds[0].bTransient": 2,
+            "ActiveBlinds[0].InitialDuration": 2,
+            "ActiveBlinds[0].StartNetMovementTime": 2,
+            "ActiveBlinds[0].BlindConfig": 2,
+            "ActiveBlinds[0].CausingActor": 2
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 18
+      }
+    },
+    {
+      "sha256": "9a5b0a674067d297d662177132d0518aa0523b7de2d4d5ba82d78fc12b4161b9",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "9b38d91a98251d7a53157b7600d9d3fef1b67b53e5c3a0c9b22f799d4cbfe639",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "9dd78241e9e8a4a72fdea87e1e8ef4497f2980d974ecd1eb302f0841fd3c019d",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 18,
+          "parents": 2,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 2,
+            "ActiveBlinds[0].EffectID": 2,
+            "ActiveBlinds[0].SourceID": 2,
+            "ActiveBlinds[0].bLocalEffect": 2,
+            "ActiveBlinds[0].bTransient": 2,
+            "ActiveBlinds[0].InitialDuration": 2,
+            "ActiveBlinds[0].StartNetMovementTime": 2,
+            "ActiveBlinds[0].BlindConfig": 2,
+            "ActiveBlinds[0].CausingActor": 2
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 18
+      }
+    },
+    {
+      "sha256": "b03510532691e8e9e6eebcdb4c8f3f7fcfd2974a496b5f8d6564fc59ff1e1684",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "b0866f5d6982baed98c5f464aa68f31b5c5bb02d57171075447c743b2f2e1687",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "b5795e25847110efe8ffb1d83cad12b05bd380b58449a97391f2bd208a9001a6",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "bdc263b461406a28bc5571c29f6519a401d1778ada6c35ad9a1a0ee35314c9c2",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "bc2cc3a60373662e39c5bc6201a393b512a7989d5db323995b518ec9bb547ec9",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "bc3b0fbac1700e9dd60a9d99dbc7ede6f404e110827043d142b08a18b0dd396c",
+      "identical_tables": 12,
+      "changed": {
+        "fields.parquet": {
+          "added_rows": 6,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      }
+    },
+    {
+      "sha256": "c9af948096c860dcd1ae704008300f3393eeb97f437fa9551d70954e79aec818",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "c9e3d1c3791616e1ee5e83cb4530ee72ceeeea16b3da760f03dc417e2aa20891",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 27,
+          "parents": 3,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 3,
+            "ActiveBlinds[0].EffectID": 3,
+            "ActiveBlinds[0].SourceID": 3,
+            "ActiveBlinds[0].bLocalEffect": 3,
+            "ActiveBlinds[0].bTransient": 3,
+            "ActiveBlinds[0].InitialDuration": 3,
+            "ActiveBlinds[0].StartNetMovementTime": 3,
+            "ActiveBlinds[0].BlindConfig": 3,
+            "ActiveBlinds[0].CausingActor": 3
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 27
+      }
+    },
+    {
+      "sha256": "cbe9790294bbbcc1d18b9f0a176a3cad5969d460a35262d49f99b5c588123f0e",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "cf1e52f0adc3ab5e31f1bba7b5cebc9dcd06d268f408f8790f9457f3e29da58e",
+      "identical_tables": 12,
+      "changed": {
+        "fields.parquet": {
+          "added_rows": 6,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      }
+    },
+    {
+      "sha256": "d2c9292e511bc825a90d49252cb344af1f06379ebe14f88182c1116df4170c56",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 27,
+          "parents": 3,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 3,
+            "ActiveBlinds[0].EffectID": 3,
+            "ActiveBlinds[0].SourceID": 3,
+            "ActiveBlinds[0].bLocalEffect": 3,
+            "ActiveBlinds[0].bTransient": 3,
+            "ActiveBlinds[0].InitialDuration": 3,
+            "ActiveBlinds[0].StartNetMovementTime": 3,
+            "ActiveBlinds[0].BlindConfig": 3,
+            "ActiveBlinds[0].CausingActor": 3
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 27
+      }
+    },
+    {
+      "sha256": "d92c464662108ac1d7425242c007449e1027d4062728f92427ec5d5a6a0f99fe",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "e247af8af00aad515d00ea4fd152835a141198812231b259e963dad3f6696335",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "e39d37629699c779fdab626e1d78eba493f500863430941ebc16c9286c82e16f",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "eea093c19672d50ecb839ffe01d812e114a1db702c7d52fe845e97b3c4ecf8bd",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 18,
+          "parents": 2,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 2,
+            "ActiveBlinds[0].EffectID": 2,
+            "ActiveBlinds[0].SourceID": 2,
+            "ActiveBlinds[0].bLocalEffect": 2,
+            "ActiveBlinds[0].bTransient": 2,
+            "ActiveBlinds[0].InitialDuration": 2,
+            "ActiveBlinds[0].StartNetMovementTime": 2,
+            "ActiveBlinds[0].BlindConfig": 2,
+            "ActiveBlinds[0].CausingActor": 2
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 18
+      }
+    },
+    {
+      "sha256": "ef0fbcc20ae259e783c02df03ce6540267dbb0026aab8b6cbbc4655bec268640",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "f4d3ec6700803b878b0d569ec70a86648e879260188c36cbf7a1eef6b62b3692",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    },
+    {
+      "sha256": "f73d4475865a642d7959840b6bcde3f6338f8585e4e59697d7a1bc94a6cd60cf",
+      "identical_tables": 11,
+      "changed": {
+        "checkpoint_fields.parquet": {
+          "added_rows": 9,
+          "parents": 1,
+          "fields": {
+            "ActiveBlinds[0].BlindId": 1,
+            "ActiveBlinds[0].EffectID": 1,
+            "ActiveBlinds[0].SourceID": 1,
+            "ActiveBlinds[0].bLocalEffect": 1,
+            "ActiveBlinds[0].bTransient": 1,
+            "ActiveBlinds[0].InitialDuration": 1,
+            "ActiveBlinds[0].StartNetMovementTime": 1,
+            "ActiveBlinds[0].BlindConfig": 1,
+            "ActiveBlinds[0].CausingActor": 1
+          }
+        }
+      },
+      "block_ranges": {
+        "range_columns_only": true,
+        "additional_fields": 9
+      }
+    }
+  ]
+}

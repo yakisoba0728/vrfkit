@@ -110,10 +110,11 @@ transport failures, including unfinished partials and resource limits, fail
 the verdict.
 
 The example is the preserved `02d4d478` replay after the September 2026
-tail-preservation change. All 714 current ReplayData block runs pass, and the
-separate checkpoint diagnostic reports no lost framed blocks. Main/checkpoint
-the later [header-order correction](PARTIAL_HEADER_CORRECTION.md) reassembles
-all 125,037 / 835,967 observed partial fragments with zero partial errors. Unknown inner payloads still
+tail-preservation change. All 714 ReplayData block runs in that historical
+sweep passed, and the separate checkpoint diagnostic reported no lost framed
+blocks. The later [header-order correction](PARTIAL_HEADER_CORRECTION.md)
+reassembled all 125,037 main and 835,967 checkpoint partial fragments with
+zero partial errors. Unknown inner payloads still
 exist: a pass means each measured block was decoded or explicitly preserved, not that
 all values have known types or meanings. `RPC unresolved/raw` includes whole
 unparsed tails as well as unresolved standalone RPC blocks. See
@@ -382,7 +383,7 @@ look. (This said -180..180 for a while, which no row has ever matched.)
   boundary.** Use it for in-round alignment; do not use it as a global timeline
   -- that is `time_ms`.
 - `movement_state` and `move_type` are constant (0, 1) across all
-  1,034,035,170 exported rows in the current 527-replay corpus (builds 13.01,
+  1,034,035,170 exported rows in the historical 2026-08-31 527-replay corpus (builds 13.01,
   13.02 and 13.04). A future build may break that invariant, so both bytes are
   exported verbatim.
 - **Posture detail is `bCrouchHeld`, not `movement_state`.** It already ships as
@@ -597,7 +598,7 @@ Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 | Layer | Crate | Feature flags |
 |---|---|---|
 | Bit reader / UE wire format | `vrf-bitio` | `alloc` (default; drop it for `no_std`) |
-| Payload transform (8 builds) | `vrf-transform` | none |
+| Payload transform (24 builds) | `vrf-transform` | none |
 | Container (info/header/chunk/event/checkpoint, Oodle) | `vrf-container` | `oodle` `event` `checkpoint` |
 | DemoFrame traversal | `vrf-frame` | none |
 | Dynamic schema + GUID cache + checkpoint tables | `vrf-schema` | `checkpoint` |
@@ -988,7 +989,7 @@ verdict. `identifier_redacted: true` and
 group paths, filenames, actor/object/channel identifiers, field-handle values,
 compatible checksums, payloads, or persistent hashes.
 
-The exhaustive 2026-08-31 run covered all 527 current replays and 269,994,556
+The exhaustive 2026-08-31 run covered all 527 then-available replays and 269,994,556
 non-ClassNetCache replicated-property rows. Of 59,291,880 raw-only rows,
 57,318,004 retained a wire name and 1,973,876 did not. Every unnamed row kept
 exact-length `raw_bits` (missing, typed, wrong-length, checksum-attributed and
@@ -1007,12 +1008,12 @@ field meaning; the analyzer deliberately performs no type inference.
 ### Quick sweep -- after any change
 
 ```bash
-cargo +1.86.0 test --workspace --locked                              # 707 passing
+cargo +1.86.0 test --workspace --locked                              # 714 passing
 cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.86.0 fmt --check
 python -W error tools/check_ascii.py --check                         # 147 files
 python -W error tools/check_effect_decoder.py --check                # 12 cases
-python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 850 tests
+python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 891 tests
 python -W error tools/check_docs.py --fast
 python -W error tools/apply_type_corrections.py --check              # 187 corrections
 python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
@@ -1134,38 +1135,43 @@ silent change must be impossible.
 
 ## 7. Supported builds
 
-| Build | How it is verified |
-|---|---|
-| 11.06 | 79 native golden vectors + three real replays with checkpoint export |
-| 11.07 | 79 native golden vectors + three real replays with checkpoint export |
-| 11.08 | 79 native golden vectors + three real replays with checkpoint export |
-| 11.09 | 79 native golden vectors + three real replays with checkpoint export |
-| 11.10 | 79 native golden vectors + three real replays with checkpoint export |
-| 11.11 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.00 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.01 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.02 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.03 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.04 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.05 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.06 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.07 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.08 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.09 | 79 native golden vectors + three real replays with checkpoint export |
-| 12.10 | Preserved fixture + golden vectors |
-| 12.11 | Preserved fixture + golden vectors |
-| 13.00 | Preserved fixture + golden vectors |
-| 13.01 | 215-replay portion of the current multi-build sweep |
-| 13.02 | Preserved replay + 204-replay portion of the current sweep |
-| 13.04 | Preserved fixture + upstream golden vectors + 108-replay export/checkpoint sweep |
-| 13.05 | Preserved fixture + golden vectors + 187-file portion of the 714-file sweep |
-| 13.06 | Six preserved fixtures + 11 upstream golden vectors + main/checkpoint exports ([details](UPSTREAM_PARITY.md)) |
+| Build | Clean/checked | Verified by |
+|---|---:|---|
+| 11.06 | 3/3 | Validation + checkpoints + typed/raw |
+| 11.07 | 3/3 | Validation + checkpoints + typed/raw |
+| 11.08 | 3/3 | Validation + checkpoints + typed/raw |
+| 11.09 | 3/3 | Validation + checkpoints + typed/raw |
+| 11.10 | 3/3 | Validation + checkpoints + typed/raw |
+| 11.11 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.00 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.01 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.02 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.03 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.04 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.05 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.06 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.07 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.08 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.09 | 3/3 | Validation + checkpoints + typed/raw |
+| 12.10 | 1/1 | Validation + checkpoints + typed/raw |
+| 12.11 | 1/1 | Validation + checkpoints + typed/raw |
+| 13.00 | 1/1 | Validation + checkpoints + typed/raw |
+| 13.01 | 215/215 | Validation + checkpoints + typed/raw |
+| 13.02 | 205/205 | Validation + checkpoints + typed/raw |
+| 13.04 | 108/108 | Validation + checkpoints + typed/raw |
+| 13.05 | 401/401 | Validation + checkpoints + typed/raw |
+| 13.06 | 6/6 | Validation + checkpoints + typed/raw |
 
-The [build support validation report](LEGACY_BUILD_SUPPORT.md) records the
-native vectors and replay results for 11.06--12.09.
+All rows use the [common 2026-09-25 audit](BUILD_VERIFICATION.md): 986 unique
+replays, all 986 strictly clean after the two ActiveBlinds fixes. Every
+replay passes block validation and checkpoint export; all observed evidence
+values match the independent Python decoder. `Clean/checked` also requires
+zero array and array-leaf errors. The report defines each denominator.
 
-The current 714-file sweep passes ReplayData block validation and separately
-reports zero checkpoint block loss. All 961,004 partial fragments now reassemble
+The following measurements retain their original dates and parser revisions.
+
+The historical 714-file sweep passed ReplayData block validation and separately
+reported zero checkpoint block loss. All 961,004 partial fragments now reassemble
 with zero partial errors. Physical typed coverage is 70.8088% main and 78.2028%
 checkpoint; [PARTIAL_HEADER_CORRECTION.md](PARTIAL_HEADER_CORRECTION.md) gives
 exact denominators, the corrected header interpretation and remaining limits.
@@ -1260,3 +1266,31 @@ executable layout documented in [LEGACY_BUILD_SUPPORT.md](LEGACY_BUILD_SUPPORT.m
 Without `--check`, it regenerates `crates/vrf-transform/tests/data/native_vectors.rs`.
 Ordinary tests read the vectors without requiring proprietary binaries or an
 emulator. Game binaries and replay exports are not committed.
+
+
+### Uniform build verification
+
+`verify_build_corpus.py` runs the same checks on every unique replay across
+one or more recursive corpus roots. Inputs are deduplicated by SHA-256.
+Each replay receives `validate`, `export --checkpoints`, required-counter
+and Parquet row-count checks, and independent Python comparisons for the
+observed fields in `public_fixture_type_evidence.json`. Missing counters,
+nonzero framing/transform/array/type failures and changed inputs fail the
+strict audit. Every build must also show positive checkpoint block and
+decoded-value counts; otherwise `build_errors` makes the command fail. Unknown
+RPCs preserved whole are counted separately from loss.
+Unobserved evidence fields are reported as absent, never as verified values.
+
+```powershell
+python tools/verify_build_corpus.py --exe target/release/vrfkit.exe --corpus '<replay-root>' --corpus '<preserved-fixture-root>' --work-dir '<new-private-work-dir>' --output '<new-report.json>' --jobs 4
+```
+
+Work and report paths must be new. Logs, manifests and exports remain under
+the private work directory. The JSON report contains build counts and input
+hashes, without source filenames or player identifiers. An unsuccessful
+strict audit still writes its results and exits nonzero. Read
+[BUILD_VERIFICATION.md](BUILD_VERIFICATION.md) for the latest measured results.
+`check_docs.py` checks both supported-build tables against that committed
+report and the Rust registry, including the same verification wording and
+clean/checked denominators. The native/upstream vector counts remain separate
+arithmetic evidence; they do not substitute for any replay check.

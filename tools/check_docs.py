@@ -32,8 +32,10 @@ and passes every test. So this reads the repo and the docs and compares:
      present in it -- see `overlay_partition_problems`
  14. no quoted overlay counter or `Typed` ratio in any of `ALL_DOCS` is stale,
      against that same baseline -- see `stale_overlay_counters`
- 15. README still carries the overlay summary block at all, so (14) cannot be
+  15. README still carries the overlay summary block at all, so (14) cannot be
      satisfied by deleting it -- see `check_overlay_counters_present`
+  16. both build tables use the same verification method and measured clean/
+      checked counts, covering exactly the registered payload transforms
 
 (6) is (5) upgraded the way (8) was: (5) asks only whether the live number
 appears somewhere in README and USAGE, so a stale size could sit one line from
@@ -65,11 +67,10 @@ It runs the test suites to get (8), so it is not free -- roughly the cost of
 `cargo test` plus the tools suite. Run it when touching docs, or before
 calling a session finished.
 
-**CI runs `--fast`, so (8) does not run there** and cannot: the Python job is
-Ubuntu-only by design (the Rust job needs Windows for the Oodle FFI), and (8)
-shells out to `cargo test`. Check (8) is a local gate, not an enforced one --
-which is precisely how `355 passing` survived twelve commits next to a correct
-`387 tests`. Run the full guard by hand before finishing a session.
+CI runs the full guard in the Windows MSRV job, where both Rust and Python
+are installed. The Python platform/version matrix also runs `--fast` for
+source/document consistency. Run the full guard locally before finishing a
+session; a consistent but stale count still needs actual suite measurement.
 
 Usage:
     python tools/check_docs.py
@@ -107,12 +108,75 @@ GENERATED_INVENTORY_DOCS = (
 #: Named in the docs but not shipped here.
 EXTERNAL_SCRIPTS = {"compute_metrics.py", "python_interop.py"}
 
+BUILD_AUDIT = REPO / "tools/fixtures/build_verification.json"
+BUILD_METHOD = "Validation + checkpoints + typed/raw"
+
 LINK_RE = re.compile(r"\[`?([^\]]+?)`?\]\(([^)]+)\)")
 SCRIPT_RE = re.compile(r"`?([a-z_][a-z0-9_]*\.py)`?")
 
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def check_build_verification(readme: str, usage: str, registry: str, report: dict) -> list[str]:
+    """Both public tables must use the same measured scope and acceptance rule."""
+    problems = []
+    match = re.search(r"ALL_VERSIONS:.*?=\s*&\[(.*?)\];", registry, re.S)
+    if not match:
+        return ["cannot read supported transform registry"]
+    versions = {f"{v[:-2]}.{v[-2:]}" for v in re.findall(r"TransformVersion::V(\d+)", match[1])}
+    if not versions:
+        return ["supported transform registry is empty"]
+    measured = {branch.removeprefix("++Ares-Core+release-"): row
+                for branch, row in report.get("builds", {}).items()}
+    if set(measured) != versions:
+        problems.append("build audit does not cover exactly the supported registry")
+    if report.get("executable_changed") is not False:
+        problems.append("build audit executable changed or its integrity result is absent")
+    if report.get("build_errors"):
+        problems.append("build audit has unresolved build-level errors")
+    for version, row in measured.items():
+        counts = [row.get(key) for key in ("replays", "passed", "failed")]
+        if (any(type(value) is not int or value < 0 for value in counts)
+                or counts[0] == 0 or counts[1] + counts[2] != counts[0]):
+            problems.append(f"build audit {version}: invalid replay accounting")
+            continue
+        hashes = row.get("input_sha256", [])
+        if len(hashes) != counts[0] or len(set(hashes)) != counts[0]:
+            problems.append(f"build audit {version}: input hashes do not match replay count")
+        work = row.get("counts", {})
+        checkpoint_counts = [work.get(key) for key in
+                             ("checkpoint_content_blocks", "checkpoint_overlay_decoded_ok")]
+        if (row.get("checkpoint_evidence") != "observed"
+                or any(type(value) is not int or value <= 0 for value in checkpoint_counts)):
+            problems.append(f"build audit {version}: no positive checkpoint decoding evidence")
+    for name, doc, readme_table in (("README", readme, True), ("USAGE", usage, False)):
+        for quoted in re.findall(r"Payload transform \((\d+) builds\)", doc):
+            if int(quoted) != len(versions):
+                problems.append(f"{name}: transform layer lists {quoted} builds, registry has {len(versions)}")
+        rows = {}
+        for line in doc.splitlines():
+            cells = [cell.strip().replace("**", "") for cell in line.strip().strip("|").split("|")]
+            if not cells or not re.fullmatch(r"\d{2}\.\d{2}", cells[0]):
+                continue
+            version = cells[0]
+            if version in rows:
+                problems.append(f"{name}: duplicate build row {version}")
+            rows[version] = cells
+        if set(rows) != versions:
+            problems.append(f"{name}: support table differs from supported registry")
+        for version in sorted(versions & set(rows) & set(measured)):
+            cells, actual = rows[version], measured[version]
+            expected = f"{actual['passed']}/{actual['replays']}"
+            count_index = 2 if readme_table else 1
+            if len(cells) != count_index + 2 or cells[count_index] != expected:
+                problems.append(f"{name}: {version} clean/checked must be {expected}")
+            if cells[-1] != BUILD_METHOD:
+                problems.append(f"{name}: {version} uses a different verification method")
+            if readme_table and cells[1] != f"`release-{version}`":
+                problems.append(f"{name}: {version} branch label differs")
+    return problems
 
 
 def check_tools(usage: str) -> list[str]:
@@ -260,9 +324,8 @@ def contradicting_test_counts(docs: dict[str, str]) -> list[str]:
     """Suite-size claims that cannot all be true at once.
 
     `stale_test_counts` needs the real numbers, so it only runs in the full
-    mode -- which CI cannot use, because that mode shells out to `cargo test`
-    and the Python job is Ubuntu-only for the Oodle split. This is the part of
-    the same check that survives `--fast`, and therefore the part CI can run.
+    mode in the Windows MSRV job. This consistency check also survives
+    `--fast`, as used by the Python platform/version matrix.
 
     It cannot know which number is right. It does not have to: the repo has
     exactly two suites, so a third distinct value is a contradiction on its
@@ -704,10 +767,10 @@ def measure_tests() -> tuple[int, int, list[str]]:
                        cwd=REPO, capture_output=True,
                        text=True, encoding="utf-8", errors="replace", timeout=3600)
     out = (r.stdout or "") + (r.stderr or "")
-    passed_matches = re.findall(r"(\d+) passed", out)
+    passed_matches = re.findall(r"^test result: ok\. (\d+) passed;", out, re.M)
     rust = sum(int(m) for m in passed_matches)
     if r.returncode != 0:
-        problems.append("cargo test did not pass; doc counts not checked against it")
+        problems.append("cargo test did not pass; doc counts not checked against it\n" + out[-4000:])
     elif not passed_matches:
         # `measured_counts` above already carries this rule for the ASCII
         # count: a parse failure defaulting to 0 is indistinguishable from a
@@ -718,20 +781,26 @@ def measure_tests() -> tuple[int, int, list[str]]:
         problems.append(
             "cargo test exited 0 but printed no 'N passed' line; the rust "
             "test count (0) was not measured")
+    elif rust == 0:
+        problems.append("cargo test reported zero passing tests")
 
-    r2 = subprocess.run([sys.executable, "-m", "unittest", "discover",
+    r2 = subprocess.run([sys.executable, "-W", "error", "-m", "unittest", "discover",
                          "-s", "tools/tests", "-p", "test_*.py"],
                         cwd=REPO, capture_output=True, text=True,
                         encoding="utf-8", errors="replace", timeout=1800)
     out2 = (r2.stdout or "") + (r2.stderr or "")
-    m = re.search(r"Ran (\d+) tests", out2)
+    m = re.search(r"^Ran (\d+) tests? in ", out2, re.M)
     tools_n = int(m.group(1)) if m else 0
     if r2.returncode != 0:
-        problems.append("tools test suite did not pass")
+        problems.append("tools test suite did not pass\n" + out2[-4000:])
     elif m is None:
         problems.append(
             "the tools test suite exited 0 but printed no 'Ran N tests' "
             "line; the tools test count (0) was not measured")
+    elif tools_n == 0:
+        problems.append("tools test suite reported zero tests")
+    if re.search(r"^OK \(.*skipped=[1-9]", out2, re.M):
+        problems.append("tools test suite skipped tests; not every reported test passed")
     return rust, tools_n, problems
 
 
@@ -783,9 +852,12 @@ def main() -> int:
            for p in check_links(path, read(path))]
         + check_feature_matrix(read(REPO / "CONTRIBUTING.md"),
                                read(REPO / ".github" / "workflows" / "ci.yml"))
+        + check_build_verification(
+            readme, usage, read(REPO / "crates/vrf-transform/src/lib.rs"),
+            json.loads(read(BUILD_AUDIT)))
     )
 
-    checked = 17
+    checked = 18
     if not args.fast:
         rust, tools_n, run_problems = measure_tests()
         problems += run_problems

@@ -1,5 +1,11 @@
 # Upstream parity update, 2026-09-23
 
+The latest common all-build audit is [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md).
+The results below retain the date and sample scope of this implementation update.
+The full audit subsequently found and fixed two ActiveBlinds cases missing from
+this sample: an extra zero trailer on an empty delta, and a one-byte null
+CausingActor reference. See the [resolved findings](BUILD_VERIFICATION.md#resolved-findings).
+
 This update reviews ValorantReplayParser at
 [`d23c13e12262fb1da9fc005d1cd0ef9f8d0d36fd`](https://github.com/michel-giehl/ValorantReplayParser/tree/d23c13e12262fb1da9fc005d1cd0ef9f8d0d36fd).
 There are 14 upstream commits since the `b51d674` revision recorded in
