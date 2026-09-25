@@ -1013,7 +1013,7 @@ cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D war
 cargo +1.86.0 fmt --check
 python -W error tools/check_ascii.py --check                         # 147 files
 python -W error tools/check_effect_decoder.py --check                # 12 cases
-python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 891 tests
+python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 910 tests
 python -W error tools/check_docs.py --fast
 python -W error tools/apply_type_corrections.py --check              # 187 corrections
 python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
@@ -1267,6 +1267,26 @@ Without `--check`, it regenerates `crates/vrf-transform/tests/data/native_vector
 Ordinary tests read the vectors without requiring proprietary binaries or an
 emulator. Game binaries and replay exports are not committed.
 
+
+### Windows release packaging
+
+`package_release.py` creates and verifies the versioned Windows x64 ZIP used
+by CI and tagged releases. It rejects invalid tags, wrong executable formats,
+changed checksums, unexpected ZIP entries and mismatched source provenance.
+Creation also runs the extracted binary with `--help`; use `--smoke` to repeat
+that execution when verifying on Windows. Verification without `--smoke` is
+portable and does not execute the Windows binary.
+
+```powershell
+python tools/package_release.py create --exe target/x86_64-pc-windows-msvc/release/vrfkit.exe --directory '<new-package-directory>' --tag v0.1.0 --commit '<full-40-character-commit-sha>'
+python tools/package_release.py verify --directory '<package-directory>' --tag v0.1.0 --commit '<full-40-character-commit-sha>' --smoke
+```
+
+The ZIP contains the executable, license, third-party notice and
+`build-info.json`; a separate `.zip.sha256` file records the ZIP checksum.
+Only tag pushes publish a GitHub Release, after the complete CI run and a
+packaged-binary replay audit. See [release maintenance](../CONTRIBUTING.md#tagged-windows-releases)
+for the workflow and how to validate a candidate without publishing.
 
 ### Uniform build verification
 

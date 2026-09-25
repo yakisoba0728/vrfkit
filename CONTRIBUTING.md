@@ -114,7 +114,8 @@ core-only CLI tests. The pinned MSRV feature matrix above remains required.
 CI validates the workflow with checksum-pinned actionlint, pins Actions to
 commit IDs, grants read-only repository permissions, cancels superseded runs,
 and limits job durations. The final `CI complete` job succeeds only when every
-required job succeeds; failures, cancellations and skipped jobs cannot pass it.
+required job succeeds, including Windows release packaging; failures,
+cancellations and skipped jobs cannot pass it.
 
 If your change affects exported output, also run the regression guards in
 [`docs/USAGE.md`](docs/USAGE.md) §6 (`check_export_baseline.py`,
@@ -145,6 +146,34 @@ not run and what input is needed so a maintainer can complete it before
 merging. A skipped corpus check is not replay validation. You do not need to
 upload replay files publicly to contribute; recorded commands and results
 can document a local run.
+
+## Tagged Windows releases
+
+Pushing a tag such as `v0.1.0` runs the same `ci.yml` as the branch/PR checks
+through `workflow_call`. The tag must be SemVer with a leading `v`; optional
+prerelease and build suffixes are allowed. The release job runs only after all
+checks succeed for that exact tagged commit. Only that publishing job receives
+`contents: write`; tests and builds retain read-only repository permissions.
+
+The Windows package job is also required on every PR and manual CI run. It
+builds and tests the optimized CLI for `x86_64-pc-windows-msvc`, creates a ZIP
+with `tools/package_release.py`, runs the extracted executable, and audits the
+pinned public 12.10 replay with the packaged binary, including checkpoints and
+independent typed/raw comparisons. The ZIP includes `vrfkit.exe`, `LICENSE`,
+`NOTICE.md` and `build-info.json` (tag, source commit, target and binary hash).
+It and its SHA-256 sidecar are retained for 14 days as `windows-release`.
+The corresponding replay report and diagnostic logs use a separate artifact.
+
+On tag pushes, the publishing job downloads those verified assets, checks the
+ZIP checksum and embedded provenance again, and publishes them without a
+second build. Prerelease tags produce GitHub prereleases. Release notes are
+generated automatically. Runs for the same tag are serialized; an existing
+release is not overwritten. Packaging rejects existing output directories.
+
+To validate a candidate before tagging or merging, run the **CI** workflow
+manually on its branch and inspect the `windows-release` and
+`release-replay-verification` artifacts. Branch, PR and manual CI runs do not
+publish releases. No release is made merely by merging the workflow.
 
 ## Environment
 
