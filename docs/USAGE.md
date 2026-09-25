@@ -1008,12 +1008,12 @@ field meaning; the analyzer deliberately performs no type inference.
 ### Quick sweep -- after any change
 
 ```bash
-cargo +1.86.0 test --workspace --locked                              # 707 passing
+cargo +1.86.0 test --workspace --locked                              # 710 passing
 cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.86.0 fmt --check
 python -W error tools/check_ascii.py --check                         # 147 files
 python -W error tools/check_effect_decoder.py --check                # 12 cases
-python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 864 tests
+python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 866 tests
 python -W error tools/check_docs.py --fast
 python -W error tools/apply_type_corrections.py --check              # 187 corrections
 python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
@@ -1156,14 +1156,14 @@ silent change must be impossible.
 | 12.10 | 1/1 | Validation + checkpoints + typed/raw |
 | 12.11 | 1/1 | Validation + checkpoints + typed/raw |
 | 13.00 | 1/1 | Validation + checkpoints + typed/raw |
-| 13.01 | 193/215 | Validation + checkpoints + typed/raw |
-| 13.02 | 188/205 | Validation + checkpoints + typed/raw |
-| 13.04 | 98/108 | Validation + checkpoints + typed/raw |
-| 13.05 | 369/401 | Validation + checkpoints + typed/raw |
+| 13.01 | 215/215 | Validation + checkpoints + typed/raw |
+| 13.02 | 205/205 | Validation + checkpoints + typed/raw |
+| 13.04 | 108/108 | Validation + checkpoints + typed/raw |
+| 13.05 | 401/401 | Validation + checkpoints + typed/raw |
 | 13.06 | 6/6 | Validation + checkpoints + typed/raw |
 
 All rows use the [common 2026-09-25 audit](BUILD_VERIFICATION.md): 986 unique
-replays, 905 strictly clean and 81 with recorded array findings. Every
+replays, all 986 strictly clean after the two ActiveBlinds fixes. Every
 replay passes block validation and checkpoint export; all observed evidence
 values match the independent Python decoder. `Clean/checked` also requires
 zero array and array-leaf errors. The report defines each denominator.

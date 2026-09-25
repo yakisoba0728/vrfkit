@@ -18,10 +18,10 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 by Michel Giehl; see [`NOTICE.md`](NOTICE.md). Not affiliated with, endorsed
 by, or approved by Riot Games.
 
-**Verified state (2026-09-25):** Rust has **707 passing** tests; Python has
-**864 passing** tests. All 24 supported builds received the same verification
-on **986 unique replays**; **905** meet every strict criterion and **81**
-have documented array findings. See [build verification](docs/BUILD_VERIFICATION.md)
+**Verified state (2026-09-25):** Rust has **710 passing** tests; Python has
+**866 passing** tests. All 24 supported builds received the same verification
+on **986 unique replays**; all **986** meet every strict criterion after fixing
+the two ActiveBlinds decoding errors found by the first audit. See [build verification](docs/BUILD_VERIFICATION.md)
 for the measured scope, common checks and remaining limits.
 
 - Run it: [`docs/USAGE.md`](docs/USAGE.md)
@@ -57,10 +57,10 @@ can be represented by their rows instead of a duplicate raw RPC.
 | Build | Branch | Clean/checked | Verified by |
 |---|---|---:|---|
 | **13.06** | `release-13.06` | 6/6 | Validation + checkpoints + typed/raw |
-| **13.05** | `release-13.05` | 369/401 | Validation + checkpoints + typed/raw |
-| **13.04** | `release-13.04` | 98/108 | Validation + checkpoints + typed/raw |
-| **13.02** | `release-13.02` | 188/205 | Validation + checkpoints + typed/raw |
-| **13.01** | `release-13.01` | 193/215 | Validation + checkpoints + typed/raw |
+| **13.05** | `release-13.05` | 401/401 | Validation + checkpoints + typed/raw |
+| **13.04** | `release-13.04` | 108/108 | Validation + checkpoints + typed/raw |
+| **13.02** | `release-13.02` | 205/205 | Validation + checkpoints + typed/raw |
+| **13.01** | `release-13.01` | 215/215 | Validation + checkpoints + typed/raw |
 | **13.00** | `release-13.00` | 1/1 | Validation + checkpoints + typed/raw |
 | **12.11** | `release-12.11` | 1/1 | Validation + checkpoints + typed/raw |
 | **12.10** | `release-12.10` | 1/1 | Validation + checkpoints + typed/raw |
@@ -84,8 +84,8 @@ can be represented by their rows instead of a duplicate raw RPC.
 Measured 2026-09-25 on all **986 unique available replays**, across all 24
 supported branches. Every row uses the [same acceptance rule](docs/BUILD_VERIFICATION.md).
 **Clean/checked** includes the strict array and array-leaf error counters:
-**905/986** are clean; **81** export successfully but retain recorded array
-findings. All 986 pass ReplayData validation, checkpoint-enabled export and
+**986/986** are clean after the ActiveBlinds empty-delta and null-reference
+fixes. All 986 pass ReplayData validation, checkpoint-enabled export and
 the independent comparisons on observed evidence fields. The full report
 records counts and limits; this is not a claim that every field is understood.
 
@@ -134,7 +134,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **707 Rust tests** plus a layered validation suite (framing / bytes / decode
+- **710 Rust tests** plus a layered validation suite (framing / bytes / decode
   errors / semantics).
 
 ## Table of contents
@@ -379,10 +379,10 @@ it as one gives the year 3626.
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**707 passing**; the full Python suite also has **864 passing** tests. The
+**710 passing**; the full Python suite also has **866 passing** tests. The
 full documentation check passes. The latest [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export, independent value checks and
-remaining strict-audit findings for each supported build.
+the resolved array findings and remaining semantic limits for each supported build.
 
 Re-measure per-crate counts with `cargo test -p <crate>`. Counts are omitted
 from the table below on purpose -- they go stale, and re-measuring is one line.
@@ -590,8 +590,10 @@ original is always left intact in `raw_payload`.
 The 2026-09-25 [common audit](docs/BUILD_VERIFICATION.md) checks 986 unique
 replays across 24 builds. Every ReplayData validation and checkpoint export
 succeeds. Independent typed/raw comparisons match 12,917,904
-observed values. The strict quality gate flags 81 files with array or
-array-leaf errors; the report records each affected build and counter.
+observed values. All 986 pass the strict quality gate. The two ActiveBlinds
+fixes resolve the earlier 81-file findings and recover 522 additional typed
+children; an independent before/after comparison verifies those values and
+preserves every existing field row and raw payload.
 
 The measurements below describe earlier corpus revisions.
 

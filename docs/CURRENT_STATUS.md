@@ -2,7 +2,9 @@
 
 The latest common verification run is dated 2026-09-25 and covers all 24
 supported builds. See [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md) for
-per-build replay counts, the shared acceptance criteria, and nonzero findings.
+per-build replay counts, the shared acceptance criteria, and resolved findings.
+All 986 unique replays now pass: the ActiveBlinds empty-delta and null-actor
+fixes eliminate the earlier 81-file failures and recover 522 typed children.
 The [README support table](../README.md#supported-valorant-builds) reports
 strictly clean replays against all replays checked, using that same report.
 Current workspace test counts are also maintained in the README.

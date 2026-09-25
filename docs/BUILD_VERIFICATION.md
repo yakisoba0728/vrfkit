@@ -1,7 +1,7 @@
 # Common build verification, 2026-09-25
 
 All **986 unique available replays**, spanning **24 supported builds**, were
-checked with parser commit `bf8ab9c94b602061bcd65c606f116aabb82a0c9a`.
+checked with parser commit `91dc679ccdfa2e1ef5e7f241d1bdc4087b743016`.
 Discovery found 1,048 paths across the version-organized archive, preserved
 fixtures and Demos directory. SHA-256 deduplication removed 62 duplicate copies.
 The archive contributes 982 unique files; preserved fixtures add the three
@@ -14,9 +14,11 @@ Python comparisons match **12,917,904** observed values, with no
 width failures or typed mismatches. All 24 builds contain positive main and
 checkpoint decoding work. No run is counted as passing because it was skipped.
 
-The stronger all-counter acceptance rule is **905/986 clean**. The remaining
-**81 replays** have array or array-leaf errors listed below. The audit command
-therefore exits **1**; these findings are not relabelled as a clean corpus.
+The stronger all-counter acceptance rule is now **986/986 clean** and the
+audit command exits **0**. Two ActiveBlinds decoder fixes resolve all 81
+previously failing replays; the failure counters and acceptance rule are
+unchanged. Independent before/after comparison also verifies the 522 newly
+recovered typed children, separately from the common value sample above.
 
 The [machine-readable report](../tools/fixtures/build_verification.json)
 contains build aggregates, input hashes and the complete finding list.
@@ -42,10 +44,10 @@ contains build aggregates, input hashes and the complete finding list.
 | 12.10 | 1 | 1 | 13,680 | 1,501 | 175 |
 | 12.11 | 1 | 1 | 6,506 | 1,363 | 112 |
 | 13.00 | 1 | 1 | 8,860 | 1,343 | 123 |
-| 13.01 | 215 | 193 | 136,874,459 | 4,999,774 | 2,763,537 |
-| 13.02 | 205 | 188 | 141,928,372 | 5,117,150 | 2,923,122 |
-| 13.04 | 108 | 98 | 67,440,898 | 2,474,063 | 1,357,848 |
-| 13.05 | 401 | 369 | 253,658,021 | 9,310,150 | 5,085,060 |
+| 13.01 | 215 | 215 | 136,874,459 | 4,999,774 | 2,763,537 |
+| 13.02 | 205 | 205 | 141,928,372 | 5,117,150 | 2,923,122 |
+| 13.04 | 108 | 108 | 67,440,898 | 2,474,063 | 1,357,848 |
+| 13.05 | 401 | 401 | 253,658,021 | 9,310,150 | 5,085,060 |
 | 13.06 | 6 | 6 | 3,369,205 | 126,702 | 77,750 |
 
 ## Method
@@ -82,27 +84,69 @@ properties remain explicit in the report. A clean audit does not imply full
 semantic coverage, complete understanding of every field, or verification
 against what the game displayed.
 
-## Findings
+## Resolved findings
 
-| Build | Affected replays | Main array errors | Main leaf errors | Checkpoint leaf errors |
+The first 2026-09-25 audit at parser `bf8ab9c` found 116 array-counter
+occurrences across 81 replays. The [original report](https://github.com/yakisoba0728/vrfkit/blob/448f2b64990647e7294f3fbe0c14d2cdf20c4ba0/tools/fixtures/build_verification.json)
+remains recorded in Git history. Every occurrence came from
+`/Script/ShooterGame.BlindManagerComponent.ActiveBlinds`.
+
+| Build | Previously affected replays | Main array errors before -> after | Main leaf errors before -> after | Checkpoint leaf errors before -> after |
 |---|---:|---:|---:|---:|
-| 13.01 | 22/215 | 14 | 0 | 17 |
-| 13.02 | 17/205 | 15 | 1 | 9 |
-| 13.04 | 10/108 | 5 | 0 | 11 |
-| 13.05 | 32/401 | 23 | 2 | 19 |
+| 13.01 | 22/215 | 14 -> 0 | 0 -> 0 | 17 -> 0 |
+| 13.02 | 17/205 | 15 -> 0 | 1 -> 0 | 9 -> 0 |
+| 13.04 | 10/108 | 5 -> 0 | 0 -> 0 | 11 -> 0 |
+| 13.05 | 32/401 | 23 -> 0 | 2 -> 0 | 19 -> 0 |
 
-These are error-counter occurrences, while the affected-replay column counts
-each input once. Some inputs contribute more than one error. The audit does
-not establish the cause or field-level impact of each occurrence. It records
-reproducible input hashes and keeps the private exports for investigation.
-The earlier overlay-only summaries did not establish a clean result for all
-of these additional counters. No parser behavior or acceptance threshold was
-changed to suppress them.
+Two independently reproducible mistakes accounted for the entire population:
 
-Malformed/partial/framing/transform/field-stream/RPC-loss counters, typed-overlay
-errors, struct failures, movement errors and evidence mismatches are zero.
-Array parents and typed children remain subject to the documented preservation
-rules; these aggregate counters do not prove every child value is understood.
+- **57 empty deltas:** the three-byte windows `02 00 00` (56 occurrences)
+  and `04 00 00` (one occurrence) declare array capacity one or two, no
+  changed elements, and one extra zero IntPacked trailer. The ActiveBlinds
+  route wrongly demanded immediate end-of-window after the index terminator.
+  It now consumes exactly this zero trailer on empty deltas. Populated
+  arrays, nonzero/truncated/multiple trailers and other array routes retain
+  their strict framing checks. No child values are invented for unchanged
+  elements; the complete original parent remains exported.
+- **59 null references:** CausingActor is an IntPacked object reference.
+  Its valid one-byte `00` means no actor, but the measured-width guard only
+  allowed 16 or 24 bits. The added 8-bit case still passes the ordinary exact
+  ObjectNetGuid decoder and the field name/checksum/type checks. It emits
+  the explicit integer zero, rather than leaving an absent value. The old
+  early refusal also hid the other valid members of that array update.
+
+All 116 captured windows were independently decoded from their raw bits.
+The 59 reference cases contain 56 full nine-member checkpoint snapshots and
+three six-member main-stream deltas. The Python evidence reader now accepts
+sparse ActiveBlinds updates; projectile path points still require all members.
+
+The [before/after evidence](../tools/fixtures/blind_array_regression.json)
+compares all 986 identical replay hashes. It proves:
+
+- **522 new typed children:** 18 main and 504 checkpoint, all independently
+  matched in path, context, raw window and typed value; all 59 affected parents
+  recover their children exactly once per observed occurrence.
+- Every pre-existing field row, typed value and raw payload is unchanged,
+  including the original parent windows and their bit counts.
+- Non-field tables are byte-identical except the affected checkpoint-block
+  tables. Only their field-row starts/counts change, by exactly the inserted
+  child rows; all other block metadata remains unchanged.
+- Main/checkpoint framing, transform, field-stream, RPC-loss, overlay, struct,
+  movement, array and array-leaf failure counters are zero.
+
+Regression tests drive the real `on_field` sink path. The empty-delta and
+null-reference tests failed before the fix and pass afterward. Malformed
+trailers, truncated/overlong references and changed declarations still fail
+with preserved raw data. The independent Python tests also failed before
+the evidence reader was corrected. The initial full-file reproductions
+changed from nonzero array counters to zero using the release executable.
+
+Commands for the focused regression tests:
+
+```powershell
+cargo +1.86.0 test -p vrfkit active_blinds_ --locked
+python -W error -m unittest tools.tests.test_validate_ability_array_evidence
+```
 
 Preserved unresolved RPC payloads total
 **5,404,667 main / 1,601 checkpoint**.

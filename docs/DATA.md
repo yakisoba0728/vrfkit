@@ -18,6 +18,9 @@ before/after comparison passed on those 714 inputs. The latest build-by-build
 validation is recorded in [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md); it
 checks a larger replay collection with one acceptance rule for all builds.
 The historical physical-coverage ratios above were not remeasured by that audit.
+The subsequent ActiveBlinds fix restores 522 typed children in the current
+986-replay corpus, including explicit zero CausingActor references; it retains
+every prior field row and raw payload. See the [resolved findings](BUILD_VERIFICATION.md#resolved-findings).
 RequestedIgnoreActors, TransitionContext and the measured HawkFlash velocity now expose typed reference/vector values.
 Qualified HealCauser actor references and map-targeting cursor/click vectors
 also expose values. Multi-click arrays retain raw parents and add vector children.
