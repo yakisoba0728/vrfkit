@@ -1,5 +1,8 @@
 # Reveal descriptors and player effect targets, 2026-09-24
 
+The latest common all-build audit is [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md).
+This report retains its original implementation and sample scope.
+
 Selective import from ValorantReplayParser
 [`2b66c65a7b116154e18ebb84d9f6795f2b080233`](https://github.com/michel-giehl/ValorantReplayParser/commit/2b66c65a7b116154e18ebb84d9f6795f2b080233),
 on top of vrfkit `7ae8efb9f8dfe328f9773e76b040cab7e6ffc518`.

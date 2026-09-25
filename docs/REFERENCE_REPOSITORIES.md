@@ -1,5 +1,11 @@
 # 참조 저장소 및 PR 조사: ValorantReplayParser / ValorantWebReplayer
 
+## 2026-09-25 검증 업데이트
+
+지원 빌드 24개에 동일한 검증 기준을 적용한 최신 결과는
+[BUILD_VERIFICATION.md](BUILD_VERIFICATION.md)에 기록한다. 아래 내용은
+각 날짜에 확인한 upstream 변경 이력이다.
+
 ## 2026-09-24 업데이트
 
 upstream `2b66c65`의 소바·페이드 정찰 descriptor와 섬광/근시의 플레이어 본체 구분
@@ -8,7 +14,7 @@ upstream `2b66c65`의 소바·페이드 정찰 descriptor와 섬광/근시의 �
 
 ## 2026-09-23 업데이트
 
-최신 조사는 upstream [`d23c13e`](https://github.com/michel-giehl/ValorantReplayParser/tree/d23c13e12262fb1da9fc005d1cd0ef9f8d0d36fd)를 기준으로 했다.
+이 조사는 upstream [`d23c13e`](https://github.com/michel-giehl/ValorantReplayParser/tree/d23c13e12262fb1da9fc005d1cd0ef9f8d0d36fd)를 기준으로 했다.
 아래의 2026-09-08 조사 이후 PR #5와 #7이 병합됐으며, 13.06 transform,
 섬광/연막/벽/근시 이벤트와 descriptor, export-group 충돌 수정이 추가됐다.
 vrfkit에 반영한 변경과 실제 리플레이 검증 범위는

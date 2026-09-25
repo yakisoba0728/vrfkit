@@ -1,5 +1,8 @@
 # Build support validation, 2026-09-24
 
+The latest common all-build audit is [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md).
+The results below retain the date and sample scope of this implementation update.
+
 **Status: all sixteen builds from 11.06 through 12.09 have verified payload
 transforms.** All 48 available replays pass ReplayData validation and
 checkpoint-enabled export. Together with the eight existing versions, the

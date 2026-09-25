@@ -1,21 +1,22 @@
 # Current status
 
-The full inventory below was validated on 2026-09-09. The 2026-09-23
-[upstream parity update](UPSTREAM_PARITY.md) adds build 13.06, two ability array
-routes and nine scoped primitive identities. Its smaller replay sample does
-not remeasure the historical 714-replay totals below. Start with
-[DATA.md](DATA.md) for the exported schema and [USAGE.md](USAGE.md) for commands.
+The latest common verification run is dated 2026-09-25 and covers all 24
+supported builds. See [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md) for
+per-build replay counts, the shared acceptance criteria, and nonzero findings.
+The [README support table](../README.md#supported-valorant-builds) reports
+strictly clean replays against all replays checked, using that same report.
+Current workspace test counts are also maintained in the README.
 
-The 2026-09-24 [build support update](LEGACY_BUILD_SUPPORT.md) adds verified
-11.06--12.09 transforms, controller framing and TeamEconomy compatibility.
-All 48 available samples pass main/checkpoint validation, with independent
-native-byte and typed-value checks. The seven protected 11.06--12.00 code
-images were recovered offline from their matching archived EXE/stub pairs.
-These samples do not remeasure the historical inventory below.
+The 2026-09-24 [build support update](LEGACY_BUILD_SUPPORT.md) recovered
+11.06--12.09 transforms and validated all 48 available samples. The
+2026-09-23 [upstream parity update](UPSTREAM_PARITY.md) added 13.06 and scoped
+ability decoding. The new common audit includes these changes; the older
+physical field inventory below retains its own date and parser revision.
+Start with [DATA.md](DATA.md) for the schema and [USAGE.md](USAGE.md) for commands.
 
-## Current measured field inventory
+## Historical physical field inventory, 2026-09-09
 
-The accepted 714-replay inventory reports:
+The accepted 2026-09-09 inventory covered 714 replays and reported:
 
 | Table | Physical rows | Rows with a typed value |
 |---|---:|---:|
@@ -29,7 +30,7 @@ accuracy, or a percentage of known field meanings. Earlier percentages in
 phase documents are dated measurements of earlier parser states and remain
 historical.
 
-The current untyped-row inventory includes named properties and whole RPC payloads
+That untyped-row inventory includes named properties and whole RPC payloads
 without an accepted type, anonymous or checksum-unresolved fields, structured
 or nested raw parents whose synthesized children may be only partly
 understood, and decoded movement rows whose input bytes are not duplicated in
@@ -86,6 +87,5 @@ its own evidence boundary; derived section and kill views do not prove game HP,
 healing attribution, damage attribution, causality, or player credit.
 
 The parser acceptance commit for the physical field counts was `fc50bfe`.
-Later derived-view commits do not change those counts. The current validation
-passes 699 Rust tests and 796 Python tests. Test counts describe this dated
-validation run and are not a permanent compatibility guarantee.
+Later derived-view commits did not change those recorded counts. They remain
+a dated physical-row inventory, separate from the current build verification.

@@ -32,8 +32,10 @@ and passes every test. So this reads the repo and the docs and compares:
      present in it -- see `overlay_partition_problems`
  14. no quoted overlay counter or `Typed` ratio in any of `ALL_DOCS` is stale,
      against that same baseline -- see `stale_overlay_counters`
- 15. README still carries the overlay summary block at all, so (14) cannot be
+  15. README still carries the overlay summary block at all, so (14) cannot be
      satisfied by deleting it -- see `check_overlay_counters_present`
+  16. both build tables use the same verification method and measured clean/
+      checked counts, covering exactly the registered payload transforms
 
 (6) is (5) upgraded the way (8) was: (5) asks only whether the live number
 appears somewhere in README and USAGE, so a stale size could sit one line from
@@ -107,12 +109,67 @@ GENERATED_INVENTORY_DOCS = (
 #: Named in the docs but not shipped here.
 EXTERNAL_SCRIPTS = {"compute_metrics.py", "python_interop.py"}
 
+BUILD_AUDIT = REPO / "tools/fixtures/build_verification.json"
+BUILD_METHOD = "Validation + checkpoints + typed/raw"
+
 LINK_RE = re.compile(r"\[`?([^\]]+?)`?\]\(([^)]+)\)")
 SCRIPT_RE = re.compile(r"`?([a-z_][a-z0-9_]*\.py)`?")
 
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def check_build_verification(readme: str, usage: str, registry: str, report: dict) -> list[str]:
+    """Both public tables must use the same measured scope and acceptance rule."""
+    problems = []
+    match = re.search(r"ALL_VERSIONS:.*?=\s*&\[(.*?)\];", registry, re.S)
+    if not match:
+        return ["cannot read supported transform registry"]
+    versions = {f"{v[:-2]}.{v[-2:]}" for v in re.findall(r"TransformVersion::V(\d+)", match[1])}
+    if not versions:
+        return ["supported transform registry is empty"]
+    measured = {branch.removeprefix("++Ares-Core+release-"): row
+                for branch, row in report.get("builds", {}).items()}
+    if set(measured) != versions:
+        problems.append("build audit does not cover exactly the supported registry")
+    if report.get("executable_changed") is not False:
+        problems.append("build audit executable changed or its integrity result is absent")
+    for version, row in measured.items():
+        counts = [row.get(key) for key in ("replays", "passed", "failed")]
+        if (any(type(value) is not int or value < 0 for value in counts)
+                or counts[0] == 0 or counts[1] + counts[2] != counts[0]):
+            problems.append(f"build audit {version}: invalid replay accounting")
+            continue
+        hashes = row.get("input_sha256", [])
+        if len(hashes) != counts[0] or len(set(hashes)) != counts[0]:
+            problems.append(f"build audit {version}: input hashes do not match replay count")
+    for name, doc, readme_table in (("README", readme, True), ("USAGE", usage, False)):
+        for quoted in re.findall(r"Payload transform \((\d+) builds\)", doc):
+            if int(quoted) != len(versions):
+                problems.append(f"{name}: transform layer lists {quoted} builds, registry has {len(versions)}")
+        rows = {}
+        for line in doc.splitlines():
+            cells = [cell.strip().replace("**", "") for cell in line.strip().strip("|").split("|")]
+            if not cells or not re.fullmatch(r"\d{2}\.\d{2}", cells[0]):
+                continue
+            version = cells[0]
+            if version in rows:
+                problems.append(f"{name}: duplicate build row {version}")
+            rows[version] = cells
+        if set(rows) != versions:
+            problems.append(f"{name}: support table differs from supported registry")
+        for version in sorted(versions & set(rows) & set(measured)):
+            cells, actual = rows[version], measured[version]
+            expected = f"{actual['passed']}/{actual['replays']}"
+            count_index = 2 if readme_table else 1
+            if len(cells) != count_index + 2 or cells[count_index] != expected:
+                problems.append(f"{name}: {version} clean/checked must be {expected}")
+            if cells[-1] != BUILD_METHOD:
+                problems.append(f"{name}: {version} uses a different verification method")
+            if readme_table and cells[1] != f"`release-{version}`":
+                problems.append(f"{name}: {version} branch label differs")
+    return problems
 
 
 def check_tools(usage: str) -> list[str]:
@@ -783,9 +840,12 @@ def main() -> int:
            for p in check_links(path, read(path))]
         + check_feature_matrix(read(REPO / "CONTRIBUTING.md"),
                                read(REPO / ".github" / "workflows" / "ci.yml"))
+        + check_build_verification(
+            readme, usage, read(REPO / "crates/vrf-transform/src/lib.rs"),
+            json.loads(read(BUILD_AUDIT)))
     )
 
-    checked = 17
+    checked = 18
     if not args.fast:
         rust, tools_n, run_problems = measure_tests()
         problems += run_problems

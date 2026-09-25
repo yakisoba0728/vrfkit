@@ -9,12 +9,15 @@ with "lost"; check stream-loss counters separately.
 Legend: ✅ typed (value decoded) · ◐ raw or derivable · ❌ unavailable in the
 stated observation scope. Absence in a sample is not proof of format-wide absence.
 
-The current 714-replay field measurement is recorded in
+The historical 2026-09-09 714-replay field measurement is recorded in
 [TARGETING_AND_HEAL_VALUES.md](TARGETING_AND_HEAL_VALUES.md): physical
 typed-value presence is 71.2336% main, 77.3065% checkpoint, and 72.5608%
 combined, counted directly from all four value columns. These physical row
 ratios are not semantic completeness. Both corpus guards and the independent
-before/after comparison pass on all 714 inputs.
+before/after comparison passed on those 714 inputs. The latest build-by-build
+validation is recorded in [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md); it
+checks a larger replay collection with one acceptance rule for all builds.
+The historical physical-coverage ratios above were not remeasured by that audit.
 RequestedIgnoreActors, TransitionContext and the measured HawkFlash velocity now expose typed reference/vector values.
 Qualified HealCauser actor references and map-targeting cursor/click vectors
 also expose values. Multi-click arrays retain raw parents and add vector children.
@@ -386,7 +389,7 @@ leaving. Sage's orb and Chamber's trap slow; Fade's Seize and Terra's time-slow
 grenade showed no movement-speed effect at their actor's position.
 
 **Crouch is not in `movement_state`.** That column is 0 on all
-1,034,035,170 exported movement rows in the current 527-replay corpus. Crouch
+1,034,035,170 exported movement rows in the historical 2026-08-31 527-replay corpus. Crouch
 is `bCrouchHeld` on the character actor, or a ~19 cm drop in `pos_z`, and
 crouch speed is ~190 cm/s.
 
