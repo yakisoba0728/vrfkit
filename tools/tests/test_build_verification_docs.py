@@ -12,6 +12,9 @@ class BuildVerificationDocsTests(unittest.TestCase):
     REGISTRY = "pub const ALL_VERSIONS: &[TransformVersion] = &[TransformVersion::V1106];"
     REPORT = {"executable_changed": False, "builds": {
         "++Ares-Core+release-11.06": {"passed": 2, "failed": 1, "replays": 3,
+                                      "checkpoint_evidence": "observed",
+                                      "counts": {"checkpoint_content_blocks": 5,
+                                                 "checkpoint_overlay_decoded_ok": 8},
                                       "input_sha256": ["a", "b", "c"]}}}
     README = "| **11.06** | `release-11.06` | 2/3 | Validation + checkpoints + typed/raw |"
     USAGE = "| 11.06 | 2/3 | Validation + checkpoints + typed/raw |"
@@ -50,8 +53,20 @@ class BuildVerificationDocsTests(unittest.TestCase):
         report = deepcopy(self.REPORT)
         report["builds"]["++Ares-Core+release-11.06"]["failed"] = 0
         self.assertTrue(self.check(report=report))
+
         report = deepcopy(self.REPORT)
         report["builds"]["++Ares-Core+release-11.06"]["input_sha256"] = ["a", "a", "c"]
+        self.assertTrue(self.check(report=report))
+
+    def test_checkpoint_claim_requires_real_work_and_no_build_errors(self):
+        for key in ("checkpoint_content_blocks", "checkpoint_overlay_decoded_ok"):
+            for bad in (0, None, True, -1):
+                with self.subTest(key=key, bad=bad):
+                    report = deepcopy(self.REPORT)
+                    report["builds"]["++Ares-Core+release-11.06"]["counts"][key] = bad
+                    self.assertTrue(self.check(report=report))
+        report = deepcopy(self.REPORT)
+        report["build_errors"] = ["checkpoint work absent"]
         self.assertTrue(self.check(report=report))
 
 

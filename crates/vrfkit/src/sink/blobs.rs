@@ -2436,6 +2436,130 @@ mod tests {
     }
 
     #[test]
+    fn active_blinds_null_reference_obeys_build_and_parent_identity_guards() {
+        let identity = (
+            "/Script/ShooterGame.BlindManagerComponent",
+            "ActiveBlinds",
+            3_853_965_310,
+        );
+        let declaration = [(11, "CausingActor", 2_370_661_694)];
+        let bits = one_leaf(11, &bits_from_bytes(&[0]));
+        for branch in ["13.01", "13.02", "13.04", "13.05", "13.06"] {
+            let branch = format!("++Ares-Core+release-{branch}");
+            let (records, stats) =
+                export_array_with_declarations(identity, &declaration, &bits, Some(&branch));
+            assert_eq!(records.fields.len(), 2, "{branch}");
+            assert_eq!(records.fields[0].value_i64, Some(0));
+            assert_eq!(stats.array_leaf_decode_errors, 0);
+        }
+        for branch in [None, Some("++Ares-Core+release-12.10"), Some("unknown")] {
+            let (records, _) =
+                export_array_with_declarations(identity, &declaration, &bits, branch);
+            assert_eq!(records.fields.len(), 1, "{branch:?}");
+        }
+        for changed in [
+            ("/Script/ShooterGame.OtherComponent", identity.1, identity.2),
+            (identity.0, "OtherArray", identity.2),
+            (identity.0, identity.1, identity.2 + 1),
+        ] {
+            let (records, _) =
+                export_array_with_declarations(changed, &declaration, &bits, Some(MEASURED_BUILD));
+            assert_eq!(records.fields.len(), 1);
+            assert_eq!(
+                records.fields[0].raw_bits.as_deref(),
+                Some(bytes(&bits).as_slice())
+            );
+        }
+    }
+
+    #[test]
+    fn active_blinds_every_truncated_null_update_retains_only_raw_parent() {
+        let identity = (
+            "/Script/ShooterGame.BlindManagerComponent",
+            "ActiveBlinds",
+            3_853_965_310,
+        );
+        let bits = one_leaf(11, &bits_from_bytes(&[0]));
+        for length in 1..bits.len() {
+            let truncated = &bits[..length];
+            let (records, stats) = export_array_with_declarations(
+                identity,
+                &[(11, "CausingActor", 2_370_661_694)],
+                truncated,
+                Some(MEASURED_BUILD),
+            );
+            assert_eq!(stats.array.errors, 1, "cut at {length}");
+            assert_eq!(records.fields.len(), 1, "cut at {length}");
+            assert_eq!(records.fields[0].bit_count, length as u32);
+            assert_eq!(
+                records.fields[0].raw_bits.as_deref(),
+                Some(bytes(truncated).as_slice())
+            );
+        }
+    }
+
+    #[test]
+    fn active_blinds_empty_delta_rejects_every_nonzero_trailer_byte() {
+        for trailer in 1..=255u8 {
+            let bits = bits_from_bytes(&[2, 0, trailer]);
+            let (records, stats) = export_array_with_declarations(
+                (
+                    "/Script/ShooterGame.BlindManagerComponent",
+                    "ActiveBlinds",
+                    3_853_965_310,
+                ),
+                &[],
+                &bits,
+                Some(MEASURED_BUILD),
+            );
+            assert_eq!(stats.array.errors, 1, "trailer {trailer}");
+            assert_eq!(records.fields.len(), 1);
+        }
+    }
+
+    #[test]
+    fn active_blinds_sparse_updates_keep_indices_and_packed_reference_boundaries() {
+        let identity = (
+            "/Script/ShooterGame.BlindManagerComponent",
+            "ActiveBlinds",
+            3_853_965_310,
+        );
+        for reference in [0, 1, 127, 128, 16_383, 16_384, 2_097_151] {
+            let mut bits = Vec::new();
+            packed(&mut bits, 3);
+            for index in [0, 2] {
+                packed(&mut bits, index + 1);
+                packed(&mut bits, 12);
+                let mut payload = Vec::new();
+                packed(&mut payload, reference);
+                packed(&mut bits, payload.len() as u32);
+                bits.extend(payload);
+                packed(&mut bits, 0);
+            }
+            packed(&mut bits, 0);
+            let (records, stats) = export_array_with_declarations(
+                identity,
+                &[(11, "CausingActor", 2_370_661_694)],
+                &bits,
+                Some(MEASURED_BUILD),
+            );
+            assert_eq!(stats.array.errors + stats.array_leaf_decode_errors, 0);
+            assert_eq!(records.fields.len(), 3);
+            for (row, index) in records.fields[..2].iter().zip([0, 2]) {
+                assert_eq!(
+                    row.field_name.as_deref(),
+                    Some(format!("ActiveBlinds[{index}].CausingActor").as_str())
+                );
+                assert_eq!(row.value_i64, Some(i64::from(reference)));
+            }
+            assert_eq!(
+                records.fields[2].raw_bits.as_deref(),
+                Some(bytes(&bits).as_slice())
+            );
+        }
+    }
+
+    #[test]
     fn active_blinds_changed_member_declaration_retains_only_raw_parent() {
         const GROUP: &str = "/Script/ShooterGame.BlindManagerComponent";
         const PARENT: &str = "ActiveBlinds";

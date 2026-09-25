@@ -67,11 +67,10 @@ It runs the test suites to get (8), so it is not free -- roughly the cost of
 `cargo test` plus the tools suite. Run it when touching docs, or before
 calling a session finished.
 
-**CI runs `--fast`, so (8) does not run there** and cannot: the Python job is
-Ubuntu-only by design (the Rust job needs Windows for the Oodle FFI), and (8)
-shells out to `cargo test`. Check (8) is a local gate, not an enforced one --
-which is precisely how `355 passing` survived twelve commits next to a correct
-`387 tests`. Run the full guard by hand before finishing a session.
+CI runs the full guard in the Windows MSRV job, where both Rust and Python
+are installed. The Python platform/version matrix also runs `--fast` for
+source/document consistency. Run the full guard locally before finishing a
+session; a consistent but stale count still needs actual suite measurement.
 
 Usage:
     python tools/check_docs.py
@@ -135,6 +134,8 @@ def check_build_verification(readme: str, usage: str, registry: str, report: dic
         problems.append("build audit does not cover exactly the supported registry")
     if report.get("executable_changed") is not False:
         problems.append("build audit executable changed or its integrity result is absent")
+    if report.get("build_errors"):
+        problems.append("build audit has unresolved build-level errors")
     for version, row in measured.items():
         counts = [row.get(key) for key in ("replays", "passed", "failed")]
         if (any(type(value) is not int or value < 0 for value in counts)
@@ -144,6 +145,12 @@ def check_build_verification(readme: str, usage: str, registry: str, report: dic
         hashes = row.get("input_sha256", [])
         if len(hashes) != counts[0] or len(set(hashes)) != counts[0]:
             problems.append(f"build audit {version}: input hashes do not match replay count")
+        work = row.get("counts", {})
+        checkpoint_counts = [work.get(key) for key in
+                             ("checkpoint_content_blocks", "checkpoint_overlay_decoded_ok")]
+        if (row.get("checkpoint_evidence") != "observed"
+                or any(type(value) is not int or value <= 0 for value in checkpoint_counts)):
+            problems.append(f"build audit {version}: no positive checkpoint decoding evidence")
     for name, doc, readme_table in (("README", readme, True), ("USAGE", usage, False)):
         for quoted in re.findall(r"Payload transform \((\d+) builds\)", doc):
             if int(quoted) != len(versions):
@@ -317,9 +324,8 @@ def contradicting_test_counts(docs: dict[str, str]) -> list[str]:
     """Suite-size claims that cannot all be true at once.
 
     `stale_test_counts` needs the real numbers, so it only runs in the full
-    mode -- which CI cannot use, because that mode shells out to `cargo test`
-    and the Python job is Ubuntu-only for the Oodle split. This is the part of
-    the same check that survives `--fast`, and therefore the part CI can run.
+    mode in the Windows MSRV job. This consistency check also survives
+    `--fast`, as used by the Python platform/version matrix.
 
     It cannot know which number is right. It does not have to: the repo has
     exactly two suites, so a third distinct value is a contradiction on its
@@ -761,10 +767,10 @@ def measure_tests() -> tuple[int, int, list[str]]:
                        cwd=REPO, capture_output=True,
                        text=True, encoding="utf-8", errors="replace", timeout=3600)
     out = (r.stdout or "") + (r.stderr or "")
-    passed_matches = re.findall(r"(\d+) passed", out)
+    passed_matches = re.findall(r"^test result: ok\. (\d+) passed;", out, re.M)
     rust = sum(int(m) for m in passed_matches)
     if r.returncode != 0:
-        problems.append("cargo test did not pass; doc counts not checked against it")
+        problems.append("cargo test did not pass; doc counts not checked against it\n" + out[-4000:])
     elif not passed_matches:
         # `measured_counts` above already carries this rule for the ASCII
         # count: a parse failure defaulting to 0 is indistinguishable from a
@@ -775,20 +781,26 @@ def measure_tests() -> tuple[int, int, list[str]]:
         problems.append(
             "cargo test exited 0 but printed no 'N passed' line; the rust "
             "test count (0) was not measured")
+    elif rust == 0:
+        problems.append("cargo test reported zero passing tests")
 
-    r2 = subprocess.run([sys.executable, "-m", "unittest", "discover",
+    r2 = subprocess.run([sys.executable, "-W", "error", "-m", "unittest", "discover",
                          "-s", "tools/tests", "-p", "test_*.py"],
                         cwd=REPO, capture_output=True, text=True,
                         encoding="utf-8", errors="replace", timeout=1800)
     out2 = (r2.stdout or "") + (r2.stderr or "")
-    m = re.search(r"Ran (\d+) tests", out2)
+    m = re.search(r"^Ran (\d+) tests? in ", out2, re.M)
     tools_n = int(m.group(1)) if m else 0
     if r2.returncode != 0:
-        problems.append("tools test suite did not pass")
+        problems.append("tools test suite did not pass\n" + out2[-4000:])
     elif m is None:
         problems.append(
             "the tools test suite exited 0 but printed no 'Ran N tests' "
             "line; the tools test count (0) was not measured")
+    elif tools_n == 0:
+        problems.append("tools test suite reported zero tests")
+    if re.search(r"^OK \(.*skipped=[1-9]", out2, re.M):
+        problems.append("tools test suite skipped tests; not every reported test passed")
     return rust, tools_n, problems
 
 

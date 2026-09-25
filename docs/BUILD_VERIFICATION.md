@@ -84,6 +84,12 @@ properties remain explicit in the report. A clean audit does not imply full
 semantic coverage, complete understanding of every field, or verification
 against what the game displayed.
 
+The audit command also reports `build_errors` and exits unsuccessfully if any
+build has no observed checkpoint decoding. Documentation checks require
+positive checkpoint block and decoded-value counts, not just an evidence
+label. The recorded 986-replay audit already satisfies these conditions for
+all 24 builds; its parser commit and measured results above are unchanged.
+
 ## Resolved findings
 
 The first 2026-09-25 audit at parser `bf8ab9c` found 116 array-counter

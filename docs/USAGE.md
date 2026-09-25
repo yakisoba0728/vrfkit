@@ -1008,12 +1008,12 @@ field meaning; the analyzer deliberately performs no type inference.
 ### Quick sweep -- after any change
 
 ```bash
-cargo +1.86.0 test --workspace --locked                              # 710 passing
+cargo +1.86.0 test --workspace --locked                              # 714 passing
 cargo +1.86.0 clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.86.0 fmt --check
 python -W error tools/check_ascii.py --check                         # 147 files
 python -W error tools/check_effect_decoder.py --check                # 12 cases
-python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 866 tests
+python -W error -m unittest discover -s tools/tests -p "test_*.py"   # 891 tests
 python -W error tools/check_docs.py --fast
 python -W error tools/apply_type_corrections.py --check              # 187 corrections
 python -W error tools/extract_checksum_types.py --export tools/fixtures/checksum_export --check
@@ -1276,7 +1276,9 @@ Each replay receives `validate`, `export --checkpoints`, required-counter
 and Parquet row-count checks, and independent Python comparisons for the
 observed fields in `public_fixture_type_evidence.json`. Missing counters,
 nonzero framing/transform/array/type failures and changed inputs fail the
-strict audit. Unknown RPCs preserved whole are counted separately from loss.
+strict audit. Every build must also show positive checkpoint block and
+decoded-value counts; otherwise `build_errors` makes the command fail. Unknown
+RPCs preserved whole are counted separately from loss.
 Unobserved evidence fields are reported as absent, never as verified values.
 
 ```powershell

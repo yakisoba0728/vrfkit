@@ -2451,6 +2451,7 @@ mod tests {
         assert_eq!(players.get(&7).unwrap().character_net_guid, None);
     }
 
+    #[cfg(feature = "export")]
     #[test]
     fn checkpoint_block_spans_include_every_emitted_child_and_empty_block() {
         let mut cache = NetGuidCache::new();

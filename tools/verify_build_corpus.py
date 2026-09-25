@@ -257,12 +257,16 @@ def main(argv=None):
                 print(f"{len(rows)}/{len(unique)} checked; {sum(bool(r['failures']) for r in rows)} failed", flush=True)
             atomic_write_text(args.work_dir / "progress.json", json.dumps(summarize(rows), indent=2) + "\n")
     changed = sha256_file(args.exe) != exe_hash
+    builds = summarize(rows)
+    build_errors = [f"{branch}: no observed checkpoint decoding"
+                    for branch, build in builds.items()
+                    if build["checkpoint_evidence"] != "observed"]
     report = {"provenance": provenance, "executable_changed": changed,
-              "builds": summarize(rows),
+              "builds": builds, "build_errors": build_errors,
               "failures": [{"sha256": row["sha256"], "branch": row["branch"], "errors": row["failures"]}
                            for row in rows if row["failures"]]}
     atomic_write_text(args.output, json.dumps(report, indent=2) + "\n")
-    return int(changed or bool(report["failures"]))
+    return int(changed or bool(report["failures"]) or bool(build_errors))
 
 
 if __name__ == "__main__":

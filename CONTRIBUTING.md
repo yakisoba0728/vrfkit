@@ -24,8 +24,8 @@ Python tooling under `tools/` needs `pip install -r requirements.txt`
 (pyarrow, numpy) -- without it several checks below fail to import instead of
 running.
 
-**MSRV is 1.86, and CI pins exactly that.** A newer local toolchain accepts
-syntax 1.86 rejects — `let` chains are the one that has already broken a build —
+**MSRV is 1.86, and the main Rust CI job pins exactly that.** A newer local
+toolchain accepts syntax 1.86 rejects — `let` chains are the one that has already broken a build —
 so a green `cargo test` on your machine is not evidence CI will pass. Install
 the pinned toolchain once and run the sweep through it:
 
@@ -101,11 +101,20 @@ cargo +1.86.0 check -p vrf-schema --no-default-features --locked
 cargo +1.86.0 check -p vrf-schema --no-default-features --features checkpoint --locked
 ```
 
-`check_docs.py` without `--fast` runs the suites so it can compare the numbers
-the docs quote against the real ones. CI runs `--fast` and cannot do otherwise —
-the full mode shells out to `cargo test`, and the Python job is Ubuntu-only
-because the Rust job needs Windows for the Oodle FFI. **That check is yours to
-run, not CI's**, and it is the only thing that catches a stale count in prose.
+`check_docs.py` without `--fast` runs the suites and compares the documented
+counts with the measured results. The Windows MSRV job runs this full check,
+including Python with warnings treated as errors. Failed processes, missing
+or zero test counts, and skipped Python tests fail the measurement.
+
+The Python checks also run on Windows and Ubuntu with Python 3.12 and 3.13;
+those jobs use `check_docs.py --fast` for source/document consistency. A
+separate Windows Rust stable job runs all-feature workspace tests and
+core-only CLI tests. The pinned MSRV feature matrix above remains required.
+
+CI validates the workflow with checksum-pinned actionlint, pins Actions to
+commit IDs, grants read-only repository permissions, cancels superseded runs,
+and limits job durations. The final `CI complete` job succeeds only when every
+required job succeeds; failures, cancellations and skipped jobs cannot pass it.
 
 If your change affects exported output, also run the regression guards in
 [`docs/USAGE.md`](docs/USAGE.md) §6 (`check_export_baseline.py`,
@@ -176,23 +185,29 @@ grep -rn "VRFKIT_" tools/*.py | grep environ
 parses each replay's header and decompresses its Oodle chunks; it never reaches
 a field. A green `cargo test` with the corpus present therefore says nothing
 about decoding. The sweeps that do are `validate_corpus.py` (RepLayout framing
-on every content block) and `check_decode_errors_corpus.py` (the overlay), and
-neither runs under `cargo test` or in CI. The names do not distinguish them, so
-the distinction is written here.
+on every content block), `check_decode_errors_corpus.py` (the overlay), and
+`verify_build_corpus.py` (the common main/checkpoint audit). These are separate
+from `cargo test`. CI runs the common audit on three public replays; the full
+private corpus audit remains a local check.
 
-One corpus guard does run in CI: `check_corpus_baseline.py`, on the 12.10,
-12.11 and 13.00 fixtures only. Those three are byte-identical to the upstream
-parser's public test replays, so the Windows job fetches them from a pinned
-commit and checks their SHA-256 first. The 13.02, 13.04, 13.05 and 13.06 baselines
-have no public fixture and are still yours to run.
+The pinned baseline guard also runs in CI: `check_corpus_baseline.py`, on the
+12.10, 12.11 and 13.00 fixtures only. Those three are byte-identical to the
+upstream parser's public test replays, so the Windows job fetches them from a
+pinned commit and checks their SHA-256 first. The 13.02, 13.04, 13.05 and 13.06
+baselines have no public fixture and are still yours to run.
 
-The same job exports those three fixtures and runs `validate_type_evidence.py
---compare-typed` against `tools/fixtures/public_fixture_type_evidence.json`:
-an independent Python decode of each listed field's raw bits must equal the
-exported value on every row. It is the only check in CI that decodes real wire
-bytes rather than a payload a test built itself, and it covers only the typed
-fields the public fixtures happen to carry. Everything else still depends on
-the corpus sweeps above.
+The same job runs `verify_build_corpus.py` on all three fixtures, requiring
+validation, checkpoint-enabled exports, reconciled counters, independent
+raw/typed value comparisons, and positive checkpoint decoding per build.
+It then runs `validate_type_evidence.py --compare-typed` against
+`tools/fixtures/public_fixture_type_evidence.json` across the combined exports:
+every listed field identity must be observed and every independently decoded
+value must match. These public fixtures cover only the fields they contain;
+they do not replace the full available corpus audit.
+
+The public-fixture report, per-replay results and diagnostic logs are retained
+as a GitHub Actions artifact for 14 days, including on failure. Replay files
+and Parquet exports are not uploaded by the workflow.
 
 ```bash
 export VRFKIT_CORPUS_DIR=/path/to/replays
