@@ -704,7 +704,8 @@ A measured array route expands one exact (group, parent, checksum) identity
 into additive child rows that follow the raw parent, which is kept. A route
 runs only on the builds `MeasuredArrayRoutes::for_branch`
 (`crates/vrfkit/src/sink/measured_routes.rs`) admits: every route on
-13.01--13.06, a measured subset on 11.06--13.00
+13.01--13.06 and 13.09, all but the projectile path on 13.08, a measured
+subset on 11.06--13.00
 ([route table](LEGACY_BUILD_SUPPORT.md#measured-array-routes)).
 
 | Array | Members | Column | Meaning |

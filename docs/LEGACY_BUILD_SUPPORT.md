@@ -49,9 +49,11 @@ route is admitted on a build only when, on every available replay of it:
 | 12.11 | 1 | as 12.10 | 510 (294) | 2,627 (1,606) |
 | 13.00 | 1 | as 12.10 | 510 (294) | 2,639 (1,614) |
 | 13.01--13.06 | -- | every route | -- | -- |
+| 13.08 | 1 | every route but the path | 26,121 (16,363) | 144,435 (94,792) |
+| 13.09 | 2 | every route | 51,670 (33,059) | 252,290 (164,660) |
 
 "The path" is `MulticastSetPath.NetworkedProjectilePath`. Across the 51
-replays the admitted routes add 784,478 main and 4,562,377 checkpoint rows,
+11.06--13.00 replays the admitted routes add 784,478 main and 4,562,377 checkpoint rows,
 every one an additive child of a parent still exported whole. Rows added per
 route, main / checkpoint:
 
@@ -73,6 +75,30 @@ typed figures are low; "Rows added" is unchanged. The 12.10, 12.11 and 13.00
 entries rest on one short public fixture each, where KillData,
 RequestedIgnoreActors, ActiveBlinds and the path never occur.
 
+### 13.08 and 13.09
+
+Measured on three private replays (one 13.08, two 13.09; kept out of the
+tree) with the same four criteria, main stream and checkpoints. Every route
+handle is declared with its 13.x name and checksum in the main manifest and in
+every checkpoint. The 13.08 replay declares no `MulticastSetPath` group, so the
+path is unobserved there and stays off. A probe with the gate open on both
+branches left every array counter at zero (errors, truncations, root/nested
+residuals, implicit ends, leaf errors) in both streams; against the closed
+gate every base row survives in order and the only added rows are route
+children, equal to the `Route children` totals. An independent Python checker
+(`wire_bits.parse_array` and `validate_type_evidence` decoders, with each
+checkpoint's own declarations) re-derived every child of every parent: zero
+mismatches, and it failed on a changed value, a deleted child and a corrupted
+raw window. `validate_ability_array_evidence.py --compare-typed
+--require-routes` passes (all 172 ActiveBlinds `SourceID` windows are the
+297-bit inline form), and `verify_build_corpus.py` passes 3/3.
+`extract_kill_observations.py` and `extract_kill_ledger.py` then join 476 of
+479 character deaths (13.08: 169/171, 13.09: 307/308), with no identity or
+checkpoint snapshot unresolved. "Typed" in the table counts the children the
+route types, effect-array JSON and projectile-path values included.
+ActiveBlinds has no checkpoint children on either build: all 477 checkpoint
+parents are empty arrays.
+
 ### Why routes stay off
 
 - **`AllPlayersObfuscatedPlayerInformation` and `TrackedRewards`, before
@@ -92,8 +118,8 @@ RequestedIgnoreActors, ActiveBlinds and the path never occur.
   inline string. The route refuses both and counts each refusal in
   `array_leaf_decode_errors`; `validate_ability_array_evidence.py` rejects
   the same parents.
-- **Unobserved.** The path on 11.06, 12.06 and 12.07, and four routes in each
-  fixture, never produced a child.
+- **Unobserved.** The path on 11.06, 12.06, 12.07 and 13.08, and four routes in
+  each fixture, never produced a child.
 
 Admitting a held-back route needs: the `OwnerExclusivePlayerInfo` and
 nested `SelectedV2` member typing keyed by declared name and checksum (as
