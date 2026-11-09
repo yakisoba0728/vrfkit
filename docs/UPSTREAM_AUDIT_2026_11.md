@@ -6,7 +6,7 @@ Continues [`UPSTREAM_AUDIT_2026_10.md`](UPSTREAM_AUDIT_2026_10.md) with the same
 - Previous audited revision: [`09a8e1e1d81c48840b8810f523f1595e539b7d55`](https://github.com/michel-giehl/ValorantReplayParser/commit/09a8e1e1d81c48840b8810f523f1595e539b7d55) (2026-10-27)
 - Audited upstream revision: [`400f7295964a7f6486378eac6decda3cefe42acb`](https://github.com/michel-giehl/ValorantReplayParser/commit/400f7295964a7f6486378eac6decda3cefe42acb) (2026-11-07)
 - **13 commits** (6 non-merge, 7 merges), **47 net changed paths**: 15 added, 32 modified, 0 removed.
-- Method: list every commit with `git log 09a8e1e..400f729` in a full clone, then compare the two complete Git trees by blob SHA (`git diff --name-status --no-renames 09a8e1e 400f729`; 621 and 636 blobs). A local tree diff has no API path limit. Each merge was checked against its first parent: none adds content beyond its branch's commits. Paths changed and reverted inside the range would not appear in this final-state inventory.
+- Method: list every commit with `git log 09a8e1e..400f729` in a full clone, then compare the two complete Git trees by blob SHA (`git diff --name-status --no-renames 09a8e1e 400f729`; 621 and 636 blobs). A local tree diff has no API path limit. Each merge was checked against its first parent: its changed-path count matches the union of its branch's commits. Paths changed and reverted inside the range would not appear in this final-state inventory.
 - Each entry below is a path-level change, not proof of line-by-line behavioral equivalence.
 
 ## Semantic triage (Rust vrfkit versus C# upstream)
@@ -30,7 +30,7 @@ The residual exposure is `OVERLAY_HANDLE_TABLE`. It maps `MulticastNotifyDamage_
 
 This could not be measured here. The public 12.08/12.10/12.11/13.00 fixtures declare no damage RPC group at all, and no 12.09 replay was available. Two things are known:
 
-- `tools/fixtures/build_verification.json` records `main_overlay_handle_conflicts_refused` of 1-5 per 3-replay sample on every build 11.06-12.09 and 0 on every build 12.10 onward. Upstream's boundary is the same. The counter has no per-group breakdown, so whether those refusals are damage parameters is not known.
+- `tools/fixtures/build_verification.json` records `main_overlay_handle_conflicts_refused` of 1-5 per 3-replay sample on 14 of the 16 builds 11.06-12.09 (0 on 11.09 and 12.05) and 0 on every build 12.10 onward. The boundary matches upstream's. The counter has no per-group breakdown, so whether those refusals are damage parameters is not known.
 - `typed_mismatches: 0` in that file compares against an independent decoder that uses the **same** type assignment. It cannot catch a wrong-name/right-width row and is not evidence here. `KILL_OBSERVATIONS.md` reads `KillData`, not the damage RPCs, so it is not evidence either.
 
 To close this, run on each private 12.09 (and 11.06-12.08) export:
