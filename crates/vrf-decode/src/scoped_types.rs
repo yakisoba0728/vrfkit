@@ -7,7 +7,7 @@ use crate::types::{RotatorQuantization, VectorQuantization};
 
 /// Sorted by (field name, group path, compatible checksum).
 #[rustfmt::skip]
-pub(crate) static SCOPED_TYPES: [(&str, &str, u32, FieldType); 228] = [
+pub(crate) static SCOPED_TYPES: [(&str, &str, u32, FieldType); 240] = [
     ("A", "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C", 988169428, FieldType::UInt32),
     ("A", "/Game/GameModes/_Development/Swiftplay_EndOfRoundCredits/Swiftplay_EoRCredits_PlayerState.Swiftplay_EoRCredits_PlayerState_C", 988169428, FieldType::UInt32),
     ("ActiveSlowTimeEffects", "/Game/GameModes/Bomb/BombGameState.BombGameState_C", 1807371052, FieldType::Bool),
@@ -60,6 +60,11 @@ pub(crate) static SCOPED_TYPES: [(&str, &str, u32, FieldType); 228] = [
     ("CreatedByCharacter", "/Game/Characters/Clay/S0/Ability_Q/Ability_Clay_Q_Satchel.Ability_Clay_Q_Satchel_C", 2035145197, FieldType::ObjectNetGuid),
     ("CreatedByCharacter", "/Game/Characters/Clay/S0/Ability_X/Ability_Clay_X_RocketLauncher.Ability_Clay_X_RocketLauncher_C", 2035145197, FieldType::ObjectNetGuid),
     ("CreatedByCharacter", "/Game/Characters/Iris/S0/Ability_E/Ability_Iris_E_MT_Smoke_Production.Ability_Iris_E_MT_Smoke_Production_C", 2035145197, FieldType::ObjectNetGuid),
+    ("CreatedByCharacter", "/Game/Characters/Paprika/S0/Ability_4/Ability_Paprika_4_PullBlast.Ability_Paprika_4_PullBlast_C", 2035145197, FieldType::ObjectNetGuid),
+    ("CreatedByCharacter", "/Game/Characters/Paprika/S0/Ability_E/Ability_Paprika_E_RedirectPull.Ability_Paprika_E_RedirectPull_C", 2035145197, FieldType::ObjectNetGuid),
+    ("CreatedByCharacter", "/Game/Characters/Paprika/S0/Ability_Q/Ability_Paprika_Q_RedirectFlash.Ability_Paprika_Q_RedirectFlash_C", 2035145197, FieldType::ObjectNetGuid),
+    ("CreatedByCharacter", "/Game/Characters/Paprika/S0/Ability_X/Ability_Paprika_X_FullBendPop.Ability_Paprika_X_FullBendPop_C", 2035145197, FieldType::ObjectNetGuid),
+    ("CreatedByCharacter", "/Game/Characters/Paprika/S0/Passive/Ability_Paprika_Passive_Telekinesis.Ability_Paprika_Passive_Telekinesis_C", 2035145197, FieldType::ObjectNetGuid),
     ("CreatedByCharacter", "/Game/Characters/Sarge/S0/Ability_MapTargetSmoke/Ability_Sarge_4_MapTargetSmoke_Production.Ability_Sarge_4_MapTargetSmoke_Production_C", 2035145197, FieldType::ObjectNetGuid),
     ("CreatedByCharacter", "/Game/Characters/Smonk/S0/Ability_E/MapTargetSmoke/Ability_Smonk_E_MapTargetSmokeV2.Ability_Smonk_E_MapTargetSmokeV2_C", 2035145197, FieldType::ObjectNetGuid),
     ("CreatedByCharacter", "/Game/Characters/Smonk/S0/Ability_E/MapTargetSmoke/Ability_Smonk_E_PostDeath.Ability_Smonk_E_PostDeath_C", 2035145197, FieldType::ObjectNetGuid),
@@ -170,6 +175,9 @@ pub(crate) static SCOPED_TYPES: [(&str, &str, u32, FieldType); 228] = [
     ("ReplicatedMovement", "/Game/Characters/Nox/S0/Ability_4/Projectile_Nox_BarbedWire.Projectile_Nox_BarbedWire_C", 2749104612, FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents, location: VectorQuantization::RoundWholeNumber }),
     ("ReplicatedMovement", "/Game/Characters/Pandemic/S0/Ability_4/Projectile_Pandemic_4_SmokeGrenade.Projectile_Pandemic_4_SmokeGrenade_C", 2749104612, FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents, location: VectorQuantization::RoundWholeNumber }),
     ("ReplicatedMovement", "/Game/Characters/Pandemic/S0/Ability_Q/Projectile_Pandemic_Q_AcidGrenade.Projectile_Pandemic_Q_AcidGrenade_C", 2749104612, FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents, location: VectorQuantization::RoundWholeNumber }),
+    ("ReplicatedMovement", "/Game/Characters/Paprika/S0/Ability_E/Projectile_Paprika_E_RedirectPull.Projectile_Paprika_E_RedirectPull_C", 2749104612, FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents, location: VectorQuantization::RoundWholeNumber }),
+    ("ReplicatedMovement", "/Game/Characters/Paprika/S0/Ability_Q/Projectile_Paprika_Q_RedirectFlash.Projectile_Paprika_Q_RedirectFlash_C", 2749104612, FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents, location: VectorQuantization::RoundWholeNumber }),
+    ("ReplicatedMovement", "/Game/Characters/Paprika/S0/Ability_X/Projectile_Paprika_X_FullBendPop.Projectile_Paprika_X_FullBendPop_C", 2749104612, FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents, location: VectorQuantization::RoundWholeNumber }),
     ("ReplicatedMovement", "/Game/Characters/Phoenix/S0/Ability_4/Production/Projectile_Phoenix_4_Molotov_Production.Projectile_Phoenix_4_Molotov_Production_C", 2749104612, FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents, location: VectorQuantization::RoundWholeNumber }),
     ("ReplicatedMovement", "/Game/Characters/Phoenix/S0/Ability_E/Production/Projectile_Phoenix_E_FlareCurve_Synced.Projectile_Phoenix_E_FlareCurve_Synced_C", 2749104612, FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents, location: VectorQuantization::RoundWholeNumber }),
     ("ReplicatedMovement", "/Game/Characters/Phoenix/S0/Ability_E/Production/Projectile_Phoenix_E_FlareCurve_Synced_Right.Projectile_Phoenix_E_FlareCurve_Synced_Right_C", 2749104612, FieldType::RepMovement { rotation: RotatorQuantization::ByteComponents, location: VectorQuantization::RoundWholeNumber }),
@@ -195,6 +203,10 @@ pub(crate) static SCOPED_TYPES: [(&str, &str, u32, FieldType); 228] = [
     ("SalvagingTeam", "/Game/ThriftyCeremony.ThriftyCeremony_C", 936511401, FieldType::ObjectNetGuid),
     ("Seeking Missile Actor", "/Game/Characters/Cashew/S0/Ability_E/GameObject_Cashew_E_MapMissileMarker.GameObject_Cashew_E_MapMissileMarker_C", 1905883563, FieldType::ObjectNetGuid),
     ("Seeking Missile Actor", "/Game/Characters/Cashew/S0/Ability_E/GameObject_Cashew_E_MapMissileMarker_SecondRocket.GameObject_Cashew_E_MapMissileMarker_SecondRocket_C", 1905883563, FieldType::ObjectNetGuid),
+    ("Selected Point", "/Game/Characters/Paprika/S0/Ability_E/Projectile_Paprika_E_RedirectPull.Projectile_Paprika_E_RedirectPull_C", 2469525580, FieldType::VectorDouble),
+    ("Selected Point", "/Game/Characters/Paprika/S0/Ability_E/Projectile_Paprika_E_RedirectPull_Underhand.Projectile_Paprika_E_RedirectPull_Underhand_C", 2469525580, FieldType::VectorDouble),
+    ("Selected Point", "/Game/Characters/Paprika/S0/Ability_Q/Projectile_Paprika_Q_RedirectFlash.Projectile_Paprika_Q_RedirectFlash_C", 2469525580, FieldType::VectorDouble),
+    ("Selected Point", "/Game/Characters/Paprika/S0/Ability_Q/Projectile_Paprika_Q_RedirectFlash_Underhand.Projectile_Paprika_Q_RedirectFlash_Underhand_C", 2469525580, FieldType::VectorDouble),
     ("ShouldOverrideMatchTimer", "/Game/GameModes/Bomb/BombGameState.BombGameState_C", 2889152318, FieldType::Bool),
     ("ShouldOverrideMatchTimer", "/Game/GameModes/_Development/Swiftplay_EndOfRoundCredits/Swiftplay_EoRCredits_GameState.Swiftplay_EoRCredits_GameState_C", 2889152318, FieldType::Bool),
     ("Source", "/Script/ShooterGame.ForceModuleManagerComponent:NetMulticastApplyForceModule", 1966913909, FieldType::ObjectNetGuid),

@@ -1884,6 +1884,105 @@
       "location_quantization": "RoundWholeNumber",
       "observed_builds": ["++Ares-Core+release-11.06", "++Ares-Core+release-11.08", "++Ares-Core+release-11.09", "++Ares-Core+release-11.10", "++Ares-Core+release-11.11", "++Ares-Core+release-12.00", "++Ares-Core+release-12.01", "++Ares-Core+release-12.02", "++Ares-Core+release-12.03", "++Ares-Core+release-12.04", "++Ares-Core+release-12.05", "++Ares-Core+release-12.06", "++Ares-Core+release-12.07", "++Ares-Core+release-12.08", "++Ares-Core+release-12.09", "++Ares-Core+release-13.01", "++Ares-Core+release-13.02", "++Ares-Core+release-13.04", "++Ares-Core+release-13.05", "++Ares-Core+release-13.06"],
       "evidence": "tools/check_rep_movement_levels.py over a 123-replay sample: 998 spawn joins on 20 builds, ratio p1-p99 0.9999-1.0001, every join within 0.5000 of its spawn at /1, speed check 1.00 over 16,629 pairs; ByteComponents consumes all 17,652 rows, ShortComponents fails 10,954."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_E/Projectile_Paprika_E_RedirectPull.Projectile_Paprika_E_RedirectPull_C",
+      "field": "ReplicatedMovement",
+      "checksum": 2749104612,
+      "type": "RepMovementByte",
+      "location_quantization": "RoundWholeNumber",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "tools/check_rep_movement_levels.py on 1 replay (13.09, the only build with Hush): 181 rows: 13 spawn joins, ratio p1-p99 0.9999-1.0000, every join within 0.5000 of its spawn at /1, speed check 1.00 over 155 pairs; ByteComponents consumes all 181 rows, ShortComponents fails 112. The underhand Flashbulb and Displacement projectiles have no spawn join, so their level is unmeasured and they stay raw."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_Q/Projectile_Paprika_Q_RedirectFlash.Projectile_Paprika_Q_RedirectFlash_C",
+      "field": "ReplicatedMovement",
+      "checksum": 2749104612,
+      "type": "RepMovementByte",
+      "location_quantization": "RoundWholeNumber",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "tools/check_rep_movement_levels.py on 1 replay (13.09, the only build with Hush): 47 rows: 2 spawn joins, ratio 1.0000, every join within 0.4000 of its spawn at /1, speed check 0.99 over 43 pairs; ByteComponents consumes all 47 rows, ShortComponents fails 25. The underhand Flashbulb and Displacement projectiles have no spawn join, so their level is unmeasured and they stay raw."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_X/Projectile_Paprika_X_FullBendPop.Projectile_Paprika_X_FullBendPop_C",
+      "field": "ReplicatedMovement",
+      "checksum": 2749104612,
+      "type": "RepMovementByte",
+      "location_quantization": "RoundWholeNumber",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "tools/check_rep_movement_levels.py on 1 replay (13.09, the only build with Hush): 270 rows: 3 spawn joins, ratio 1.0000, every join within 0.5000 of its spawn at /1, speed check 0.98 over 230 pairs; ByteComponents consumes all 270 rows, ShortComponents fails 20. The underhand Flashbulb and Displacement projectiles have no spawn join, so their level is unmeasured and they stay raw."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_E/Projectile_Paprika_E_RedirectPull.Projectile_Paprika_E_RedirectPull_C",
+      "field": "Selected Point",
+      "checksum": 2469525580,
+      "type": "VectorDouble",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "1 replay (13.09): all 135 rows 192 bits, three finite LE f64 read exactly by validate_type_evidence.py with 0 failures, every component in the map's coordinate range. Median distance to the same projectile's own ReplicatedMovement path 177 units, against 400 to the other projectiles' paths of this class. What the point selects is not established."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_E/Projectile_Paprika_E_RedirectPull_Underhand.Projectile_Paprika_E_RedirectPull_Underhand_C",
+      "field": "Selected Point",
+      "checksum": 2469525580,
+      "type": "VectorDouble",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "1 replay (13.09): all 17 rows 192 bits, three finite LE f64 read exactly by validate_type_evidence.py with 0 failures, every component in the map's coordinate range. Median distance to the same projectile's own ReplicatedMovement path 146 units, against 421 to the other projectiles' paths of this class. What the point selects is not established."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_Q/Projectile_Paprika_Q_RedirectFlash.Projectile_Paprika_Q_RedirectFlash_C",
+      "field": "Selected Point",
+      "checksum": 2469525580,
+      "type": "VectorDouble",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "1 replay (13.09): all 40 rows 192 bits, three finite LE f64 read exactly by validate_type_evidence.py with 0 failures, every component in the map's coordinate range. Median distance to the same projectile's own ReplicatedMovement path 560 units, against 2971 to the other projectiles' paths of this class. What the point selects is not established."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_Q/Projectile_Paprika_Q_RedirectFlash_Underhand.Projectile_Paprika_Q_RedirectFlash_Underhand_C",
+      "field": "Selected Point",
+      "checksum": 2469525580,
+      "type": "VectorDouble",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "1 replay (13.09): all 10 rows 192 bits, three finite LE f64 read exactly by validate_type_evidence.py with 0 failures, every component in the map's coordinate range. Median distance to the same projectile's own ReplicatedMovement path 75 units, against 523 to the other projectiles' paths of this class. What the point selects is not established."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_4/Ability_Paprika_4_PullBlast.Ability_Paprika_4_PullBlast_C",
+      "field": "CreatedByCharacter",
+      "checksum": 2035145197,
+      "type": "ObjectNetGuid",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "1 replay (13.09): 4 main rows, all 16 bits, consumed exactly as IntPacked by validate_type_evidence.py with 0 failures; all 53 values over the five Hush ability items resolve to a Paprika_PC_C actor in the same export. 2035145197 is in no checksum map, so only this group/name/checksum identity is accepted."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_E/Ability_Paprika_E_RedirectPull.Ability_Paprika_E_RedirectPull_C",
+      "field": "CreatedByCharacter",
+      "checksum": 2035145197,
+      "type": "ObjectNetGuid",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "1 replay (13.09): 4 main rows, all 16 bits, consumed exactly as IntPacked by validate_type_evidence.py with 0 failures; all 53 values over the five Hush ability items resolve to a Paprika_PC_C actor in the same export. 2035145197 is in no checksum map, so only this group/name/checksum identity is accepted."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_Q/Ability_Paprika_Q_RedirectFlash.Ability_Paprika_Q_RedirectFlash_C",
+      "field": "CreatedByCharacter",
+      "checksum": 2035145197,
+      "type": "ObjectNetGuid",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "1 replay (13.09): 4 main rows, all 16 bits, consumed exactly as IntPacked by validate_type_evidence.py with 0 failures; all 53 values over the five Hush ability items resolve to a Paprika_PC_C actor in the same export. 2035145197 is in no checksum map, so only this group/name/checksum identity is accepted."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Ability_X/Ability_Paprika_X_FullBendPop.Ability_Paprika_X_FullBendPop_C",
+      "field": "CreatedByCharacter",
+      "checksum": 2035145197,
+      "type": "ObjectNetGuid",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "1 replay (13.09): 4 main rows, all 16 bits, consumed exactly as IntPacked by validate_type_evidence.py with 0 failures; all 53 values over the five Hush ability items resolve to a Paprika_PC_C actor in the same export. 2035145197 is in no checksum map, so only this group/name/checksum identity is accepted."
+    },
+    {
+      "group": "/Game/Characters/Paprika/S0/Passive/Ability_Paprika_Passive_Telekinesis.Ability_Paprika_Passive_Telekinesis_C",
+      "field": "CreatedByCharacter",
+      "checksum": 2035145197,
+      "type": "ObjectNetGuid",
+      "observed_builds": ["++Ares-Core+release-13.09"],
+      "evidence": "1 replay (13.09): 37 main rows, all 16 bits, consumed exactly as IntPacked by validate_type_evidence.py with 0 failures; all 53 values over the five Hush ability items resolve to a Paprika_PC_C actor in the same export. 2035145197 is in no checksum map, so only this group/name/checksum identity is accepted."
     }
   ]
 }

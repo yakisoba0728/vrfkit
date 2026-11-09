@@ -202,6 +202,7 @@ with 100.
 | Persistent effect lifetime | `actors.time_ms` paired across `event` `open`/`close` (non-fuel; a `dormant` event does not end the instance); `CurrentFuelLevel`+`WallActivated` (Viper) | ✅ |
 | Smoke live position | `ReplicatedMovement.location` (world units, [per-class level](#replicatedmovementlocation-is-world-units-at-a-per-class-level)) / `MulticastAddSmokeScreenPoint.Translation` | ✅ as a track: `extract_active_effects.py --tracks` |
 | Raze ability items (owner, persistence, attachment, seed) | `Ability_Clay_{4,E,Q,X}_*`: `CreatedByCharacter`, `bInPersistentData`, `AttachComponent`, `RelativeScale3D`, `CosmeticRandomSeed` | ✅ exact group/name/checksum; `CreatedByCharacter` resolves to the `Clay_PC_C` actor on every non-null main row |
+| Hush (Paprika) ability owner and projectiles | `Ability_Paprika_*_C.CreatedByCharacter`; `ReplicatedMovement` on `Projectile_Paprika_{E_RedirectPull,Q_RedirectFlash,X_FullBendPop}_C`; `Selected Point` on the Flashbulb and Displacement projectiles, overhand and underhand | ✅ exact group/name/checksum, measured on one 13.09 replay: `CreatedByCharacter` resolves to the `Paprika_PC_C` actor on all 53 rows; movement in whole units with byte rotators ([per-class level](#replicatedmovementlocation-is-world-units-at-a-per-class-level)); `Selected Point` is VectorDouble (world units), at a median 75-560 units from its own projectile's path against 400-2,971 from the others'. What the point selects is not established. The underhand projectiles' movement stays raw |
 | Raze satchel attachment | `Projectile_Clay_Q_Satchel_Arming`: `AttachComponent`, `LocationOffset`, `RotationOffset`, `RelativeScale3D` | ✅ exact identity; offsets are relative to the attach component, which resolves to world geometry or a character capsule |
 | Raze Boom Bot position | `Pawn_Clay_E_Boomba.ReplicatedMovement` (short rotation) / `bAIControlled` | ✅ location in centimetres, checked against spawn; `bAIControlled` is true on every observed row |
 | Cypher trapwire armed, trap owner | `GameObject_Gumshoe_{E,4}_TripWire(_SecondWire)_C.Deployed`; `CreatedByCharacter` on the trapwire and cage ability items; the cage item's `RelativeScale3D` | ✅ on both sides of the 13.01 rename (`Ability_E` trapwire -> `Ability_4`, `Ability_4` cage -> `Ability_Q`; typed at the new paths). `Deployed` is sent once per wire, always true: false is the class default and is never replicated, so the row's `time_ms` is when that wire went live. `CreatedByCharacter` resolves to the `Gumshoe_PC_C` actor. The cage projectile's `HasStopped` has no 13.01 successor field |
@@ -427,7 +428,7 @@ crouch speed is ~190 cm/s.
 | Posture (crouch) | `fields.bCrouchHeld` (not movement_state) | ✅ |
 | Trajectory | movement time series per character | ✅ |
 | Force modules on a character (tagging, knockback, movement modifiers) | `ForceModuleManagerComponent` RPCs: `NetMulticastApplyForceModule` -- `Module` (→ `net_guids`, a `ForceModule_*` class), `ModuleType`, `Character` (equals the row's actor), `RespawnNumber`, `NetTimestamp`, `HandleNumber`, `SourceLocation`, `Source`, `Duration`; `NetMulticastRemoveForceModule` -- `HandleNumber`, `ModuleType` | ✅ typed: `Source` and `Duration` by exact group/name/checksum, Remove's `ModuleType` through Apply's checksum, the rest by name. `ModuleType` names are unknown: 0 is most modules and 2 the six displacement ones on Apply; Remove's 1 has no established meaning. `NetTimestamp` is a per-actor/per-life clock, not replay time |
-| Ability projectile, smoke, deployable, pawn (turret, bot, decoy) and dropped-weapon position | `fields.ReplicatedMovement` `location` / `linear_velocity` (JSON in `value_str`) | ✅ world units on the 86 classes the overlay types (26 in the table, 60 scoped) -- [see below](#replicatedmovementlocation-is-world-units-at-a-per-class-level) |
+| Ability projectile, smoke, deployable, pawn (turret, bot, decoy) and dropped-weapon position | `fields.ReplicatedMovement` `location` / `linear_velocity` (JSON in `value_str`) | ✅ world units on the 89 classes the overlay types (26 in the table, 63 scoped) -- [see below](#replicatedmovementlocation-is-world-units-at-a-per-class-level) |
 
 ### The tick is 128 Hz by a 3:13 pattern, not by alternating
 
@@ -548,14 +549,15 @@ in `tools/apply_type_corrections.py`. A rotator flag, if one ever appears,
 decides by exact consumption.
 
 Every class the table types was observed, so no entry rests on the default
-alone. Sixty more are exact scoped identities
+alone. Sixty-three more are exact scoped identities
 (`tools/fixtures/scoped_type_evidence.json`, each entry with its own
-figures): the Boom Bot, measured on the 1,018 replays, and 59 measured by the
+figures): the Boom Bot, measured on the 1,018 replays, 59 measured by the
 tool on 123 (every replay of the 11.06-12.09 folders, 15 per 13.x build),
-where the Boom Bot reads the same. The ten `Pawn_*`/`AIPawn_*` classes --
+where the Boom Bot reads the same, and three Hush projectiles measured on one
+13.09 replay (18 joins, within 0.5; speed 0.98-1.00). The ten `Pawn_*`/`AIPawn_*` classes --
 `Pawn_Killjoy_E_Turret_C` and `Pawn_Killjoy_Q_StealthAlarmbot_C` among them --
 pack two decimals with short rotators (ratio 99.998-100.003, every join within
-0.0504 of spawn); the other 50, Raze's satchel, Paint Shells and rocket among
+0.0504 of spawn); the other 53, Raze's satchel, Paint Shells and rocket among
 them, pack whole units with byte rotators (0.9997-1.0004, within 0.5).
 
 What the evidence does **not** cover:
@@ -572,6 +574,9 @@ What the evidence does **not** cover:
   `Projectile_Gumshoe_4_CageTrap_C`, is `Skip` in the table, and its 13.01
   successor `Projectile_Gumshoe_Q_CageTrap_C` (byte, like it) stays raw with
   it: typing one side alone breaks the move `check_entry_survival.py` follows.
+- **Hush's underhand throws.** `Projectile_Paprika_{E_RedirectPull,Q_RedirectFlash}_Underhand_C`
+  consume exactly as byte rotators, but none of their 32 opens has a first
+  update at the same `time_ms`, so their level is unmeasured and they stay raw.
 
 **New entries.** Every `RepMovement` entry in `table.rs` is whole units --
 Unreal's own `FRepMovement` default -- except SeekerNade, which

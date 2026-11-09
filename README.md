@@ -21,7 +21,9 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 (2026-09-30). Subsequent upstream changes through
 [`09a8e1e`](https://github.com/michel-giehl/ValorantReplayParser/commit/09a8e1e1d81c48840b8810f523f1595e539b7d55)
 (2026-10-27) are inventoried in
-[`docs/UPSTREAM_AUDIT_2026_10.md`](docs/UPSTREAM_AUDIT_2026_10.md);
+[`docs/UPSTREAM_AUDIT_2026_10.md`](docs/UPSTREAM_AUDIT_2026_10.md), and through
+[`400f729`](https://github.com/michel-giehl/ValorantReplayParser/commit/400f7295964a7f6486378eac6decda3cefe42acb)
+(2026-11-07) in [`docs/UPSTREAM_AUDIT_2026_11.md`](docs/UPSTREAM_AUDIT_2026_11.md);
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
