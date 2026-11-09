@@ -78,7 +78,7 @@ def build_export(root, build):
 
 class BuildScopeTests(unittest.TestCase):
     def test_measured_builds_are_accepted(self):
-        for build in (*LEGACY_BUILDS, "13.01", "13.02", "13.04", "13.05", "13.06"):
+        for build in (*LEGACY_BUILDS, "13.01", "13.02", "13.04", "13.05", "13.06", "13.08", "13.09"):
             self.assertIn(f"++Ares-Core+release-{build}", tool.MEASURED_BUILDS)
         for build in ("11.06", "13.06"):
             branch = f"++Ares-Core+release-{build}"
