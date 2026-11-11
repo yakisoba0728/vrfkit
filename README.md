@@ -12,7 +12,7 @@ external `oozextract` crate. Edition 2024, MSRV 1.86, Apache-2.0.
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
 ![rust](https://img.shields.io/badge/rust-1.86%2B-orange.svg)
 ![edition](https://img.shields.io/badge/edition-2024-orange.svg)
-![builds](https://img.shields.io/badge/builds-11.06--13.09-green.svg)
+![builds](https://img.shields.io/badge/builds-11.06--13.10-yellow.svg)
 ![unsafe](https://img.shields.io/badge/unsafe-none-success.svg)
 
 Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantReplayParser)
@@ -27,12 +27,13 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Test suites (2026-10-27):** **739 Rust tests (Windows)**,
-**738 Rust tests (non-Windows)** and **1074 Python tests**.
+**Test suites (2026-11-11):** **740 Rust tests (Windows)**,
+**739 Rust tests (non-Windows)** and **1074 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 2 replays, and 1 meets every criterion; 13.09 on 4
-replays, and all 4 meet every criterion. See
+replays, and all 4 meet every criterion. The 13.10 replay also meets every
+strict criterion. See
 [build verification](docs/BUILD_VERIFICATION.md) for the measured scope, common
 checks and remaining limits.
 
@@ -58,6 +59,7 @@ can be represented by their rows instead of a duplicate raw RPC.
 
 | 🎮 Build | 🌿 Branch | ✅ Clean/checked | 🔎 Verified by |
 |---|---|---:|---|
+| **13.10** | `release-13.10` | 1/1 | Validation + checkpoints + typed/raw |
 | **13.09** | `release-13.09` | 4/4 | Validation + checkpoints + typed/raw |
 | **13.08** | `release-13.08` | 1/2 | Validation + checkpoints + typed/raw |
 | **13.06** | `release-13.06` | 38/38 | Validation + checkpoints + typed/raw |
@@ -86,7 +88,7 @@ can be represented by their rows instead of a duplicate raw RPC.
 | **11.06** | `release-11.06` | 3/3 | Validation + checkpoints + typed/raw |
 
 Measured on all **1,018 unique available replays** across the 24
-branches through 13.06, plus 2 13.08 and 4 13.09 replays in separate runs, every row by the
+branches through 13.06, plus 2 13.08, 4 13.09 and 1 13.10 replays in separate runs, every row by the
 [same acceptance rule](docs/BUILD_VERIFICATION.md):
 ReplayData validation, checkpoint-enabled export, the independent comparisons on
 observed evidence fields, and the strict array and array-leaf error counters.
@@ -94,6 +96,9 @@ observed evidence fields, and the strict array and array-leaf error counters.
 understood. The 13.08 replay that is not clean fails the checkpoint GUID
 cross-check on a name that differs only in case, and the audit stops there for
 it ([details](docs/BUILD_VERIFICATION.md#1308)).
+The 13.10 transform passes the block oracle, and the CombatReport and damage
+RPC array layouts decode with zero main and checkpoint array leaf errors
+([details](docs/BUILD_VERIFICATION.md#1310)).
 Structured-array child rows are admitted per build and per route: all
 measured routes on 13.01--13.06 and 13.09, all but the projectile path on 13.08, a measured subset on 11.06--13.00
 ([legacy route table](docs/LEGACY_BUILD_SUPPORT.md#measured-array-routes)).
@@ -144,7 +149,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **739 Rust tests (Windows)** / **738 Rust tests (non-Windows)** plus
+- **740 Rust tests (Windows)** / **739 Rust tests (non-Windows)** plus
   a layered validation suite (framing / bytes / decode
   errors / semantics).
 
@@ -195,7 +200,7 @@ timestamp) are in [`docs/USAGE.md` section 3](docs/USAGE.md#3-output).
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**738 passing (non-Windows)**; the Windows suite contains **739 tests (Windows)**.
+**739 passing (non-Windows)**; the Windows suite contains **740 tests (Windows)**.
 The full Python suite has **1074 passing** tests. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
@@ -318,7 +323,7 @@ prints no overlay counters.
 ## Supported builds and the cost of a new build
 
 The payload transform changes per game build, but far more is **constant**
-across supported releases 11.06 through 13.09: the PRNG and its multipliers, the seed-mix
+across registered releases 11.06 through 13.10: the PRNG and its multipliers, the seed-mix
 skeleton, the 64 -> 32 -> 8 -> tail staging, the tail-XOR handling, and even
 the S-box table itself. Each build supplies its own `word64` / `word32` /
 `byte` operation sequence (order, rotations, complements, and whether the
@@ -352,8 +357,9 @@ S-box stage is used) plus these constants:
 | release-13.06 | `0xe974593c` | `0x3c` | **+** | used |
 | release-13.08 | `0x3c17a9fa` | `0x06` | - | used |
 | release-13.09 | `0x7e8cb50f` | `0x0f` | **+** | used |
+| release-13.10 | `0x2c249eb3` | `0x33` | **+** | unused |
 
-In all twenty-six supported builds the **tail-XOR byte equals the low byte of the seed
+In all twenty-seven registered builds the **tail-XOR byte equals the low byte of the seed
 addend.** It is a derived value, not an independent constant: `SeededTransform`
 in `crates/vrf-transform/src/lib.rs` defaults `TAIL_XOR` to `SEED_ADDEND as
 u8`, and a build that broke the pattern would fail its 1- and 7-bit vectors,
@@ -364,13 +370,14 @@ So adding a build is one `transforms!` line in `crates/vrf-transform/src/lib.rs`
 its branch, `SEED_ADDEND`, signed `INIT_A_OFFSET` and the step list of its
 word64 / word32 / byte stages; everything else is shared.
 
-Every build in the table above is confirmed on live replays, not only by
-transform vectors. A machine-local corpus can rotate; the reproducible oracle is
+Every build in the table above has been tried on a live replay. A machine-local corpus can rotate; the reproducible oracle is
 88 mechanically extracted golden vectors (11 staging boundaries per
 build, eight builds) plus 1,422 native-machine-code vectors: 1,264 for the
 sixteen recovered 11.06--12.09 builds, with a full 48-sample main/checkpoint
 validation ([build support validation report](docs/LEGACY_BUILD_SUPPORT.md)),
-and 79 each for 13.08 and 13.09. The [common audit](docs/BUILD_VERIFICATION.md) checks 38
+and 79 each for 13.08 and 13.09. The 13.10 transform has eleven fixed boundary
+vectors, five checked against its native reader, plus a full-replay block oracle;
+the 13.10 array layout has a pinned replay payload regression. The [common audit](docs/BUILD_VERIFICATION.md) checks 38
 13.06 replays.
 
 The 768-byte S-box is shared across builds, which makes it usable as a
