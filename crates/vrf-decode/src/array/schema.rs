@@ -70,6 +70,39 @@ pub static COMBAT_ROUNDS_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     field_names: &[(4, "Reports")],
 };
 
+// 13.10 declares a new member before the regional arrays. The replay's
+// CombatReportComponent export names handles 45 and 81
+// RegionalDamageInteractions, and handle 62 ReceivedInteractions. Keep the
+// earlier schema separate so old handle 45 is not walked as an array.
+static DEALT_INTERACTION_SCHEMA_1310: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[(45, &LEAVES)],
+    field_names: &[(45, "RegionalDamageInteractions")],
+};
+
+static RECEIVED_INTERACTION_SCHEMA_1310: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[(81, &LEAVES)],
+    field_names: &[(81, "RegionalDamageInteractions")],
+};
+
+static PARTICIPANT_SCHEMA_1310: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[
+        (26, &DEALT_INTERACTION_SCHEMA_1310),
+        (62, &RECEIVED_INTERACTION_SCHEMA_1310),
+    ],
+    field_names: &[(26, "DealtInteractions"), (62, "ReceivedInteractions")],
+};
+
+static CHARACTER_REPORT_SCHEMA_1310: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[(10, &PARTICIPANT_SCHEMA_1310)],
+    field_names: &[(10, "Interactions")],
+};
+
+/// `CombatReportComponent.Rounds` with 13.10's declared regional-array handles.
+pub static COMBAT_ROUNDS_SCHEMA_1310: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[(4, &CHARACTER_REPORT_SCHEMA_1310)],
+    field_names: &[(4, "Reports")],
+};
+
 // AbilityCastsThisRound (`Comp_AbilityStatisticsReplicator`, one element per
 // cast): Effects[] at 13 -> AffectedTargetsArray[] at 18, whose AffectedPlayer
 // (19) is an IntPacked NetGUID of a BombPlayerState actor.
@@ -110,6 +143,18 @@ pub static LIFE_CHANGE_DAMAGE_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
         (11, "LifeResult"),
         (12, "DeltaLife"),
         (13, "bAliveAfterChange"),
+    ],
+};
+
+/// 13.10 damage RPCs shift all four members one handle. The packed NetGUID at
+/// handle 11 resolves to damage section objects in the replay's GUID table.
+pub static LIFE_CHANGE_DAMAGE_SCHEMA_1310: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[],
+    field_names: &[
+        (11, "ChangedComponent"),
+        (12, "LifeResult"),
+        (13, "DeltaLife"),
+        (14, "bAliveAfterChange"),
     ],
 };
 

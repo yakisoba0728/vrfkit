@@ -46,6 +46,7 @@ contains build aggregates, input hashes and the complete finding list.
 | 13.06 | 38 | 38 | 25,546,790 | 919,543 | 547,597 |
 | 13.08 | 2 | 1 | 1,539,679 | 56,791 | 19,975 |
 | 13.09 | 4 | 4 | 1,883,501 | 64,842 | 50,808 |
+| 13.10 | 1 | 1 | 1,065,451 | 39,835 | 28,182 |
 
 Preserved unresolved RPC payloads total
 **5,589,152 main / 1,666 checkpoint**.
@@ -103,6 +104,42 @@ and `build_errors` lists are empty.
 13.09 adds `WinningTeamMode` and the nested `TeamResults` array to
 `RoundResults`; before the decoder named them, every 13.09 `RoundResults` blob
 was a struct-blob failure (6--21 per replay, main and checkpoint).
+
+## 13.10
+
+The 13.10 row comes from a separate run on one replay (SHA-256
+`6cb43f11c74c483b84fc64d70ec6bc0642af3ed5ec877a90d1e3353defd4ba97`).
+Its branch is `++Ares-Core+release-13.10`; the matching game executable has
+SHA-256 `8e6f270fd509b3996685ef986423866796b7b4db12f41eb51c769e50a99a1372`.
+The native reader at RVA `0x432e600` supplies seed addend `0x2c249eb3`,
+positive initial offset `0x33`, and the word/byte operation sequence in the
+transform registry. It is an integer reader, not the arbitrary-length reader
+used by `capture_native_transforms.py`. For the native cross-check, emulate it
+with the source pointer at reader offset `0x98`, available bit length at
+`0xa8`, position zero at `0xb0`, and seed `bit_count ^ 2` at `0xb8`; pass the
+destination in `RDX` and the maximum integer in `R8`. Maxima `2`, `127`,
+`255`, `0x7fffffff`, and `0xffffffff` make it consume respectively 1, 7, 8,
+31 and 32 bits. Mask the destination's unused high bits before comparing it
+with the five corresponding fixed boundary vectors. The longer fixed vectors
+regress the disassembled step list, but have no independent native capture.
+
+ReplayData validation passes all **1,065,451/1,065,451** scored blocks, with
+zero transform, framing and field-stream failures. Export walks all 30
+checkpoints with zero transform or framing failures, and independently compares
+28,182 observed typed values without a mismatch. The strict audit is **1/1
+clean**, with zero main and checkpoint array errors, truncations or leaf decode
+errors. The complete supplement in the machine-readable report records the
+clean counters and provenance.
+
+The 13.10 replay declares `RegionalDamageInteractions` nested arrays at
+CombatReport handles 45 and 81, and `ReceivedInteractions` at 62. Its damage
+RPC `LifeChangeEvents` shifts `ChangedComponent`, `LifeResult`, `DeltaLife`
+and `bAliveAfterChange` to handles 11--14. All 3,334 observed handle-11
+values decode as packed NetGUIDs and resolve to damage section objects in the
+replay's GUID table. A pinned 13.10 payload test
+checks the nested walk and shifted life-change fields; the full replay export
+types the observed regional `Region`, `Hits`, `Damage`, wall penetration, kill
+and destroyed armor members.
 
 ## Method
 

@@ -10,9 +10,9 @@ use smallvec::{SmallVec, smallvec};
 use vrf_bitio::BitReader;
 use vrf_decode::{
     ArrayFieldSchema, DecodeErrorKind, EffectArrayKind, EffectBlobError, FieldType,
-    LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA, LIFE_CHANGE_SECTION_SCHEMA,
-    apply_overlay_with_checksum, decode_effect_blob_json, decode_struct_array,
-    decode_struct_array_exact, group_hash_state,
+    LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA_1310,
+    LIFE_CHANGE_SECTION_SCHEMA, apply_overlay_with_checksum, decode_effect_blob_json,
+    decode_struct_array, decode_struct_array_exact, group_hash_state,
 };
 use vrf_schema::{FxHashMap, NetGuidCache};
 
@@ -229,7 +229,7 @@ impl ExportSink<'_> {
             // purpose. That gate ranks decodes of the same bits; this pass only
             // adds rows, so typing the parent one day must not stop the children.
             if let (Some(schema), Some(raw)) = (
-                life_change_schema_for_param(func_name, param_name),
+                life_change_schema_for_param(func_name, param_name, self.release_1310_layouts),
                 raw_bits.as_deref(),
             ) {
                 self.emit_life_change_array(
@@ -512,7 +512,9 @@ pub(super) fn copy_raw_bits(
 
 /// Which life-change schema an RPC parameter takes, if any. Keyed on the
 /// function too: each struct array has its own handle space, so the same four
-/// members sit at 10-13, 1-4 or 2-5. `MulticastNotifyHeal` and
+/// members sit at 10-13, 1-4 or 2-5. The damage RPCs on 13.10 shift their
+/// four members to 11-14.
+/// `MulticastNotifyHeal` and
 /// `MulticastNotifyOverhealDecay`, more than half the calls, name theirs
 /// `LifeChangeBySection`, not `LifeChangeEvents`.
 /// `MulticastReceivePlayerTemporaryDeathEvent_Point` and
@@ -521,8 +523,14 @@ pub(super) fn copy_raw_bits(
 fn life_change_schema_for_param(
     function_name: &str,
     param_name: Option<&str>,
+    release_1310_layouts: bool,
 ) -> Option<&'static ArrayFieldSchema> {
     match (function_name, param_name?) {
+        ("MulticastNotifyDamage_Point" | "MulticastNotifyDamage_Base", "LifeChangeEvents")
+            if release_1310_layouts =>
+        {
+            Some(&LIFE_CHANGE_DAMAGE_SCHEMA_1310)
+        }
         ("MulticastNotifyDamage_Point" | "MulticastNotifyDamage_Base", "LifeChangeEvents") => {
             Some(&LIFE_CHANGE_DAMAGE_SCHEMA)
         }

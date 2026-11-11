@@ -5,7 +5,7 @@
 //! each block's transform is independent of the others. The key comes from the stream:
 //! `seed = (bit_count as u32) ^ actor_net_guid` ([`seed_for`]).
 //!
-//! The skeleton is shared from release-11.06 to release-13.09; a build is one
+//! The skeleton is shared from release-11.06 to release-13.10; a build is one
 //! line of the `transforms!` registry at the end of this file.
 //!
 //! # Example
@@ -328,6 +328,7 @@ transforms! {
     V1306 V13_06 "13.06" 0xe974_593c  0x3c: swap, xor 7, swap, rev, sbox, not, add 2, sbox;
     V1308 V13_08 "13.08" 0x3c17_a9fa -0x06: add 8, rev, rotl 6, sbox, rotr 4, sbox, sbox, rev;
     V1309 V13_09 "13.09" 0x7e8c_b50f  0x0f: add 8, add 7, sbox, sub 5, swap, sub 3, sbox, rev;
+    V1310 V13_10 "13.10" 0x2c24_9eb3  0x33: sub 8, not, rotl 6, swap, xor 3, not, sub 1;
 }
 
 #[cfg(test)]

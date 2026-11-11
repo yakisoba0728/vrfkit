@@ -680,7 +680,7 @@ Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 | Layer | Crate | Feature flags |
 |---|---|---|
 | Bit reader / UE wire format | `vrf-bitio` | `alloc` (default; drop it for `no_std`) |
-| Payload transform (26 builds) | `vrf-transform` | none |
+| Payload transform (27 builds) | `vrf-transform` | none |
 | Container (info/header/chunk/event/checkpoint, Oodle) | `vrf-container` | `oodle` `event` `checkpoint` |
 | DemoFrame traversal | `vrf-frame` | none |
 | Dynamic schema + GUID cache + checkpoint tables | `vrf-schema` | `checkpoint` |
@@ -1120,7 +1120,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-739 Rust tests (Windows), 738 Rust tests (non-Windows), and 1074 Python tests.
+740 Rust tests (Windows), 739 Rust tests (non-Windows), and 1074 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
@@ -1229,8 +1229,9 @@ silent change must be impossible.
 
 The per-build table is the README's
 ([Supported VALORANT builds](../README.md#supported-valorant-builds)), and every
-row uses the [common audit](BUILD_VERIFICATION.md): 1,018 unique replays, all
-1,018 strictly clean. Every
+row uses the [common audit](BUILD_VERIFICATION.md). The historical 1,018
+replays through 13.06 were all strictly clean; the 13.10 sample is 1/1 clean.
+Every
 replay passes block validation and checkpoint export; all observed evidence
 values match the independent Python decoder. `Clean/checked` also requires
 zero array and array-leaf errors. The report defines each denominator.
