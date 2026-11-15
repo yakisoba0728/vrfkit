@@ -1,0 +1,36 @@
+name: Public review fixtures
+
+on:
+  push:
+    branches: [chore/overhaul-review-environment]
+    paths: ['.github/workflows/public-review-fixtures.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: download the three already-public CI fixtures and verify bytes
+        env:
+          BASE: https://raw.githubusercontent.com/michel-giehl/ValorantReplayParser/b51d67423b7b4952d59051cf91e55efa1c42da05/tests/Test.Integration/Replays
+        run: |
+          mkdir -p "$RUNNER_TEMP/public-fixtures"
+          cd "$RUNNER_TEMP/public-fixtures"
+          for name in 9f8b32c5-c243-41ec-bbbb-832582edf652.12_10.vrf 5c673443-5bdc-4576-b416-aab3f62471a5.12_11.vrf 12974d2b-848f-490d-80ba-5f03a033c2d5.13_00.vrf; do
+            curl --fail --location --retry 3 "$BASE/$name" --output "$name"
+          done
+          printf '%s\n' \
+            'a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606  9f8b32c5-c243-41ec-bbbb-832582edf652.12_10.vrf' \
+            '7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd  5c673443-5bdc-4576-b416-aab3f62471a5.12_11.vrf' \
+            'fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a  12974d2b-848f-490d-80ba-5f03a033c2d5.13_00.vrf' > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: already-public-review-fixtures
+          path: ${{ runner.temp }}/public-fixtures
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
