@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import shutil
 import statistics
 import sys
@@ -36,11 +37,25 @@ TIMINGS = ("export", "export_checkpoints")
 DEFAULT_TOLERANCE = 0.25
 
 
+def positive_finite(value: float, name: str) -> None:
+    """Reject missing/invalid measurements instead of treating them as noise."""
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or value <= 0):
+        raise ValueError(f"{name} must be positive and finite, got {value!r}")
+
+
+def valid_tolerance(value: float) -> None:
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or not 0 <= value < 1):
+        raise ValueError(f"tolerance must be finite and in [0, 1), got {value!r}")
+
+
 def compare(measured: float, baseline: float, tolerance: float) -> tuple[str, float]:
     """`(verdict, ratio)`: `slower` past the tolerance, `faster` under it, `ok`
     between."""
-    if baseline <= 0:
-        raise ValueError(f"baseline must be positive, got {baseline}")
+    positive_finite(measured, "measured time")
+    positive_finite(baseline, "baseline")
+    valid_tolerance(tolerance)
     ratio = measured / baseline
     if ratio > 1 + tolerance:
         return "slower", ratio
@@ -75,12 +90,17 @@ def main() -> int:
                     help="replay to export; see VRFKIT_CORPUS_DIR in CONTRIBUTING")
     ap.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     ap.add_argument("--repeats", type=int, default=5)
-    ap.add_argument("--tolerance", type=float, default=DEFAULT_TOLERANCE)
+    ap.add_argument("--tolerance", type=float, default=DEFAULT_TOLERANCE,
+                    help="relative tolerance, finite and in [0, 1)")
     ap.add_argument("--checkpoints", action="store_true",
                     help="time export --checkpoints, against export_checkpoints")
     ap.add_argument("--update", action="store_true",
                     help="record this run's timing in the baseline")
     args = ap.parse_args()
+    try:
+        valid_tolerance(args.tolerance)
+    except ValueError as exc:
+        ap.error(str(exc))
     if args.repeats < 1:
         ap.error("--repeats must be at least 1: no sample is not a zero")
 
@@ -97,7 +117,18 @@ def main() -> int:
         print(f"record the export slot for {args.replay.name} first (--update without "
               f"--checkpoints)", file=sys.stderr)
         return 2
-    samples = time_export(args.exe, args.replay, args.repeats, args.checkpoints)
+    try:
+        # Reject an unusable baseline before spending time on an export.
+        if not args.update and same_replay and key in stored:
+            positive_finite(stored[key], "baseline")
+        samples = time_export(args.exe, args.replay, args.repeats, args.checkpoints)
+        if len(samples) != args.repeats:
+            raise ValueError("benchmark returned the wrong number of samples")
+        for sample in samples:
+            positive_finite(sample, "measured time")
+    except ValueError as exc:
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return 2
     seconds = statistics.median(samples)
     print(f"{key}: median {seconds:.3f}s over {args.repeats} runs "
           f"(min {min(samples):.3f}, max {max(samples):.3f})")
@@ -105,7 +136,7 @@ def main() -> int:
     if args.update:
         # The other slot is kept only beside the replay it timed; nothing else is.
         data = {k: v for k, v in stored.items() if k in TIMINGS} if same_replay else {}
-        data.update({key: round(seconds, 3), "replay": args.replay.name})
+        data.update({key: seconds, "replay": args.replay.name})
         atomic_write_text(args.baseline, json.dumps(dict(sorted(data.items())), indent=2) + "\n")
         print(f"wrote {args.baseline}")
         return 0
