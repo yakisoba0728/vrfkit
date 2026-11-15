@@ -1,0 +1,197 @@
+diff --git a/README.md b/README.md
+index ffe7323..4cccf19 100644
+--- a/README.md
++++ b/README.md
+@@ -30,7 +30,7 @@ only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
+ Not affiliated with, endorsed by, or approved by Riot Games.
+ 
+ **Test suites (2026-11-16):** **744 Rust tests (Windows)**,
+-**743 Rust tests (non-Windows)** and **1081 Python tests**.
++**743 Rust tests (non-Windows)** and **1089 Python tests**.
+ The historical audit of the 24 builds through 13.06 used the same verification
+ on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
+ checked the same way on 3 replays, and 2 meet every criterion; all 5
+@@ -202,7 +202,7 @@ timestamp) are in [`docs/USAGE.md` section 3](docs/USAGE.md#3-output).
+ 
+ Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
+ **743 passing (non-Windows)**; the Windows suite contains **744 tests (Windows)**.
+-The full Python suite has **1081 passing** tests. The documentation guard
++The full Python suite has **1089 passing** tests. The documentation guard
+ measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
+ records replay validation, checkpoint export and independent value checks for
+ each supported build.
+diff --git a/docs/USAGE.md b/docs/USAGE.md
+index 46729fc..321cc91 100644
+--- a/docs/USAGE.md
++++ b/docs/USAGE.md
+@@ -1120,7 +1120,7 @@ schema drift, not meaning.
+ 
+ The pre-PR sweep, and what CI runs, is in
+ [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
+-744 Rust tests (Windows), 743 Rust tests (non-Windows), and 1081 Python tests.
++744 Rust tests (Windows), 743 Rust tests (non-Windows), and 1089 Python tests.
+ 
+ **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
+ single non-ASCII character in a format string truncates output at that point.
+diff --git a/tools/bench_export.py b/tools/bench_export.py
+index 9a33cbf..509fb97 100644
+--- a/tools/bench_export.py
++++ b/tools/bench_export.py
+@@ -17,6 +17,7 @@ from __future__ import annotations
+ 
+ import argparse
+ import json
++import math
+ import shutil
+ import statistics
+ import sys
+@@ -36,11 +37,25 @@ TIMINGS = ("export", "export_checkpoints")
+ DEFAULT_TOLERANCE = 0.25
+ 
+ 
++def positive_finite(value: float, name: str) -> None:
++    """Reject missing/invalid measurements instead of treating them as noise."""
++    if (isinstance(value, bool) or not isinstance(value, (int, float))
++            or not math.isfinite(value) or value <= 0):
++        raise ValueError(f"{name} must be positive and finite, got {value!r}")
++
++
++def valid_tolerance(value: float) -> None:
++    if (isinstance(value, bool) or not isinstance(value, (int, float))
++            or not math.isfinite(value) or not 0 <= value < 1):
++        raise ValueError(f"tolerance must be finite and in [0, 1), got {value!r}")
++
++
+ def compare(measured: float, baseline: float, tolerance: float) -> tuple[str, float]:
+     """`(verdict, ratio)`: `slower` past the tolerance, `faster` under it, `ok`
+     between."""
+-    if baseline <= 0:
+-        raise ValueError(f"baseline must be positive, got {baseline}")
++    positive_finite(measured, "measured time")
++    positive_finite(baseline, "baseline")
++    valid_tolerance(tolerance)
+     ratio = measured / baseline
+     if ratio > 1 + tolerance:
+         return "slower", ratio
+@@ -75,12 +90,17 @@ def main() -> int:
+                     help="replay to export; see VRFKIT_CORPUS_DIR in CONTRIBUTING")
+     ap.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
+     ap.add_argument("--repeats", type=int, default=5)
+-    ap.add_argument("--tolerance", type=float, default=DEFAULT_TOLERANCE)
++    ap.add_argument("--tolerance", type=float, default=DEFAULT_TOLERANCE,
++                    help="relative tolerance, finite and in [0, 1)")
+     ap.add_argument("--checkpoints", action="store_true",
+                     help="time export --checkpoints, against export_checkpoints")
+     ap.add_argument("--update", action="store_true",
+                     help="record this run's timing in the baseline")
+     args = ap.parse_args()
++    try:
++        valid_tolerance(args.tolerance)
++    except ValueError as exc:
++        ap.error(str(exc))
+     if args.repeats < 1:
+         ap.error("--repeats must be at least 1: no sample is not a zero")
+ 
+@@ -97,7 +117,18 @@ def main() -> int:
+         print(f"record the export slot for {args.replay.name} first (--update without "
+               f"--checkpoints)", file=sys.stderr)
+         return 2
+-    samples = time_export(args.exe, args.replay, args.repeats, args.checkpoints)
++    try:
++        # Reject an unusable baseline before spending time on an export.
++        if not args.update and same_replay and key in stored:
++            positive_finite(stored[key], "baseline")
++        samples = time_export(args.exe, args.replay, args.repeats, args.checkpoints)
++        if len(samples) != args.repeats:
++            raise ValueError("benchmark returned the wrong number of samples")
++        for sample in samples:
++            positive_finite(sample, "measured time")
++    except ValueError as exc:
++        print(f"FAILED: {exc}", file=sys.stderr)
++        return 2
+     seconds = statistics.median(samples)
+     print(f"{key}: median {seconds:.3f}s over {args.repeats} runs "
+           f"(min {min(samples):.3f}, max {max(samples):.3f})")
+@@ -105,7 +136,7 @@ def main() -> int:
+     if args.update:
+         # The other slot is kept only beside the replay it timed; nothing else is.
+         data = {k: v for k, v in stored.items() if k in TIMINGS} if same_replay else {}
+-        data.update({key: round(seconds, 3), "replay": args.replay.name})
++        data.update({key: seconds, "replay": args.replay.name})
+         atomic_write_text(args.baseline, json.dumps(dict(sorted(data.items())), indent=2) + "\n")
+         print(f"wrote {args.baseline}")
+         return 0
+diff --git a/tools/tests/test_bench_export.py b/tools/tests/test_bench_export.py
+index b6c43f9..4a01b8c 100644
+--- a/tools/tests/test_bench_export.py
++++ b/tools/tests/test_bench_export.py
+@@ -42,6 +42,24 @@ class CompareTests(unittest.TestCase):
+         with self.assertRaises(ValueError):
+             bench.compare(1.0, 0.0, self.TOL)
+ 
++    def test_nonfinite_or_nonpositive_timings_are_not_verdicts(self):
++        for bad in (float("nan"), float("inf"), -float("inf"), 0.0, -1.0, True):
++            for measured, baseline in ((bad, 1.0), (1.0, bad)):
++                with self.subTest(measured=measured, baseline=baseline):
++                    with self.assertRaises(ValueError):
++                        bench.compare(measured, baseline, self.TOL)
++
++    def test_invalid_tolerance_cannot_disable_regression_detection(self):
++        for bad in (float("nan"), float("inf"), -float("inf"), -0.01, 1.0, True):
++            with self.subTest(tolerance=bad):
++                with self.assertRaises(ValueError):
++                    bench.compare(10.0, 1.0, bad)
++
++    def test_zero_tolerance_and_exact_boundaries_remain_valid(self):
++        self.assertEqual(bench.compare(1.0, 1.0, 0.0)[0], "ok")
++        for measured in (0.8, 1.2):
++            self.assertEqual(bench.compare(measured, 1.0, 0.2)[0], "ok")
++
+ 
+ class MainTests(TempDirTestCase):
+     """What `--update` writes, checked against the validator that reads it,
+@@ -126,3 +144,44 @@ class MainTests(TempDirTestCase):
+         code, output = self.run_bench(self.replay("m.vrf"))
+         self.assertEqual(code, 2)
+         self.assertIn("build the release binary first", output)
++
++    def test_invalid_tolerance_is_rejected_before_spawning(self):
++        for value in ("nan", "inf", "-0.1", "1"):
++            with self.subTest(value=value), mock.patch.object(bench, "time_export") as timed:
++                with self.assertRaises(SystemExit) as raised:
++                    self.run_bench(self.replay("m.vrf"), ["--tolerance", value])
++                self.assertEqual(raised.exception.code, 2)
++                timed.assert_not_called()
++
++    def test_invalid_samples_cannot_poison_a_baseline(self):
++        for seconds in (float("nan"), float("inf"), 0.0, -1.0):
++            with self.subTest(seconds=seconds):
++                code, output = self.run_bench(self.replay("m.vrf"), ["--update"], seconds)
++                self.assertEqual(code, 2, output)
++                self.assertFalse(self.baseline.exists())
++
++    def test_invalid_stored_timing_is_rejected_before_spawning(self):
++        for seconds in (float("nan"), float("inf"), 0.0, -1.0, True):
++            with self.subTest(seconds=seconds):
++                self.baseline.write_text(json.dumps({"export": seconds, "replay": "m.vrf"}), encoding="utf-8")
++                with mock.patch.object(bench, "time_export") as timed:
++                    code, output = run_cli(bench.main, "--exe", self.exe,
++                        "--replay", self.replay("m.vrf"), "--baseline", self.baseline,
++                        prog="bench_export.py", merged=True)[:2]
++                self.assertEqual(code, 2, output)
++                timed.assert_not_called()
++
++    def test_submillisecond_measurement_stays_positive_when_recorded(self):
++        code, output = self.run_bench(self.replay("m.vrf"), ["--update"], 0.0000123)
++        self.assertEqual(code, 0, output)
++        self.assertEqual(self.read()["export"], 0.0000123)
++        self.assertEqual(schemas.validate_bench_baseline(self.baseline, self.read()), [])
++
++    def test_missing_samples_are_not_a_measurement(self):
++        for samples in ([], [1.0, 2.0]):
++            with self.subTest(samples=samples), mock.patch.object(bench, "time_export", return_value=samples):
++                code, output = run_cli(bench.main, "--exe", self.exe,
++                    "--replay", self.replay("m.vrf"), "--baseline", self.baseline,
++                    "--repeats", "1", "--update", prog="bench_export.py", merged=True)[:2]
++                self.assertEqual(code, 2, output)
++                self.assertFalse(self.baseline.exists())
