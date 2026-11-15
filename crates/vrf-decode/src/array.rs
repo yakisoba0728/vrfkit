@@ -23,7 +23,8 @@ use vrf_bitio::BitReader;
 
 pub use schema::{
     ABILITY_CASTS_SCHEMA, ABILITY_EFFECTS_SCHEMA, ArrayFieldSchema, COMBAT_ROUNDS_SCHEMA,
-    LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA, LIFE_CHANGE_SECTION_SCHEMA,
+    COMBAT_ROUNDS_SCHEMA_1310, LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA,
+    LIFE_CHANGE_DAMAGE_SCHEMA_1310, LIFE_CHANGE_SECTION_SCHEMA,
 };
 
 /// Maximum number of elements per array level.
@@ -1753,6 +1754,67 @@ mod tests {
         assert!(
             wrong.iter().all(|f| !f.path.ends_with("LifeResult")),
             "the wrong schema must not happen to name the members: {wrong:?}"
+        );
+    }
+
+    #[test]
+    fn release_1310_array_layouts_walk_observed_payloads() {
+        // Captured from the 13.10 replay. This round contains a dealt
+        // RegionalDamageInteractions element with 32-bit Hits and Damage.
+        let round = crate::test_bits::hex(
+            "04040a310802021040a8159c4216610606062040a8159c4226400000c04228400400000036d10202024240a8159c425c0102020260400400000062400000c04200000000000000000000",
+        );
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(
+            &round,
+            592,
+            Some(&COMBAT_ROUNDS_SCHEMA_1310),
+            &[],
+            &mut stats,
+        );
+        assert!(stats.is_clean(), "{stats:?}");
+        assert!(
+            fields.iter().any(
+                |f| f.path.ends_with("RegionalDamageInteractions[0]._h47") && f.bit_count == 32
+            ),
+            "{fields:?}"
+        );
+        assert!(
+            fields.iter().any(
+                |f| f.path.ends_with("RegionalDamageInteractions[0]._h48") && f.bit_count == 32
+            )
+        );
+
+        // A damage event contains the shifted 16-bit ChangedComponent
+        // NetGUID, followed by the float, float and bool members.
+        let life = crate::test_bits::hex("0202182029481a40000000001c40000080bf1e02000000");
+        let mut stats = ArrayDecodeStats::default();
+        let fields = decode_struct_array(
+            &life,
+            177,
+            Some(&LIFE_CHANGE_DAMAGE_SCHEMA_1310),
+            &[],
+            &mut stats,
+        );
+        assert!(stats.is_clean(), "{stats:?}");
+        assert_eq!(
+            crate::decode_field(crate::FieldType::ObjectNetGuid, &fields[0].raw_bits, 16)
+                .unwrap()
+                .into_columns()
+                .0,
+            Some(4628),
+        );
+        assert_eq!(
+            fields
+                .iter()
+                .map(|f| (f.path.as_str(), f.bit_count))
+                .collect::<Vec<_>>(),
+            vec![
+                ("[0].ChangedComponent", 16),
+                ("[0].LifeResult", 32),
+                ("[0].DeltaLife", 32),
+                ("[0].bAliveAfterChange", 1),
+            ]
         );
     }
 }

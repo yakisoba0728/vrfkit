@@ -871,12 +871,12 @@ def _build_shot_event(
 # reference's names (the wire spells six differently, e.g. bDidKill and
 # Riot's DamageRecieved), and declared names repeat within one element
 # (HUDConfig at eight positions: keyed by name, 3,405 of 02d4d478's 20,298
-# payload paths would merge). So the bundle keys on the handle: the
-# reference's member name, else `_h{handle}`.
+# payload paths would merge). Resolve handles through this replay's declarations
+# to the reference's member names; unknown members remain `_h{handle}`.
 # ---------------------------------------------------------------------------
 COMBAT_REPORT_GROUP = "CombatReportComponent"
 
-# handle -> the member name the reference format uses. Leaf handles only: the
+# Legacy handle -> the member name the reference format uses. Leaf handles only: the
 # containers (4 Reports, 10 Interactions, 26 DealtInteractions,
 # 61 ReceivedInteractions, 44/79 Regions) keep the parser's schema names.
 COMBAT_REPORT_REFERENCE_NAMES = {
@@ -916,22 +916,68 @@ COMBAT_REPORT_REFERENCE_NAMES = {
 COMBAT_REPORT_CONTAINER_HANDLES = frozenset({4, 10, 26, 44, 61, 79})
 
 
-def _combat_report_leaf_name(group_path: str, field_name: str, handle) -> str:
-    """Relabel the LAST segment of one combat-report array leaf; the
-    synthesised `..._raw` row and a depth-limit row carrying a container
-    handle keep the parser's label."""
+COMBAT_REPORT_WIRE_NAMES = {name: name for name in COMBAT_REPORT_REFERENCE_NAMES.values()}
+COMBAT_REPORT_WIRE_NAMES.update({
+    "RoundNum": "RoundNumber", "ParticipantSubject": "Subject",
+    "ParticipantTeamName": "Team", "ParticipantCharacterIcon": "CharacterIcon",
+    "DamageRecieved": "DamageReceived", "HitsRecieved": "HitsReceived",
+    "bDidKill": "DidKill", "ParticipantsKillerState": "KillerPlayerState",
+    "bWasKiller": "WasKiller", "bIsWallPen": "IsWallPen", "bIsKill": "IsKill",
+    "bDied": "Died",
+})
+COMBAT_REPORT_CONTAINER_NAMES = frozenset({
+    "Reports", "Interactions", "DealtInteractions", "ReceivedInteractions", "Regions",
+})
+
+
+def _combat_report_declared_names(manifest: dict) -> dict[str, dict[int, str]]:
+    """Use this replay's descriptor handles; repeated unknown names stay distinct.
+
+    The legacy handle table remains only for exports without a declaration.
+    Adding a member shifts later handles, including otherwise unchanged names.
+    """
+    return {
+        group["path"]: {
+            field["handle"]: COMBAT_REPORT_WIRE_NAMES.get(
+                field.get("name"), f"_h{field['handle']}")
+            for field in group.get("fields", [])
+        }
+        for group in manifest.get("net_field_export_groups") or []
+        if COMBAT_REPORT_GROUP in group.get("path", "")
+    }
+
+
+def _combat_report_leaf_name(group_path: str, field_name: str, handle,
+                             declared_names=None) -> str:
+    """Normalize regional containers and resolve the leaf's reference name.
+
+    Synthesized raw tails and depth-limit container rows keep their leaf label.
+    """
     if not group_path or COMBAT_REPORT_GROUP not in group_path:
         return field_name
     if not field_name.startswith("Rounds["):
         return field_name
+    # The schema may use the wire's container spelling; the bundle has always
+    # called both regional arrays Regions, independently of their handles.
+    regional_layout = ".RegionalDamageInteractions[" in field_name
+    field_name = field_name.replace(".RegionalDamageInteractions[", ".Regions[")
+    if field_name.endswith(".RegionalDamageInteractions"):
+        field_name = field_name[:-len("RegionalDamageInteractions")] + "Regions"
     head, dot, leaf = field_name.rpartition(".")
     if not dot:
         return field_name
-    if leaf == "_raw" or handle in COMBAT_REPORT_CONTAINER_HANDLES:
+    if leaf == "_raw" or leaf in COMBAT_REPORT_CONTAINER_NAMES:
         return field_name
-    name = COMBAT_REPORT_REFERENCE_NAMES.get(handle)
-    if name is None:
-        name = f"_h{handle}"
+    if declared_names is not None and group_path in declared_names:
+        name = declared_names[group_path].get(handle, f"_h{handle}")
+    elif regional_layout:
+        # These rows name a newer regional layout even when the manifest lacks
+        # descriptors. Never assign an old handle's meaning to its shifted leaf.
+        name = COMBAT_REPORT_WIRE_NAMES.get(leaf, f"_h{handle}")
+    else:
+        if handle in COMBAT_REPORT_CONTAINER_HANDLES:
+            return field_name
+        name = COMBAT_REPORT_REFERENCE_NAMES.get(handle, f"_h{handle}")
     return head + dot + name
 
 
@@ -1564,7 +1610,8 @@ def _build_actor_events(export_dir: Path, verbose: bool, tally: "_Tally"):
     return events, guid_class
 
 
-def _build_property_events(cols: _FieldColumns, prop_groups: dict, tally: _Tally):
+def _build_property_events(cols: _FieldColumns, prop_groups: dict, tally: _Tally,
+                           combat_report_names=None):
     """export_group_received events from the replicated-property groups. An
     unnamed row is dropped and counted; its group still emits an event."""
     col_time = cols.time_ms
@@ -1625,7 +1672,7 @@ def _build_property_events(cols: _FieldColumns, prop_groups: dict, tally: _Tally
                 continue
 
             # See "Combat report leaf labels".
-            fn = _combat_report_leaf_name(gp, fn, col_handle[ri])
+            fn = _combat_report_leaf_name(gp, fn, col_handle[ri], combat_report_names)
 
             is_bool = col_bool[ri] is not None
             fn = _normalize_prop_field_name(fn, is_bool)
@@ -1957,7 +2004,8 @@ def _convert_into(export_dir: Path, output_dir: Path, *, verbose: bool = False):
 
     events, guid_class = _build_actor_events(export_dir, verbose, tally)
 
-    events += _build_property_events(cols, prop_groups, tally)
+    events += _build_property_events(
+        cols, prop_groups, tally, _combat_report_declared_names(manifest))
 
     shot_ctx = _ShotContext(_build_tag_table(manifest), guid_outer, guid_path, guid_class)
     rpc_events, shot_count, resolved_weapon_count = _build_rpc_events(

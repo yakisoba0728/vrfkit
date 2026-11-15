@@ -261,6 +261,8 @@ mod tests {
         ("++Ares-Core+release-13.06", ALL),
         ("++Ares-Core+release-13.08", B1308),
         ("++Ares-Core+release-13.09", ALL),
+        // No array route has been independently measured on 13.10 yet.
+        ("++Ares-Core+release-13.10", &[]),
     ];
 
     #[test]

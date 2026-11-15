@@ -7,6 +7,7 @@ from __future__ import annotations
 import collections
 import math
 import struct
+from contextlib import closing
 from pathlib import Path
 
 import pyarrow as pa
@@ -326,10 +327,11 @@ def build(raw, actor_rows):
 def actor_rows(path):
     """(physical row ordinal, row) for each open/close row of actors.parquet."""
     columns = ["time_ms", "packet_id", "channel_index", "actor_net_guid", "event", "class_path"]
-    for ordinal, row in iter_selected(path, columns, lambda b: pc.is_in(
-            text(b, "event"), value_set=pa.array(["open", "close"]))):
-        row["_ordinal"] = ordinal
-        yield ordinal, row
+    with closing(iter_selected(path, columns, lambda b: pc.is_in(
+            text(b, "event"), value_set=pa.array(["open", "close"])))) as selected:
+        for ordinal, row in selected:
+            row["_ordinal"] = ordinal
+            yield ordinal, row
 
 
 def extract(export):

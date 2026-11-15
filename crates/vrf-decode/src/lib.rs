@@ -93,10 +93,10 @@ pub use types::{
 #[cfg(feature = "array")]
 pub use array::{
     ABILITY_CASTS_SCHEMA, ABILITY_EFFECTS_SCHEMA, ArrayDecodeStats, ArrayFieldSchema,
-    COMBAT_ROUNDS_SCHEMA, FlattenedField, LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA,
-    LIFE_CHANGE_SECTION_SCHEMA, MAX_ELEMENTS, MAX_FIELDS_PER_ELEMENT, MAX_RECURSION_DEPTH,
-    decode_object_ref_array, decode_object_ref_array_with_stats, decode_struct_array,
-    decode_struct_array_exact,
+    COMBAT_ROUNDS_SCHEMA, COMBAT_ROUNDS_SCHEMA_1310, FlattenedField, LIFE_CHANGE_BY_SECTION_SCHEMA,
+    LIFE_CHANGE_DAMAGE_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA_1310, LIFE_CHANGE_SECTION_SCHEMA,
+    MAX_ELEMENTS, MAX_FIELDS_PER_ELEMENT, MAX_RECURSION_DEPTH, decode_object_ref_array,
+    decode_object_ref_array_with_stats, decode_struct_array, decode_struct_array_exact,
 };
 #[cfg(feature = "overlay")]
 pub use checksum_table::CHECKSUM_TYPES;

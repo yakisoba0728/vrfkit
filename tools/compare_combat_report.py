@@ -8,7 +8,7 @@ Restricted to the leaves valplay derives metrics from.
 
 Three of the ten leaves are spelled differently on the wire (DamageRecieved,
 HitsRecieved, bDidKill), so our side is relabelled through the bundle
-adapter's handle table (shared on purpose, so the two cannot drift);
+adapter's declaration-aware names (shared so the two cannot drift);
 `INTERESTING` keeps the C# spelling.
 
 The reference is the C# reference parser's `export` of the 13.01 reference
@@ -32,7 +32,9 @@ import pyarrow.compute as pc
 from wire_bits import read_parquet
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from to_valplay_bundle import _combat_report_leaf_name  # noqa: E402
+from to_valplay_bundle import (  # noqa: E402
+    _combat_report_declared_names, _combat_report_leaf_name,
+)
 
 #: The C# reference parser's export of replay 02d4d478.
 REFERENCE_DIR = r"%LOCALAPPDATA%\vrfkit\csharp-reference\02d4d478-1dfb-4412-9a77-29ca29105a9d"
@@ -116,6 +118,9 @@ def load_cs(path):
 
 
 def load_ours(parquet=DEFAULT_OURS):
+    manifest_path = Path(parquet).with_name("manifest.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
+    declared_names = _combat_report_declared_names(manifest)
     columns = ["group_path", "field_name", "handle",
                "value_i64", "value_f64", "value_bool", "value_str"]
     t = read_parquet(parquet, columns=columns)
@@ -127,7 +132,7 @@ def load_ours(parquet=DEFAULT_OURS):
     cols = {n: t.column(n).to_pylist() for n in columns}
     ours = collections.defaultdict(collections.Counter)
     for i, (g, n) in enumerate(zip(cols["group_path"], cols["field_name"])):
-        s = shape(_combat_report_leaf_name(g, n, cols["handle"][i]))
+        s = shape(_combat_report_leaf_name(g, n, cols["handle"][i], declared_names))
         if s not in INTERESTING:
             continue
         for c in ("value_i64", "value_f64", "value_bool", "value_str"):

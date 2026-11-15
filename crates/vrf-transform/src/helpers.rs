@@ -1,5 +1,5 @@
 //! Primitives shared by every build's payload transform, identical from
-//! release-11.06 through release-13.09: the PRNG, its seed mixing, the bit
+//! release-11.06 through release-13.10: the PRNG, its seed mixing, the bit
 //! permutations the steps use and little-endian word IO.
 
 /// Multiplier used by both PRNG seeds.

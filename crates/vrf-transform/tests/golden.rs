@@ -5,6 +5,7 @@
 
 include!("data/golden_vectors.rs");
 include!("data/native_vectors.rs");
+include!("data/recovered_1310_vectors.rs");
 
 use vrf_bitio::BitReader;
 use vrf_transform::sbox::{SBOX_8, SBOX_32, SBOX_64};
@@ -24,6 +25,16 @@ fn vectors() -> impl Iterator<Item = (&'static str, usize, u32, &'static str, &'
             (branch, bits, seed, PAYLOAD_HEX, expected)
         })
         .chain(NATIVE_VECTORS.iter().copied())
+        .chain(RECOVERED_1310_VECTORS.iter().map(|&(bits, expected)| {
+            let seed = seed_for(bits, ACTOR_NET_GUID);
+            (
+                "++Ares-Core+release-13.10",
+                bits,
+                seed,
+                PAYLOAD_HEX,
+                expected,
+            )
+        }))
 }
 
 fn from_hex(hex: &str) -> Vec<u8> {

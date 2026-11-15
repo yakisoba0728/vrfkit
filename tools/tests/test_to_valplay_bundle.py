@@ -1029,6 +1029,89 @@ class CombatReportLeafNameTests(unittest.TestCase):
         )
 
 
+class CombatReportLayoutTests(unittest.TestCase):
+    GROUP = CombatReportLeafNameTests.GROUP
+
+    def convert_rows(self, members, *, manifest=MANIFEST):
+        rows = [{"time_ms": 20, "packet_id": 2, "actor": 2,
+                 "group_path": self.GROUP, "handle": handle,
+                 "field_name": name, column: value}
+                for handle, name, column, value in members]
+        converted = run(rows, manifest=manifest)
+        event, = converted.events("export_group_received")
+        return event["payload"]["Rounds"][0]["Reports"][0], converted
+
+    def test_shifted_regional_members_keep_their_values_and_reference_paths(self):
+        members = []
+        expected = {"Index": 0, "Region": 1, "Hits": 3, "Damage": 120.0,
+                    "IsWallPen": True, "IsKill": False, "DestroyedArmor": 4628}
+        leaves = [("Region", "value_i64", 1), ("Hits", "value_i64", 3),
+                  ("Damage", "value_f64", 120.0), ("bIsWallPen", "value_bool", True),
+                  ("bIsKill", "value_bool", False),
+                  ("DestroyedArmor", "value_i64", 4628)]
+        for interaction, start in (("DealtInteractions", 46),
+                                   ("ReceivedInteractions", 82)):
+            prefix = ("Rounds[0].Reports[0].Interactions[0]." + interaction
+                      + "[0].RegionalDamageInteractions[0].")
+            members.extend((start + offset, prefix + name, column, value)
+                           for offset, (name, column, value) in enumerate(leaves))
+        report, converted = self.convert_rows(members)
+        interaction = report["Interactions"][0]
+        for name in ("DealtInteractions", "ReceivedInteractions"):
+            self.assertEqual(interaction[name][0], {"Index": 0, "Regions": [expected]})
+        self.assertTrue(all(value == 0 for value in converted.tally.values()))
+
+    def test_declared_names_resolve_shifted_nonregional_leaves(self):
+        fields = [{"handle": h, "name": name} for h, name in
+                  ((97, "CombatReportIndex"), (99, "ResurrectorPlayerState"),
+                   (104, "bDied"), (6, "HUDConfig"), (100, "HUDConfig"))]
+        manifest = {**MANIFEST, "net_field_export_groups": [
+            {"path": self.GROUP, "fields": fields}]}
+        members = [(h, "Rounds[0].Reports[0]." + name, column, value)
+                   for h, name, column, value in
+                   ((97, "CombatReportIndex", "value_i64", 4),
+                    (99, "ResurrectorPlayerState", "value_i64", 4628),
+                    (104, "bDied", "value_bool", True),
+                    (6, "HUDConfig", "value_i64", 10),
+                    (100, "HUDConfig", "value_i64", 20))]
+        report, _ = self.convert_rows(members, manifest=manifest)
+        self.assertEqual(report, {"Index": 0, "CombatReportIndex": 4,
+                                 "ResurrectorPlayerState": 4628, "Died": True,
+                                 "_h6": 10, "_h100": 20})
+
+    def test_declarations_override_legacy_handle_meanings(self):
+        manifest = {**MANIFEST, "net_field_export_groups": [
+            {"path": self.GROUP, "fields": [{"handle": 47, "name": "HUDConfig"}]}]}
+        report, _ = self.convert_rows(
+            [(47, "Rounds[0].Reports[0].HUDConfig", "value_i64", 7)],
+            manifest=manifest)
+        self.assertEqual(report, {"Index": 0, "_h47": 7})
+
+    def test_legacy_declarations_preserve_the_existing_event_bytes(self):
+        prefix = ("Rounds[0].Reports[0].Interactions[0].DealtInteractions[0]"
+                  ".Regions[0].")
+        members = [(46, prefix + "Hits", "value_i64", 3),
+                   (47, prefix + "Damage", "value_f64", 120.0),
+                   (48, prefix + "bIsWallPen", "value_bool", True),
+                   (6, "Rounds[0].Reports[0].HUDConfig", "value_i64", 10)]
+        fields = [{"handle": h, "name": name.rsplit(".", 1)[-1]}
+                  for h, name, _, _ in members]
+        manifest = {**MANIFEST, "net_field_export_groups": [
+            {"path": self.GROUP, "fields": fields}]}
+        _, old = self.convert_rows(members)
+        _, declared = self.convert_rows(members, manifest=manifest)
+        self.assertEqual(declared.files["events.ndjson"], old.files["events.ndjson"])
+
+    def test_regional_unknown_and_raw_leaves_keep_visible_names(self):
+        prefix = ("Rounds[0].Reports[0].Interactions[0].DealtInteractions[0]"
+                  ".RegionalDamageInteractions[0].")
+        for name, handle in (("_h47", 47), ("_raw", (1 << 32) - 1)):
+            with self.subTest(name=name):
+                self.assertEqual(bundle._combat_report_leaf_name(
+                    self.GROUP, prefix + name, handle),
+                    prefix.replace("RegionalDamageInteractions", "Regions") + name)
+
+
 class UnnamedRowTallyTests(unittest.TestCase):
     """A row the parser could not name is dropped and counted, as is an RPC
     whose rows are all unnamed (no row names its function)."""

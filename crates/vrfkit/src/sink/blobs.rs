@@ -11,8 +11,8 @@
 use smallvec::SmallVec;
 use vrf_bitio::BitReader;
 use vrf_decode::{
-    ABILITY_CASTS_SCHEMA, ArrayDecodeStats, COMBAT_ROUNDS_SCHEMA, EffectArrayKind, FieldType,
-    FlattenedField, structs,
+    ABILITY_CASTS_SCHEMA, ArrayDecodeStats, COMBAT_ROUNDS_SCHEMA, COMBAT_ROUNDS_SCHEMA_1310,
+    EffectArrayKind, FieldType, FlattenedField, structs,
 };
 use vrf_schema::NetGuidCache;
 
@@ -481,10 +481,11 @@ impl ExportSink<'_> {
         };
         let flattened = match route {
             None => {
-                let schema = if kind == ArrayKind::Rounds {
-                    &COMBAT_ROUNDS_SCHEMA
-                } else {
-                    &ABILITY_CASTS_SCHEMA
+                let schema = match kind {
+                    ArrayKind::Rounds if self.release_1310_layouts => &COMBAT_ROUNDS_SCHEMA_1310,
+                    ArrayKind::Rounds => &COMBAT_ROUNDS_SCHEMA,
+                    ArrayKind::AbilityCasts => &ABILITY_CASTS_SCHEMA,
+                    ArrayKind::Measured(_) => unreachable!("measured route handled separately"),
                 };
                 vrf_decode::decode_struct_array(
                     raw,
