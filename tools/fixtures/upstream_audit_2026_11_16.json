@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "upstream_base": "400f7295964a7f6486378eac6decda3cefe42acb",
+  "upstream_head": "fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8",
+  "vrfkit_base": "94fcf11376829199ae648edda360b593840fd6a7",
+  "strict_provenance": {
+    "date_utc": "2026-11-15T17:03:05.138860+00:00",
+    "parser_commit": "94fcf11376829199ae648edda360b593840fd6a7",
+    "parser_sources_sha256": "17f331b77e250e25a1176b93a821f4135ee1aa357c2aa625c9b9ba39e6eb4674",
+    "exe_sha256": "3d4653352b4c2fe5ced706e1af0f59c7715685942c1a775c433cc72cf8daea5a",
+    "runner_sha256": "c56349d4d14cab9caecb8f4cda8159e144dab38818e5a43065fbfd22d09f117d",
+    "evidence_sha256": "3290f19c58823ebbf29198e0a0de1e4857e7e5a4af0bd343ddf3949f2b5db64f",
+    "discovered_paths": 29,
+    "unique_replays": 29,
+    "duplicates": 0,
+    "corpus_sha256": "5af669f7bf078530dacf79e1ff582ea14c759b045f4748bf0992fce4688ea0a2"
+  },
+  "strict_failures": [],
+  "strict_build_errors": [],
+  "strict_executable_changed": false,
+  "builds": {
+    "++Ares-Core+release-13.08": {
+      "replays": 1,
+      "passed": 1,
+      "failed": 0,
+      "input_sha256": [
+        "90ea4895d55202836ac778db18acb4e9a6c7fefdabc374c26c6748c8f1d75438"
+      ]
+    },
+    "++Ares-Core+release-13.09": {
+      "replays": 1,
+      "passed": 1,
+      "failed": 0,
+      "input_sha256": [
+        "ba3fba58f4f690acb149ed984f4f5bdb8ac13af86e0c4657baac926223bba7be"
+      ]
+    },
+    "++Ares-Core+release-13.10": {
+      "replays": 27,
+      "passed": 27,
+      "failed": 0,
+      "input_sha256": [
+        "0017cede5635333a4375d0e00e76b86f3a8afc90ef6e3b316e67d81a500c8eb9",
+        "2cbe1c9c02803abbc5c63deb748cb0e68f52aa2581d20fcb9abb6322e05077cf",
+        "2f5e17903928cad975adc0fadcaaeaf32242fa933b5b6bedfa952e685c09bc48",
+        "305550fb7e03df7cf14312b7b199b97a0deaed53bc3dfd6504a928c4eb0fb89c",
+        "3b1eaf07d2cb0a0161d962c6a83f63fc5f8b98c70cc52cefcb9f74be0863272b",
+        "3d5e3954e5712b5a743276cb5833dfcf24eedaed1f167c327ee2a05d0835b9bd",
+        "43b1ba0de5ed0fab7f1e1a473e1e353765d83a89b9030b8cbe4e8506e1f70203",
+        "4532a15305e0535263fd2a799636e4c33689b3ab895acfd941e12cdd88efb32c",
+        "4cd7d6a38d386f9e2d76f9c84efe4f47e37ab058f5ca1bfd16757bebc49a687a",
+        "4e3b113d1e7ac9039787f1d72753361933bb7c400198ac2580b013ee325c4899",
+        "51cc575cbd4ed467490da58a7d54dfa84b2a31df8695c6f50009bc1e0a8413df",
+        "5e0149e6bf1aa4888847e81fecaadbbb882776d3c7427437a9f4fb1529d38e37",
+        "5ff1bd064b654665fc284a48b930edbc8c067bbcb24e0a74e60f979e1d496756",
+        "6f6070c33e3d65fd907ef20ea42ff01098b044e145b3dab759fbb8c2f46aafc8",
+        "9ec60903e6dbd92bfd5f50f0b4f2b4590f1b49385f1bff7cb335665de5de64b5",
+        "a5c73be5cf8d2b649f8db8ebced9481891b482f20327de3d5e930a74ec2d84fd",
+        "aea246d0690491484e7d2e4ad1fd06f54f323aafaa6d6eb61b19ec8abe137b3e",
+        "b61731c45bb2bd9f58e4a3a640cabb907403735f4d5b9663e2c135b04914b1d2",
+        "b7eed54a7c800a69203b32a04733d5a072128d772374c35019079f2b9c9ba942",
+        "bea40525d757d20d45c6e515c81693e92aa7f58a4ce031509d9aa36be959da3c",
+        "d01d9c0ded243d1864799b66a45cff325f2e3f9f36386306441341ee1255bfb6",
+        "dc4d1e52eaed658736944b01facbc8ef370cde1f9a149e444590dbde73cb6deb",
+        "e5c159358b3f235fe16b6f212f0cf4fea5b26ae84a2da4e7b837517731a2938a",
+        "eb9d2d7695ff42d78dc63891a8eb3cf617db43722fab18131d0ad0ad411841e5",
+        "ec7c9d8a1b87954debe7bb4c5d1b5907a6a7e0b88532e1b63906b5f890e1f0da",
+        "ed6f5f9198264853424849f0a81e84e8ed29ca70993703afb8ef685000b44726",
+        "fe7c07455580a008f509b9c85617ef48e58d6974d9c923db7c456205bde3b64f"
+      ]
+    }
+  },
+  "independent_array_counts": {
+    "main_parents": 43454,
+    "main_raw_leaves": 641530,
+    "main_typed_ChangedComponent": 40878,
+    "main_typed_LifeResult": 40878,
+    "main_typed_DeltaLife": 40878,
+    "main_typed_bAliveAfterChange": 40878,
+    "main_typed_DamageIcon": 9486,
+    "main_typed_Region": 11704,
+    "main_typed_Hits": 20464,
+    "main_typed_Damage": 20464,
+    "main_typed_bIsWallPen": 11882,
+    "main_typed_bIsKill": 13358,
+    "main_typed_DestroyedArmor": 11704,
+    "checkpoint_parents": 3450,
+    "checkpoint_raw_leaves": 2731371,
+    "checkpoint_typed_DamageIcon": 75381,
+    "checkpoint_typed_Region": 91909,
+    "checkpoint_typed_Hits": 91909,
+    "checkpoint_typed_Damage": 91909,
+    "checkpoint_typed_bIsWallPen": 91909,
+    "checkpoint_typed_bIsKill": 91909,
+    "checkpoint_typed_DestroyedArmor": 91909,
+    "new_temporary_death_parents": 5,
+    "new_temporary_death_raw_leaves": 60,
+    "new_temporary_death_values": 60
+  },
+  "independent_array_errors": 0,
+  "preservation_totals": {
+    "byte_identical_tables": 323,
+    "existing_field_rows_compared": 31837660,
+    "icons_typed": 84867,
+    "added_rows": 60,
+    "exports_passed": 29
+  },
+  "preservation_failures": [],
+  "checker_sha256": "749f497377ed9792ec523efa18f9d4808aad08e42b4a4c7db7bcbfecf6da9b98",
+  "preservation_checker_sha256": "3eb7b9d98a7668d47fad2391466b1c354dadb1a2727600953b57b6c6d07fb31f",
+  "array_mutation_control_count": 6,
+  "array_mutation_controls_detected": true
+}

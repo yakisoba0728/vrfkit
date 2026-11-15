@@ -100,6 +100,7 @@ resurrection count; `Rounds[N].Reports[1]` existing marks such a round.
 | Damage dealt / received | CombatReport `DamageDealt` / `DamageReceived` | ✅ |
 | Regional damage (head/body/leg) | `Interactions[].Regions[].Hits/Damage` | ✅ multiset-identical (on 13.01) |
 | Wallbang | `bIsWallPen` | ✅ |
+| Damage icon reference | CombatReport `DealtInteractions[].DamageIcon` / `ReceivedInteractions[].DamageIcon` | ✅ packed NetGUID on 13.10; 84,867 observed main/checkpoint values resolve to texture paths. The icon is not established as weapon identity or player credit |
 | Damage source (weapon, location, bone) | `MulticastNotifyDamage` (EquippableUsed, ImpactLocation, ImpactBone) | ✅ |
 | One row per damage invocation | `tools/extract_damage_events.py` -> `damage_events.parquet` | ✅ derived view |
 | Finisher effect on a kill | `MulticastNotifyDamage_{Point,Base}.DeathMontageEffectOverride` → `net_guids.path` | ✅ ObjectNetGuid; 0 (the null reference) except on some kills, where it names an `FXC_*_C` finisher effect class |
@@ -107,6 +108,13 @@ resurrection count; `Rounds[N].Reports[1]` existing marks such a round.
 | ADR | derived from CombatReport | ◐ +0.1–0.2 vs trackers (wire damage is fractional; not a bug) |
 | Health / armour / overheal, absolute | `DamageableComponent` RPCs → `LifeChangeEvents[]` / `LifeChangeBySection[]` | ✅ typed section updates; actor/section timelines require joins, see below |
 | Heal / overheal-decay source references | `MulticastNotifyHeal` `HealCauser`, `EventInstigator`, `EventInstigatorPawn`; `MulticastNotifyOverhealDecay` `DecayCauser`, `EventInstigator`, `EventInstigatorPawn` | ✅ `ObjectNetGuid` by exact group/name/checksum. `EventInstigator` is the instigator's PlayerController: it never joins to `actors.parquet` (join through the pawn's `Controller`/`Owner`), and that is expected, not a decode fault. `DecayCauser` = 0 means no causer. No heal credit is implied |
+
+On exact global 13.10, `MulticastReceivePlayerTemporaryDeathEvent_Point`
+also emits the four `LifeChangeEvents[]` members while retaining the raw
+parent. The measured route has five calls in four replays, with 60 member
+leaves; Base, Downed and other builds keep their previous raw-array behavior.
+`DamageIconOverride` is a separate wire name: the observed zero-only payloads
+do not establish its type, so it remains raw.
 
 **The "multiset-identical" figures compare against an independent parser on
 build 13.01 or earlier.** A result from that fixture does not establish

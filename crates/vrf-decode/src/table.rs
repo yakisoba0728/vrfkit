@@ -6,7 +6,7 @@ use crate::overlay::{OverlayEntry, OverlayHandleEntry};
 use crate::types::{RotatorQuantization, VectorQuantization};
 
 #[rustfmt::skip]
-pub static OVERLAY_TABLE: [OverlayEntry; 1123] = [
+pub static OVERLAY_TABLE: [OverlayEntry; 1124] = [
     OverlayEntry { group_path: "/Game/Abilities/GrenadeExplodeIndicator.GrenadeExplodeIndicator_C:MulticastTriggerExplodeIndicator", field_name: "IndicatorLocation", field_type: FieldType::VectorDouble },
     OverlayEntry { group_path: "/Game/BaseGameState.BaseGameState_C:OrbPickedUpRPC", field_name: "Collectable Orb", field_type: FieldType::ObjectNetGuid },
     OverlayEntry { group_path: "/Game/BaseGameState.BaseGameState_C:OrbPickedUpRPC", field_name: "Orb Gatherer", field_type: FieldType::ObjectNetGuid },
@@ -758,6 +758,7 @@ pub static OVERLAY_TABLE: [OverlayEntry; 1123] = [
     OverlayEntry { group_path: "/Game/GameModes/Bomb/Bomb_CombatReportComponent.Bomb_CombatReportComponent_C", field_name: "CombatReportIndex", field_type: FieldType::Int32 },
     OverlayEntry { group_path: "/Game/GameModes/Bomb/Bomb_CombatReportComponent.Bomb_CombatReportComponent_C", field_name: "Damage", field_type: FieldType::Float },
     OverlayEntry { group_path: "/Game/GameModes/Bomb/Bomb_CombatReportComponent.Bomb_CombatReportComponent_C", field_name: "DamageDealt", field_type: FieldType::Float },
+    OverlayEntry { group_path: "/Game/GameModes/Bomb/Bomb_CombatReportComponent.Bomb_CombatReportComponent_C", field_name: "DamageIcon", field_type: FieldType::ObjectNetGuid },
     OverlayEntry { group_path: "/Game/GameModes/Bomb/Bomb_CombatReportComponent.Bomb_CombatReportComponent_C", field_name: "DamageRecieved", field_type: FieldType::Float },
     OverlayEntry { group_path: "/Game/GameModes/Bomb/Bomb_CombatReportComponent.Bomb_CombatReportComponent_C", field_name: "DamageType", field_type: FieldType::ObjectNetGuid },
     OverlayEntry { group_path: "/Game/GameModes/Bomb/Bomb_CombatReportComponent.Bomb_CombatReportComponent_C", field_name: "DealtIteractions", field_type: FieldType::Raw },

@@ -177,6 +177,10 @@ HAWK_FLASH = ("/Game/Characters/Guide/S0/Ability_E/Projectile_Guide_E_HawkFlash.
 #: * FiniteSpeedMovementComponent bIsActive: all 574 rows 0x01; NumCollisions:
 #:   i32 values only 0/1, indistinguishable from a widened Bool.
 ADDITIONS = pins([
+    # Both declared CombatReport handles: all 84,867 payloads consume exactly
+    # as packed NetGUIDs and resolve to icon paths; no other group is admitted.
+    ("/Game/GameModes/Bomb/Bomb_CombatReportComponent.Bomb_CombatReportComponent_C",
+     "ObjectNetGuid", "DamageIcon"),
     # Crosshair settings, each decoded with exact consumption on 13.01-13.05
     # payloads. B also names a 32-bit property (checksum 943211507), so it is
     # typed by exact identity in tools/fixtures/scoped_type_evidence.json.

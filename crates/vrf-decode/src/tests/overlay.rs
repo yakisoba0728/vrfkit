@@ -582,6 +582,59 @@ fn apply_overlay_returns_none_for_no_field_name() {
     assert_eq!(stats.no_field_name, 1);
 }
 
+#[test]
+fn combat_report_damage_icons_decode_by_name_at_both_handles() {
+    const GROUP: &str =
+        "/Game/GameModes/Bomb/Bomb_CombatReportComponent.Bomb_CombatReportComponent_C";
+    // Hand-encoded IntPacked values: seven payload bits per byte, low bit continues.
+    for (handle, raw, expected) in [(36, [0xc7, 0x40], 4195), (72, [0x29, 0x48], 4628)] {
+        let field_type = resolve_field_type(&TABLE, GROUP, Some("DamageIcon"), Some(handle));
+        assert_eq!(field_type, Some(FieldType::ObjectNetGuid));
+        assert_eq!(
+            decode_field(field_type.unwrap(), &raw, 16)
+                .unwrap()
+                .into_columns()
+                .0,
+            Some(expected),
+        );
+        let (result, stats) = run(
+            &TABLE,
+            GROUP,
+            Some("DamageIcon"),
+            Some(handle),
+            None,
+            Some(&raw),
+            16,
+        );
+        assert_eq!(result.and_then(|v| v.value_i64), Some(expected));
+        assert_eq!(stats.decoded_ok, 1);
+        assert_eq!(stats.decoded_err, 0);
+    }
+    let (result, stats) = run(
+        &TABLE,
+        "/Script/Other.CombatReport",
+        Some("DamageIcon"),
+        Some(36),
+        None,
+        Some(&[0xc7, 0x40]),
+        16,
+    );
+    assert!(result.is_none());
+    assert_eq!(stats.not_in_table, 1);
+    let (result, stats) = run(
+        &TABLE,
+        GROUP,
+        Some("DamageIcon"),
+        Some(36),
+        None,
+        Some(&[0xc7]),
+        8,
+    );
+    assert_eq!(result.and_then(|v| v.value_i64), None);
+    assert_eq!(stats.decoded_ok, 0);
+    assert_eq!(stats.decoded_err, 1);
+}
+
 /// A zero-bit payload is the value 0 for `EnumRemainingBits` (see
 /// `scalar::decode_enum_remaining_bits`) and a `ZeroBits` failure for every
 /// other type; a field with no payload takes the same arm, and is `ZeroBits`

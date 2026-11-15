@@ -473,7 +473,7 @@ class MeasuredCountTests(unittest.TestCase):
 
     def test_live_correction_count_is_pinned(self):
         # Pinned on purpose: a verified typing change must change it visibly.
-        self.assertEqual(guard.measured_counts()["corrections"], 224)
+        self.assertEqual(guard.measured_counts()["corrections"], 225)
 
 
 class GeneratedInventoryTests(unittest.TestCase):
