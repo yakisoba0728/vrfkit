@@ -918,6 +918,7 @@ COMBAT_REPORT_CONTAINER_HANDLES = frozenset({4, 10, 26, 44, 61, 79})
 
 COMBAT_REPORT_WIRE_NAMES = {name: name for name in COMBAT_REPORT_REFERENCE_NAMES.values()}
 COMBAT_REPORT_WIRE_NAMES.update({
+    "DamageIcon": "DamageIcon",
     "RoundNum": "RoundNumber", "ParticipantSubject": "Subject",
     "ParticipantTeamName": "Team", "ParticipantCharacterIcon": "CharacterIcon",
     "DamageRecieved": "DamageReceived", "HitsRecieved": "HitsReceived",

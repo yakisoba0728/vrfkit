@@ -11,8 +11,9 @@ use vrf_bitio::BitReader;
 use vrf_decode::{
     ArrayFieldSchema, DecodeErrorKind, EffectArrayKind, EffectBlobError, FieldType,
     LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA_1310,
-    LIFE_CHANGE_SECTION_SCHEMA, apply_overlay_with_checksum, decode_effect_blob_json,
-    decode_struct_array, decode_struct_array_exact, group_hash_state,
+    LIFE_CHANGE_SECTION_SCHEMA, LIFE_CHANGE_TEMPORARY_DEATH_POINT_SCHEMA_1310,
+    apply_overlay_with_checksum, decode_effect_blob_json, decode_struct_array,
+    decode_struct_array_exact, group_hash_state,
 };
 use vrf_schema::{FxHashMap, NetGuidCache};
 
@@ -517,15 +518,20 @@ pub(super) fn copy_raw_bits(
 /// `MulticastNotifyHeal` and
 /// `MulticastNotifyOverhealDecay`, more than half the calls, name theirs
 /// `LifeChangeBySection`, not `LifeChangeEvents`.
-/// `MulticastReceivePlayerTemporaryDeathEvent_Point` and
-/// `MulticastReceivePlayerDownedEvent_Point` (the same array at 12-15) are left
-/// out: 9 and 2 calls across twenty replays cannot check a schema.
+/// Temporary-death Point is admitted only on 13.10, where five arrays yielded
+/// 60 independently checked leaves. Earlier temporary-death and Downed routes
+/// remain raw because their layouts have not met the same check.
 fn life_change_schema_for_param(
     function_name: &str,
     param_name: Option<&str>,
     release_1310_layouts: bool,
 ) -> Option<&'static ArrayFieldSchema> {
     match (function_name, param_name?) {
+        ("MulticastReceivePlayerTemporaryDeathEvent_Point", "LifeChangeEvents")
+            if release_1310_layouts =>
+        {
+            Some(&LIFE_CHANGE_TEMPORARY_DEATH_POINT_SCHEMA_1310)
+        }
         ("MulticastNotifyDamage_Point" | "MulticastNotifyDamage_Base", "LifeChangeEvents")
             if release_1310_layouts =>
         {
@@ -603,10 +609,188 @@ fn effect_error_kind(err: &EffectBlobError) -> DecodeErrorKind {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+    use std::sync::Arc;
 
     use vrf_bitio::BitError;
+    use vrf_testkit::{BitWrite, BitWriter};
 
     use super::{EffectBlobError, effect_error_kind};
+
+    fn temporary_death_array(float_width: u32) -> BitWriter {
+        let mut bits = BitWriter::new();
+        bits.int_packed(1).int_packed(1);
+        bits.int_packed(14).int_packed(16).int_packed(4628);
+        bits.int_packed(15)
+            .int_packed(float_width)
+            .bits(u64::from(75f32.to_bits()), float_width);
+        bits.int_packed(16).int_packed(32).f32(-25.0);
+        bits.int_packed(17).int_packed(1).bit(true);
+        bits.int_packed(0).int_packed(0);
+        bits
+    }
+
+    fn parse_temporary_death(
+        branch: &str,
+        function: &str,
+        param: &str,
+        array: &BitWriter,
+    ) -> (crate::sink::RecordBuffers, crate::sink::ExportStats) {
+        use crate::sink::test_fixtures::Rig;
+        use vrf_schema::{NetFieldExport, NetFieldExportGroup};
+
+        let mut rig = Rig::default();
+        rig.cache
+            .add_export_group(NetFieldExportGroup::new(
+                format!("/Script/ShooterGame.ShooterGameState:{function}"),
+                7,
+                17,
+            ))
+            .unwrap();
+        assert!(rig.cache.set_field_on_group(
+            7,
+            NetFieldExport {
+                handle: 12,
+                compatible_checksum: 0,
+                name: param.into(),
+            },
+        ));
+        let mut payload = BitWriter::new();
+        payload
+            .bit(false)
+            .int_packed(13)
+            .int_packed(array.bit_len())
+            .extend_bits(array)
+            .int_packed(0);
+        let (raw, width) = payload.finish();
+        let stats = {
+            let mut sink = rig.sink();
+            sink.enable_measured_array_routes(branch);
+            sink.set_current_group_path(Arc::from(
+                "/Game/GameModes/Bomb/BombGameState.BombGameState_C_ClassNetCache",
+            ));
+            assert!(sink.try_parse_rpc_params(
+                8,
+                vrf_bitio::BitReader::with_bit_len(&raw, u64::from(width)).unwrap(),
+                Some(function),
+            ));
+            sink.stats
+        };
+        (rig.records, stats)
+    }
+
+    #[test]
+    fn temporary_death_1310_point_adds_typed_children_and_keeps_raw_parent() {
+        let array = temporary_death_array(32);
+        let (records, stats) = parse_temporary_death(
+            "++Ares-Core+release-13.10",
+            "MulticastReceivePlayerTemporaryDeathEvent_Point",
+            "LifeChangeEvents",
+            &array,
+        );
+        assert_eq!(records.fields.len(), 5);
+        let children = &records.fields[..4];
+        let parent = &records.fields[4];
+        assert_eq!(
+            parent.raw_bits.as_deref(),
+            Some(array.finish().0.as_slice())
+        );
+        assert_eq!(parent.bit_count, array.bit_len());
+        assert!(
+            parent
+                .field_name
+                .as_deref()
+                .unwrap()
+                .ends_with(".LifeChangeEvents")
+        );
+        assert_eq!(children[0].value_i64, Some(4628));
+        assert_eq!(children[1].value_f64, Some(75.0));
+        assert_eq!(children[2].value_f64, Some(-25.0));
+        assert_eq!(children[3].value_bool, Some(true));
+        for (child, member) in children.iter().zip([
+            "ChangedComponent",
+            "LifeResult",
+            "DeltaLife",
+            "bAliveAfterChange",
+        ]) {
+            assert!(
+                child
+                    .field_name
+                    .as_deref()
+                    .unwrap()
+                    .ends_with(&format!("[0].{member}"))
+            );
+            assert_eq!(child.handle, parent.handle);
+            assert!(child.raw_bits.is_some());
+        }
+        assert!(stats.array.is_clean(), "{:?}", stats.array);
+        assert_eq!(stats.array_leaf_decode_errors, 0);
+    }
+
+    #[test]
+    fn temporary_death_array_expansion_requires_the_measured_branch_rpc_and_param() {
+        let array = temporary_death_array(32);
+        for (branch, function, param) in [
+            (
+                "++Ares-Core+release-13.08",
+                "MulticastReceivePlayerTemporaryDeathEvent_Point",
+                "LifeChangeEvents",
+            ),
+            (
+                "++Ares-Core+release-13.09",
+                "MulticastReceivePlayerTemporaryDeathEvent_Point",
+                "LifeChangeEvents",
+            ),
+            (
+                "++Ares-Core+release-13.11",
+                "MulticastReceivePlayerTemporaryDeathEvent_Point",
+                "LifeChangeEvents",
+            ),
+            (
+                "++Ares-Core+release-13.10",
+                "MulticastReceivePlayerTemporaryDeathEvent_Base",
+                "LifeChangeEvents",
+            ),
+            (
+                "++Ares-Core+release-13.10",
+                "MulticastReceivePlayerDownedEvent_Point",
+                "LifeChangeEvents",
+            ),
+            (
+                "++Ares-Core+release-13.10",
+                "MulticastReceivePlayerTemporaryDeathEvent_Point",
+                "LifeChangeBySection",
+            ),
+        ] {
+            let (records, stats) = parse_temporary_death(branch, function, param, &array);
+            assert_eq!(records.fields.len(), 1, "{branch} {function} {param}");
+            assert_eq!(
+                records.fields[0].raw_bits.as_deref(),
+                Some(array.finish().0.as_slice())
+            );
+            assert!(stats.array.is_clean());
+        }
+    }
+
+    #[test]
+    fn temporary_death_array_malformed_windows_keep_raw_and_count_failures() {
+        let mut truncated = temporary_death_array(32);
+        truncated.truncate(truncated.len() - 20);
+        for array in [truncated, temporary_death_array(31)] {
+            let (records, stats) = parse_temporary_death(
+                "++Ares-Core+release-13.10",
+                "MulticastReceivePlayerTemporaryDeathEvent_Point",
+                "LifeChangeEvents",
+                &array,
+            );
+            let parent = records.fields.last().unwrap();
+            assert_eq!(
+                parent.raw_bits.as_deref(),
+                Some(array.finish().0.as_slice())
+            );
+            assert_eq!(parent.bit_count, array.bit_len());
+            assert!(!stats.array.is_clean() || stats.array_leaf_decode_errors > 0);
+        }
+    }
 
     /// Effect-blob failures share the overlay's error report, so each cause
     /// prints its own label. Every variant has a case, checked against the list

@@ -1032,6 +1032,23 @@ class CombatReportLeafNameTests(unittest.TestCase):
 class CombatReportLayoutTests(unittest.TestCase):
     GROUP = CombatReportLeafNameTests.GROUP
 
+    def test_damage_icon_references_keep_the_declared_name_in_both_interactions(self):
+        manifest = {**MANIFEST, "net_field_export_groups": [
+            {"path": self.GROUP, "fields": [
+                {"handle": 36, "name": "DamageIcon"},
+                {"handle": 72, "name": "DamageIcon"},
+            ]}]}
+        members = [
+            (handle, "Rounds[0].Reports[0].Interactions[0]." + name +
+             "[0].DamageIcon", "value_i64", value)
+            for handle, name, value in ((36, "DealtInteractions", 300),
+                                        (72, "ReceivedInteractions", 800))
+        ]
+        report, _ = self.convert_rows(members, manifest=manifest)
+        interaction = report["Interactions"][0]
+        self.assertEqual(interaction["DealtInteractions"][0]["DamageIcon"], 300)
+        self.assertEqual(interaction["ReceivedInteractions"][0]["DamageIcon"], 800)
+
     def convert_rows(self, members, *, manifest=MANIFEST):
         rows = [{"time_ms": 20, "packet_id": 2, "actor": 2,
                  "group_path": self.GROUP, "handle": handle,

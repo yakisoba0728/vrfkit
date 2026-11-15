@@ -158,6 +158,18 @@ pub static LIFE_CHANGE_DAMAGE_SCHEMA_1310: ArrayFieldSchema = ArrayFieldSchema {
     ],
 };
 
+/// `MulticastReceivePlayerTemporaryDeathEvent_Point.LifeChangeEvents` on
+/// 13.10: the RPC's two leading player references shift its member handles.
+pub static LIFE_CHANGE_TEMPORARY_DEATH_POINT_SCHEMA_1310: ArrayFieldSchema = ArrayFieldSchema {
+    sub_arrays: &[],
+    field_names: &[
+        (13, "ChangedComponent"),
+        (14, "LifeResult"),
+        (15, "DeltaLife"),
+        (16, "bAliveAfterChange"),
+    ],
+};
+
 /// `MulticastSectionLifeChange`, the round-reset broadcast.
 pub static LIFE_CHANGE_SECTION_SCHEMA: ArrayFieldSchema = ArrayFieldSchema {
     sub_arrays: &[],

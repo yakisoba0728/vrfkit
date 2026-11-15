@@ -23,12 +23,14 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 (2026-10-27) are inventoried in
 [`docs/UPSTREAM_AUDIT_2026_10.md`](docs/UPSTREAM_AUDIT_2026_10.md), and through
 [`400f729`](https://github.com/michel-giehl/ValorantReplayParser/commit/400f7295964a7f6486378eac6decda3cefe42acb)
-(2026-11-07) in [`docs/UPSTREAM_AUDIT_2026_11.md`](docs/UPSTREAM_AUDIT_2026_11.md);
+(2026-11-07) in [`docs/UPSTREAM_AUDIT_2026_11.md`](docs/UPSTREAM_AUDIT_2026_11.md),
+and through [`fbf24b6`](https://github.com/michel-giehl/ValorantReplayParser/commit/fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8)
+(2026-11-11) in [`docs/UPSTREAM_AUDIT_2026_11_16.md`](docs/UPSTREAM_AUDIT_2026_11_16.md);
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Test suites (2026-11-16):** **740 Rust tests (Windows)**,
-**739 Rust tests (non-Windows)** and **1080 Python tests**.
+**Test suites (2026-11-16):** **744 Rust tests (Windows)**,
+**743 Rust tests (non-Windows)** and **1081 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -148,7 +150,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **740 Rust tests (Windows)** / **739 Rust tests (non-Windows)** plus
+- **744 Rust tests (Windows)** / **743 Rust tests (non-Windows)** plus
   a layered validation suite (framing / bytes / decode
   errors / semantics).
 
@@ -199,8 +201,8 @@ timestamp) are in [`docs/USAGE.md` section 3](docs/USAGE.md#3-output).
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**739 passing (non-Windows)**; the Windows suite contains **740 tests (Windows)**.
-The full Python suite has **1080 passing** tests. The documentation guard
+**743 passing (non-Windows)**; the Windows suite contains **744 tests (Windows)**.
+The full Python suite has **1081 passing** tests. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.
@@ -279,7 +281,7 @@ identified: it cannot be expanded into fields, so it emits one preservation
 row (`handle` = `u32::MAX`, full payload in `raw_bits`) and an explicit
 unresolved/raw diagnostic rather than pretending the properties were decoded.
 
-The overlay table (`crates/vrf-decode/src/table.rs`) -- 224 groups, 1,123
+The overlay table (`crates/vrf-decode/src/table.rs`) -- 224 groups, 1,124
 entries, 96 handles -- is maintained in the repository, and
 `tools/apply_type_corrections.py --check` keeps every measured type in it.
 Four names resolve without a table entry: `Owner`, `Instigator`,

@@ -706,7 +706,7 @@ needs it.
 ### Generators
 
 **Never hand-edit the output.** The overlay table
-`crates/vrf-decode/src/table.rs` (1,123 + 96 handles) and `equippable_table.py`
+`crates/vrf-decode/src/table.rs` (1,124 + 96 handles) and `equippable_table.py`
 are not generated: they are maintained in the repository.
 
 | Script | Produces |
@@ -720,15 +720,15 @@ applying would change `table.rs` at all -- a type, a missing entry, the order or
 the declared length -- and prints the difference.
 
 ```bash
-python tools/apply_type_corrections.py           # apply (224 corrections)
+python tools/apply_type_corrections.py           # apply (225 corrections)
 python tools/apply_type_corrections.py --check   # fail unless applying changes nothing
 ```
 
 CI runs the `--check` line.
 
-Those 224 corrections are the live expectation set the script re-verifies.
+Those 225 corrections are the live expectation set the script re-verifies.
 `ADDITIONS` pins types nothing else declares:
-currently 147 of them, each on complete wire evidence (one width on every row
+currently 148 of them, each on complete wire evidence (one width on every row
 and a value distribution a wrong type cannot produce) or a checksum or
 sibling that fixes the type, recorded at its entry under the bar stated above
 the list. `check_docs.py` checks both figures.
@@ -1064,7 +1064,7 @@ This measures value presence, not semantic understanding or block preservation.
 | `bench_export.py` | Times a full `export` against `tools/baselines/bench.json`; `--checkpoints` times `export --checkpoints` against its own `export_checkpoints` slot. A smoke detector, not a profiler -- wall clock is noisy, so the default tolerance is 25% and it answers "did something get twice as slow", nothing finer. Reports a run *faster* than the baseline too: that means the recorded number no longer describes the code. |
 | `extract_active_effects.py` | Derives an `active_effects.parquet` view from an export -- one row per persistent ability instance (smoke/wall/molly/slow/trap/recon/orb) with class, spawn position, and open/close lifetime. A `dormant` event does NOT end an instance -- a settled smoke that stops replicating has not despawned -- so those instances stay open-ended and the summary counts them. The data already lives in `actors.parquet`; this filters and pairs it. Each row carries `actor_kind` (`projectile`/`game_object`/`zone`/`patch`/`pawn`/`other`, from the class leaf prefix): a projectile and the zone it places are two rows by design, and the kind lets a consumer count either. Weapons (`Gun_` leaves, such as Chamber's ult gun) and Breach's through-wall flash are not effects; Brimstone's orbital strike is a `damage_zone`. Every type and kind prints with its zero. `--tracks <path>` also writes `actor_tracks.parquet`: one row per `ReplicatedMovement` update (location, velocity, yaw) or `MulticastAddSmokeScreenPoint.Translation` wall point, with the class and a `source` column; an untyped row is kept with null coordinates and counted by class. |
 | `extract_spike_carrier.py` | Derives a `spike_carrier.parquet` view -- one row per spike custody interval, resolved through to the manifest `subject`. Reads `BombEquippable_C.Owner` on the spike's own channel rather than the inventory side, so it covers carrying-in-the-backpack and not just in-hand, and it follows proxy carriers (Gekko's Wingman) back through `Instigator`. A carrier is any `SpawnedCharacter` pawn of a player, including one from before a reconnect; `carrier_identity_provenance` says which. |
-| `minimap.py` | Minimap projection (`project`, crossed axes: u from `pos_y`, v from `pos_x`) and park-slot mask (`parked`, on both x and z), importable. As a command, `--export <dir> --maps <valorant-api /v1/maps JSON>` prints the share of live movement rows inside [0,1]² and the u/v range, and exits 1 for a map the file lacks or leaves at zero, or a share below 99%. The constants file is the user's; nothing in the repo carries it. See [DATA.md](DATA.md#minimap-projection). |
+| `minimap.py` | Minimap projection (`project`, crossed axes: u from `pos_y`, v from `pos_x`) and park-slot mask (`parked`, on both x and z), importable. As a command, `--export <dir> --maps <valorant-api /v1/maps JSON>` prints the share of live movement rows inside [0,1]짼 and the u/v range, and exits 1 for a map the file lacks or leaves at zero, or a share below 99%. The constants file is the user's; nothing in the repo carries it. See [DATA.md](DATA.md#minimap-projection). |
 | `extract_damage_events.py` | Derives a `damage_events.parquet` view -- one row per `MulticastNotifyDamage_{Point,Base}` invocation: time, victim actor, class and (for a `SpawnedCharacter` pawn) subject, damager subject from `DamagerPlayerState`, weapon class and name, origin/impact/direction, dealt/taken/falloff, bone, regional damage, killed, wallbang. The victim is the row's actor, not the `Character` parameter (0 on a kill against utility); the `NetTimestamp`/`RespawnNumber` sentinels and GUID 0 are null. Invocations sharing a bunch split on a repeated parameter (counted). Killing blows on a player body must pair one to one with `characterDeath`, or the run exits 1 and writes nothing. |
 | `extract_rounds.py` | Derives a `rounds.parquet` view -- one row per played round: reset, round start, buy phase end (`buy_end_ms`, the `CastTime` epoch), the unnamed post-round phase and the side switch from the `MulticastSetPhase` RPC, each checked against the named RPC of its frame (a difference exits 1 and writes nothing); `round_number` from `roundStarted`; winner, role, result and attacker team from `RoundResults` by `RoundNumber`; plant/defuse/explode times and the replicated plant site. A surrender pads `RoundResults` with awarded rounds, which are counted, never rows. A missing phase stays null. |
 
@@ -1120,7 +1120,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-740 Rust tests (Windows), 739 Rust tests (non-Windows), and 1080 Python tests.
+744 Rust tests (Windows), 743 Rust tests (non-Windows), and 1081 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
@@ -1319,6 +1319,12 @@ executable layout documented in [LEGACY_BUILD_SUPPORT.md](LEGACY_BUILD_SUPPORT.m
 Without `--check`, it regenerates `crates/vrf-transform/tests/data/native_vectors.rs`.
 Ordinary tests read the vectors without requiring proprietary binaries or an
 emulator. Game binaries and replay exports are not committed.
+
+The 13.10 boundary vectors also match all eleven values published by upstream
+as native captures from its arbitrary-length reader. This is additional
+source evidence, rather than a capture rerun by vrfkit; the local five-case
+integer-reader check and the upstream capture are distinguished in the
+[November 16 audit](UPSTREAM_AUDIT_2026_11_16.md#transform-evidence).
 
 ### Windows release packaging
 
