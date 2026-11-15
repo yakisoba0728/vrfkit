@@ -30,7 +30,7 @@ only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
 **Test suites (2026-11-16):** **751 Rust tests (Windows)**,
-**750 Rust tests (non-Windows)** and **1089 Python tests**.
+**750 Rust tests (non-Windows)** and **1108 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -202,7 +202,7 @@ timestamp) are in [`docs/USAGE.md` section 3](docs/USAGE.md#3-output).
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
 **750 passing (non-Windows)**; the Windows suite contains **751 tests (Windows)**.
-The full Python suite has **1089 passing** tests. The documentation guard
+The full Python suite has **1108 passing** tests. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.
@@ -221,8 +221,10 @@ The crates, their layers and feature flags are in
 [`docs/USAGE.md` section 4](docs/USAGE.md#4-using-it-as-a-library), and the
 layered validation suite and what each layer misses in
 [section 6](docs/USAGE.md#6-validation-suite). Timing
-is `tools/bench_export.py`; the optimizations kept and rejected, with their
-measurements, are in [`docs/PERFORMANCE_NOTES.md`](docs/PERFORMANCE_NOTES.md).
+is `tools/bench_export.py`. For paired CPU, memory and exact-output comparisons,
+see [resource benchmarks](docs/RESOURCE_BENCHMARKS.md). The optimizations kept
+and rejected, with their measurements, are in
+[`docs/PERFORMANCE_NOTES.md`](docs/PERFORMANCE_NOTES.md).
 
 ## The Event chunk -- the server's own timeline
 
