@@ -1,0 +1,28 @@
+name: Apply reviewed overhaul patch
+
+on:
+  push:
+    branches: [chore/overhaul-review-environment]
+    paths: ['.overhaul/request.json', '.overhaul/change.patch']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: overhaul-patch-transport
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: apply only to an explicitly named non-protected work branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .overhaul/apply_patch.py
