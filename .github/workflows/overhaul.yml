@@ -26,6 +26,21 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: archive public tracked source for reproducible review
+        run: |
+          git archive --format=tar --output="$RUNNER_TEMP/vrfkit-source.tar" HEAD
+          git rev-parse HEAD > "$RUNNER_TEMP/source-commit.txt"
+          sha256sum "$RUNNER_TEMP/vrfkit-source.tar" > "$RUNNER_TEMP/source-sha256.txt"
+      - name: retain public source snapshot (no replays or credentials)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: overhaul-source
+          path: |
+            ${{ runner.temp }}/vrfkit-source.tar
+            ${{ runner.temp }}/source-commit.txt
+            ${{ runner.temp }}/source-sha256.txt
+          retention-days: 3
+          if-no-files-found: error
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
           toolchain: '1.86.0'
