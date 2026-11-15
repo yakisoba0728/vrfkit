@@ -1,0 +1,42 @@
+name: Offline Rust review tools
+
+on:
+  push:
+    branches: [chore/overhaul-review-environment]
+    paths: ['.github/workflows/offline-rust-review.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+        with:
+          toolchain: '1.86.0'
+          components: rustfmt, clippy
+      - name: prepare public toolchain and locked source dependencies only
+        run: |
+          mkdir -p "$RUNNER_TEMP/offline-review"
+          cargo +1.86.0 vendor --locked "$RUNNER_TEMP/offline-review/vendor" > "$RUNNER_TEMP/offline-review/vendor-config.toml"
+          toolchain=$(rustc +1.86.0 --print sysroot)
+          tar --exclude='./share/doc' -czf "$RUNNER_TEMP/offline-review/rust-1.86.0.tar.gz" -C "$toolchain" .
+          tar -czf "$RUNNER_TEMP/offline-review/vendor.tar.gz" -C "$RUNNER_TEMP/offline-review" vendor
+          cd "$RUNNER_TEMP/offline-review"
+          sha256sum rust-1.86.0.tar.gz vendor.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: public-offline-rust-review
+          path: |
+            ${{ runner.temp }}/offline-review/rust-1.86.0.tar.gz
+            ${{ runner.temp }}/offline-review/vendor.tar.gz
+            ${{ runner.temp }}/offline-review/vendor-config.toml
+            ${{ runner.temp }}/offline-review/SHA256SUMS
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
