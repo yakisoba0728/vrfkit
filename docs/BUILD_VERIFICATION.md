@@ -44,11 +44,11 @@ contains build aggregates, input hashes and the complete finding list.
 | 13.04 | 108 | 108 | 67,440,898 | 2,474,063 | 1,357,848 |
 | 13.05 | 401 | 401 | 253,658,021 | 9,310,150 | 5,085,060 |
 | 13.06 | 38 | 38 | 25,546,790 | 919,543 | 547,597 |
-| 13.08 | 2 | 1 | 1,539,679 | 56,791 | 19,975 |
-| 13.09 | 4 | 4 | 1,883,501 | 64,842 | 50,808 |
-| 13.10 | 1 | 1 | 1,065,451 | 39,835 | 28,182 |
+| 13.08 | 3 | 2 | 2,113,274 | 80,615 | 38,141 |
+| 13.09 | 5 | 5 | 2,046,446 | 69,917 | 56,720 |
+| 13.10 | 28 | 28 | 13,908,176 | 513,867 | 421,297 |
 
-Preserved unresolved RPC payloads total
+In the historical 1,018-replay audit, preserved unresolved RPC payloads total
 **5,589,152 main / 1,666 checkpoint**.
 Their associated skipped-bit counters are
 **11,054,801,711 main / 377,598 checkpoint**.
@@ -58,14 +58,15 @@ These nonzero populations remain outside a claim of complete semantic decoding.
 
 ## 13.08
 
-The 13.08 row comes from a separate run of the same tool on 2 replays, with
+The first 13.08 supplement comes from a separate run on 2 replays, with
 parser commit `f609c3a52fecd918f83951c467a3517eef2f3f39`. Its numbers are not
 part of the 1,018-replay totals above. In the
 [machine-readable report](../tools/fixtures/build_verification.json), the
 top-level `provenance`, `executable_changed`, `build_errors` and `failures`
 describe the 1,018-replay run. Each entry of `supplements` is a later run's
-complete result for the builds it names, and those builds' rows are copied into
-`builds`.
+complete result for the builds it names. The top-level `builds` rows aggregate
+the runs after confirming their input hashes do not overlap; the November 16
+follow-up below contributes one additional 13.08 replay.
 
 Both replays pass validation (oracle **1,539,679/1,539,679**) and
 checkpoint-enabled export, with no transform, framing, field-stream, array or
@@ -89,10 +90,10 @@ case-only mismatch was observed in the 1,018 exports above.
 
 ## 13.09
 
-The 13.09 row comes from a separate run of the same tool on 4 replays, with
+The first 13.09 supplement comes from a separate run on 4 replays, with
 parser commit `7213fc296167bbe79f8502d63a2c2c0c94ba0d87`, recorded as the second
 entry of `supplements`. Its numbers are not part of the 1,018-replay totals
-above.
+above. The November 16 follow-up adds one independently checked replay.
 
 All four replays pass validation (oracle **1,883,501/1,883,501**) and
 checkpoint-enabled export, with no transform, framing, field-stream, array,
@@ -107,7 +108,7 @@ was a struct-blob failure (6--21 per replay, main and checkpoint).
 
 ## 13.10
 
-The 13.10 row comes from a separate run on one replay (SHA-256
+The first 13.10 supplement comes from a run on one replay (SHA-256
 `6cb43f11c74c483b84fc64d70ec6bc0642af3ed5ec877a90d1e3353defd4ba97`).
 Its branch is `++Ares-Core+release-13.10`; the matching game executable has
 SHA-256 `8e6f270fd509b3996685ef986423866796b7b4db12f41eb51c769e50a99a1372`.
@@ -140,6 +141,47 @@ replay's GUID table. A pinned 13.10 payload test
 checks the nested walk and shifted life-change fields; the full replay export
 types the observed regional `Region`, `Hits`, `Damage`, wall penetration, kill
 and destroyed armor members.
+
+## November 16 follow-up
+
+A new run on 29 unique local replays checks 27 of 13.10, one of 13.09 and
+one of 13.08. None of their SHA-256 identities overlaps an earlier supplement.
+All **29/29** pass the same strict gate: **13,579,265/13,579,265** scored main
+blocks, **502,931** checkpoint blocks across **396** checkpoint chunks, and
+**417,193** observed values compared independently. Main and checkpoint array
+errors, truncations and leaf decode errors are zero. The executable is
+unchanged at completion. The fourth supplement records the complete run;
+the table above aggregates it with the earlier supplements.
+
+This run uses the Rust sources of `6194bde`; the follow-up code changes only
+Python bundle naming and comparison. Three pinned public replays (12.10,
+12.11 and 13.00) also pass the strict gate. On the additional 13.09 replay,
+the bundle's events, movement and manifest are byte-identical before and
+after the Python correction. Regression tests additionally cover shifted
+regional fields, shifted nonregional fields, unknown declarations, legacy
+output and the comparison tool's use of the replay's declarations.
+
+The strict gate's default evidence list does not contain the new regional
+damage or life-change fields. An additional Python checker independently
+walks their raw parent arrays using the replay's declarations, then compares
+the emitted child paths, bit lengths and raw bytes: **3,372,841 leaves**
+agree across the 27 new 13.10 exports, main and checkpoint. It also decodes
+**804,482 typed values** directly from those raw windows, with zero mismatch:
+`ChangedComponent`, `LifeResult`, `DeltaLife`, `bAliveAfterChange`, and the
+regional `Region`, `Hits`, `Damage`, `bIsWallPen`, `bIsKill`, `DestroyedArmor`.
+Each life-change member has 40,863 main observations. Checkpoint observations
+contain the six regional members (91,909 each), but no damage life-change
+RPCs; absence is not a successful comparison.
+
+Three negative controls change a typed value, omit a child and change a
+child's raw bytes. The checker detects all three. Its source, reports and
+mutation runner are retained with the private corpus; the checker SHA-256 is
+`ab3bca35a29ac602d3390a9b6b658b4223b883f0d86b84b79a15dd205b7df919`.
+The supplement includes the aggregate counts and negative-control results.
+These comparisons establish byte/value agreement, not complete gameplay
+semantics: among 40,863 `ChangedComponent` observations, one is the zero
+sentinel and three nonzero references lack a final GUID path. No reference
+or player attribution is invented for them.
 
 ## Method
 

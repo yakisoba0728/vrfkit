@@ -27,13 +27,12 @@ Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantRepl
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Test suites (2026-11-11):** **740 Rust tests (Windows)**,
-**739 Rust tests (non-Windows)** and **1074 Python tests**.
+**Test suites (2026-11-16):** **740 Rust tests (Windows)**,
+**739 Rust tests (non-Windows)** and **1080 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
-checked the same way on 2 replays, and 1 meets every criterion; 13.09 on 4
-replays, and all 4 meet every criterion. The 13.10 replay also meets every
-strict criterion. See
+checked the same way on 3 replays, and 2 meet every criterion; all 5
+13.09 and all 28 13.10 replays meet every strict criterion. See
 [build verification](docs/BUILD_VERIFICATION.md) for the measured scope, common
 checks and remaining limits.
 
@@ -59,9 +58,9 @@ can be represented by their rows instead of a duplicate raw RPC.
 
 | 🎮 Build | 🌿 Branch | ✅ Clean/checked | 🔎 Verified by |
 |---|---|---:|---|
-| **13.10** | `release-13.10` | 1/1 | Validation + checkpoints + typed/raw |
-| **13.09** | `release-13.09` | 4/4 | Validation + checkpoints + typed/raw |
-| **13.08** | `release-13.08` | 1/2 | Validation + checkpoints + typed/raw |
+| **13.10** | `release-13.10` | 28/28 | Validation + checkpoints + typed/raw |
+| **13.09** | `release-13.09` | 5/5 | Validation + checkpoints + typed/raw |
+| **13.08** | `release-13.08` | 2/3 | Validation + checkpoints + typed/raw |
 | **13.06** | `release-13.06` | 38/38 | Validation + checkpoints + typed/raw |
 | **13.05** | `release-13.05` | 401/401 | Validation + checkpoints + typed/raw |
 | **13.04** | `release-13.04` | 108/108 | Validation + checkpoints + typed/raw |
@@ -88,7 +87,7 @@ can be represented by their rows instead of a duplicate raw RPC.
 | **11.06** | `release-11.06` | 3/3 | Validation + checkpoints + typed/raw |
 
 Measured on all **1,018 unique available replays** across the 24
-branches through 13.06, plus 2 13.08, 4 13.09 and 1 13.10 replays in separate runs, every row by the
+branches through 13.06, plus 3 13.08, 5 13.09 and 28 13.10 replays in separate runs, every row by the
 [same acceptance rule](docs/BUILD_VERIFICATION.md):
 ReplayData validation, checkpoint-enabled export, the independent comparisons on
 observed evidence fields, and the strict array and array-leaf error counters.
@@ -201,7 +200,7 @@ timestamp) are in [`docs/USAGE.md` section 3](docs/USAGE.md#3-output).
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
 **739 passing (non-Windows)**; the Windows suite contains **740 tests (Windows)**.
-The full Python suite has **1074 passing** tests. The documentation guard
+The full Python suite has **1080 passing** tests. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.

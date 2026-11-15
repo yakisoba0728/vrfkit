@@ -97,3 +97,32 @@ class InputTests(unittest.TestCase):
     def test_the_default_reference_is_not_the_valplay_bundle(self):
         self.assertNotIn("valplay", guard.DEFAULT_REFERENCE.lower())
         self.assertIn("csharp-reference", guard.DEFAULT_REFERENCE)
+
+
+class DeclaredLayoutTests(support.TempDirTestCase):
+    def test_shifted_handles_use_the_export_declarations(self):
+        from test_to_valplay_bundle import write_export
+
+        group = "/Game/Test.CombatReportComponent_C"
+        prefix = "Rounds[0].Reports[0].Interactions[0]."
+        fields = [
+            {"group_path": group, "field_name": prefix + "HitsDealt", "handle": 200,
+             "value_i64": 7},
+            {"group_path": group, "field_name": prefix +
+             "DealtInteractions[0].RegionalDamageInteractions[0].Hits", "handle": 47,
+             "value_i64": 3},
+            {"group_path": group, "field_name": prefix +
+             "DealtInteractions[0].RegionalDamageInteractions[0].Damage", "handle": 48,
+             "value_f64": 120.0},
+        ]
+        manifest = {"net_field_export_groups": [{"path": group, "fields": [
+            {"handle": 200, "name": "HitsDealt"},
+            {"handle": 47, "name": "Hits"},
+            {"handle": 48, "name": "Damage"},
+        ]}]}
+        export = write_export(self.tmp() / "export", fields, manifest=manifest)
+        ours = guard.load_ours(export / "fields.parquet")
+        self.assertEqual(ours["Rounds[].Reports[].Interactions[].HitsDealt"], {7: 1})
+        regional = "Rounds[].Reports[].Interactions[].DealtInteractions[].Regions[]."
+        self.assertEqual(ours[regional + "Hits"], {3: 1})
+        self.assertEqual(ours[regional + "Damage"], {120.0: 1})
