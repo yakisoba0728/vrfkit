@@ -42,6 +42,24 @@ class CompareTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bench.compare(1.0, 0.0, self.TOL)
 
+    def test_nonfinite_or_nonpositive_timings_are_not_verdicts(self):
+        for bad in (float("nan"), float("inf"), -float("inf"), 0.0, -1.0, True):
+            for measured, baseline in ((bad, 1.0), (1.0, bad)):
+                with self.subTest(measured=measured, baseline=baseline):
+                    with self.assertRaises(ValueError):
+                        bench.compare(measured, baseline, self.TOL)
+
+    def test_invalid_tolerance_cannot_disable_regression_detection(self):
+        for bad in (float("nan"), float("inf"), -float("inf"), -0.01, 1.0, True):
+            with self.subTest(tolerance=bad):
+                with self.assertRaises(ValueError):
+                    bench.compare(10.0, 1.0, bad)
+
+    def test_zero_tolerance_and_exact_boundaries_remain_valid(self):
+        self.assertEqual(bench.compare(1.0, 1.0, 0.0)[0], "ok")
+        for measured in (0.8, 1.2):
+            self.assertEqual(bench.compare(measured, 1.0, 0.2)[0], "ok")
+
 
 class MainTests(TempDirTestCase):
     """What `--update` writes, checked against the validator that reads it,
@@ -126,3 +144,44 @@ class MainTests(TempDirTestCase):
         code, output = self.run_bench(self.replay("m.vrf"))
         self.assertEqual(code, 2)
         self.assertIn("build the release binary first", output)
+
+    def test_invalid_tolerance_is_rejected_before_spawning(self):
+        for value in ("nan", "inf", "-0.1", "1"):
+            with self.subTest(value=value), mock.patch.object(bench, "time_export") as timed:
+                with self.assertRaises(SystemExit) as raised:
+                    self.run_bench(self.replay("m.vrf"), ["--tolerance", value])
+                self.assertEqual(raised.exception.code, 2)
+                timed.assert_not_called()
+
+    def test_invalid_samples_cannot_poison_a_baseline(self):
+        for seconds in (float("nan"), float("inf"), 0.0, -1.0):
+            with self.subTest(seconds=seconds):
+                code, output = self.run_bench(self.replay("m.vrf"), ["--update"], seconds)
+                self.assertEqual(code, 2, output)
+                self.assertFalse(self.baseline.exists())
+
+    def test_invalid_stored_timing_is_rejected_before_spawning(self):
+        for seconds in (float("nan"), float("inf"), 0.0, -1.0, True):
+            with self.subTest(seconds=seconds):
+                self.baseline.write_text(json.dumps({"export": seconds, "replay": "m.vrf"}), encoding="utf-8")
+                with mock.patch.object(bench, "time_export") as timed:
+                    code, output = run_cli(bench.main, "--exe", self.exe,
+                        "--replay", self.replay("m.vrf"), "--baseline", self.baseline,
+                        prog="bench_export.py", merged=True)[:2]
+                self.assertEqual(code, 2, output)
+                timed.assert_not_called()
+
+    def test_submillisecond_measurement_stays_positive_when_recorded(self):
+        code, output = self.run_bench(self.replay("m.vrf"), ["--update"], 0.0000123)
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.read()["export"], 0.0000123)
+        self.assertEqual(schemas.validate_bench_baseline(self.baseline, self.read()), [])
+
+    def test_missing_samples_are_not_a_measurement(self):
+        for samples in ([], [1.0, 2.0]):
+            with self.subTest(samples=samples), mock.patch.object(bench, "time_export", return_value=samples):
+                code, output = run_cli(bench.main, "--exe", self.exe,
+                    "--replay", self.replay("m.vrf"), "--baseline", self.baseline,
+                    "--repeats", "1", "--update", prog="bench_export.py", merged=True)[:2]
+                self.assertEqual(code, 2, output)
+                self.assertFalse(self.baseline.exists())
