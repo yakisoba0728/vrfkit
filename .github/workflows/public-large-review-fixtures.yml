@@ -1,0 +1,36 @@
+name: Public full-match review fixtures
+
+on:
+  push:
+    branches: [chore/overhaul-review-environment]
+    paths: ['.github/workflows/public-large-review-fixtures.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: restore existing public LFS objects and verify source hashes
+        env:
+          BASE: https://media.githubusercontent.com/media/Matthias1590/unsupported-replays/c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe/replays
+        run: |
+          mkdir -p "$RUNNER_TEMP/public-full-match"
+          cd "$RUNNER_TEMP/public-full-match"
+          for build in 12.05 12.08 12.09; do
+            curl --fail --location --retry 3 "$BASE/$build/sample-1.replay" --output "$build-sample-1.vrf"
+          done
+          printf '%s\n' \
+            'f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b  12.05-sample-1.vrf' \
+            '78e706843ea6992e5502d58f9b41c23ac5470a9e36e810d45e8724fb47a91201  12.08-sample-1.vrf' \
+            '925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff  12.09-sample-1.vrf' > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: already-public-full-match-fixtures
+          path: ${{ runner.temp }}/public-full-match
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
