@@ -1,0 +1,28 @@
+name: Offline review dependency
+
+on:
+  push:
+    branches: [chore/overhaul-review-environment]
+
+permissions:
+  contents: read
+
+jobs:
+  wheel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: obtain the existing project's public PyArrow dependency
+        run: |
+          python -m pip download --only-binary=:all: --no-deps --platform manylinux_2_28_x86_64 --python-version 3.13 --implementation cp --abi cp313 'pyarrow>=15' --dest "$RUNNER_TEMP/review-wheel"
+          cd "$RUNNER_TEMP/review-wheel"
+          sha256sum ./*.whl > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: public-pyarrow-review-wheel
+          path: ${{ runner.temp }}/review-wheel
+          retention-days: 1
+          if-no-files-found: error
