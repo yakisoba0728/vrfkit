@@ -103,3 +103,21 @@ runs of this candidate. Synthetic values in tests are not private replay data.
 This backup has no implementation PR and is not merged into integration or
 main. No release, tag, package publication, private repository change or
 benchmark was performed.
+
+
+## Recovered original source supersedes this backup candidate
+
+The original environment reconnected during the continuing Phase C session.
+B verified that the original five files matched this backup after Rust1.86
+formatting, then applied the previously interrupted comment clarification.
+The recovered and actually tested author commit is
+`5acf6c0233678e2c4a68d72de1e05b2279b43b62`, tree
+`e707cadea555fda1e835c918360b1bc6007b0b25`; its exact published counterpart is
+`54f888a148858dda333c24a67c23aea80e232a69`.
+
+PR #70 now uses those original source bytes and preserves the separate
+recovery diagnostic workflow. The original unverified backup branch remains
+unchanged. B observed 15 new and 12 prior tests, four source mutation failures
+and restoration, strict core Clippy/rustdoc, and a public12.10 aggregate run.
+The author receipt is in `docs/evidence/phase_c/gameplay/README.md`.
+Independent fresh corpus and final hosted CI remain acceptance gates.

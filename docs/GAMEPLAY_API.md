@@ -161,7 +161,7 @@ from silently leaving an older relation active.
 | --- | --- |
 | `Null` | The queried character GUID is zero. |
 | `Unresolved(reason)` | No current preceding declaration, unobserved packet boundary, missing/ended/conflicting actor lifecycle, prior-lifetime declaration, indeterminate same-packet order, or invalid timeline. |
-| `Ambiguous { declarations }` | Multiple current PlayerState declarations name this character. All source declarations remain available in PlayerState GUID order. |
+| `Ambiguous { declarations }` | Multiple non-retired PlayerState declarations name this character, including declarations whose same-packet lifetime boundary is indeterminate. All source declarations remain available in PlayerState GUID order. |
 | `Resolved(BodyIdentity)` | One current declaration names this character and both actor lifetimes are observed and compatible. The result borrows the complete declaration and both original actor opens. It is not account resolution or kill attribution. |
 
 `resolve_before_packet(reference, packet)` considers only writes and lifecycle
@@ -179,6 +179,11 @@ later reopen preserves that lifetime. An open while the GUID is still active
 on a channel is conflicting lifecycle evidence, not proof of continuity.
 After close/reuse a fresh body declaration is required; a declaration in the
 same packet as a close cannot be assigned to one side of that close.
+A declaration strictly before the new lifetime's prior end is retired from
+current candidate selection, so it cannot make a fresh relation ambiguous.
+A declaration in the same packet as that end remains a potential conflict;
+discarding it would invent order between the lifecycle and field vectors.
+Historical queries retain the original declarations and their earlier results.
 
 `movement_identity(&batch, index)` uses the exact same-index movement row and
 `MovementProvenance`. Its transport completion packet must equal the movement
@@ -186,6 +191,8 @@ packet, the initial packet cannot be later, and the complete batch must already
 have been observed. The source's actor may be the replay controller: identity
 uses the movement row's wire character GUID and does not equate those actors.
 The returned structure borrows both original records unchanged.
+The relation describes the observed transport window; it is not backdated
+to the decoded move's server tick or a native Event timestamp.
 
 The association requires a body relation established before the initial
 fragment packet and no relevant reference write or lifetime change through
@@ -223,6 +230,19 @@ uses named RPCs. vrfkit's initial Rust projection uses validated native Event
 chunks and explicit observed phase values, while its existing Python layer
 continues the richer analytical joins. These are different contracts; no
 event-coverage or performance superiority claim follows from this API.
+
+## Phase C author validation
+
+The [author check record](evidence/phase_c/gameplay/README.md) records 15 new
+identity/lifecycle/movement tests, the 12 prior gameplay tests, four detected
+implementation mutations, strict core Clippy/rustdoc and a fresh public 12.10
+aggregate example. The example observed one declaration and 8,907 resolved
+movement associations. Independent value/order parity and final platform CI
+are separate required acceptance gates, not claims made by that example.
+The same record's lifecycle follow-up preserves three independently authored
+public-API regressions: two exposed retired claims incorrectly retaining
+ambiguity. All three pass after the correction, and an inclusive-cutoff
+mutation fails the same-packet uncertainty test as intended.
 
 ## Phase B validation (historical)
 
