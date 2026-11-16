@@ -27,7 +27,7 @@ env:
   FIXTURE_1300: 12974d2b-848f-490d-80ba-5f03a033c2d5.13_00.vrf
   FIXTURE_1300_SHA256: fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a
 
-# Windows covers Oodle linking and the cp949 console; Linux also runs the
+# Windows covers native codec linkage and the cp949 console; Linux also runs the
 # Rust MSRV and the same pinned public-replay acceptance checks.
 jobs:
   rust:
@@ -93,7 +93,7 @@ jobs:
           $interopDir = Join-Path $root 'interop'
           python -W error crates/vrf-export/tests/python_interop.py $interopDir
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      # Builds without a public fixture are covered by the private local audit.
+      # Historical private-corpus audits are documented separately; this job uses public fixtures.
       - name: corpus baselines on the public fixtures
         shell: pwsh
         run: |

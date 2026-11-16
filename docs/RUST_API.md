@@ -138,10 +138,34 @@ The shared CLI implementation is also callable through `run_cli`, which
 preserves command-line output and exit codes. Use `ReplayReader` for a
 library integration that owns its output and error handling.
 
+### Resource limits
+
+`ReplayReader` uses the shared parser's default schema limits: at most 4,096
+registered export groups and 1,048,576 declared field slots, including empty
+slots. These are resource policies, not game-format limits or a bound on total
+process memory. The input buffer, decompressed chunks, strings, GUID mappings
+and retained consumer output require additional memory. See
+[Schema allocation limits](SCHEMA_LIMITS.md).
+
+The initial Reader API does not accept custom schema limits or an injected
+cache. `vrf_schema::NetGuidCache::with_limits` configures a cache used directly
+by lower-level parser integrations; creating such a cache does not alter
+`ReplayReader`.
+
+A main-stream schema declaration that exceeds the limits fails the read.
+Earlier callbacks remain provisional. The low-level schema API returns
+`SchemaError::ResourceLimit`; the existing frame boundary renders that error
+into `FrameError::Schema(String)`, which reaches the Reader through
+`ReadError::Replay`. Checkpoint contents remain outside this Reader API's
+validation scope.
+
 ## Compatibility
 
-Existing CLI arguments, output schemas and parser behavior are unchanged.
-Implementation modules are shared by the binary and library; this addition
-does not add a separate decoding pass. Rust consumers can replace subprocess
+Introducing the reader leaves existing CLI arguments and Parquet column
+schemas unchanged. The library and CLI share the parser, so both inherit the
+fixes and resource policies of the source revision in use. Pin a revision
+when integrating the source API and review its migration notes before
+updating. Commit the application's Cargo lockfile for reproducible dependencies.
+The shared implementation does not add a separate decoding pass. Rust consumers can replace subprocess
 execution with the reader when they need main-stream records, while keeping
 the existing CLI for checkpoint exports.

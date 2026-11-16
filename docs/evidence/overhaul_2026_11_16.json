@@ -1,0 +1,1218 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-11-16",
+  "publication_state": "runtime_integrated_verified_documentation_checkpoint",
+  "repository": "https://github.com/yakisoba0728/vrfkit",
+  "baseline": {
+    "main_commit": "9ece4ab84dee62cbf8bf34b7996d2efb0593f9c9",
+    "integration_commit": "67c0a2d94fbcbeeefa56761f1bc13d9f6c829fb0",
+    "rust_msrv": "1.86.0",
+    "rust_tests_non_windows": 743,
+    "rust_tests_windows": 744,
+    "python_tests": 1089
+  },
+  "publication_checkpoint": {
+    "integration_commit": "ed7dc30978261f27d3999b194344bcf55287860d",
+    "main_unchanged": true,
+    "main_merged": false,
+    "release_published": false,
+    "registry_package_published": false,
+    "scope": "Runtime acceptance checkpoint; this documentation PR and the final Draft PR record their own later heads and CI.",
+    "main_head_rechecked": "9ece4ab84dee62cbf8bf34b7996d2efb0593f9c9",
+    "reference_head_rechecked": "fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8",
+    "private_archive_head_rechecked": "b1fff6bc26aa040f1948931fadb9ebf29c961ec9"
+  },
+  "completed_pull_requests": [
+    {
+      "number": 49,
+      "url": "https://github.com/yakisoba0728/vrfkit/pull/49",
+      "title": "fix(bitio): reject invalid read widths and vector scales",
+      "status": "merged",
+      "head_commit": "eb6e85d981816bd66e50948a235066f2ab0c1b2d",
+      "merge_commit": "eb2570f5fa3374abd405723235dbe767cbcb6248",
+      "ci": {
+        "run_id": 43776108241,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43776108241",
+        "status": "completed",
+        "conclusion": "success",
+        "job_count": 11,
+        "successful_jobs": 11
+      }
+    },
+    {
+      "number": 50,
+      "url": "https://github.com/yakisoba0728/vrfkit/pull/50",
+      "title": "feat(bench): measure resources only for equivalent full exports",
+      "status": "merged",
+      "head_commit": "334c86336b0d52736044350c88fa53ab38349982",
+      "merge_commit": "78a856cc19269416a3537dbd533aac1d4e7e23ef",
+      "ci": {
+        "run_id": 43777023619,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43777023619",
+        "status": "completed",
+        "conclusion": "success",
+        "job_count": 11,
+        "successful_jobs": 11
+      }
+    },
+    {
+      "number": 51,
+      "url": "https://github.com/yakisoba0728/vrfkit/pull/51",
+      "title": "fix(schema): bound aggregate field-slot allocation before decoding",
+      "status": "merged",
+      "head_commit": "e211c2378f0ed0a786f1b2f75b1cc5e8ea2726a6",
+      "merge_commit": "d888ff28d5b340139bdd24d121e3119dc7241c9a",
+      "ci": {
+        "run_id": 43778079065,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43778079065",
+        "status": "completed",
+        "conclusion": "success",
+        "job_count": 11,
+        "successful_jobs": 11
+      }
+    },
+    {
+      "number": 52,
+      "url": "https://github.com/yakisoba0728/vrfkit/pull/52",
+      "title": "feat(api): stream replay records through the shared Rust decoder",
+      "status": "merged",
+      "head_commit": "2720ca9ce4f8bbb9583a7abe5a635251f4b158c6",
+      "merge_commit": "438f3e1786b4f3b0287468ba0b529bbdaa4c745d",
+      "ci": {
+        "run_id": 43778665193,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43778665193",
+        "status": "completed",
+        "conclusion": "success",
+        "job_count": 11,
+        "successful_jobs": 11
+      }
+    },
+    {
+      "number": 53,
+      "url": "https://github.com/yakisoba0728/vrfkit/pull/53",
+      "title": "feat(tools): add atomic streaming Parquet-to-JSONL export",
+      "status": "merged",
+      "head_commit": "0b747c8522598ff965c97341b138202e1e92f5c1",
+      "merge_commit": "499996379ba6bf6f46c10aeb9a661038e97ba158",
+      "ci": {
+        "run_id": 43779583452,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43779583452",
+        "job_count": 11,
+        "successful_jobs": 11,
+        "conclusion": "success"
+      }
+    },
+    {
+      "number": 54,
+      "url": "https://github.com/yakisoba0728/vrfkit/pull/54",
+      "title": "fix(qa): compare C# counts and movement with unambiguous identities",
+      "status": "merged",
+      "head_commit": "bbebb258706dc9e5c574e480561d044beca79d3e",
+      "merge_commit": "fce76a9a784a806310cad687c67f654cb8e40ad8",
+      "ci": {
+        "run_id": 43780363565,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43780363565",
+        "job_count": 11,
+        "successful_jobs": 11,
+        "conclusion": "success"
+      }
+    },
+    {
+      "number": 55,
+      "title": "ci: retain Linux MSRV and public-replay validation for main and releases",
+      "url": "https://github.com/yakisoba0728/vrfkit/pull/55",
+      "head_commit": "2ea537a0e4a01354d6a081b9d62876d81a887f13",
+      "merge_commit": "dbb86f886b34dc7426f83b789baac7adc2ce89c3",
+      "ci": {
+        "run_id": 43781227633,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43781227633",
+        "job_count": 11,
+        "successful_jobs": 11,
+        "conclusion": "success"
+      },
+      "status": "merged"
+    },
+    {
+      "number": 56,
+      "url": "https://github.com/yakisoba0728/vrfkit/pull/56",
+      "title": "perf(schema): reuse unchanged declarations with scoped benchmark evidence",
+      "status": "merged",
+      "head_commit": "65d98f0b7455cb6b7b2a51c37867d0c025e1eacc",
+      "merge_commit": "ed7dc30978261f27d3999b194344bcf55287860d",
+      "ci": {
+        "run_id": 43782959411,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43782959411",
+        "conclusion": "success",
+        "job_count": 11,
+        "successful_jobs": 11
+      }
+    }
+  ],
+  "pending_integration": [],
+  "final_integration_validation": {
+    "status": "runtime_verified_at_checkpoint",
+    "tested_commit": "22cd027c72bf7290c4fbb0be2b01c7a394432dbd",
+    "full_python_suite_result": {
+      "status": "passed",
+      "tests_per_job": 1143,
+      "jobs": 4,
+      "platforms": [
+        "Windows",
+        "Linux"
+      ],
+      "versions": [
+        "3.12",
+        "3.13"
+      ],
+      "skipped_tests": 0,
+      "source": "Observed Ran N tests and unqualified OK in each retained Actions job log."
+    },
+    "expected_python_test_inventory": 1143,
+    "post_reader_rust_tests_non_windows": 774,
+    "post_reader_rust_tests_windows": 775,
+    "final_rust_suite_result": {
+      "status": "passed",
+      "toolchain": "1.86.0",
+      "windows": 775,
+      "linux": 774,
+      "core_only_per_platform": 135,
+      "source": "Windows live check_docs execution summary; Linux all-feature workspace harness lines; core-only runs counted separately."
+    },
+    "final_six_replay_audit_result": "passed on combined candidate; all 149 fingerprint files equal integrated runtime after merge; original audit provenance retained",
+    "final_actions_run_url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43782959411",
+    "draft_main_pull_request_url": null,
+    "combined_python_component_check": {
+      "tests_passed": 1143,
+      "scope": "Combined JSONL/comparator code before final remote integration; not final-head acceptance."
+    },
+    "preintegration_candidate": {
+      "commit": "93e107a10788021b59fb30c5cb145960c3fd21a0",
+      "rust_tests_passed_non_windows": 774,
+      "parser_sources_sha256": "92328ce1ab9a4236c38ae07c49ed816d259e0107cac4470295e05de48fbff93d",
+      "executable_sha256": "ef02b508753e05ff1bffd96792f402c3639d652406333978fd0fe8917af1c8ad",
+      "six_replay_audit": "passed",
+      "final_remote_source_identity_verified": true
+    },
+    "integrated_merge_commit": "ed7dc30978261f27d3999b194344bcf55287860d",
+    "runtime_source_identity_receipt": "docs/evidence/overhaul-runtime-source.json",
+    "required_ci_jobs_passed": 11,
+    "draft_main_pull_request_status": "To be recorded in final review PR after this documentation checkpoint; main must remain unmerged.",
+    "pull_request_head_commit": "65d98f0b7455cb6b7b2a51c37867d0c025e1eacc",
+    "actions_checkout_kind": "GitHub synthetic pull-request merge; exact tree equals actual integration merge",
+    "actions_checkout_tree": "fd9462cadb51d8cf14cc7e65aad2cb1054fd577f",
+    "actions_log_receipt": "docs/evidence/pr56-actions-observed-test-counts.json",
+    "final_documentation_ci_status": "This documentation-only PR and final Draft PR record their later own heads/checks in GitHub, after this runtime checkpoint.",
+    "post_merge_regression": {
+      "status": "passed",
+      "commit": "ed7dc30978261f27d3999b194344bcf55287860d",
+      "event": "push",
+      "run_id": 43783444550,
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550",
+      "successful_jobs": 11,
+      "actual_checkout_confirmed_from_job_log": true,
+      "receipt": "docs/evidence/postmerge-actions-43783444550.json",
+      "scope": "Actual post-merge required regression run; earlier extracted test counts retain their PR-run provenance."
+    }
+  },
+  "private_archive_metadata": {
+    "catalog_commit": "b1fff6bc26aa040f1948931fadb9ebf29c961ec9",
+    "unique_replays": 1011,
+    "total_bytes": 50938107071,
+    "builds": 24,
+    "minimum_build": "11.06",
+    "maximum_build": "13.10",
+    "release_assets_checked": 1011,
+    "release_catalog_missing_extra_size_digest_errors": 0,
+    "private_replay_binaries_downloaded": 0,
+    "private_replay_binaries_decoded": 0,
+    "scope": "Read-only catalog and release metadata inventory; no private replay or row-level metadata included."
+  },
+  "public_six_replay_baseline": {
+    "provenance": {
+      "date_utc": "2026-11-15T23:41:59.276386+00:00",
+      "parser_commit": "67c0a2d94fbcbeeefa56761f1bc13d9f6c829fb0",
+      "parser_sources_sha256": "7ec7d7aaad66ce7835b3dfaf13422e7bcb77d954499f9d35d0a79d0d30cee31e",
+      "exe_sha256": "5d9061ed5e225bfc4d0520159dfd58705d2e4939cb8365346f4b248f854128a8",
+      "runner_sha256": "41eb8f6f3f75c23830b2f471a17177726d6799c6a8966a2003a981997438ec4c",
+      "evidence_sha256": "1d2fd9890eccd843e53dd33f2bfb2ea95240cbe10974e045bb7fdfd3b15a7c34",
+      "discovered_paths": 6,
+      "unique_replays": 6,
+      "duplicates": 0,
+      "corpus_sha256": "3694de8b2fa01ee7b536d45af10f9e0a059206d58e1b1848d390d7870ae14d41"
+    },
+    "failures": 0,
+    "build_errors": 0,
+    "totals": {
+      "checkpoint_chunks": 76,
+      "oracle_passed_blocks": 1958155,
+      "oracle_scored_blocks": 1958155,
+      "typed_values_compared": 60169,
+      "type_width_failures": 0,
+      "typed_mismatches": 0
+    },
+    "builds": [
+      {
+        "build": "12.05",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 19,
+        "oracle_passed_blocks": 558801,
+        "oracle_scored_blocks": 558801,
+        "typed_values_compared": 20772,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b"
+        ]
+      },
+      {
+        "build": "12.08",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 17,
+        "oracle_passed_blocks": 577810,
+        "oracle_scored_blocks": 577810,
+        "typed_values_compared": 16325,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "78e706843ea6992e5502d58f9b41c23ac5470a9e36e810d45e8724fb47a91201"
+        ]
+      },
+      {
+        "build": "12.09",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 21,
+        "oracle_passed_blocks": 792498,
+        "oracle_scored_blocks": 792498,
+        "typed_values_compared": 22490,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff"
+        ]
+      },
+      {
+        "build": "12.10",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 7,
+        "oracle_passed_blocks": 13680,
+        "oracle_scored_blocks": 13680,
+        "typed_values_compared": 236,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606"
+        ]
+      },
+      {
+        "build": "12.11",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 6,
+        "oracle_passed_blocks": 6506,
+        "oracle_scored_blocks": 6506,
+        "typed_values_compared": 165,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd"
+        ]
+      },
+      {
+        "build": "13.00",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 6,
+        "oracle_passed_blocks": 8860,
+        "oracle_scored_blocks": 8860,
+        "typed_values_compared": 181,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a"
+        ]
+      }
+    ]
+  },
+  "public_six_replay_schema_candidate": {
+    "provenance": {
+      "date_utc": "2026-11-15T23:53:59.656681+00:00",
+      "parser_commit": "90aa7539963973c2b4c7505bfc8c7aa8ee4b5fcb",
+      "parser_sources_sha256": "b67da84a97be948605727f1699001c8c6dcb4a2a0f7bfb8d7f7fc25ff183f46a",
+      "exe_sha256": "c8f34e33df4488c55a9b89763ee6bc0a8dc0b6ce7997b4f29025e6eed935d6dc",
+      "runner_sha256": "41eb8f6f3f75c23830b2f471a17177726d6799c6a8966a2003a981997438ec4c",
+      "evidence_sha256": "1d2fd9890eccd843e53dd33f2bfb2ea95240cbe10974e045bb7fdfd3b15a7c34",
+      "discovered_paths": 6,
+      "unique_replays": 6,
+      "duplicates": 0,
+      "corpus_sha256": "3694de8b2fa01ee7b536d45af10f9e0a059206d58e1b1848d390d7870ae14d41"
+    },
+    "failures": 0,
+    "build_errors": 0,
+    "totals": {
+      "checkpoint_chunks": 76,
+      "oracle_passed_blocks": 1958155,
+      "oracle_scored_blocks": 1958155,
+      "typed_values_compared": 60169,
+      "type_width_failures": 0,
+      "typed_mismatches": 0
+    },
+    "builds": [
+      {
+        "build": "12.05",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 19,
+        "oracle_passed_blocks": 558801,
+        "oracle_scored_blocks": 558801,
+        "typed_values_compared": 20772,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b"
+        ]
+      },
+      {
+        "build": "12.08",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 17,
+        "oracle_passed_blocks": 577810,
+        "oracle_scored_blocks": 577810,
+        "typed_values_compared": 16325,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "78e706843ea6992e5502d58f9b41c23ac5470a9e36e810d45e8724fb47a91201"
+        ]
+      },
+      {
+        "build": "12.09",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 21,
+        "oracle_passed_blocks": 792498,
+        "oracle_scored_blocks": 792498,
+        "typed_values_compared": 22490,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff"
+        ]
+      },
+      {
+        "build": "12.10",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 7,
+        "oracle_passed_blocks": 13680,
+        "oracle_scored_blocks": 13680,
+        "typed_values_compared": 236,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606"
+        ]
+      },
+      {
+        "build": "12.11",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 6,
+        "oracle_passed_blocks": 6506,
+        "oracle_scored_blocks": 6506,
+        "typed_values_compared": 165,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd"
+        ]
+      },
+      {
+        "build": "13.00",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "checkpoint_chunks": 6,
+        "oracle_passed_blocks": 8860,
+        "oracle_scored_blocks": 8860,
+        "typed_values_compared": 181,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "public_input_sha256": [
+          "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a"
+        ]
+      }
+    ]
+  },
+  "schema_parquet_parity": {
+    "baseline_files": 78,
+    "candidate_files": 78,
+    "byte_identical_files": 78,
+    "missing": 0,
+    "extra": 0,
+    "mismatches": 0,
+    "scope": "Schema-budget candidate against pinned baseline; not a final integrated audit."
+  },
+  "schema_limits": {
+    "default_max_groups": 4096,
+    "default_max_field_slots": 1048576,
+    "synthetic_input_bytes": 215,
+    "synthetic_baseline_reserved_slot_bytes_x86_64": 33554432,
+    "safe_limit_regression_groups": 4097,
+    "observed_checkpoint_max_groups": 542,
+    "observed_checkpoint_max_slots": 10851,
+    "scope": "Per-cache declared group and slot budgets, not a process RSS or full-corpus maximum.",
+    "configuration_scope": "Custom budgets apply to lower-level NetGuidCache integrations; the current ReplayReader uses defaults."
+  },
+  "reader_parity": {
+    "measurement_candidate_commit": "5c5b7ab",
+    "baseline_commit": "67c0a2d94fbcbeeefa56761f1bc13d9f6c829fb0",
+    "published_head_commit": "2720ca9ce4f8bbb9583a7abe5a635251f4b158c6",
+    "builds": [
+      "12.10",
+      "12.11",
+      "13.00"
+    ],
+    "main_table_files_byte_identical": 18,
+    "cli_table_files_byte_identical": 39,
+    "manifests_equal_except_elapsed_ms": true,
+    "finish_flush_mutation_failed": true,
+    "scope": "Main-stream borrowed callbacks; read_path buffers the whole input; checkpoints remain CLI-only."
+  },
+  "jsonl_parity": {
+    "reviewed_commit": "824caf332d03f46b8107d7b0d84d2702455f535b",
+    "tables": 39,
+    "rows": 138727,
+    "binary_bytes": 298133,
+    "all_selected_values_equal": true,
+    "all_inputs_unchanged": true,
+    "streaming_collection_mutation_failed": true,
+    "independent_extra_scalar_cases_passed": 8,
+    "builds": [
+      {
+        "build": "12.10",
+        "tables": 13,
+        "rows": 59180,
+        "binary_bytes": 123895
+      },
+      {
+        "build": "12.11",
+        "tables": 13,
+        "rows": 40710,
+        "binary_bytes": 97616
+      },
+      {
+        "build": "13.00",
+        "tables": 13,
+        "rows": 38837,
+        "binary_bytes": 76622
+      }
+    ],
+    "published_head_commit": "0b747c8522598ff965c97341b138202e1e92f5c1"
+  },
+  "reference_comparison": {
+    "reference_commit": "fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8",
+    "reference_sdk": "10.0.301",
+    "reference_cli_sha256": "85d9eeb8565f6d3f358a9b04d927dda246342566d0ce50956d4b44a50427ee31",
+    "vrfkit_commit": "67c0a2d94fbcbeeefa56761f1bc13d9f6c829fb0",
+    "vrfkit_exe_sha256": "5d9061ed5e225bfc4d0520159dfd58705d2e4939cb8365346f4b248f854128a8",
+    "final_comparator_commit": "dbe83ffa2d1a44cfa7dfb949b20d46af19d26624",
+    "final_comparator_sha256": "1193b7586a1628310dd9e0b0c99201a74520265e2284b2d1ec34acbf2e2a69ae",
+    "reference_build_warnings": 0,
+    "reference_build_errors": 0,
+    "existing_files_hash_checked": 45,
+    "existing_files_unchanged": true,
+    "all_final_reports_byte_identical": true,
+    "samples": [
+      {
+        "build": "12.10",
+        "reference_movement_rows": 8853,
+        "vrfkit_movement_rows": 8907,
+        "unique": 8853,
+        "ambiguous": 0,
+        "missing": 0,
+        "max_abs_error": {
+          "position": 0.00046875000043655746,
+          "yaw": 0,
+          "pitch": 0,
+          "velocity": 2.4414062522737368e-05
+        }
+      },
+      {
+        "build": "12.11",
+        "reference_movement_rows": 2949,
+        "vrfkit_movement_rows": 3001,
+        "unique": 2949,
+        "ambiguous": 0,
+        "missing": 0,
+        "max_abs_error": {
+          "position": 0.00046875000043655746,
+          "yaw": 0,
+          "pitch": 0,
+          "velocity": 2.4414062522737368e-05
+        }
+      },
+      {
+        "build": "13.00",
+        "reference_movement_rows": 4946,
+        "vrfkit_movement_rows": 4991,
+        "unique": 4946,
+        "ambiguous": 0,
+        "missing": 0,
+        "max_abs_error": {
+          "position": 0.00046875000043655746,
+          "yaw": 0,
+          "pitch": 0,
+          "velocity": 4.8828125045474735e-05
+        }
+      }
+    ],
+    "scope": "Default enriched reference NDJSON versus main-pass Rust Parquet; comparison report, not semantic certification or equivalent-work performance ratio."
+  },
+  "performance": {
+    "ordinary_replay_speedup_established": false,
+    "ordinary_replay_regression_established": false,
+    "competitor_speed_ratio_established": false,
+    "rpc_experiment_adopted": false,
+    "resource_harness_complete_exports_verified": 96,
+    "schema_reuse_complete_exports_verified": 108,
+    "schema_reuse_unique_public_inputs": 6,
+    "observed_identical_schema_redeclarations_main": 0,
+    "observed_identical_schema_redeclarations_checkpoint": 0,
+    "checkpoint_streams_censused": 76,
+    "synthetic_microbenchmark": {
+      "measured_pairs": 9,
+      "warmup_pairs": 1,
+      "add_loop_median_ms": {
+        "baseline": 218.976432,
+        "candidate": 0.467511
+      },
+      "declare_loop_median_ms": {
+        "baseline": 224.664727,
+        "candidate": 0.242902
+      },
+      "add_process_cpu_median_seconds": {
+        "baseline": 0.221933,
+        "candidate": 0.002612
+      },
+      "declare_process_cpu_median_seconds": {
+        "baseline": 0.228413,
+        "candidate": 0.001986
+      },
+      "scope": "Repeated identical schema declarations; no demonstrated path hits on sampled ordinary replays."
+    },
+    "noise_observations": {
+      "initial_1205_paired_wall_percent": 8.96,
+      "confirmation_1205_paired_wall_percent": -9.78,
+      "same_binary_control_paired_wall_percent": 7.86
+    },
+    "unmeasured": [
+      "allocation counts",
+      "allocated bytes",
+      "isolated I/O time",
+      "aggregate process-tree peak RSS"
+    ],
+    "reviewed_document_filename": "SCHEMA_REDECLARATION_BENCHMARK.md",
+    "reviewed_document_commit": "fe43f5da843ab635b8d5f4a8568175fb3080026a",
+    "reviewed_document_integration_status": "merged_in_pr_56",
+    "published_runtime_head": "65d98f0b7455cb6b7b2a51c37867d0c025e1eacc",
+    "published_merge_commit": "ed7dc30978261f27d3999b194344bcf55287860d"
+  },
+  "historical_audits": {
+    "build_verification_document": "docs/BUILD_VERIFICATION.md",
+    "historical_parser_commit": "259ed10c7e0c9d87c852f80fab7535d38d2e187f",
+    "historical_unique_replays": 1018,
+    "rerun_by_this_session": false,
+    "latest_upstream_document": "docs/UPSTREAM_AUDIT_2026_11_16.md",
+    "scope": "Existing reports retain their original commits and populations; no fresh private-corpus claim."
+  },
+  "privacy": {
+    "raw_replays_included": false,
+    "raw_player_identifiers_included": false,
+    "private_catalog_rows_or_filenames_included": false,
+    "credentials_included": false,
+    "local_absolute_paths_included": true,
+    "scope": "This aggregate and docs/evidence receipts; no raw logs or exports are included.",
+    "archived_harness_note": "The exact historical harnesses under docs/benchmarks/schema-redeclaration/recorded-harness retain their original temporary workspace ROOT constants for hash-verifiable reconstruction. They contain no private archive paths, replay values or credentials; reconstruct_sources.py relocates the ROOT assignment and records both hashes.",
+    "local_path_detail": "The full-match receipt preserves the managed Python executable path under /opt/codex; temporary workspace prefixes are normalized to ${WORKSPACE}. No private replay path, catalog row or player identifier is retained.",
+    "private_local_paths_included": false
+  },
+  "deferred": [
+    "Fresh private-corpus binary validation",
+    "Unresolved 12.09 movement packet attribution and row-count differences",
+    "Unproven legacy damage-handle and version mappings",
+    "Read/Seek streaming input and checkpoint Reader API",
+    "Additional gameplay semantics without wire evidence",
+    "Equivalent-scope competitor benchmark",
+    "Formal release and package registry publication",
+    "Fixture-backed China 13.05 and 13.09 support",
+    "Repository About wording aligned with measured preservation after main review"
+  ],
+  "source_evidence_digests": [
+    {
+      "logical_name": "baseline-rust.log",
+      "sha256": "18beb8aa6ee39d02cf685fff6aa4275c9aa6c1f466fd5e26e6485a4f0f57e03c"
+    },
+    {
+      "logical_name": "baseline-python.log",
+      "sha256": "b92437d79924dcb1f594f111814b0daed3e0aa48924175c31210d245fa9ed2ce"
+    },
+    {
+      "logical_name": "baseline-six-report.json",
+      "sha256": "a46e5d58ce377101e1e317f2bcdf36ddf7edc8ebccece1a05a47c2d7976251b9"
+    },
+    {
+      "logical_name": "schema-six-report.json",
+      "sha256": "6e1d40b65cc79fbdcc4ffb9a5eb27fe91e9ca9863f93ac806bf02b6b7122d06e"
+    },
+    {
+      "logical_name": "schema-six-byte-parity.json",
+      "sha256": "849272157a13798a66cf4d539a5d0f5625328c6424b35ed221e832db3d5f7563"
+    },
+    {
+      "logical_name": "reader-integration-tests.log",
+      "sha256": "6e542d9ea6021748a8bb98a30a2180aad531e98ae61ef5f17cba39176598d029"
+    },
+    {
+      "logical_name": "reader-parity.json",
+      "sha256": "b8df1ec1554bd0a1cdfd03ef73115273bdcfee9185ec390464bb54f544a0a33e"
+    },
+    {
+      "logical_name": "reader-mutation.json",
+      "sha256": "511da5bed2b392a2c40005ab2d3ee21d1be43584b276602596f475e1633daf6d"
+    },
+    {
+      "logical_name": "jsonl-public-parity.json",
+      "sha256": "5d8a76feaef3e3e9ef2f31cf31c51e42c4751fa1e6f28e84f12922d674be4990"
+    },
+    {
+      "logical_name": "jsonl-mutation.json",
+      "sha256": "2be50d2507660da43b5c622696deb8a3f4df6546a1fee7cd52754f12cf5b8818"
+    },
+    {
+      "logical_name": "jsonl-independent-scalar-review.json",
+      "sha256": "b8db69e9fe948a9bbc61733ce6d76510dee5e67f2e7c8b9bb75194f432bfdd4d"
+    },
+    {
+      "logical_name": "reference-filter-reservation-full-python.log",
+      "sha256": "1e84e0b7b6d6121d53cd469f0e37597279bacfbd37d93f0a1dfd4cfce73e7837"
+    },
+    {
+      "logical_name": "reference-comparisons/final-dbe83ff/aggregate.json",
+      "sha256": "b02268890cf1fee27d0e1f9f2ce3d2771fce6c5cca4d343574a478212135cee9"
+    },
+    {
+      "logical_name": "reference-comparisons/movement-identity-comparison.json",
+      "sha256": "dca991c62f7903e53a2c1f3083ff25191c71633be99b0bc62b0c90c96bb06bb8"
+    },
+    {
+      "logical_name": "linux-ci-independent-review.json",
+      "sha256": "3fcada6fabb51b604d3686f0b25b6fd9b0ca15ab505a783b6a74f330dfcd5b17"
+    },
+    {
+      "logical_name": "linux-ci-fixture-smoke.json",
+      "sha256": "f02560877d2f63e746629fce7d59c521e2b7062aa951b176211d15b95c2a1bf0"
+    },
+    {
+      "logical_name": "schema-reuse-measurements.json",
+      "sha256": "eaa032047396c00dc4523ac733477660bed97c2c7ce3da7545149d652aa19d0a"
+    },
+    {
+      "logical_name": "schema-reuse-census.json",
+      "sha256": "70041348ee0760a129d3580100a13088bbffcdda3e9e324fc19f9bd945da7901"
+    },
+    {
+      "logical_name": "schema-reuse-1205-confirm.json",
+      "sha256": "eac9ab57b9a51cbf4d1f341cf8043b02234930c9c9c40538d6b229730d60c7ec"
+    },
+    {
+      "logical_name": "schema-reuse-1205-control.json",
+      "sha256": "4e5598c7f064f5eb831971b77209f1dacfa64829adba73dd154969b36ec8675d"
+    },
+    {
+      "logical_name": "reference-combined-python.log",
+      "sha256": "586d51fdc048c9b51210658df876a855c8a6cb83383f7e0272745131adf8591a"
+    },
+    {
+      "logical_name": "results-pr53.json",
+      "sha256": "263fb96628ea949c1e065888a85cb6840dfbb2260db2df80e77ad34a842f4271"
+    },
+    {
+      "logical_name": "combined-six-report.json",
+      "sha256": "27e2d076f7a56b1655d8428a9ecb00b8ffe6f7743100402093292be896c7da0f"
+    },
+    {
+      "logical_name": "combined-six-byte-parity.json",
+      "sha256": "3969d9fba8db68a1183bbfd6d58d090fcaf3c53a05a7ecbd67373638807f30e6"
+    },
+    {
+      "logical_name": "results-pr54.json",
+      "sha256": "12280d8f8208f9fc8f0e1c2a38f4b0d5525ee90962e602b3e8a73c64082d9612"
+    },
+    {
+      "logical_name": "results-pr55.json",
+      "sha256": "8bdd6bbc54602df740174430743fac83b3bebc728f8391d2f816719773e0fe1d"
+    },
+    {
+      "logical_name": "combined-candidate-rust.log",
+      "sha256": "f5ee8e6fa687fad4bdc266d9a15a1e72105573f21b8044f5334fb4d38c9af55d"
+    },
+    {
+      "logical_name": "final-linux-feature-matrix.json",
+      "sha256": "a59160a9b2adf5ba64b4dcf2e78348438a059dfaadb11aec94ab77a81853512d"
+    },
+    {
+      "logical_name": "performance-publish-independent-review.json",
+      "sha256": "a1c47f44e8ec175ad977daed98f3934527077bd91228c306f7a7f1eadcbd0543"
+    },
+    {
+      "logical_name": "reader-external-consumer/verification.json",
+      "sha256": "15f00ed91e36791050314dbc2bb72619c7e50d4cd4d988ef7460dcf26b166a6e"
+    },
+    {
+      "logical_name": "reference-full-1209-20261116/aggregate.json",
+      "sha256": "e5eff946e4fa3735bbeccbd4710e1032c444969d5282f43d1d7470f94a349818"
+    },
+    {
+      "logical_name": "results-pr56.json",
+      "sha256": "3fc7bec34271d90349683ec33330d05daa4167d8aa01b09e9b7734ec266a073d"
+    },
+    {
+      "logical_name": "pr56-actions-observed-test-counts.json",
+      "sha256": "1ef704d75f7aeb8df46136772da4dfe725871a1ba35db2a1f3c54dd62c7f502a"
+    },
+    {
+      "logical_name": "postmerge-actions-43783444550.json",
+      "sha256": "f41f56bc715955c204375edd991a0f8616b23ec811b473ef1849e3bf173ca36a"
+    }
+  ],
+  "public_fixture_sources": [
+    {
+      "build": "12.05",
+      "source_revision": "c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe",
+      "url": "https://media.githubusercontent.com/media/Matthias1590/unsupported-replays/c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe/replays/12.05/sample-1.replay",
+      "sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+      "bytes": 54702346
+    },
+    {
+      "build": "12.08",
+      "source_revision": "c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe",
+      "url": "https://media.githubusercontent.com/media/Matthias1590/unsupported-replays/c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe/replays/12.08/sample-1.replay",
+      "sha256": "78e706843ea6992e5502d58f9b41c23ac5470a9e36e810d45e8724fb47a91201",
+      "bytes": 50268344
+    },
+    {
+      "build": "12.09",
+      "source_revision": "c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe",
+      "url": "https://media.githubusercontent.com/media/Matthias1590/unsupported-replays/c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe/replays/12.09/sample-1.replay",
+      "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "bytes": 61015648
+    },
+    {
+      "build": "12.10",
+      "source_revision": "b51d67423b7b4952d59051cf91e55efa1c42da05",
+      "url": "https://raw.githubusercontent.com/michel-giehl/ValorantReplayParser/b51d67423b7b4952d59051cf91e55efa1c42da05/tests/Test.Integration/Replays/9f8b32c5-c243-41ec-bbbb-832582edf652.12_10.vrf",
+      "sha256": "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606",
+      "bytes": 525616
+    },
+    {
+      "build": "12.11",
+      "source_revision": "b51d67423b7b4952d59051cf91e55efa1c42da05",
+      "url": "https://raw.githubusercontent.com/michel-giehl/ValorantReplayParser/b51d67423b7b4952d59051cf91e55efa1c42da05/tests/Test.Integration/Replays/5c673443-5bdc-4576-b416-aab3f62471a5.12_11.vrf",
+      "sha256": "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd",
+      "bytes": 410628
+    },
+    {
+      "build": "13.00",
+      "source_revision": "b51d67423b7b4952d59051cf91e55efa1c42da05",
+      "url": "https://raw.githubusercontent.com/michel-giehl/ValorantReplayParser/b51d67423b7b4952d59051cf91e55efa1c42da05/tests/Test.Integration/Replays/12974d2b-848f-490d-80ba-5f03a033c2d5.13_00.vrf",
+      "sha256": "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a",
+      "bytes": 431908
+    }
+  ],
+  "reference_feature_inventory": {
+    "reference_commit": "fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8",
+    "reference_global_branches": 27,
+    "reference_china_branches": 2,
+    "vrfkit_global_branches": 27,
+    "unported_china_branches": [
+      "13.05",
+      "13.09"
+    ],
+    "reason": "No authorized fixture evidence for new China mappings; existing crosshair/economy functionality not claimed as new work."
+  },
+  "repository_discovery": {
+    "about_modified": false,
+    "topics_modified": false,
+    "followup": "Review the existing losslessness wording after main review; available connected API did not expose repository About/topic mutation."
+  },
+  "public_six_replay_combined_candidate": {
+    "status": "passed_with_integrated_source_correspondence",
+    "scope": "Actual local candidate execution, followed by exact correspondence of all 149 runtime-fingerprint files to merged remote ed7dc309. Measured parser commit and binary provenance remain unchanged.",
+    "provenance": {
+      "date_utc": "2026-11-16T00:31:14.154090+00:00",
+      "parser_commit": "93e107a10788021b59fb30c5cb145960c3fd21a0",
+      "parser_sources_sha256": "92328ce1ab9a4236c38ae07c49ed816d259e0107cac4470295e05de48fbff93d",
+      "exe_sha256": "ef02b508753e05ff1bffd96792f402c3639d652406333978fd0fe8917af1c8ad",
+      "runner_sha256": "41eb8f6f3f75c23830b2f471a17177726d6799c6a8966a2003a981997438ec4c",
+      "evidence_sha256": "1d2fd9890eccd843e53dd33f2bfb2ea95240cbe10974e045bb7fdfd3b15a7c34",
+      "discovered_paths": 6,
+      "unique_replays": 6,
+      "duplicates": 0,
+      "corpus_sha256": "3694de8b2fa01ee7b536d45af10f9e0a059206d58e1b1848d390d7870ae14d41"
+    },
+    "failures": 0,
+    "build_errors": 0,
+    "totals": {
+      "checkpoint_chunks": 76,
+      "oracle_passed_blocks": 1958155,
+      "oracle_scored_blocks": 1958155,
+      "typed_values_compared": 60169,
+      "type_width_failures": 0,
+      "typed_mismatches": 0,
+      "content_blocks_lost": 0,
+      "main_rpc_loss": 0,
+      "main_rpc_stream_failures": 22561,
+      "main_unresolved_rpc_payloads_preserved": 22561,
+      "checkpoint_rpc_loss": 0,
+      "checkpoint_rpc_stream_failures": 0,
+      "checkpoint_unresolved_rpc_payloads_preserved": 0
+    },
+    "builds": [
+      {
+        "build": "12.05",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "public_input_sha256": [
+          "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b"
+        ],
+        "checkpoint_chunks": 19,
+        "oracle_passed_blocks": 558801,
+        "oracle_scored_blocks": 558801,
+        "typed_values_compared": 20772,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "content_blocks_lost": 0,
+        "main_rpc_loss": 0,
+        "main_rpc_stream_failures": 6651,
+        "main_unresolved_rpc_payloads_preserved": 6651,
+        "checkpoint_rpc_loss": 0,
+        "checkpoint_rpc_stream_failures": 0,
+        "checkpoint_unresolved_rpc_payloads_preserved": 0
+      },
+      {
+        "build": "12.08",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "public_input_sha256": [
+          "78e706843ea6992e5502d58f9b41c23ac5470a9e36e810d45e8724fb47a91201"
+        ],
+        "checkpoint_chunks": 17,
+        "oracle_passed_blocks": 577810,
+        "oracle_scored_blocks": 577810,
+        "typed_values_compared": 16325,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "content_blocks_lost": 0,
+        "main_rpc_loss": 0,
+        "main_rpc_stream_failures": 6437,
+        "main_unresolved_rpc_payloads_preserved": 6437,
+        "checkpoint_rpc_loss": 0,
+        "checkpoint_rpc_stream_failures": 0,
+        "checkpoint_unresolved_rpc_payloads_preserved": 0
+      },
+      {
+        "build": "12.09",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "public_input_sha256": [
+          "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff"
+        ],
+        "checkpoint_chunks": 21,
+        "oracle_passed_blocks": 792498,
+        "oracle_scored_blocks": 792498,
+        "typed_values_compared": 22490,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "content_blocks_lost": 0,
+        "main_rpc_loss": 0,
+        "main_rpc_stream_failures": 9151,
+        "main_unresolved_rpc_payloads_preserved": 9151,
+        "checkpoint_rpc_loss": 0,
+        "checkpoint_rpc_stream_failures": 0,
+        "checkpoint_unresolved_rpc_payloads_preserved": 0
+      },
+      {
+        "build": "12.10",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "public_input_sha256": [
+          "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606"
+        ],
+        "checkpoint_chunks": 7,
+        "oracle_passed_blocks": 13680,
+        "oracle_scored_blocks": 13680,
+        "typed_values_compared": 236,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "content_blocks_lost": 0,
+        "main_rpc_loss": 0,
+        "main_rpc_stream_failures": 108,
+        "main_unresolved_rpc_payloads_preserved": 108,
+        "checkpoint_rpc_loss": 0,
+        "checkpoint_rpc_stream_failures": 0,
+        "checkpoint_unresolved_rpc_payloads_preserved": 0
+      },
+      {
+        "build": "12.11",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "public_input_sha256": [
+          "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd"
+        ],
+        "checkpoint_chunks": 6,
+        "oracle_passed_blocks": 6506,
+        "oracle_scored_blocks": 6506,
+        "typed_values_compared": 165,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "content_blocks_lost": 0,
+        "main_rpc_loss": 0,
+        "main_rpc_stream_failures": 98,
+        "main_unresolved_rpc_payloads_preserved": 98,
+        "checkpoint_rpc_loss": 0,
+        "checkpoint_rpc_stream_failures": 0,
+        "checkpoint_unresolved_rpc_payloads_preserved": 0
+      },
+      {
+        "build": "13.00",
+        "replays": 1,
+        "passed": 1,
+        "failed": 0,
+        "public_input_sha256": [
+          "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a"
+        ],
+        "checkpoint_chunks": 6,
+        "oracle_passed_blocks": 8860,
+        "oracle_scored_blocks": 8860,
+        "typed_values_compared": 181,
+        "type_width_failures": 0,
+        "typed_mismatches": 0,
+        "content_blocks_lost": 0,
+        "main_rpc_loss": 0,
+        "main_rpc_stream_failures": 116,
+        "main_unresolved_rpc_payloads_preserved": 116,
+        "checkpoint_rpc_loss": 0,
+        "checkpoint_rpc_stream_failures": 0,
+        "checkpoint_unresolved_rpc_payloads_preserved": 0
+      }
+    ],
+    "parquet_parity": {
+      "baseline_files": 78,
+      "candidate_files": 78,
+      "missing": [],
+      "extra": [],
+      "mismatches": [],
+      "byte_identical_files": 78,
+      "manifest_differences": [],
+      "excluded_manifest_keys": [
+        "elapsed_ms"
+      ]
+    }
+  },
+  "linux_ci": {
+    "pull_request": 55,
+    "reviewed_commit": "ddc37f10cd32e574efe3c216dee4cdd74bd4b7c3",
+    "utf8_followup_commit": "6834a2b5cf3bc20e5676785a8d465f36def6440f",
+    "independent_success_failure_cases_passed": 10,
+    "independent_gate_states_passed": 4,
+    "main_and_release_gate": true,
+    "private_data_route": false
+  },
+  "independent_linux_matrix": {
+    "status": "passed",
+    "candidate_commit": "93e107a10788021b59fb30c5cb145960c3fd21a0",
+    "matrix_cases": 27,
+    "feature_packages": 7,
+    "core_only_configurations": 7,
+    "singleton_features": 20,
+    "core_reader_tests_passed": 135,
+    "strict_rustdoc_passed": true,
+    "unsafe_policy_roots": 15,
+    "receipt": "docs/evidence/final-linux-feature-matrix.json",
+    "scope": "Same cargo-metadata derivation as CI: feature-bearing workspace packages only; no-default and each non-default feature alone."
+  },
+  "external_reader_consumer": {
+    "status": "passed",
+    "receipt": "docs/evidence/reader-external-consumer/verification.json",
+    "source_commit": "93e107a10788021b59fb30c5cb145960c3fd21a0",
+    "toolchain": "Rust 1.86.0, edition 2024",
+    "execution": {
+      "exit_code": 0,
+      "stderr_bytes": 0,
+      "aggregate": {
+        "callback_field_rows": 12181,
+        "summary_field_rows": 12181,
+        "movement_rows": 4991,
+        "actor_rows": 98,
+        "partial_rows": 0,
+        "metadata_events": 1,
+        "container_events": 6,
+        "unknown_overlay_rows": 6577,
+        "skipped_checkpoint_chunks": 6,
+        "expected_checkpoint_chunks": 6,
+        "packets": 7354,
+        "frames": 5229,
+        "decode_error_count": 0,
+        "block_verdict": "Passed"
+      },
+      "callback_summary_counts_equal": true,
+      "summary_used_after_reader_scope": true,
+      "checkpoint_scope_assertion_passed": true,
+      "metadata_callback_count_assertion_passed": true,
+      "public_input_unchanged": true
+    },
+    "normal_dependency_packages": 49,
+    "resolved_dependency_packages": 69,
+    "absent_package_families": [
+      "arrow",
+      "parquet",
+      "zstd"
+    ],
+    "lockfile_sha256": "97b0c89562a2f03493ad488d3f160cf8d5ce648a12fad880698cc73415b95104",
+    "limitations": [
+      "One public fixture was exercised by this external consumer",
+      "ReplayData block verdict is not full semantic validation",
+      "Checkpoint chunks were counted as skipped, not decoded",
+      "No timing or memory benchmark was performed",
+      "This is a source path dependency, not a published registry package"
+    ]
+  },
+  "reference_full_match": {
+    "status": "comparison_completed",
+    "build": "12.09",
+    "scope": "One public full match; reference default enrichment versus existing Rust main data; no timings or speed ratio.",
+    "input": {
+      "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "bytes": 61015648,
+      "source_revision": "c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe",
+      "source_url": "https://media.githubusercontent.com/media/Matthias1590/unsupported-replays/c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe/replays/12.09/sample-1.replay"
+    },
+    "counts_comparison": {
+      "packets": {
+        "reference": 681831,
+        "rust": 681831,
+        "equal": true,
+        "rust_minus_reference": 0
+      },
+      "bunches": {
+        "reference": 681831,
+        "rust": 681831,
+        "equal": true,
+        "rust_minus_reference": 0
+      },
+      "actor_opens": {
+        "reference": 2424,
+        "rust": 2424,
+        "equal": true,
+        "rust_minus_reference": 0
+      },
+      "actor_closes": {
+        "reference": 2176,
+        "rust": 2176,
+        "equal": true,
+        "rust_minus_reference": 0
+      },
+      "movement_rows": {
+        "reference": 2616931,
+        "rust": 2634029,
+        "equal": false,
+        "rust_minus_reference": 17098
+      }
+    },
+    "movement_sample": {
+      "selection": "First 50000 reference movement NDJSON rows, in file order; not a random or full-file sample.",
+      "limit": 50000,
+      "reference_total_rows": 2616931,
+      "rows_sampled": 50000,
+      "sample_fraction_of_reference_percent": 1.9106350148322597,
+      "identity_columns": [
+        "packet_id",
+        "character_guid",
+        "movement_timestamp"
+      ],
+      "strong_identity_rows": 50000,
+      "legacy_rows": 0,
+      "matched_unique_rows": 49980,
+      "missing_exact_identities": 20,
+      "ambiguous_rows": 0,
+      "matched_percent": 99.96,
+      "report_rounding_note": "The text comparator prints 100.0% at one decimal place; the actual fraction is 49980/50000 = 99.96%.",
+      "duplicate_reference_identity_keys": 0,
+      "identity_present_but_already_consumed_rows": 0,
+      "max_absolute_error_on_matched_rows": {
+        "position": 0.00046875000043655746,
+        "velocity": 4.8828125045474735e-05,
+        "yaw": 0.0,
+        "pitch": 0.0
+      },
+      "numeric_difference_policy": "Differences are measured, not classified against invented tolerances; velocity is nonzero despite rounded text output."
+    },
+    "unresolved_identity_diagnosis": {
+      "missing_reference_identities_checked": 20,
+      "full_rust_movement_rows_scanned": 2634029,
+      "exact_packet_character_timestamp_matches_anywhere": 0,
+      "missing_rows_with_any_rust_movement_at_same_packet": 0,
+      "same_packet_character_candidate_count_histogram": {
+        "0": 20
+      },
+      "same_character_timestamp_global_candidate_count_histogram": {
+        "20": 10,
+        "21": 10
+      },
+      "missing_rows_with_same_character_timestamp_at_packet_delta_plus_2": 20,
+      "relaxed_matches_accepted": 0,
+      "cause": "unresolved",
+      "interpretation": "All 20 exact packet+character+timestamp identities remain missing. All have a same-character/timestamp candidate two packets later, but that weaker key repeats 20 or 21 times across the full Rust movement table. No relaxed pairing was accepted and no explanation for the packet attribution difference is established."
+    },
+    "interpretation_limits": [
+      "This is one public 12.09 full match, with a first-50000-row movement sample. It does not certify all movement rows, all builds, or the private archive.",
+      "C# uses the default enriched NDJSON export; Rust reuses its main Parquet data. Output scopes and enrichment differ. Checkpoint tables and Event chunks are not cross-validated here.",
+      "Exact packet, bunch, and actor totals agree. Movement row totals differ by 17098 and 20 sampled strong identities remain unresolved; both differences are retained.",
+      "The reference reports completed with zero total, retained, or suppressed diagnostics, but also reports 103388 undecoded export groups. A zero diagnostic count does not establish complete semantic decoding.",
+      "The existing Rust audit reports 9151 RPC stream failures with all 9151 unresolved raw payloads preserved, zero content blocks lost, and zero RPC loss for this fixture. It is not an error-free decoding claim.",
+      "The reference implementation exports its selected movement event representation; vrfkit also retains additional movement rows. No cause is assigned to the total-count difference by this comparison alone.",
+      "Comparator exit 0 indicates the comparison command completed; it is not a strict numerical or full-coverage validation result.",
+      "No timing, CPU, memory, throughput, output-format efficiency, or competitor speed ratio is claimed from this run."
+    ],
+    "final_read_only_recheck": {
+      "input_unchanged": true,
+      "rust_export_unchanged": true,
+      "reference_checkout_unchanged": true,
+      "comparator_sources_unchanged": true
+    },
+    "receipt": "docs/evidence/reference-full-1209.json",
+    "reference_commit": "fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8",
+    "candidate_commit": "93e107a10788021b59fb30c5cb145960c3fd21a0"
+  }
+}
