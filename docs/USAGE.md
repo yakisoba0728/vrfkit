@@ -759,7 +759,7 @@ the list. `check_docs.py` checks both figures.
 | `check_metrics_baseline.py` | **Semantics** -- rounds, score, K/D/A |
 | `compare_combat_report.py` | Metrics-input multiset |
 | `compare_rpc_params.py` | RPC parameters and records against the C# export, with its listed expected differences |
-| `compare_with_csharp.py` | Diff against the C# parser |
+| `compare_with_csharp.py` | Same-input C# comparison with matching count units and unique packet/character/movement-time joins. Unknown and ambiguous matches remain explicit; exit 0 is report coverage, not universal value equality. See [comparison scope](REFERENCE_COMPARISON.md). |
 | `check_effect_decoder.py` | Effect decoder (12 cases), run by `tools/tests/test_check_effect_decoder.py`; it has no command line of its own |
 | `check_ascii.py` | Rust source ASCII sweep |
 | `check_docs.py` | This document itself (below) |
@@ -1127,7 +1127,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-775 Rust tests (Windows), 774 Rust tests (non-Windows), and 1127 Python tests.
+775 Rust tests (Windows), 774 Rust tests (non-Windows), and 1143 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.

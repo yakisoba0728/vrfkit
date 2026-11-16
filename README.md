@@ -30,7 +30,7 @@ only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
 **Test suites (2026-11-16):** **775 Rust tests (Windows)**,
-**774 Rust tests (non-Windows)** and **1127 Python tests**.
+**774 Rust tests (non-Windows)** and **1143 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -234,7 +234,7 @@ row order; it does not infer gameplay events or retain Parquet physical encoding
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
 **774 passing (non-Windows)**; the Windows suite contains **775 tests (Windows)**.
-The full Python suite has **1127 passing** tests. The documentation guard
+The full Python suite has **1143 passing** tests. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.
@@ -257,6 +257,12 @@ is `tools/bench_export.py`. For paired CPU, memory and exact-output comparisons,
 see [resource benchmarks](docs/RESOURCE_BENCHMARKS.md). The optimizations kept
 and rejected, with their measurements, are in
 [`docs/PERFORMANCE_NOTES.md`](docs/PERFORMANCE_NOTES.md).
+
+Same-input comparisons with the pinned C# reference are documented in
+[reference comparison scope](docs/REFERENCE_COMPARISON.md): exact movement
+identities, count units, unresolved matches and differences in exported work.
+Neither parser is treated as ground truth, and no equal-work speed ratio is
+claimed from their default exports.
 
 ## The Event chunk -- the server's own timeline
 
