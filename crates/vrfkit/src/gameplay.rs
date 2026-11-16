@@ -7,9 +7,17 @@
 //!
 //! A native declaration is not a reconstructed match result. Derived phase
 //! observations are not deduplicated transitions or an assembled round table.
-//! Identity resolution, movement joins and complete round analysis remain
-//! separate operations. All observations are provisional until the read ends
-//! successfully; file order need not be timestamp order.
+//! [`MainIdentityTimeline`] optionally records proven body references and actor
+//! lifecycles without a final-GUID-map or timestamp join. Complete round
+//! analysis remains separate. All observations are provisional until the read
+//! ends successfully; file order need not be timestamp order.
+
+mod identity;
+
+pub use identity::{
+    BodyIdentity, IdentityError, IdentityResolution, IdentityUnresolved, MainIdentityTimeline,
+    MovementIdentity, SpawnedCharacterObservation, spawned_character_observation,
+};
 
 use thiserror::Error;
 use vrf_container::{
