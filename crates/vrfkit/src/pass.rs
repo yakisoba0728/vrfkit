@@ -7,8 +7,7 @@ use std::thread;
 use vrf_container::{
     ChunkIterator, ChunkType, ContainerError, Preamble, decompress_replay_data_with_trailing,
 };
-#[cfg(feature = "export")]
-use vrf_export::CheckpointIdentity;
+use vrf_export::{CheckpointIdentity, NetGuidRecord};
 use vrf_frame::{FrameSkips, walk_demo_frames};
 use vrf_net::pipeline::ReplicationReader;
 use vrf_schema::{NetGuidCache, SchemaLimits};
@@ -132,9 +131,8 @@ pub(crate) struct Pass<'a> {
     pub frames: u32,
     pub frame_skips: FrameSkips,
     pub non_finite_frame_times: u64,
-    /// `export --checkpoints` only: the snapshot's block rows' checkpoint and
+    /// The snapshot's block rows' checkpoint and
     /// running field-row and block offsets, advanced after every packet.
-    #[cfg(feature = "export")]
     pub block_scope: Option<(CheckpointIdentity, u64, u32)>,
 }
 
@@ -158,7 +156,6 @@ impl<'a> Pass<'a> {
             frames: 0,
             frame_skips: FrameSkips::default(),
             non_finite_frame_times: 0,
-            #[cfg(feature = "export")]
             block_scope: None,
         })
     }
@@ -182,7 +179,6 @@ impl<'a> Pass<'a> {
             packets,
             ..
         } = self;
-        #[cfg(feature = "export")]
         let block_scope = &mut self.block_scope;
         let mut failed = None;
         let walk = walk_demo_frames(frames, self.flags, cache, |pkt, cache| {
@@ -191,7 +187,6 @@ impl<'a> Pass<'a> {
             }
             let mut packet = ExportSink::new(cache, channels, buffers);
             packet.enable_measured_array_routes(branch);
-            #[cfg(feature = "export")]
             if let Some((checkpoint, fields, blocks)) = block_scope {
                 packet.enable_checkpoint_block_context(checkpoint.clone(), *fields, *blocks);
             }
@@ -202,7 +197,6 @@ impl<'a> Pass<'a> {
             reader.process_packet(pkt.data, *packets as i32, &mut packet);
             std::mem::swap(&mut packet.stats, stats);
             *packets += 1;
-            #[cfg(feature = "export")]
             if let Some((_, fields, blocks)) = block_scope {
                 *fields += buffers.fields.len() as u64;
                 *blocks += buffers.checkpoint_blocks.len() as u32;
@@ -227,6 +221,20 @@ impl<'a> Pass<'a> {
         let mut sink = ExportSink::new(&mut self.cache, &mut self.channels, &mut self.buffers);
         self.reader.finish_with_sink(&mut sink);
     }
+}
+
+/// Stable final GUID rows for both main and independent checkpoint streams.
+pub(crate) fn net_guid_rows(cache: &NetGuidCache) -> Vec<NetGuidRecord> {
+    let mut entries = cache.net_guid_entries();
+    entries.sort_unstable_by_key(|entry| entry.net_guid);
+    entries
+        .into_iter()
+        .map(|entry| NetGuidRecord {
+            net_guid: entry.net_guid,
+            path: entry.path.to_owned(),
+            outer_net_guid: entry.outer_net_guid,
+        })
+        .collect()
 }
 
 /// The binary tests' replay builders, for the unit tests here and in the driver.

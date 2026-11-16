@@ -1,6 +1,36 @@
 # Phase C execution ledger
 
-## Recovered source and scope
+## Current state: bounded engineering and independent QA complete
+
+The original environment reconnected and original source files were recovered.
+The complete A/D/C/B runtime passed all 11 jobs of its combined task CI and
+all four runtime task PRs are merged. Accepted runtime integration is
+`adec3a40b10c655af83bbbb0d4059dc48339c59e`. Independent checks covered ten
+public inputs, 99 checkpoints, all 6,310,086 movement rows and four compiled
+source mutations with exact restoration. The final DX merge and actual
+integration-HEAD CI follow this documentation checkpoint and are tracked in the
+[fixed PR #58 acceptance receipt](https://github.com/yakisoba0728/vrfkit/pull/58#issuecomment-6915000647).
+The interruption below is historical.
+[Phase C results](PHASE_C_RESULTS.md) is the current contract, source and
+acceptance ledger, including exact observed checks and retained limitations.
+[Migration/release preparation](PHASE_C_MIGRATION.md)
+and the [benchmark handoff](PHASE_B_BENCHMARK_HANDOFF.md) describe the final
+consumer obligations without claiming a release or performance result.
+
+Six unique agents have actually been created: A, B, C, D, E and F. The first
+D creation attempt hit the concurrency limit; the later retry succeeded.
+The maximum remains three non-root agents plus the coordinator. All six roles
+completed their bounded work; the earlier recovery reviews are historical
+checkpoint returns, not extra agents. No agent feature-task crash was observed.
+Compiler SIGKILLs and executor disconnection are separate from feature
+correctness and worker lifecycle outcomes.
+
+The five core task PR slots are now used: #69 DX, #70 Gameplay, #71 Reader,
+#72 Decoder and #73 Streams. Remaining work is bounded to QA fixes,
+integration and documentation for these tracks. No new phase or broad audit
+is authorized by this ledger.
+
+## Initial recovered source and scope
 
 Fresh GitHub API and HTTPS Git reads agree on the starting checkpoint:
 
@@ -35,8 +65,9 @@ has completed yet. Later counts must use observed lifecycle outcomes.
 
 ## Acceptance and stopping rules
 
-- Preserve raw payloads, existing default Reader behavior, CLI output, and
-  native counter semantics. Document any Rust source migration explicitly.
+- Preserve raw payloads, existing default Reader behavior, CLI contracts and
+  native counter semantics. Record the exact intended FocusProjectiles
+  row/counter extension and any Rust source migration explicitly.
 - Exercise checkpoint isolation, ordering, corruption, callback errors, empty
   snapshots, multiple snapshots, and reused buffers with meaningful controls.
 - Gameplay joins must preserve lifecycle/time and expose missing, null, and
@@ -55,11 +86,12 @@ is claimed by this initial checkpoint. Final receipts will identify accepted
 commits, exact runs and source correspondence, exclusions, and the user's
 benchmark candidate.
 
-## Execution interruption checkpoint
+## Historical execution interruption checkpoint
 
-**Current result: `BLOCKED_BY_EXECUTION_ENVIRONMENT`. Functional acceptance is
-not complete.** The allocation and zero-completion counts above describe the
-initial checkpoint only.
+**Result at the interruption: `BLOCKED_BY_EXECUTION_ENVIRONMENT`.** This was
+superseded by reconnection below. Functional acceptance had not completed at
+that checkpoint. The allocation and zero-completion counts above describe
+the initial checkpoint only.
 
 Five unique subagents were created: A, B, C, E and F. All five returned a
 checkpoint or review; that is not five completed feature tracks. Maximum

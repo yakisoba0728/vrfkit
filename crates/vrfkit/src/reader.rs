@@ -1,6 +1,7 @@
-//! Library entry point over the CLI's shared main-stream decode pass.
+//! Library entry point over the CLI's shared main and checkpoint decode passes.
 
 use std::collections::BTreeMap;
+use std::io::{self, Read};
 use std::path::Path;
 
 use thiserror::Error;
@@ -13,22 +14,37 @@ use vrf_frame::FrameSkips;
 use vrf_net::stats::NetStats;
 use vrf_schema::SchemaLimits;
 
+use crate::checkpoints::{CheckpointEvent, CheckpointOutput, CheckpointTotals, decode_checkpoint};
 use crate::error::CliError;
 use crate::oracle::{Verdict, verdict_from_stats};
-use crate::pass::{Chunk, Pass, Replay, for_each_chunk};
+use crate::pass::{Chunk, Pass, Replay, for_each_chunk, net_guid_rows};
 use crate::reader_input::FileInput;
 use crate::sink::{ExportStats, RecordBuffers};
 
-/// A parser/I/O failure or the original error returned by a consumer callback.
+/// An input limit, parser/I/O failure, or original consumer callback error.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ReadError<E> {
+    /// The encoded input exceeded the caller's explicit byte limit. No
+    /// callbacks were invoked; one byte beyond the limit was consumed.
+    #[error("replay input exceeds the {limit}-byte limit")]
+    InputLimit { limit: usize },
     /// The replay could not be read under the parser's structural rules.
     #[error(transparent)]
     Replay(#[from] CliError),
     /// A callback stopped the read. No later callback is invoked.
     #[error("replay consumer stopped: {0}")]
     Consumer(E),
+}
+
+/// Optional work and independent schema limits for one read.
+///
+/// Defaults preserve the main-only callback contract. Each enabled checkpoint
+/// receives a fresh cache with these same limits, separate from the main cache.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReadOptions {
+    pub schema_limits: SchemaLimits,
+    pub checkpoints: bool,
 }
 
 /// Records from one packet, or rejected partials flushed at end of input.
@@ -77,6 +93,9 @@ pub enum ReplayEvent<'a> {
     /// an inferred gameplay event. `vrf_container` provides measured payload
     /// decoders for known groups.
     ContainerEvent(EventChunk<'a>),
+    /// An independent snapshot; emitted only when explicitly requested with
+    /// [`ReadOptions::checkpoints`]. Never interpreted as a main-stream record.
+    Checkpoint(CheckpointEvent<'a>),
 }
 
 /// Detached results after structural traversal and the final callback succeed.
@@ -92,10 +111,11 @@ pub struct ReplaySummary {
     pub packets: u32,
     pub frames: u32,
     pub replay_data_chunks: u64,
-    /// Checkpoint chunks encountered but not decoded by this API. Their
-    /// snapshots are independent streams; use `export --checkpoints` to audit
-    /// them. Zero means none encountered, not that checkpoints were validated.
+    /// Checkpoint chunks encountered while checkpoint callbacks were disabled.
+    /// Zero alone does not imply snapshots were present or validated.
     pub skipped_checkpoint_chunks: u64,
+    /// Optional snapshot counts, separate from every main-stream count below.
+    pub checkpoints: CheckpointTotals,
     pub unknown_chunks: u64,
     pub replay_data_trailing_bytes: u64,
     pub event_chunks: u64,
@@ -139,7 +159,8 @@ impl ReplaySummary {
 /// Each call creates independent replay state, so the reader can be reused or
 /// shared. [`Self::read`] borrows a complete byte slice; [`Self::read_path`]
 /// reads one encoded chunk at a time from a file. At most one additional
-/// decompressed ReplayData chunk is prefetched.
+/// decompressed ReplayData chunk is prefetched. [`Self::read_bounded`] accepts
+/// a nonseekable source by buffering its complete input under an explicit cap.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ReplayReader;
 
@@ -191,10 +212,100 @@ impl ReplayReader {
         schema_limits: SchemaLimits,
         consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
     ) -> Result<ReplaySummary, ReadError<E>> {
+        self.read_with_options(
+            data,
+            ReadOptions {
+                schema_limits,
+                checkpoints: false,
+            },
+            consumer,
+        )
+    }
+
+    /// Decode in file order, optionally delivering independent checkpoints.
+    ///
+    /// The first structural failure encountered in file order stops delivery;
+    /// a later prefetched main-stream error cannot replace an earlier snapshot
+    /// failure. Consumer errors retain their original value and take precedence
+    /// over errors encountered while the current frame walk unwinds. No final
+    /// replay summary is returned on failure, even after a snapshot summary.
+    pub fn read_with_options<E>(
+        &self,
+        data: &[u8],
+        options: ReadOptions,
+        consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
+    ) -> Result<ReplaySummary, ReadError<E>> {
         let metadata = parse_preamble(data).map_err(CliError::from)?;
-        read_input(metadata, schema_limits, consumer, |replay, on_chunk| {
+        read_input(metadata, options, consumer, |replay, on_chunk| {
             for_each_chunk(data, replay, on_chunk)
         })
+    }
+
+    /// Buffer a nonseekable source under an explicit encoded-byte limit, then
+    /// decode it with [`Self::read_with_options`]. No temporary files are used.
+    ///
+    /// This is whole-input buffering, not incremental input decoding. No
+    /// callbacks run until a nonempty read request returns `Ok(0)` (EOF) and
+    /// the input fits within `max_input_bytes`. Short reads are accepted and
+    /// [`io::ErrorKind::Interrupted`] is retried. Other I/O errors retain their
+    /// original value through [`ReadError::Replay`].
+    ///
+    /// At the exact limit, a one-byte read distinguishes EOF from excess input.
+    /// Excess input returns [`ReadError::InputLimit`] before any callback, after
+    /// consuming exactly one byte beyond the limit. A zero limit admits only
+    /// empty input, which then fails the replay parser's preamble validation.
+    /// The input is never rewound, including after errors or callback rejection.
+    ///
+    /// The retained input length and requested vector capacity are capped at
+    /// `max_input_bytes`, with one additional 8 KiB read buffer. Allocation is
+    /// incremental; the limit is not reserved up front. Allocator overhead,
+    /// parser state, decompression and consumer storage are separate and are
+    /// not bounded by this limit. Allocation refusal becomes an I/O error with
+    /// [`io::ErrorKind::OutOfMemory`].
+    ///
+    /// Calls may block until EOF, including the probe at the exact limit. Set
+    /// timeouts or cancellation on the input itself; a callback cannot cancel
+    /// the buffering phase. [`ReadOptions`] and all subsequent parser/callback
+    /// contracts are unchanged, including provisional delivery until success.
+    pub fn read_bounded<R: Read + ?Sized, E>(
+        &self,
+        input: &mut R,
+        max_input_bytes: usize,
+        options: ReadOptions,
+        consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
+    ) -> Result<ReplaySummary, ReadError<E>> {
+        let mut data = Vec::new();
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let remaining = max_input_bytes - data.len();
+            // A nonempty probe is necessary at the exact limit: an empty
+            // request can return zero even when unread input remains.
+            let request = remaining.min(buffer.len()).max(1);
+            let count = match input.read(&mut buffer[..request]) {
+                Ok(0) => break,
+                Ok(count) => count,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(CliError::Io(error).into()),
+            };
+            if count > remaining {
+                return Err(ReadError::InputLimit {
+                    limit: max_input_bytes,
+                });
+            }
+            if data.capacity() < data.len() + count {
+                let capacity = data
+                    .capacity()
+                    .saturating_mul(2)
+                    .max(buffer.len())
+                    .min(max_input_bytes);
+                data.try_reserve_exact(capacity - data.len())
+                    .map_err(|error| {
+                        CliError::Io(io::Error::new(io::ErrorKind::OutOfMemory, error))
+                    })?;
+            }
+            data.extend_from_slice(&buffer[..count]);
+        }
+        self.read_with_options(&data, options, consumer)
     }
 
     /// Read a file in chunks and stream decoded output with the same decoder
@@ -224,16 +335,35 @@ impl ReplayReader {
         schema_limits: SchemaLimits,
         consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
     ) -> Result<ReplaySummary, ReadError<E>> {
+        self.read_path_with_options(
+            path,
+            ReadOptions {
+                schema_limits,
+                checkpoints: false,
+            },
+            consumer,
+        )
+    }
+
+    /// File-backed equivalent of [`Self::read_with_options`]. Enabled snapshot
+    /// bodies use one reusable encoded buffer and one decoded snapshot; skipped
+    /// checkpoint bodies still require no buffering. The input must stay stable.
+    pub fn read_path_with_options<E>(
+        &self,
+        path: impl AsRef<Path>,
+        options: ReadOptions,
+        consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
+    ) -> Result<ReplaySummary, ReadError<E>> {
         let (metadata, input) = FileInput::open(path.as_ref())?;
-        read_input(metadata, schema_limits, consumer, |replay, on_chunk| {
-            input.for_each_chunk(replay, on_chunk)
+        read_input(metadata, options, consumer, |replay, on_chunk| {
+            input.for_each_chunk_with_checkpoints(replay, options.checkpoints, on_chunk)
         })
     }
 }
 
 fn read_input<E>(
     metadata: Preamble,
-    schema_limits: SchemaLimits,
+    options: ReadOptions,
     mut consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
     chunks: impl FnOnce(
         &Replay<'_>,
@@ -243,7 +373,7 @@ fn read_input<E>(
     let mut consumer_error = None;
     let result = read_main_stream(
         metadata,
-        schema_limits,
+        options,
         |event| {
             consumer(event).map_err(|error| {
                 consumer_error = Some(error);
@@ -297,7 +427,7 @@ impl RowCounts {
 
 fn read_main_stream(
     metadata: Preamble,
-    schema_limits: SchemaLimits,
+    options: ReadOptions,
     mut consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), CliError>,
     chunks: impl FnOnce(
         &Replay<'_>,
@@ -305,7 +435,7 @@ fn read_main_stream(
     ) -> Result<u64, CliError>,
 ) -> Result<ReplaySummary, CliError> {
     let replay = Replay::new(&metadata);
-    let mut pass = Pass::with_schema_limits(&replay, schema_limits)?;
+    let mut pass = Pass::with_schema_limits(&replay, options.schema_limits)?;
     pass.buffers.capture_movement_provenance = true;
     consumer(ReplayEvent::Metadata(&metadata))?;
 
@@ -313,6 +443,7 @@ fn read_main_stream(
     let mut counts = RowCounts::default();
     let mut replay_data_chunks = 0;
     let mut skipped_checkpoint_chunks = 0;
+    let mut checkpoints = CheckpointTotals::default();
     let mut replay_data_trailing_bytes = 0;
     let mut event_chunks = 0;
     let mut event_trailing_bytes = 0;
@@ -324,6 +455,64 @@ fn read_main_stream(
                 })?;
                 replay_data_chunks += 1;
                 replay_data_trailing_bytes += unread as u64;
+            }
+            Chunk::Checkpoint(payload) if options.checkpoints => {
+                let index = u32::try_from(checkpoints.chunks).map_err(|_| {
+                    CliError::Usage("too many checkpoint chunks to index".to_owned())
+                })?;
+                let mut checkpoint_stats = ExportStats::default();
+                let decoded = decode_checkpoint(
+                    payload,
+                    &replay,
+                    index,
+                    options.schema_limits,
+                    true,
+                    checkpoints.field_rows,
+                    &mut checkpoint_stats,
+                    |output| {
+                        let event = match output {
+                            CheckpointOutput::Metadata(metadata) => {
+                                CheckpointEvent::Metadata(metadata)
+                            }
+                            CheckpointOutput::GuidEntry(row) => {
+                                return consumer(ReplayEvent::Checkpoint(
+                                    CheckpointEvent::GuidEntry(&row),
+                                ));
+                            }
+                            CheckpointOutput::ExportGroup(row) => {
+                                return consumer(ReplayEvent::Checkpoint(
+                                    CheckpointEvent::ExportGroup(&row),
+                                ));
+                            }
+                            CheckpointOutput::ExportField(row) => {
+                                return consumer(ReplayEvent::Checkpoint(
+                                    CheckpointEvent::ExportField(&row),
+                                ));
+                            }
+                            CheckpointOutput::Records(checkpoint, buffers) => {
+                                let records = ReplayRecords {
+                                    fields: &buffers.fields,
+                                    movement: &buffers.movement,
+                                    movement_provenance: &buffers.movement_provenance,
+                                    actors: &buffers.actors,
+                                    partials: &buffers.partials,
+                                };
+                                if records.is_empty() && buffers.checkpoint_blocks.is_empty() {
+                                    return Ok(());
+                                }
+                                CheckpointEvent::Records {
+                                    checkpoint,
+                                    records,
+                                    blocks: &buffers.checkpoint_blocks,
+                                }
+                            }
+                        };
+                        consumer(ReplayEvent::Checkpoint(event))
+                    },
+                )?;
+                let summary = decoded.into_summary(checkpoint_stats);
+                consumer(ReplayEvent::Checkpoint(CheckpointEvent::Summary(&summary)))?;
+                checkpoints.absorb(&summary);
             }
             Chunk::Checkpoint(_) => skipped_checkpoint_chunks += 1,
             Chunk::Event(payload) => {
@@ -338,22 +527,14 @@ fn read_main_stream(
 
     pass.finish();
     counts.emit(&mut pass.buffers, &mut consumer)?;
-    let mut entries = pass.cache.net_guid_entries();
-    entries.sort_unstable_by_key(|entry| entry.net_guid);
-    let net_guids = entries
-        .into_iter()
-        .map(|entry| NetGuidRecord {
-            net_guid: entry.net_guid,
-            path: entry.path.to_owned(),
-            outer_net_guid: entry.outer_net_guid,
-        })
-        .collect();
+    let net_guids = net_guid_rows(&pass.cache);
 
     let summary = ReplaySummary {
         packets: pass.packets,
         frames: pass.frames,
         replay_data_chunks,
         skipped_checkpoint_chunks,
+        checkpoints,
         unknown_chunks,
         replay_data_trailing_bytes,
         event_chunks,

@@ -97,7 +97,8 @@ def manifest_counts(manifest):
                              "overlay_handle_conflicts_refused",
                              "cnc_bruteforce_payloads_attempted",
                              *summary_counters.MOVEMENT_COUNTERS,
-                             "active_blinds_empty_trailers"))
+                             "active_blinds_empty_trailers",
+                             *summary_counters.FOCUS_PROJECTILES_COUNTERS))
             for key in sorted(keys):
                 name = f"{prefix}_{key}"
                 counts[name] = require_count(source, key)

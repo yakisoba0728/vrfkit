@@ -29,8 +29,8 @@ and through [`fbf24b6`](https://github.com/michel-giehl/ValorantReplayParser/com
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Test suites (2026-11-16):** **827 Rust tests (Windows)**,
-**826 Rust tests (non-Windows)** and **1178 Python tests**.
+**Test suites (2026-11-16):** **872 Rust tests (Windows)**,
+**871 Rust tests (non-Windows)** and **1181 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -43,6 +43,8 @@ checks and remaining limits.
 - Optional gameplay observations: [`docs/GAMEPLAY_API.md`](docs/GAMEPLAY_API.md)
 - JSONL conversion and encodings: [`docs/JSONL.md`](docs/JSONL.md)
 - Pinned comparison with ValorantReplayParser: [`docs/REFERENCE_COMPARISON.md`](docs/REFERENCE_COMPARISON.md)
+- Phase C contracts and acceptance: [`docs/PHASE_C_RESULTS.md`](docs/PHASE_C_RESULTS.md)
+- API/counter migration and 0.6.0+ release checklist: [`docs/PHASE_C_MIGRATION.md`](docs/PHASE_C_MIGRATION.md)
 - Phase B work and acceptance status: [`docs/PHASE_B_STATUS.md`](docs/PHASE_B_STATUS.md)
 - User-run performance comparison: [`docs/PHASE_B_BENCHMARK_HANDOFF.md`](docs/PHASE_B_BENCHMARK_HANDOFF.md)
 - Current engineering evidence and limitations: [`docs/OVERHAUL_RESULTS_2026_11_16.md`](docs/OVERHAUL_RESULTS_2026_11_16.md)
@@ -96,19 +98,26 @@ writing Parquet. It borrows callback batches, preserves available raw windows
 and returns quality counters. `read_path` reads container chunks from a
 read-only, seekable file; it does not retain the complete replay. Individual
 chunks, metadata, parser state and any output you retain still consume memory.
-Checkpoint snapshots are reported as skipped. The [Rust API guide](docs/RUST_API.md)
-covers ownership, errors, source dependencies and quality checks. Run its
-aggregate-only examples:
+Checkpoint snapshots are skipped by default; `ReadOptions` can opt into
+separate checkpoint callbacks. `read_bounded` accepts finite nonseekable input
+with an explicit encoded-byte cap and parses after EOF. The
+[Rust API guide](docs/RUST_API.md) covers ownership, errors, buffering and
+quality checks. Run its aggregate-only examples:
 
 ```bash
 cargo +1.86.0 run --release -p vrfkit --no-default-features --locked --example stream_replay -- match.vrf
 cargo +1.86.0 run --release -p vrfkit --no-default-features --locked --example gameplay_events -- match.vrf
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked --example stream_checkpoints -- match.vrf
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked --example gameplay_identity -- match.vrf
 ```
 
 The optional [gameplay helpers](docs/GAMEPLAY_API.md) project validated native
 round starts, deaths and spike events, plus observed round-phase fields. They
-run only when called. They retain source evidence and unresolved actor GUIDs;
-they do not build a complete match or infer player identities.
+run only when called. A separate `MainIdentityTimeline` resolves proven body
+relationships and movement transport windows while retaining missing and
+ambiguous evidence. Native Event actor GUIDs are not automatically joined to
+accounts or kill credit. See the [migration guide](docs/PHASE_C_MIGRATION.md)
+for lifecycle rules and the explicit-cap stdin example.
 
 ## Why this exists
 
@@ -228,7 +237,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
   replays on 13.02.
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
 - **Rust reader API** -- synchronous borrowed record batches and native Event
-  payloads through the same main-stream decoder, with explicit quality counters;
+  payloads, opt-in isolated checkpoint snapshots, and explicit quality counters;
   see the [library guide](docs/RUST_API.md).
 - **Bounded schema declarations** -- configurable group and field-slot budgets
   reject excess declarations before allocating dense slots; see
@@ -236,7 +245,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Workspace unsafe-code policy** — `#![forbid(unsafe_code)]` in every crate.
   Dependencies have separate policies; default Parquet compression includes
   native Zstd. The core-only Reader excludes Arrow, Parquet and Zstd.
-- **827 Rust tests (Windows)** / **826 Rust tests (non-Windows)** plus
+- **872 Rust tests (Windows)** / **871 Rust tests (non-Windows)** plus
   a layered validation suite (framing / bytes / decode
   errors / semantics).
 
@@ -282,9 +291,14 @@ row order; it does not infer gameplay events or retain Parquet physical encoding
 
 ## Status
 
+Current Phase C implementation and acceptance are recorded in
+[Phase C results](docs/PHASE_C_RESULTS.md). The
+[changelog](CHANGELOG.md) and [migration checklist](docs/PHASE_C_MIGRATION.md)
+separate source compatibility from a future 0.6.0-or-later release.
+
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**826 passing (non-Windows)**; the Windows suite contains **827 tests (Windows)**.
-The full Python suite has **1178 passing** tests. The documentation guard
+**871 passing (non-Windows)**; the Windows suite contains **872 tests (Windows)**.
+The full Python suite has **1181 passing** tests. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.

@@ -1,7 +1,7 @@
 # Adopting vrfkit from source
 
 Use the CLI for main/checkpoint Parquet tables, `ReplayReader` for
-borrowed main-stream records in Rust, and the Python tools for downstream
+borrowed main records and optional snapshots in Rust, and the Python tools for downstream
 analysis or JSONL conversion. These paths share the existing decoder and
 preservation policy; they expose different output and ownership contracts.
 
@@ -9,6 +9,9 @@ preservation policy; they expose different output and ownership contracts.
 | --- | --- | --- |
 | Inspect metadata or check ReplayData framing | `vrfkit inspect` / `validate` | [CLI and verdict scope](USAGE.md#2-cli) |
 | Analyze main and checkpoint tables | `vrfkit export --checkpoints` | [Output schemas](USAGE.md#3-output) |
+| Receive optional snapshot callbacks | `ReplayReader` with `ReadOptions` | [Rust API](RUST_API.md) |
+| Read a finite pipe with a byte cap | `ReplayReader::read_bounded` | [Bounded input](RUST_API.md#nonseekable-input-with-an-explicit-byte-cap) |
+| Associate observed bodies and movement | `MainIdentityTimeline` | [Gameplay API](GAMEPLAY_API.md) |
 | Consume records without Parquet dependencies | `ReplayReader::read_path` | [Rust API](RUST_API.md) |
 | Observe the supported round, death and spike declarations | `vrfkit::gameplay` helpers | [Gameplay contract](GAMEPLAY_API.md) |
 | Read selected cells in Python or another language | PyArrow batches / `tools/export_jsonl.py` | [Recipes below](#python-parquet-and-jsonl) |
@@ -101,8 +104,11 @@ The [streaming example](../crates/vrfkit/examples/stream_replay.rs) uses
 `read_path`, retains aggregate counters only, and prints after the read
 returns. Input storage scales with buffered chunks and parser state, not a
 retained complete replay. `read(&bytes, callback)` can instead borrow a
-snapshot you already own. The high-level API has no arbitrary non-seekable
-`Read` input.
+snapshot you already own. `read_bounded` accepts a finite nonseekable `Read`
+input with a required encoded-byte cap. It buffers through EOF before
+parsing; its cap is not a total process-memory limit. The
+[bounded-input contract](RUST_API.md#nonseekable-input-with-an-explicit-byte-cap)
+explains the one-byte over-limit probe, I/O errors and caller-owned timeouts.
 
 The [gameplay example](../crates/vrfkit/examples/gameplay_events.rs) opts into
 projections by calling `native_event` and `round_phase_event`. There is no
@@ -113,14 +119,33 @@ join them to players or assign kill credit. Unknown groups remain available
 through their original raw Event callback. The complete list and validation
 rules are in [Gameplay API](GAMEPLAY_API.md).
 
-Both examples skip checkpoint decoding and report its count. Use the CLI
-when you need checkpoint tables. Callbacks borrow reusable data and are
+The two examples above skip checkpoint decoding and report its count.
+`stream_checkpoints` opts into isolated snapshot callbacks; `gameplay_identity`
+shows main-stream body/movement association without joining native Events to
+accounts. These are source examples, with no extra Cargo feature required:
+
+```bash
+cargo +1.86.0 run -p vrfkit --no-default-features --locked \
+  --example stream_checkpoints -- match.vrf
+cargo +1.86.0 run -p vrfkit --no-default-features --locked \
+  --example gameplay_identity -- match.vrf
+cargo +1.86.0 run -p vrfkit --no-default-features --locked \
+  --example read_bounded_stdin -- 67108864 --checkpoints < match.vrf
+```
+
+Use the CLI when you need checkpoint Parquet tables. Callbacks borrow reusable data and are
 provisional until the Reader succeeds: clone only records you retain, and
 stage external writes when partial publication would be wrong. A successful
 read and `block_verdict()` are structural checks with a stated scope; inspect
 decode errors, stream failures, rejected partials and lost-block counters as
 separate evidence. The [Rust contract](RUST_API.md#scope-and-quality) explains
 those distinctions and [schema budgets](RUST_API.md#resource-limits).
+
+Before adopting a new source revision, review the
+[Phase C migration and release checklist](PHASE_C_MIGRATION.md). It covers
+checkpoint opt-in behavior, identity ordering, explicit input caps and the
+required counter/output changes. The [results ledger](PHASE_C_RESULTS.md)
+identifies observed acceptance separately from pending work.
 
 ## Python, Parquet and JSONL
 

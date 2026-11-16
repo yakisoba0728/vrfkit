@@ -1,5 +1,13 @@
 # Phase C decoder evidence disposition
 
+This preserves the initial review and interruption-era evidence. Execution
+subsequently resumed and the exact 12.05 Clay FocusProjectiles route was
+implemented in [PR #72](https://github.com/yakisoba0728/vrfkit/pull/72).
+See [the focused route report](PHASE_C_FOCUS_PROJECTILES.md) and
+[current acceptance](PHASE_C_RESULTS.md). The earlier execution blocker is
+historical; the remaining unproven candidate types below retain their stated
+evidence requirements.
+
 ## Scope and result
 
 This is the bounded Track C review of integration commit
@@ -16,7 +24,7 @@ measurements. Existing raw payloads and typed values remain unchanged.
 | --- | --- | --- |
 | Four rotation-free `ReplicatedMovement` classes | `GameObject_Iris_E_Smoke_C`, `GameObject_Cashew_E_AirStrikeMortar_C`, `Zone_Gumshoe_4_Cage_C`, and `Projectile_NetToss_Underhand_C` have a historical whole-unit location observation but no observed rotation component. Byte and short rotator hypotheses are indistinguishable on those windows. | `blocked_by_evidence`: obtain native-class quantization metadata or a nonzero rotation window for each exact group/checksum, then compare all components with an independent reader, malformed controls, and unchanged raw bytes. Do not copy another class's width. |
 | Cypher cage projectile and its successor | `Projectile_Gumshoe_4_CageTrap_C.ReplicatedMovement` remains `Skip`; the 13.01 successor `Projectile_Gumshoe_Q_CageTrap_C` remains raw. The historical entry-survival record establishes a paired rename, not a fresh payload comparison on both sides. | `blocked_by_evidence`: validate both exact class identities, the rotator and location levels, and the entry-survival relation on accessible old/new replay inputs before changing either side. |
-| `Clay_PC_C.FocusProjectiles` | The initial source-only review lacked an exact checked-in route. A later independent check of accepted historical public 12.05 output identified `/Game/Characters/Clay/Clay_PC.Clay_PC_C`, parent handle 45/checksum 957945936 and member handle 46/checksum 831657485. It fully consumed 102 main and 18 checkpoint parent payloads and observed 53 main member values. | Narrow historical evidence is now available; implementation and fresh acceptance are `blocked_by_execution_environment`. Qualify any future additive child route by both exact declarations, preserve the raw parent, and independently account for the expected 53 added main child rows on this input. Do not broaden generic array framing. See the superseding observation below. |
+| `Clay_PC_C.FocusProjectiles` | The initial source-only review lacked an exact checked-in route. A later independent check of accepted historical public 12.05 output identified `/Game/Characters/Clay/Clay_PC.Clay_PC_C`, parent handle 45/checksum 957945936 and member handle 46/checksum 831657485. It fully consumed 102 main and 18 checkpoint parent payloads and observed 53 main member values. | The interruption temporarily blocked implementation and fresh acceptance. After recovery, the narrow route was implemented with both exact declarations, raw-parent preservation and 53 expected additional main child rows. Current validation is tracked in [Phase C results](PHASE_C_RESULTS.md); generic array framing remains unchanged. |
 | `InputEventData` | The documented seven-tag/53,605-row sample has numeric structure but no established tag meaning, and is not a verification of the larger historical population. | `blocked_by_evidence`: establish tag meanings independently, revalidate widths and full consumption by exact route/build, and keep unknown tags and all original bytes. A second anonymous payload representation alone does not justify a new semantic type. |
 | Abilities/GAS FastArray and `StopEffectType` | FastArray replication keys, item IDs and field windows have an existing explicit-checksum-mode structural decoder. The item/property schema remains unknown. `StopEffectType` has no admitted width/domain evidence in the checked-in correction ledger. | `blocked_by_evidence`: obtain exact declarations or independent native/reflection evidence and payload comparisons. Do not reinterpret FastArray IDs as actor IDs or infer an enum's domain from its name. |
 | Section arithmetic, scalar warnings, healing and owner references | The historical 15 packet-eligible disagreements and 46 scalar warnings remain observations with uncertainty, not an accepted formula to normalize away. Existing analytical tools retain raw/typed conflicts, ordering and lifecycle uncertainty. | `blocked_by_evidence`: reproduce the disagreeing windows with declaration, bit width, order and lifecycle context; identify the relation independently before changing arithmetic or assigning player credit. |
@@ -99,9 +107,11 @@ actor-open records (12 Boomba, 17 primary projectiles, 21 arming satchels and
 was interrupted by execution-environment loss. The separate observation is
 recorded; completion of that updated receipt is not inferred.
 
-These are historical-output checks, not fresh Phase C replay executions.
-No FocusProjectiles Rust route was implemented or accepted. The initial
-lack of accessible exact identity evidence is superseded; the current
-blocker is implementation and fresh validation with execution access.
-Other candidate rows retain their evidence requirements. See
-[the recovery checkpoint](PHASE_C_RECOVERY.md) for source and restart limits.
+These were historical-output checks, not fresh Phase C replay executions.
+At the interruption, no FocusProjectiles Rust route had been implemented or
+accepted. The initial lack of accessible exact identity evidence was
+superseded, then the original environment recovered and implementation
+resumed. [Phase C results](PHASE_C_RESULTS.md) records the later route and
+fresh-acceptance status. Other candidate rows retain their evidence
+requirements. [The recovery checkpoint](PHASE_C_RECOVERY.md) preserves the
+earlier source and restart limits as history.

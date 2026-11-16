@@ -24,14 +24,13 @@ use vrf_container::{
     parse_known_event_payload,
 };
 use vrf_export::{
-    ActorWriter, EventRecord, EventWriter, FieldWriter, MovementWriter, NetGuidRecord,
-    NetGuidWriter, PartialRecord, PartialWriter,
+    ActorWriter, EventRecord, EventWriter, FieldWriter, MovementWriter, NetGuidWriter,
+    PartialRecord, PartialWriter,
 };
-use vrf_schema::NetGuidCache;
 
 use crate::error::CliError;
 use crate::manifest::{self, ManifestQuality};
-use crate::pass::{Chunk, Pass, Replay};
+use crate::pass::{Chunk, Pass, Replay, net_guid_rows};
 use crate::reader_input::FileInput;
 use publish::OutputTransaction;
 pub(crate) use summary::RunTotals;
@@ -317,19 +316,4 @@ fn push_partials<W: Write + Send>(
         record
     }))?;
     Ok(())
-}
-
-/// The cache's GUID table as rows, sorted: the cache is a HashMap and the file
-/// must be byte-reproducible.
-fn net_guid_rows(cache: &NetGuidCache) -> Vec<NetGuidRecord> {
-    let mut entries = cache.net_guid_entries();
-    entries.sort_unstable_by_key(|entry| entry.net_guid);
-    entries
-        .into_iter()
-        .map(|entry| NetGuidRecord {
-            net_guid: entry.net_guid,
-            path: entry.path.to_owned(),
-            outer_net_guid: entry.outer_net_guid,
-        })
-        .collect()
 }

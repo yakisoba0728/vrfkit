@@ -49,17 +49,18 @@ COUNTERS = sc.keys("P", checkpoint=False)
 CHECKPOINT_COUNTERS = sc.keys("P", checkpoint=True)
 # Archived private measurements retain their exact key set and values. These
 # sets are for archive schema validation only, never current comparisons.
-LEGACY_COUNTERS = tuple(key for key in COUNTERS if key not in sc.MOVEMENT_COUNTERS) \
+LEGACY_COUNTERS = tuple(key for key in COUNTERS if key not in (*sc.MOVEMENT_COUNTERS, *sc.FOCUS_PROJECTILES_COUNTERS)) \
     + sc.LEGACY_PINNED_MOVEMENT_COUNTERS
 LEGACY_CHECKPOINT_COUNTERS = tuple(key for key in CHECKPOINT_COUNTERS
-                                  if key.removeprefix("cp_") not in sc.MOVEMENT_COUNTERS) \
+                                  if key.removeprefix("cp_") not in (*sc.MOVEMENT_COUNTERS, *sc.FOCUS_PROJECTILES_COUNTERS)) \
     + tuple("cp_" + key for key in sc.LEGACY_PINNED_MOVEMENT_COUNTERS)
 #: The frame-walk tallies, after the manifest's `frame_` / `checkpoint_frame_`.
 FRAME_SKIP_KEYS = ("external_data_blobs", "external_data_bytes", "game_specific_bytes",
                    "non_finite_times")
 #: Native component and opaque-delta tallies, reconciled with the manifest's
 #: `sink` blocks (checkpoint summary keys use `cp_`).
-SINK_TALLY_KEYS = (*sc.MOVEMENT_COUNTERS, "active_blinds_empty_trailers")
+SINK_TALLY_KEYS = (*sc.MOVEMENT_COUNTERS, "active_blinds_empty_trailers",
+                   *sc.FOCUS_PROJECTILES_COUNTERS)
 
 
 PARQUET_FILES = ("fields", "movement", "actors", "net_guids", "events", "partials")

@@ -3,7 +3,7 @@
 //! [`ReplayReader`] drives the same ordered decode pass as the CLI. Record
 //! batches borrow reusable parser buffers; clone only the rows you need to
 //! retain. A returned [`ReplaySummary`] reports the work and its limitations,
-//! including checkpoint chunks that this API does not decode.
+//! including skipped checkpoints or the counts of explicitly enabled snapshots.
 //!
 //! ```no_run
 //! use std::convert::Infallible;
@@ -22,11 +22,13 @@
 //! ```
 //!
 //! Disable default features to omit Arrow, Parquet and Zstd. The reader still
-//! performs the complete main-stream decode. The optional `export` feature
-//! enables the CLI's Parquet writers; it does not change reader semantics.
+//! performs the complete main-stream and optional checkpoint decode. The
+//! optional `export` feature enables the CLI's Parquet writers; it does not
+//! change reader semantics.
 
 #![forbid(unsafe_code)]
 
+mod checkpoints;
 mod cli;
 mod diagnose;
 #[cfg(feature = "export")]
@@ -43,18 +45,20 @@ mod reader_input;
 mod report;
 mod sink;
 
+pub use checkpoints::{CheckpointEvent, CheckpointMetadata, CheckpointSummary, CheckpointTotals};
 pub use error::CliError as ReplayError;
 pub use oracle::Verdict as ValidationVerdict;
-pub use reader::{ReadError, ReplayEvent, ReplayReader, ReplayRecords, ReplaySummary};
+pub use reader::{ReadError, ReadOptions, ReplayEvent, ReplayReader, ReplayRecords, ReplaySummary};
 pub use vrf_container::{EventChunk, Preamble};
 pub use vrf_decode::OverlayErrorRow;
 pub use vrf_export::{
-    ActorRecord, FieldRecord, MovementProvenance, MovementRecord, MovementSource, NetGuidRecord,
-    PartialRecord, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME,
+    ActorRecord, CheckpointBlockRecord, CheckpointExportFieldRecord, CheckpointExportGroupRecord,
+    CheckpointGuidEntryRecord, CheckpointIdentity, FieldRecord, MovementProvenance, MovementRecord,
+    MovementSource, NetGuidRecord, PartialRecord, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME,
 };
 pub use vrf_frame::FrameSkips;
 pub use vrf_net::stats::NetStats;
-pub use vrf_schema::{SchemaError, SchemaLimits};
+pub use vrf_schema::{CheckpointTables, SchemaError, SchemaLimits};
 
 /// Run the existing command-line dispatcher, including its stdout/stderr output.
 ///

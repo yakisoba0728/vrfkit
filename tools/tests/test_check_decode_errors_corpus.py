@@ -14,14 +14,14 @@ from support import TempDirTestCase, run_cli
 import check_decode_errors_corpus as guard
 
 #: The main-pass sink lines, failure counters at zero. Values from a real 13.02
-#: `--checkpoints` export log, except synthetic CNC, movement, route and walk lines.
+#: `--checkpoints` export log, except synthetic CNC, movement, route, FocusProjectiles trailer and walk lines.
 CLEAN_SINK = """
 Movement rows:     2407298
 Movement errors:   0
 Array decode:      25052 elements / 96076 fields / 0 errors / 0 truncations
 Array residual:    0 root bits / 0 nested bits / 0 implicit ends
 Array leaf errs:   0
-Route children:    41 player info / 12 rewards / 30 selected / 55 kills / 380 active effects / 21 ignore actors / 9 blinds / 144 projectile path
+Route children:    41 player info / 12 rewards / 30 selected / 55 kills / 380 active effects / 21 ignore actors / 9 blinds / 144 projectile path / 0 focus projectiles
 Truncated RPCs:    0
 RPC param walks:   338107
 CNC brute force:   454 attempted / 0 unwalked
@@ -29,6 +29,7 @@ Movement components: 3 attempted / 3 complete / 0 errors / 0 empty
 Component envelopes: 3 validated / 90 payload bytes / 5 unused bits
 Component headers: 3 input / 2 discrepancy
 ActiveBlinds trailers: 3 empty deltas
+FocusProjectiles trailers: 0 empty deltas
 """
 
 #: Measured on a live export: 742738 + 0 + 72644 + 171605 + 1996 = 988983
@@ -53,7 +54,7 @@ CLEAN_WITH_CHECKPOINTS = LIVE_EXPORT + """
   Checkpoint fails: 0 array / 0 truncated RPC / 0 movement
   Checkpoint array: 44652 elements / 364594 fields / 0 truncations / 0 root bits / 0 nested bits / 0 implicit ends
   Checkpoint leaf:  0 typed decode errors
-  Checkpoint route children: 40 player info / 10 rewards / 30 selected / 0 kills / 99 active effects / 0 ignore actors / 0 blinds / 0 projectile path
+  Checkpoint route children: 40 player info / 10 rewards / 30 selected / 0 kills / 99 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles
   Checkpoint RPC walks: 0
   Checkpoint reward opaque: 7 empty variants
   Checkpoint movement: 0 failures
@@ -61,12 +62,27 @@ CLEAN_WITH_CHECKPOINTS = LIVE_EXPORT + """
   Checkpoint component envelopes: 0 validated / 0 payload bytes / 0 unused bits
   Checkpoint component headers: 0 input / 0 discrepancy
   Checkpoint ActiveBlinds trailers: 1 empty deltas
+  Checkpoint FocusProjectiles trailers: 0 empty deltas
   Checkpoint CNC:   3 RPC rows
   Checkpoint CNC brute force: 0 attempted / 0 unwalked
 """
 
 
 class ReadCountersTests(unittest.TestCase):
+    def test_focus_counters_are_required_in_each_requested_pass(self):
+        for prefix in ("", "Checkpoint "):
+            with self.subTest(prefix=prefix):
+                label = prefix + "FocusProjectiles trailers:"
+                text = "\n".join(line for line in CLEAN_WITH_CHECKPOINTS.splitlines()
+                                 if not line.strip().startswith(label))
+                counters, error = guard.read_counters(text, 0, require_checkpoints=True)
+                self.assertIsNone(counters)
+                self.assertIn(label, error)
+        text = CLEAN_WITH_CHECKPOINTS.replace(" / 0 focus projectiles", "", 1)
+        counters, error = guard.read_counters(text, 0, require_checkpoints=True)
+        self.assertIsNone(counters)
+        self.assertIn("Route children:", error)
+
     def test_a_summary_reads_as_counters_and_the_checkpoint_block_only_when_asked(self):
         counters, err = guard.read_counters(LIVE_EXPORT, 0)
         self.assertEqual(err, "")
@@ -241,7 +257,7 @@ Movement errors:   0
 Array decode:      10 elements / 40 fields / 0 errors / 0 truncations
 Array residual:    0 root bits / 0 nested bits / 0 implicit ends
 Array leaf errs:   0
-Route children:    1 player info / 1 rewards / 1 selected / 1 kills / 1 active effects / 1 ignore actors / 1 blinds / 1 projectile path
+Route children:    1 player info / 1 rewards / 1 selected / 1 kills / 1 active effects / 1 ignore actors / 1 blinds / 1 projectile path / 0 focus projectiles
 Truncated RPCs:    0
 RPC param walks:   20
 CNC brute force:   4 attempted / 0 unwalked
@@ -249,6 +265,7 @@ Movement components: 5 attempted / 5 complete / 0 errors / 0 empty
 Component envelopes: 5 validated / 150 payload bytes / 7 unused bits
 Component headers: 5 input / 4 discrepancy
 ActiveBlinds trailers: 2 empty deltas
+FocusProjectiles trailers: 0 empty deltas
 """
 
 # Printed only when the gate passed --checkpoints on, as vrfkit does.
@@ -259,13 +276,14 @@ CHECKPOINTS = """
   Checkpoint fails: 0 array / 0 truncated RPC / 0 movement
   Checkpoint array: 30 elements / 90 fields / 0 truncations / 0 root bits / 0 nested bits / 0 implicit ends
   Checkpoint leaf:  0 typed decode errors
-  Checkpoint route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path
+  Checkpoint route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles
   Checkpoint RPC walks: 0
   Checkpoint reward opaque: 0 empty variants
   Checkpoint movement components: 0 attempted / 0 complete / 0 errors / 0 empty
   Checkpoint component envelopes: 0 validated / 0 payload bytes / 0 unused bits
   Checkpoint component headers: 0 input / 0 discrepancy
   Checkpoint ActiveBlinds trailers: 1 empty deltas
+  Checkpoint FocusProjectiles trailers: 0 empty deltas
   Checkpoint CNC brute force: 0 attempted / 0 unwalked
 """
 
@@ -340,7 +358,7 @@ class MainWiringTests(TempDirTestCase):
             "Array residual: 0 root bits / 0 nested bits / 0 implicit ends",
             "Array leaf errs: 0", "Truncated RPCs: 0", "RPC param walks: 20",
             "Route children: 1 player info / 1 rewards / 1 selected / 1 kills / "
-            "1 active effects / 1 ignore actors / 1 blinds / 1 projectile path",
+            "1 active effects / 1 ignore actors / 1 blinds / 1 projectile path / 0 focus projectiles",
             "CNC brute force: 4 attempted / 0 unwalked",
             "Movement components: 5 attempted / 5 complete / 0 errors / 0 empty",
             "Component envelopes: 5 validated / 150 payload bytes / 7 unused bits",

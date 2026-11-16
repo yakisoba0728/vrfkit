@@ -6,13 +6,17 @@ The original environment reconnected later in the same session. Original
 Reader, Gameplay and QA source files were recovered. The interruption
 record below remains a historical receipt; its unavailable-source and
 blocked-execution statements describe that earlier checkpoint. Current
-progress and exact recovered source refs are in [the status ledger](PHASE_C_STATUS.md).
-Functional acceptance is still required; recovery alone does not satisfy it.
+progress and exact recovered source refs are in [the status ledger](PHASE_C_STATUS.md)
+and [Phase C results](PHASE_C_RESULTS.md). The structured interruption receipt
+is intentionally preserved as historical evidence, not a live status report.
+Functional acceptance is tracked separately; recovery alone does not satisfy it.
 
-## Status and accepted source
+## Historical status and accepted source at interruption
 
-**Phase C is blocked by the unavailable execution environment. Functional
-acceptance is not complete, and no final Phase C candidate exists.**
+**At this interruption checkpoint, Phase C was blocked by the unavailable
+execution environment. Functional acceptance was incomplete and no final
+Phase C candidate existed.** The statements and track table below describe
+that point in time, before original source recovery and resumed implementation.
 
 The accepted integration remains
 `588be1effc8dfca2bed8810fd51a006828081c1b`. Main remains

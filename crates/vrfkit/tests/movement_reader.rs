@@ -8,7 +8,7 @@ use common::*;
 use vrf_transform::helpers::{advance_state, initial_prng_b, swap_adjacent_bits_u64};
 use vrf_transform::versions::V12_10;
 use vrf_transform::{SeededTransform, TransformVersion, seed_for};
-use vrfkit::{ReplayEvent, ReplayReader, ValidationVerdict};
+use vrfkit::{CheckpointEvent, ReadOptions, ReplayEvent, ReplayReader, ValidationVerdict};
 
 const ACTOR: u32 = 3;
 const CHARACTER: u32 = 53;
@@ -297,4 +297,96 @@ fn reader_preserves_the_whole_rpc_when_input_component_body_is_unresolved() {
     assert_eq!(summary.network.lost_content_blocks(), 0);
     assert_eq!(summary.network.partial_errors, 0);
     assert_eq!(summary.block_verdict(), ValidationVerdict::Passed);
+}
+
+#[test]
+fn checkpoint_movement_keeps_provenance_raw_rpc_and_all_native_counters() {
+    let main = replay(&[true]);
+    let preamble = vrf_container::parse_preamble(&main).unwrap();
+    let mut chunks = vrf_container::ChunkIterator::new(&main, preamble.remaining_offset);
+    let data = chunks.next_chunk().unwrap().unwrap();
+    let payload = &main[data.data_offset..][..data.size_in_bytes as usize];
+    let (frames, unread) =
+        vrf_container::decompress_replay_data_with_trailing(payload, false, false).unwrap();
+    assert_eq!(unread, 0);
+    let mut combined = main.clone();
+    for index in 0..2 {
+        combined.extend(chunk(2, &checkpoint(index, &checkpoint_tables(&frames), 0)));
+    }
+    let mut main_moves = Vec::new();
+    let mut checkpoint_moves = [Vec::new(), Vec::new()];
+    let mut main_fields = Vec::new();
+    let mut checkpoint_fields = [Vec::new(), Vec::new()];
+    let mut completed = Vec::new();
+    let summary = ReplayReader
+        .read_with_options(
+            &combined,
+            ReadOptions {
+                checkpoints: true,
+                ..ReadOptions::default()
+            },
+            |event| {
+                match event {
+                    ReplayEvent::Records(batch) => {
+                        main_moves.extend(
+                            batch
+                                .movement
+                                .iter()
+                                .zip(batch.movement_provenance)
+                                .map(|(a, b)| (*a, *b)),
+                        );
+                        main_fields.extend_from_slice(batch.fields);
+                    }
+                    ReplayEvent::Checkpoint(CheckpointEvent::Records {
+                        checkpoint,
+                        records,
+                        ..
+                    }) => {
+                        let index = checkpoint.identity.checkpoint_index as usize;
+                        assert_eq!(records.movement.len(), records.movement_provenance.len());
+                        checkpoint_moves[index].extend(
+                            records
+                                .movement
+                                .iter()
+                                .zip(records.movement_provenance)
+                                .map(|(a, b)| (*a, *b)),
+                        );
+                        checkpoint_fields[index].extend_from_slice(records.fields);
+                    }
+                    ReplayEvent::Checkpoint(CheckpointEvent::Summary(summary)) => {
+                        completed.push(summary.clone())
+                    }
+                    _ => {}
+                }
+                Ok::<(), Infallible>(())
+            },
+        )
+        .unwrap();
+    assert_eq!(main_moves.len(), 4);
+    assert!(
+        !main_fields.is_empty(),
+        "unresolved input body must retain raw RPCs"
+    );
+    assert_eq!(summary.checkpoints.movement_rows, 8);
+    assert_eq!(completed.len(), 2);
+    for index in 0..2 {
+        assert_eq!(
+            format!("{:?}", checkpoint_moves[index]),
+            format!("{main_moves:?}")
+        );
+        assert_eq!(
+            format!("{:?}", checkpoint_fields[index]),
+            format!("{main_fields:?}")
+        );
+        assert_eq!(completed[index].movement_rows, 4);
+        assert_eq!(completed[index].decode_counters, summary.decode_counters);
+        assert_eq!(
+            completed[index].network.counters(),
+            summary.network.counters()
+        );
+        assert_eq!(
+            completed[index].decode_counters["movement_component_streams"],
+            2
+        );
+    }
 }
