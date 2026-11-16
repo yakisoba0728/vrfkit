@@ -1,12 +1,13 @@
-# Phase B benchmark handoff
+# Phase C benchmark handoff
 
-**Performance comparisons are now user-run.** At the user's request, the
+**Performance comparisons are user-run.** At the user's request, the
 agents stopped quantitative and repeated replay benchmarking. This runbook
 prepares a reproducible comparison for the user; its commands are not a
 record of measurements already executed. Functional tests, replay output
-checks and CI remain separate acceptance work. No final Phase B speed, CPU
+checks and CI remain separate acceptance work. No final Phase C speed, CPU
 or peak-RSS improvement is claimed here. Earlier profiling and rejected
-experiments keep their original scope and history.
+experiments keep their original scope and history. The existing filename is
+retained so earlier links continue to work.
 
 The existing [resource harness](RESOURCE_BENCHMARKS.md),
 `tools/benchmark_resources.py`, already provides alternating pairs, resource
@@ -17,10 +18,38 @@ performance.
 
 ## 1. Choose the comparison before running it
 
+### Phase C output-contract prerequisite
+
+The old Phase A baseline `9c133fb423c521d7df25b6ef19cb546fa489de4e` was the
+baseline for the historical Phase B handoff, not a compatible default for
+Phase C. The FocusProjectiles change introduces two required summary/manifest
+counters, `route_children_focus_projectiles` and
+`focus_projectiles_empty_trailers`, and 53 additive main field rows on the
+public 12.05 fixture. An old executable lacks the new counters even on inputs
+where their values would be zero. The current harness therefore rejects that
+cross-contract pairing; it must not be reported as a performance regression
+or a successful equivalent-work comparison.
+
+Do not remove the new children, omit required counters, or weaken manifest
+and table equality to make old and new revisions compare. Use two accepted
+revisions with the same functional/output contract. The accepted final
+Phase C revision can be the baseline for a later separately verified
+optimization candidate. Until such a pair exists, the user may run the
+same-executable control and inspect its absolute resource measurements, but
+a same-executable ratio is not an improvement claim. A separately authorized
+same-contract backport would require its own functional acceptance first;
+none is created or implied by this handoff.
+
+**Candidate status:** the final accepted integration SHA must be recorded in
+the final Phase C receipt. The placeholders below are intentionally not a
+certified candidate while combined-source QA and final integration remain
+pending. Do not substitute a task branch, an author smoke-test binary, or a
+historical Phase B receipt.
+
 | Input | Required choice |
 | --- | --- |
-| Baseline | Phase A integration `9c133fb423c521d7df25b6ef19cb546fa489de4e` |
-| Candidate | The **full final integration commit ID after functional acceptance**, supplied in the final Phase B receipt. A branch name, an intermediate agent commit or a local QA snapshot is not a substitute. |
+| Baseline | A full accepted commit ID with the same output/counter contract as the candidate; not the old Phase A/Phase B default |
+| Candidate | The **full final integration commit ID after functional acceptance**, supplied in the final Phase C receipt, or a later independently accepted same-contract optimization candidate. A branch name, an intermediate agent commit or a local QA snapshot is not a substitute. |
 | Compiler and target | Rust/Cargo 1.86.0, the same target triple, host, linker and native compiler for both builds |
 | Features and profile | Default `export` features, `--release`, `--locked`, repository release profile: optimization 3, fat LTO, one codegen unit, debug level 1 |
 | Dependency selection | Identical `Cargo.lock` bytes; stop and explain a dependency change before comparing |
@@ -43,20 +72,22 @@ resource metrics. macOS has documented RSS unit handling; native Windows
 can run the harness but reports CPU, RSS and block I/O as `null`. Use the
 platform actually intended for the comparison and keep its results separate.
 
-Run from a repository checkout containing this handoff. Edit the three
-explicit values below. The candidate must be available locally after fetching
-the accepted integration branch. The benchmark root must be a new directory
-outside the repository and outside the replay directory.
+Run from a repository checkout containing this handoff. Edit both full commit
+IDs and both absolute paths below. Both revisions must be available locally
+after fetching the accepted branches and must satisfy the same-contract
+prerequisite above. The benchmark root must be a new directory outside the
+repository and outside the replay directory.
 
 ```bash
 set -euo pipefail
 
 VRFKIT_BENCH_REPO=$(git rev-parse --show-toplevel)
-VRFKIT_BENCH_BASE=9c133fb423c521d7df25b6ef19cb546fa489de4e
+VRFKIT_BENCH_BASE=PASTE_FULL_ACCEPTED_SAME_CONTRACT_BASELINE_COMMIT
 VRFKIT_BENCH_FINAL=PASTE_FULL_ACCEPTED_INTEGRATION_COMMIT
 VRFKIT_BENCH_ROOT=/absolute/path/to/new-private-benchmark
 VRFKIT_BENCH_REPLAY=/absolute/path/to/unchanged-match.vrf
 
+[[ "$VRFKIT_BENCH_BASE" =~ ^[0-9a-f]{40}$ ]]
 [[ "$VRFKIT_BENCH_FINAL" =~ ^[0-9a-f]{40}$ ]]
 git -C "$VRFKIT_BENCH_REPO" cat-file -e "$VRFKIT_BENCH_BASE^{commit}"
 git -C "$VRFKIT_BENCH_REPO" cat-file -e "$VRFKIT_BENCH_FINAL^{commit}"
@@ -168,7 +199,10 @@ storage location and any unavoidable activity in a private experiment note.
 There is no exclusive-host or cold-cache guarantee.
 
 The following runs one same-binary control, then the paired comparison, both
-with checkpoints. Each work directory and JSON report must be new:
+with checkpoints. Each work directory and JSON report must be new. Run the
+paired comparison only after choosing a same-contract baseline; setting both
+revisions to the accepted Phase C SHA provides a control, not evidence of an
+optimization:
 
 ```bash
 VRFKIT_BENCH_HARNESS="$VRFKIT_BENCH_ROOT/source-candidate/tools/benchmark_resources.py"
@@ -241,7 +275,7 @@ default enriched NDJSON output has a different contract; these reports cannot
 support a competitor-performance claim. See the
 [pinned comparison](REFERENCE_COMPARISON.md#integration-contracts-at-the-pinned-revision).
 An end-to-end revision comparison also cannot isolate the contribution of any
-one Phase B change.
+one Phase C change.
 
 ## 5. Keep functional acceptance separate
 
