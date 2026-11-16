@@ -56,12 +56,32 @@ player identifiers or payload contents:
 cargo +1.86.0 run --release -p vrfkit --no-default-features --example stream_replay -- match.vrf
 ```
 
-`read_path` reads the whole file into memory. If you already have the bytes,
-`reader.read(&bytes, callback)` borrows them without another whole-file copy.
-Output is streamed; this API does not yet stream the input from `Read`/`Seek`.
-The parser keeps replay state, reusable packet buffers, the current decompressed
-chunk and at most one prefetched decompressed ReplayData chunk. The consumer
-controls how much output it retains.
+`read_path` opens the file read-only and reads it one container chunk at a
+time. It retains a reusable encoded-chunk buffer, the current decompressed
+chunk and at most one prepared chunk ahead. Checkpoint, repeated Header and
+unknown payloads are range-checked before seeking past them. Checkpoints are
+still counted as skipped, not decoded. Metadata parsing buffers the format's
+bounded info prefix and the declared Header payload, then releases them.
+
+If you already have the bytes, `reader.read(&bytes, callback)` borrows them
+without another whole-file copy. Both input paths use the same decode pass,
+callback ordering and quality counters. The CLI's existing file-loading and
+Parquet paths are unchanged by this Reader input improvement.
+
+Input memory scales with the largest encoded chunk, current and prefetched
+decoded chunks, metadata and parser state, rather than total file size.
+An individual Event payload and Header payload are still buffered in full;
+there is no new fixed total-memory guarantee. The consumer controls how much
+output it retains. Generic streaming from an arbitrary `Read` source is not
+part of the high-level Reader API; the file path requires seeking.
+
+Keep the input file unchanged until the read returns. File-backed input is
+not an immutable snapshot. A detected length change or I/O failure aborts the
+read, but a same-length concurrent rewrite is not guaranteed to be detected.
+Use `read(&bytes, ...)` on an owned snapshot if that isolation is required.
+
+The [input-streaming measurements](READER_INPUT_STREAMING.md) record the
+memory comparison, rejected scheduling experiment and exact evidence scope.
 
 ## Callback and ownership contract
 
@@ -87,6 +107,9 @@ Return `Err(your_error)` from a callback to stop delivery. `ReadError::Consumer`
 returns the original error type and value; no later callback runs. A frame
 reader may finish unwinding its current chunk, but a later parser error does
 not replace the consumer error. Parser and I/O errors use `ReadError::Replay`.
+The decompression helper notices cancellation at its next send. It may finish
+its current decompression or scan intervening non-ReplayData headers first;
+callback cancellation does not promise immediate termination of all I/O.
 The API does not print errors or diagnostics automatically. Consumer panics
 propagate normally.
 
@@ -179,8 +202,8 @@ Zero is a real limit: zero groups rejects even empty group declarations, and
 zero slots allows only empty groups within the group limit. Raising a budget
 increases the allocation an input can request. These limits do not constrain
 the input file, native Event payloads, decompressed chunks, GUID mappings or
-consumer storage. `read_path_with_schema_limits` still buffers the complete
-file before parsing. Checkpoint contents remain skipped and outside this
+consumer storage. `read_path_with_schema_limits` uses the same chunk-based
+file input as `read_path`. Checkpoint contents remain skipped and outside this
 Reader API's validation scope.
 
 A refused declaration fails the read before allocating its field slots.

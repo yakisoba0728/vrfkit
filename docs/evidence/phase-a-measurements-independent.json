@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "reader": {
+    "reader-input-1209-primary.json": {
+      "report_sha256": "5394c74fdf40acae625217bfaafe6751a61beb8a0d098d309e4ee1c937eba299",
+      "exports_or_reads": 12,
+      "measured_pairs": 5,
+      "recomputed_paired_ratios": {
+        "wall_seconds": 1.269531412240385,
+        "cpu_total_seconds": 0.99265769154586,
+        "peak_rss_bytes": 0.2531352131944972
+      }
+    },
+    "reader-input-1209-prefetch.json": {
+      "report_sha256": "a7c4b481cdedddc5dcf2278329c8541fef187b4d056a51c052ce98c49f59ee00",
+      "exports_or_reads": 12,
+      "measured_pairs": 5,
+      "recomputed_paired_ratios": {
+        "wall_seconds": 0.9741465619034413,
+        "cpu_total_seconds": 1.0214646716362055,
+        "peak_rss_bytes": 0.4632450708505869
+      }
+    },
+    "reader-input-1205-prefetch.json": {
+      "report_sha256": "842984b4373ec6b2d160a50da360eb30b9d17001742bf9ab0bb6a7d115c4ea2c",
+      "exports_or_reads": 12,
+      "measured_pairs": 5,
+      "recomputed_paired_ratios": {
+        "wall_seconds": 1.0169586119661658,
+        "cpu_total_seconds": 0.9939234863357205,
+        "peak_rss_bytes": 0.3647465328726274
+      }
+    },
+    "reader-input-1209-control.json": {
+      "report_sha256": "4d1ee58702df2b99752faf18346bf628750b15edfab36dd219c3b7e4a47ec15a",
+      "exports_or_reads": 12,
+      "measured_pairs": 5,
+      "recomputed_paired_ratios": {
+        "wall_seconds": 0.916451334866651,
+        "cpu_total_seconds": 0.946865194370418,
+        "peak_rss_bytes": 0.9997543399934491
+      }
+    }
+  },
+  "reader_public_parity_receipt_sha256": "b9945c0b84d7e81418747a084f7592c21678d4b6def5d74926068073315e1ec0",
+  "reader_public_parity_rows_reviewed": 6,
+  "performance": {
+    "1209-checkpoints": {
+      "report_sha256": "7e972b4ea51ad83e8b537652c75e80dc05996181812579a0957973156bf3d79f",
+      "exports_or_reads": 16,
+      "measured_pairs": 7,
+      "recomputed_paired_ratios": {
+        "wall_seconds": 0.8793351728684516,
+        "cpu_total_seconds": 0.9835987091187474,
+        "peak_rss_bytes": 0.9979953642798972
+      }
+    },
+    "1205-main": {
+      "report_sha256": "a6558a552eddc5b96eaee126d2fe21a00d1b0a10ee1bf5a34b1086d672b10460",
+      "exports_or_reads": 16,
+      "measured_pairs": 7,
+      "recomputed_paired_ratios": {
+        "wall_seconds": 0.9728466319378098,
+        "cpu_total_seconds": 0.949747027825149,
+        "peak_rss_bytes": 1.0153244722439405
+      }
+    },
+    "same-binary": {
+      "report_sha256": "c5d1a2277ca70ae6c469b9def196ac7c2de0d9f4731e132f3f9c4af56e8451c8",
+      "exports_or_reads": 12,
+      "measured_pairs": 5,
+      "recomputed_paired_ratios": {
+        "wall_seconds": 0.9742091190253631,
+        "cpu_total_seconds": 1.039398414508303,
+        "peak_rss_bytes": 0.9973026659696811
+      }
+    },
+    "1209-reversed": {
+      "report_sha256": "60520ccef0389afece321fe7b95a66ab1a2d553b0c1732ef3c8d17d86127dd69",
+      "exports_or_reads": 16,
+      "measured_pairs": 7,
+      "recomputed_paired_ratios": {
+        "wall_seconds": 1.0436947668445662,
+        "cpu_total_seconds": 0.9831005190298385,
+        "peak_rss_bytes": 0.9986944070080862
+      }
+    }
+  },
+  "performance_exports_reviewed": 60,
+  "performance_table_fingerprints_reviewed": 668,
+  "decision": "withdrawal supported; reverse-label CPU direction changes and same-binary variation preclude a stable improvement claim",
+  "scope": "Independent arithmetic and receipt consistency review, not a new timing run or replay decode; fingerprints are recorded author evidence."
+}

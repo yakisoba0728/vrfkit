@@ -1,0 +1,27 @@
+{
+  "status": "passed",
+  "source_commit": "16345d94c2a35e50aeb1c1a98012e19cbd38b448",
+  "binary_sha256": "ffee1414bda3716083348c99ee909f7d1a04b02d13fedaa68f977ae6e1d8b0d9",
+  "inputs": 6,
+  "checkpoints": 76,
+  "tables_byte_identical": 78,
+  "runtime_source_mismatches": [],
+  "counters": {
+    "oracle_passed_blocks": 1958155,
+    "oracle_scored_blocks": 1958155,
+    "main_unresolved_rpc_payloads_preserved": 22561,
+    "main_rpc_loss": 0,
+    "checkpoint_unresolved_rpc_payloads_preserved": 0,
+    "checkpoint_rpc_loss": 0,
+    "checkpoint_chunks": 76,
+    "typed_values_compared": 60169,
+    "type_width_failures": 0,
+    "typed_mismatches": 0
+  },
+  "commands": [
+    "cargo +1.86.0 build --release -p vrfkit --locked",
+    "python -W error tools/verify_build_corpus.py --exe <frozen-exe> --corpus <six-public-inputs> --work-dir <new-audit> --output <new-report> --jobs 1",
+    "python -W error docs/verification/phase_a_final_cli_outputs.py <native-accepted-exports> <combined-exports> <new-parity-report>"
+  ],
+  "scope": "Freshly built combined Native+Reader default-feature CLI; independent Reader behavioral/memory QA is a separate receipt. Only elapsed_ms differs from Native-accepted manifests."
+}

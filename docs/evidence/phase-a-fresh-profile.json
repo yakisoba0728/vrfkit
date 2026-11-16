@@ -1,0 +1,831 @@
+{
+  "schema_version": 1,
+  "started_utc": "2026-11-16T06:57:03.160711+00:00",
+  "status": "completed",
+  "purpose": "diagnostic stage attribution, not an optimization comparison",
+  "provenance": {
+    "baseline": {
+      "sha256": "e6b855ed2ea154260a30bca8606eefa15454e1b76cecca09a0e886e07d096a69",
+      "bytes": 38547424
+    },
+    "profile": {
+      "sha256": "3fdba9c2bf4cda7f5d324a3d32eb0f83205b4e24e0687e7099d07f05cf0892cd",
+      "bytes": 38688208
+    },
+    "input": {
+      "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "bytes": 61015648
+    }
+  },
+  "samples": [
+    {
+      "order": 0,
+      "variant": "baseline",
+      "measurements": {
+        "wall_seconds": 2.289524446001451,
+        "cpu_user_seconds": 5.078715,
+        "cpu_system_seconds": 0.685758,
+        "cpu_total_seconds": 5.764473,
+        "cpu_utilization_percent": 251.77599697908383,
+        "peak_rss_bytes": 198193152,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87336,
+        "input_mib_per_second": 25.415346186020805,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676171
+      },
+      "profile": [],
+      "output_fingerprint": "865b3859a6c645b660d0c25795110c2b58965aad2aad27ee0c4bb41c74b770e8",
+      "equivalent": true
+    },
+    {
+      "order": 1,
+      "variant": "profile",
+      "measurements": {
+        "wall_seconds": 2.284100977001799,
+        "cpu_user_seconds": 5.000876,
+        "cpu_system_seconds": 0.543856,
+        "cpu_total_seconds": 5.544732,
+        "cpu_utilization_percent": 242.75336580251516,
+        "peak_rss_bytes": 198189056,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87344,
+        "input_mib_per_second": 25.475693492704348,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676171
+      },
+      "profile": [
+        {
+          "label": "input_read",
+          "wall_ns": 54246859
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointFieldsTable",
+          "rows": 439892,
+          "build_ns": 82104246,
+          "drop_ns": 35200830,
+          "encode_ns": 218319881,
+          "close_ns": 3225735
+        },
+        {
+          "label": "thread checkpoint_fields",
+          "wall_ns": 708972748,
+          "cpu_ns": 287054156
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointActorsTable",
+          "rows": 3970,
+          "build_ns": 1709325,
+          "drop_ns": 718611,
+          "encode_ns": 2032443,
+          "close_ns": 1232891
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointNetGuidsTable",
+          "rows": 100639,
+          "build_ns": 14054581,
+          "drop_ns": 2756071,
+          "encode_ns": 23244172,
+          "close_ns": 1687953
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointBlocksTable",
+          "rows": 27930,
+          "build_ns": 16151218,
+          "drop_ns": 2712647,
+          "encode_ns": 32771398,
+          "close_ns": 2603817
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointGuidEntriesTable",
+          "rows": 100639,
+          "build_ns": 8859888,
+          "drop_ns": 3626826,
+          "encode_ns": 24128921,
+          "close_ns": 2058551
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportGroupsTable",
+          "rows": 10296,
+          "build_ns": 891636,
+          "drop_ns": 977173,
+          "encode_ns": 1686551,
+          "close_ns": 516723
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportFieldsTable",
+          "rows": 61164,
+          "build_ns": 6072911,
+          "drop_ns": 3099458,
+          "encode_ns": 29685431,
+          "close_ns": 554630
+        },
+        {
+          "label": "thread main",
+          "wall_ns": 2169104137,
+          "cpu_ns": 2128436927
+        },
+        {
+          "label": "table vrf_export::tables::fields::FieldsTable",
+          "rows": 1657000,
+          "build_ns": 258429713,
+          "drop_ns": 57213577,
+          "encode_ns": 788257798,
+          "close_ns": 3477737
+        },
+        {
+          "label": "thread fields",
+          "wall_ns": 2176092083,
+          "cpu_ns": 1073823887
+        },
+        {
+          "label": "table vrf_export::tables::movement::MovementTable",
+          "rows": 2634029,
+          "build_ns": 39233161,
+          "drop_ns": 7916,
+          "encode_ns": 865004407,
+          "close_ns": 1712870
+        },
+        {
+          "label": "thread movement",
+          "wall_ns": 2179436905,
+          "cpu_ns": 840072166
+        },
+        {
+          "label": "table vrf_export::tables::actors::ActorsTable",
+          "rows": 4600,
+          "build_ns": 2099772,
+          "drop_ns": 556272,
+          "encode_ns": 1889977,
+          "close_ns": 1851154
+        },
+        {
+          "label": "table vrf_export::tables::events::EventsTable",
+          "rows": 254,
+          "build_ns": 78826,
+          "drop_ns": 49634,
+          "encode_ns": 338450,
+          "close_ns": 4095179
+        },
+        {
+          "label": "table vrf_export::tables::partials::PartialsTable",
+          "rows": 0,
+          "build_ns": 0,
+          "drop_ns": 0,
+          "encode_ns": 0,
+          "close_ns": 20360
+        },
+        {
+          "label": "table vrf_export::tables::net_guids::NetGuidsTable",
+          "rows": 20566,
+          "build_ns": 1116488,
+          "drop_ns": 283949,
+          "encode_ns": 1829202,
+          "close_ns": 692623
+        },
+        {
+          "label": "moves",
+          "calls": 2634029,
+          "samples": 2573,
+          "total_sample_ns": 194987,
+          "median_sample_ns": 70,
+          "p95_sample_ns": 110
+        }
+      ],
+      "output_fingerprint": "865b3859a6c645b660d0c25795110c2b58965aad2aad27ee0c4bb41c74b770e8",
+      "equivalent": true
+    },
+    {
+      "order": 2,
+      "variant": "profile",
+      "measurements": {
+        "wall_seconds": 1.888766174997727,
+        "cpu_user_seconds": 4.657095,
+        "cpu_system_seconds": 0.235254,
+        "cpu_total_seconds": 4.892349,
+        "cpu_utilization_percent": 259.023539533997,
+        "peak_rss_bytes": 196993024,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87344,
+        "input_mib_per_second": 30.807972509648742,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676171
+      },
+      "profile": [
+        {
+          "label": "input_read",
+          "wall_ns": 38058918
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointFieldsTable",
+          "rows": 439892,
+          "build_ns": 85414062,
+          "drop_ns": 22452911,
+          "encode_ns": 182544779,
+          "close_ns": 3800995
+        },
+        {
+          "label": "thread checkpoint_fields",
+          "wall_ns": 625029755,
+          "cpu_ns": 261247364
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointActorsTable",
+          "rows": 3970,
+          "build_ns": 1968728,
+          "drop_ns": 1180153,
+          "encode_ns": 1291538,
+          "close_ns": 775906
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointNetGuidsTable",
+          "rows": 100639,
+          "build_ns": 10388974,
+          "drop_ns": 3011569,
+          "encode_ns": 17140347,
+          "close_ns": 1570269
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointBlocksTable",
+          "rows": 27930,
+          "build_ns": 10093920,
+          "drop_ns": 3162590,
+          "encode_ns": 14153397,
+          "close_ns": 2023218
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointGuidEntriesTable",
+          "rows": 100639,
+          "build_ns": 10627017,
+          "drop_ns": 4275145,
+          "encode_ns": 18871857,
+          "close_ns": 1495199
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportGroupsTable",
+          "rows": 10296,
+          "build_ns": 731692,
+          "drop_ns": 801033,
+          "encode_ns": 1567977,
+          "close_ns": 528201
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportFieldsTable",
+          "rows": 61164,
+          "build_ns": 5387819,
+          "drop_ns": 2646839,
+          "encode_ns": 16550868,
+          "close_ns": 465247
+        },
+        {
+          "label": "thread main",
+          "wall_ns": 1790448079,
+          "cpu_ns": 1746568261
+        },
+        {
+          "label": "table vrf_export::tables::fields::FieldsTable",
+          "rows": 1657000,
+          "build_ns": 241677569,
+          "drop_ns": 66928029,
+          "encode_ns": 814737121,
+          "close_ns": 4745223
+        },
+        {
+          "label": "thread fields",
+          "wall_ns": 1803577383,
+          "cpu_ns": 1138461849
+        },
+        {
+          "label": "table vrf_export::tables::movement::MovementTable",
+          "rows": 2634029,
+          "build_ns": 43222391,
+          "drop_ns": 9309,
+          "encode_ns": 747931687,
+          "close_ns": 2531172
+        },
+        {
+          "label": "thread movement",
+          "wall_ns": 1808873323,
+          "cpu_ns": 767628668
+        },
+        {
+          "label": "table vrf_export::tables::actors::ActorsTable",
+          "rows": 4600,
+          "build_ns": 1597898,
+          "drop_ns": 552469,
+          "encode_ns": 1720800,
+          "close_ns": 1316010
+        },
+        {
+          "label": "table vrf_export::tables::events::EventsTable",
+          "rows": 254,
+          "build_ns": 66829,
+          "drop_ns": 18538,
+          "encode_ns": 357320,
+          "close_ns": 293555
+        },
+        {
+          "label": "table vrf_export::tables::partials::PartialsTable",
+          "rows": 0,
+          "build_ns": 0,
+          "drop_ns": 0,
+          "encode_ns": 0,
+          "close_ns": 18227
+        },
+        {
+          "label": "table vrf_export::tables::net_guids::NetGuidsTable",
+          "rows": 20566,
+          "build_ns": 762781,
+          "drop_ns": 226035,
+          "encode_ns": 2129676,
+          "close_ns": 1087822
+        },
+        {
+          "label": "moves",
+          "calls": 2634029,
+          "samples": 2573,
+          "total_sample_ns": 214906,
+          "median_sample_ns": 70,
+          "p95_sample_ns": 120
+        }
+      ],
+      "output_fingerprint": "865b3859a6c645b660d0c25795110c2b58965aad2aad27ee0c4bb41c74b770e8",
+      "equivalent": true
+    },
+    {
+      "order": 3,
+      "variant": "baseline",
+      "measurements": {
+        "wall_seconds": 2.096438778000447,
+        "cpu_user_seconds": 4.713382,
+        "cpu_system_seconds": 0.23496199999999998,
+        "cpu_total_seconds": 4.9483440000000005,
+        "cpu_utilization_percent": 236.03570263662357,
+        "peak_rss_bytes": 191430656,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87336,
+        "input_mib_per_second": 27.75614389845634,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676171
+      },
+      "profile": [],
+      "output_fingerprint": "865b3859a6c645b660d0c25795110c2b58965aad2aad27ee0c4bb41c74b770e8",
+      "equivalent": true
+    },
+    {
+      "order": 4,
+      "variant": "baseline",
+      "measurements": {
+        "wall_seconds": 1.8245975999998336,
+        "cpu_user_seconds": 4.410186,
+        "cpu_system_seconds": 0.231016,
+        "cpu_total_seconds": 4.641202000000001,
+        "cpu_utilization_percent": 254.36852487367207,
+        "peak_rss_bytes": 201809920,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87336,
+        "input_mib_per_second": 31.891446309306602,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676171
+      },
+      "profile": [],
+      "output_fingerprint": "865b3859a6c645b660d0c25795110c2b58965aad2aad27ee0c4bb41c74b770e8",
+      "equivalent": true
+    },
+    {
+      "order": 5,
+      "variant": "profile",
+      "measurements": {
+        "wall_seconds": 1.8063872429993353,
+        "cpu_user_seconds": 4.165764,
+        "cpu_system_seconds": 0.18773099999999998,
+        "cpu_total_seconds": 4.353495000000001,
+        "cpu_utilization_percent": 241.0056324784177,
+        "peak_rss_bytes": 195534848,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87344,
+        "input_mib_per_second": 32.21294693150453,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676171
+      },
+      "profile": [
+        {
+          "label": "input_read",
+          "wall_ns": 39132629
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointFieldsTable",
+          "rows": 439892,
+          "build_ns": 57613345,
+          "drop_ns": 29378895,
+          "encode_ns": 151111155,
+          "close_ns": 4146333
+        },
+        {
+          "label": "thread checkpoint_fields",
+          "wall_ns": 486498321,
+          "cpu_ns": 232267619
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointActorsTable",
+          "rows": 3970,
+          "build_ns": 1129444,
+          "drop_ns": 384309,
+          "encode_ns": 1401406,
+          "close_ns": 733186
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointNetGuidsTable",
+          "rows": 100639,
+          "build_ns": 8779700,
+          "drop_ns": 2463950,
+          "encode_ns": 13378760,
+          "close_ns": 1314898
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointBlocksTable",
+          "rows": 27930,
+          "build_ns": 8098688,
+          "drop_ns": 1670494,
+          "encode_ns": 14146849,
+          "close_ns": 1741400
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointGuidEntriesTable",
+          "rows": 100639,
+          "build_ns": 5745634,
+          "drop_ns": 2231298,
+          "encode_ns": 15299898,
+          "close_ns": 1336030
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportGroupsTable",
+          "rows": 10296,
+          "build_ns": 674499,
+          "drop_ns": 378120,
+          "encode_ns": 988294,
+          "close_ns": 338432
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportFieldsTable",
+          "rows": 61164,
+          "build_ns": 4292270,
+          "drop_ns": 2029778,
+          "encode_ns": 15470881,
+          "close_ns": 351270
+        },
+        {
+          "label": "thread main",
+          "wall_ns": 1706409651,
+          "cpu_ns": 1684742229
+        },
+        {
+          "label": "table vrf_export::tables::fields::FieldsTable",
+          "rows": 1657000,
+          "build_ns": 209623190,
+          "drop_ns": 59579085,
+          "encode_ns": 687440825,
+          "close_ns": 4257658
+        },
+        {
+          "label": "thread fields",
+          "wall_ns": 1724256257,
+          "cpu_ns": 942111392
+        },
+        {
+          "label": "table vrf_export::tables::movement::MovementTable",
+          "rows": 2634029,
+          "build_ns": 33397241,
+          "drop_ns": 8204,
+          "encode_ns": 630746326,
+          "close_ns": 1797202
+        },
+        {
+          "label": "thread movement",
+          "wall_ns": 1731355461,
+          "cpu_ns": 653770314
+        },
+        {
+          "label": "table vrf_export::tables::actors::ActorsTable",
+          "rows": 4600,
+          "build_ns": 1431561,
+          "drop_ns": 398700,
+          "encode_ns": 1570077,
+          "close_ns": 1044738
+        },
+        {
+          "label": "table vrf_export::tables::events::EventsTable",
+          "rows": 254,
+          "build_ns": 101551,
+          "drop_ns": 19639,
+          "encode_ns": 452540,
+          "close_ns": 259705
+        },
+        {
+          "label": "table vrf_export::tables::partials::PartialsTable",
+          "rows": 0,
+          "build_ns": 0,
+          "drop_ns": 0,
+          "encode_ns": 0,
+          "close_ns": 21382
+        },
+        {
+          "label": "table vrf_export::tables::net_guids::NetGuidsTable",
+          "rows": 20566,
+          "build_ns": 795718,
+          "drop_ns": 212394,
+          "encode_ns": 1707500,
+          "close_ns": 723211
+        },
+        {
+          "label": "moves",
+          "calls": 2634029,
+          "samples": 2573,
+          "total_sample_ns": 229795,
+          "median_sample_ns": 80,
+          "p95_sample_ns": 111
+        }
+      ],
+      "output_fingerprint": "865b3859a6c645b660d0c25795110c2b58965aad2aad27ee0c4bb41c74b770e8",
+      "equivalent": true
+    }
+  ],
+  "unmeasured": [
+    "allocation counts",
+    "allocated bytes",
+    "isolated disk I/O time"
+  ],
+  "equivalent": true,
+  "output": {
+    "tables": {
+      "actors.parquet": {
+        "bytes": 87545,
+        "sha256": "92d09756cf4a723af4287ca974cef88d0a512db0e4cad53f1a63e42031f3731e"
+      },
+      "events.parquet": {
+        "bytes": 14801,
+        "sha256": "98373fab8deeb28abd823269718b5cef81b679bbd7be16ca709e8f2408aaa7eb"
+      },
+      "fields.parquet": {
+        "bytes": 16182850,
+        "sha256": "1f2523163d6d1127b88557ec23f9ab2e904ad1fe02a36bdd1fdbbc2a61d9403c"
+      },
+      "movement.parquet": {
+        "bytes": 24917591,
+        "sha256": "6d58428843e2729cf18270045d24c0e00cc1428ac289847b6a2c860402edad3b"
+      },
+      "net_guids.parquet": {
+        "bytes": 140325,
+        "sha256": "59d05749ccd076ace8cfa7832d4a5040d5f88c7f6a462d35783125db10ab6552"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 32426,
+        "sha256": "20b6206ecd12f9ac2c9045cb8b05632b806b4e44bd68eeb4b3e40804e5496122"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 149291,
+        "sha256": "7ab65e55538ff5daf91c32953adb2a4a0748840d333d41735f4e046fd5856422"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 113797,
+        "sha256": "dd1f8688d33f2a868f423cc034945b30503e4bf27f371ebadfbea7f4eb76fdc0"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 16991,
+        "sha256": "b04551eb2ff9867e37d382efeece9514319a922fc0a22fa1f11787ad7133596d"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 1739291,
+        "sha256": "6a42d730d77221d722b90ce57665c48ead426de4e7158a9e4fc355a93b0efeed"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 315643,
+        "sha256": "02935b9404740b5fdca110a80b20bb7ab3176db40e743f5f7f48c6c383a0d0a0"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 271066,
+        "sha256": "f47be39e8a0ccdec7c5d1893a84dd90f6c70e82528539249b1bb5921ae978c88"
+      }
+    },
+    "manifest_sha256": "2236099dc871de63f5d751290c84f9343da53d643c8b4f38675b5e3ace827bf3",
+    "counters": {
+      "chunks": 22,
+      "unknown_chunks": 0,
+      "frame_external_data_blobs": 0,
+      "frame_external_data_bytes": 0,
+      "frame_game_specific_bytes": 0,
+      "frame_non_finite_times": 0,
+      "packets": 681831,
+      "export_groups": 500,
+      "content_blocks": 792498,
+      "rep_layout_blocks": 355205,
+      "class_net_cache_blocks": 437293,
+      "fields": 584487,
+      "rpcs": 428523,
+      "actor_opens": 2424,
+      "actor_closes": 2176,
+      "partial_rows": 0,
+      "partial_bits": 0,
+      "fields_emitted": 1657000,
+      "rpcs_emitted": 428523,
+      "sink_actor_opens": 2424,
+      "sink_actor_closes": 2176,
+      "sink_content_blocks": 792498,
+      "bunches": 681831,
+      "malformed_packets": 0,
+      "skipped_bits": 33939219,
+      "movement_rows": 2634029,
+      "net_guid_rows": 20566,
+      "event_rows": 254,
+      "struct_blobs_decoded": 243,
+      "struct_blobs_failed": 0,
+      "movement_rpc_errors": 0,
+      "movement_component_streams": 2616931,
+      "movement_component_complete": 2616931,
+      "movement_component_errors": 0,
+      "movement_component_empty": 0,
+      "movement_component_envelopes": 2616931,
+      "movement_component_payload_bytes": 90191658,
+      "movement_component_unused_bits": 9432555,
+      "movement_component_input_headers": 2616931,
+      "movement_component_discrepancy_headers": 2189286,
+      "array_elements_decoded": 23986,
+      "array_fields_emitted": 85517,
+      "array_errors": 0,
+      "array_truncations": 0,
+      "array_unconsumed_root_bits": 0,
+      "array_unconsumed_nested_bits": 0,
+      "array_implicit_terminations": 0,
+      "array_leaf_decode_errors": 0,
+      "targeting_world_locations_decoded": 70,
+      "route_children_player_information": 403,
+      "route_children_tracked_rewards": 10499,
+      "route_children_selected_v2": 4100,
+      "route_children_kill_data": 1744,
+      "route_children_server_active_effects": 3494,
+      "route_children_requested_ignore_actors": 3827,
+      "route_children_active_blinds": 0,
+      "route_children_projectile_path": 1248,
+      "tracked_rewards_opaque_empty_variants": 7,
+      "active_blinds_empty_trailers": 0,
+      "truncated_rpcs": 0,
+      "rpc_param_walks": 138221,
+      "event_layout_mismatches": 0,
+      "event_payloads_decoded": 254,
+      "event_payload_unknown_groups": 0,
+      "cnc_rpcs_emitted": 8198,
+      "cnc_bruteforce_payloads_attempted": 7854,
+      "cnc_bruteforce_payloads_unwalked": 0,
+      "rep_layout_cnc_tails_decoded": 344,
+      "rep_layout_cnc_tails_preserved": 55,
+      "cp_chunks": 21,
+      "cp_partial_rows": 0,
+      "cp_partial_bits": 0,
+      "cp_trailing_bytes": 0,
+      "cp_guid_entries": 100639,
+      "cp_literal_paths": 77219,
+      "cp_indexed_paths": 23420,
+      "cp_resolved_path_indices": 23420,
+      "cp_group_records": 10296,
+      "cp_exported_fields": 61164,
+      "cp_frames": 21,
+      "cp_frame_packets": 4920,
+      "cp_frame_external_data_blobs": 0,
+      "cp_frame_external_data_bytes": 0,
+      "cp_frame_game_specific_bytes": 0,
+      "cp_frame_non_finite_times": 0,
+      "cp_field_rows": 439892,
+      "cp_actor_rows_written": 3970,
+      "cp_net_guid_rows_written": 100639,
+      "cp_block_rows_written": 27930,
+      "cp_guid_entry_rows_written": 100639,
+      "cp_export_group_rows_written": 10296,
+      "cp_export_field_rows_written": 61164,
+      "cp_overlay_decoded_ok": 74913,
+      "cp_overlay_decode_errors": 0,
+      "cp_overlay_raw_skip": 5863,
+      "cp_overlay_not_in_table": 19717,
+      "cp_overlay_no_field_name": 3519,
+      "cp_overlay_handle_conflicts_refused": 0,
+      "cp_effect_blobs_decoded": 0,
+      "cp_struct_blobs_decoded": 241,
+      "cp_struct_blobs_failed": 0,
+      "cp_fields_emitted": 439892,
+      "cp_rpcs_emitted": 200,
+      "cp_sink_actor_opens": 3970,
+      "cp_sink_actor_closes": 0,
+      "cp_sink_content_blocks": 27930,
+      "cp_array_errors": 0,
+      "cp_truncated_rpcs": 0,
+      "cp_movement_rpc_errors": 0,
+      "cp_array_elements_decoded": 39751,
+      "cp_array_fields_emitted": 324172,
+      "cp_array_truncations": 0,
+      "cp_array_unconsumed_root_bits": 0,
+      "cp_array_unconsumed_nested_bits": 0,
+      "cp_array_implicit_terminations": 0,
+      "cp_array_leaf_decode_errors": 0,
+      "cp_targeting_world_locations_decoded": 0,
+      "cp_route_children_player_information": 6300,
+      "cp_route_children_tracked_rewards": 9394,
+      "cp_route_children_selected_v2": 86100,
+      "cp_route_children_kill_data": 17556,
+      "cp_route_children_server_active_effects": 5458,
+      "cp_route_children_requested_ignore_actors": 0,
+      "cp_route_children_active_blinds": 0,
+      "cp_route_children_projectile_path": 0,
+      "cp_rpc_param_walks": 0,
+      "cp_tracked_rewards_opaque_empty_variants": 0,
+      "cp_active_blinds_empty_trailers": 0,
+      "cp_movement_component_streams": 0,
+      "cp_movement_component_complete": 0,
+      "cp_movement_component_errors": 0,
+      "cp_movement_component_empty": 0,
+      "cp_movement_component_envelopes": 0,
+      "cp_movement_component_payload_bytes": 0,
+      "cp_movement_component_unused_bits": 0,
+      "cp_movement_component_input_headers": 0,
+      "cp_movement_component_discrepancy_headers": 0,
+      "cp_cnc_rpcs_emitted": 200,
+      "cp_cnc_bruteforce_payloads_attempted": 0,
+      "cp_cnc_bruteforce_payloads_unwalked": 0,
+      "cp_rep_layout_cnc_tails_decoded": 200,
+      "cp_rep_layout_cnc_tails_preserved": 0,
+      "overlay_decoded_ok": 1068423,
+      "overlay_decode_errors": 0,
+      "overlay_raw_skip": 29753,
+      "overlay_not_in_table": 161660,
+      "overlay_no_field_name": 1819,
+      "overlay_rows_offered": 1261655,
+      "effect_blobs_decoded": 61451
+    },
+    "output_bytes": 44676171,
+    "parquet_bytes": 43984122
+  },
+  "summary": {
+    "baseline": {
+      "wall_seconds": 2.096438778000447,
+      "cpu_user_seconds": 4.713382,
+      "cpu_system_seconds": 0.23496199999999998,
+      "cpu_total_seconds": 4.9483440000000005,
+      "cpu_utilization_percent": 251.77599697908383,
+      "peak_rss_bytes": 198193152,
+      "input_mib_per_second": 27.75614389845634,
+      "io_input_blocks": 0,
+      "io_output_blocks": 87336,
+      "output_bytes": 44676171,
+      "parquet_bytes": 43984122
+    },
+    "profile": {
+      "wall_seconds": 1.888766174997727,
+      "cpu_user_seconds": 4.657095,
+      "cpu_system_seconds": 0.235254,
+      "cpu_total_seconds": 4.892349,
+      "cpu_utilization_percent": 242.75336580251516,
+      "peak_rss_bytes": 196993024,
+      "input_mib_per_second": 30.807972509648742,
+      "io_input_blocks": 0,
+      "io_output_blocks": 87344,
+      "output_bytes": 44676171,
+      "parquet_bytes": 43984122
+    }
+  },
+  "finished_utc": "2026-11-16T06:57:16.604358+00:00",
+  "provenance_after": {
+    "baseline": {
+      "sha256": "e6b855ed2ea154260a30bca8606eefa15454e1b76cecca09a0e886e07d096a69",
+      "bytes": 38547424
+    },
+    "profile": {
+      "sha256": "3fdba9c2bf4cda7f5d324a3d32eb0f83205b4e24e0687e7099d07f05cf0892cd",
+      "bytes": 38688208
+    },
+    "input": {
+      "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "bytes": 61015648
+    }
+  },
+  "original_source_commit": "97e6c59cbf956437d6f4cf3c985a1ac4f814fce5",
+  "original_native_build_commit": "2e3526fb867c58400046b5d294aa58d01496e11a",
+  "native_runtime_source_files_matching_receipt": 151,
+  "instrumentation_patch_sha256": "0b7b746507fec99ce628a83d07200272b13ac13ea001d492b0dcc3031b7cf24b",
+  "profile_method": {
+    "thread_cpu": "Linux /proc/thread-self/schedstat runtime delta",
+    "stage_wall": "Instant around every batch build, clear, write, close",
+    "moves": "deterministic first and every 1024th call, thread-local aggregation",
+    "limitations": [
+      "Not a stack-sampling profiler",
+      "Instrumentation changes code generation",
+      "Stage wall times overlap across threads",
+      "Sampled movement timings are diagnostic, not a precise total CPU estimate"
+    ]
+  },
+  "setup_errors": {
+    "missing_vrf_extension": "Public 12.09 input has .replay extension; fixed before any export",
+    "python_stat_typo": "One preparatory export completed and matched its baseline fingerprint before wrapper TypeError; not included in accepted series"
+  }
+}
