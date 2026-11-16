@@ -60,7 +60,8 @@ cargo +1.86.0 run --release -p vrfkit --no-default-features --example stream_rep
 time. It retains a reusable encoded-chunk buffer, the current decompressed
 chunk and at most one prepared chunk ahead. Checkpoint, repeated Header and
 unknown payloads are range-checked before seeking past them. Checkpoints are
-still counted as skipped, not decoded. Metadata parsing buffers the format's
+counted as skipped by default. `read_path_with_options` can explicitly enable
+snapshot callbacks, as described below. Metadata parsing buffers the format's
 bounded info prefix and the declared Header payload, then releases them.
 
 If you already have the bytes, `reader.read(&bytes, callback)` borrows them
@@ -91,6 +92,7 @@ memory comparison, rejected scheduling experiment and exact evidence scope.
 | `Metadata(&Preamble)` | Info and header, once before any decoded output. A full read has already checked the branch is supported. |
 | `Records(ReplayRecords)` | Borrowed fields, movement samples, actor lifecycle rows and rejected partials from one packet. Empty batches are omitted. A final batch flushes unfinished partials. |
 | `ContainerEvent(EventChunk)` | The native Event chunk and its exact declared payload. The payload is borrowed; unknown groups stay available. This is not an inferred gameplay event. |
+| `Checkpoint(CheckpointEvent)` | Opt-in independent snapshot metadata, declarations, records and completion; never mixed with `Records`. |
 
 Callbacks run synchronously in file order. Timestamps need not be sorted.
 Field, actor and movement slices use reusable parser buffers and cannot outlive
@@ -134,10 +136,10 @@ before the metadata callback. Metadata-only success is not a decode check.
 
 ## Scope and quality
 
-The initial API decodes the **ReplayData stream and native Event chunks**.
-Checkpoint snapshots are independent streams and are not decoded here:
-`skipped_checkpoint_chunks` reports how many were encountered. Use the existing
-`export --checkpoints` command for checkpoint output and verification.
+The default API decodes the **ReplayData stream and native Event chunks**.
+Checkpoint snapshots are independent streams; default methods report them in
+`skipped_checkpoint_chunks`. Opt-in checkpoint callbacks use the exact decoder
+that drives `export --checkpoints`, including declarations and block boundaries.
 
 `summary.block_verdict()` uses the exact `validate` acceptance rule. It covers
 framed ReplayData blocks and its documented transport failures; it does not
@@ -204,8 +206,9 @@ zero slots allows only empty groups within the group limit. Raising a budget
 increases the allocation an input can request. These limits do not constrain
 the input file, native Event payloads, decompressed chunks, GUID mappings or
 consumer storage. `read_path_with_schema_limits` uses the same chunk-based
-file input as `read_path`. Checkpoint contents remain skipped and outside this
-Reader API's validation scope.
+file input as `read_path`. These legacy methods still skip checkpoints. The
+`ReadOptions` methods combine limits with optional snapshot decoding; each
+snapshot receives its own fresh cache with the same limits.
 
 A refused declaration fails the read before allocating its field slots.
 Earlier callbacks remain provisional, and no successful summary is returned.
@@ -243,9 +246,9 @@ schemas unchanged. The library and CLI share the parser, so both inherit the
 fixes and resource policies of the source revision in use. Pin a revision
 when integrating the source API and review its migration notes before
 updating. Commit the application's Cargo lockfile for reproducible dependencies.
-The shared implementation does not add a separate decoding pass. Rust consumers can replace subprocess
-execution with the reader when they need main-stream records, while keeping
-the existing CLI for checkpoint exports.
+The shared implementation does not add a second decoder. Rust consumers can
+replace subprocess execution with callbacks for main and checkpoint records;
+the CLI remains available for staged Parquet publication.
 
 ### Typed schema errors
 
@@ -259,3 +262,94 @@ retains the schema cause instead of ending at the frame boundary.
 Existing `ReplayReader`, `ReplayReader::new()`, `Default`, `read` and
 `read_path` calls remain valid. The configurable methods are additive, and
 default limits, CLI arguments and Parquet schemas are unchanged.
+
+## Optional checkpoint callbacks
+
+```rust
+use std::convert::Infallible;
+use vrfkit::{CheckpointEvent, ReadOptions, ReplayEvent, ReplayReader};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let summary = ReplayReader.read_path_with_options(
+        "match.vrf",
+        ReadOptions { checkpoints: true, ..ReadOptions::default() },
+        |event| {
+            if let ReplayEvent::Checkpoint(CheckpointEvent::Records {
+                checkpoint, records, blocks,
+            }) = event {
+                // These packet/GUID namespaces belong only to this snapshot.
+                let identity = &checkpoint.identity;
+                let _ = (identity, records.fields, blocks);
+            }
+            Ok::<(), Infallible>(())
+        },
+    )?;
+    println!("{} snapshots completed", summary.checkpoints.chunks);
+    Ok(())
+}
+```
+
+`read_with_options(&bytes, options, callback)` provides the equivalent borrowed
+slice input. `stream_checkpoints` is a runnable example that prints aggregate
+counts only and works without default features:
+
+```bash
+cargo +1.86.0 run -p vrfkit --no-default-features --example stream_checkpoints -- match.vrf
+```
+
+Every snapshot is decoded at its container position. Its callbacks are:
+
+1. `Metadata`: observed zero-based checkpoint index, wire ID, group, metadata,
+   both wire header timestamps, archive size and trailing-byte count. Wire IDs
+   may repeat; use index plus ID. Frame timestamps remain unchanged in records.
+2. `GuidEntry`, `ExportGroup`, `ExportField`: exact declaration order, including
+   original path variants, flags, sparse slots, checksums and FName metadata.
+3. `Records`: one packet's field/actor/movement/provenance/partial rows and
+   exact content-block boundaries. Batches with only empty blocks are delivered.
+   Rejected partials are flushed before completion, labelled `checkpoint` and
+   with their own checkpoint ID. Movement is a snapshot observation, not a
+   timeline update; the CLI continues to count and omit checkpoint movement.
+4. `Summary`: this snapshot's detached counters, final GUID snapshot and limited
+   diagnostic lists. Clone it inside the callback to keep it. Empty snapshots
+   still produce metadata and a summary, with zero frames or records as observed.
+
+Each snapshot starts a fresh parser, channel map, schema cache and GUID map.
+Its packet IDs restart from zero; main packet IDs continue independently.
+The `CheckpointBlockRecord.field_row_start` value addresses the combined
+checkpoint field stream across all snapshots, matching the CLI table contract.
+The block index restarts for each snapshot. Main summary counters, final GUIDs
+and `block_verdict()` retain their original main-only meaning. The separate
+`summary.checkpoints` contains completed snapshot totals; detailed counters
+are available in each snapshot summary, including all nine native component
+counters. Enabling checkpoints makes `skipped_checkpoint_chunks` zero because
+every encountered snapshot must complete for a successful return.
+
+File input buffers one checkpoint body in the reusable event/checkpoint buffer
+and its decoded archive. It does not retain all snapshots or a whole-file copy.
+Record slices and declaration references are callback-scoped. Callers own any
+retained copies. Schema limits bound groups and field slots in each independent
+cache; they do not impose a fixed total memory bound.
+
+### Failure ordering and migration
+
+Reader traversal stops at the first structural failure in file order. An
+earlier invalid checkpoint wins over a later main chunk, even if the main
+prefetch worker already found its error; an earlier main failure wins over a
+later checkpoint. An original consumer error outranks a later error encountered
+while the current frame walk unwinds. No later callback runs after that error.
+No final `ReplaySummary` is returned on any failure. A checkpoint `Summary`
+signals only that snapshot's completion and remains provisional until the
+enclosing call succeeds. In contrast, the CLI retains its existing concurrent
+two-pass policy: it joins the checkpoint worker and a main-pass error takes
+precedence. The callback ordering contract is sequential and intentionally
+does not promise that parallel CLI error ordering.
+
+Existing reader constructors and methods remain valid and retain checkpoint
+skipping. `ReplayEvent` was already `#[non_exhaustive]`; external exhaustive
+matches already needed a wildcard. Handle its new `Checkpoint` variant only
+when opting in. `ReplayError::CheckpointSchema { checkpoint, error }` replaces
+the old CLI-only rendered usage error for checkpoint table/schema failures.
+Its displayed text is unchanged, and its source retains the typed
+`SchemaError`, including resource refusals. Consumers matching every
+`ReplayError` variant must add this variant or a wildcard. CLI commands,
+Parquet columns and existing main counters are unchanged.

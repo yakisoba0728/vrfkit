@@ -640,7 +640,6 @@ impl<'a> ExportSink<'a> {
         self.measured_array_routes.admits(route)
     }
 
-    #[cfg(feature = "export")]
     pub(super) fn enable_checkpoint_block_context(
         &mut self,
         checkpoint: CheckpointIdentity,
