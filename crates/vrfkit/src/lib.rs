@@ -32,6 +32,7 @@ mod diagnose;
 #[cfg(feature = "export")]
 mod driver;
 mod error;
+pub mod gameplay;
 mod inspect;
 #[cfg(feature = "export")]
 mod manifest;
