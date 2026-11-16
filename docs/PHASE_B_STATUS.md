@@ -33,22 +33,46 @@ baseline, requires the final accepted integration commit, isolates Cargo build
 targets and records source/compiler-artifact/binary provenance before any
 comparison. It uses the existing resource harness and same-binary controls.
 
-At this later checkpoint, **seven unique subagents** have actually been
-created: the six roles A, C, D, F, E and B, plus E's independent read-only
-QA-harness reviewer. At most three non-root agents ran simultaneously, plus
-the coordinator. A, B, C, D and F completed their handoffs; E's additional
-reviewer completed its check, and E is executing final combined functional QA.
-Resuming A for independent handoff review and F for the benchmark runbook did
-not create new unique agents. Completion of a role is not merge, CI or
-performance acceptance. The initial allocation table below remains historical.
+**Seven unique subagents** were actually created: the six roles A, C, D, F,
+E and B, plus E's independent read-only QA-harness reviewer. At most three
+non-root agents ran simultaneously, plus the coordinator. All seven produced
+implementation or review evidence; F continues final-head CI monitoring.
+Resuming A or F did not create another unique agent. No worker failure was
+observed. The initial allocation table below remains historical.
 
-Source checkpoints are published on `phase-b/cli-input`, `phase-b/events` and
-`phase-b/performance`; the latter branches include their preceding runtime
-dependencies for combined validation. All task PRs will target the existing
-integration branch. The latest exact heads and acceptance state are recorded
-on PR #58. No Phase B task is merged at this preparation checkpoint.
+## Accepted runtime checkpoint
 
-## Assigned work
+The coordinator merged PRs #65, #66 and #67 after independent combined-source
+QA and 11/11 successful CI jobs on each task head. Integration is now
+`e294fcf13c2d66ff47d45067341eb6f6e32eb27f`, tree
+`c76a2f1fc5dcbf4285538c6531fe6e5e4bc300ae`. Its actual post-merge push run
+`43836533296` passed 11/11 jobs and Draft PR #58 run `43836541263` passed
+10/10. Main remains `9ece4ab84dee62cbf8bf34b7996d2efb0593f9c9`.
+
+| Role | Branch | Accepted work |
+| --- | --- | --- |
+| A | `phase-b/profiling` | Earlier profiling preserved; independent review of user-run benchmark handoff completed without real measurements |
+| B | `phase-b/performance` | PR #67 merged; group-path dictionary operation reduction, independently tested |
+| C | `phase-b/cli-input` | PR #65 merged; bounded validate/export input and checkpoint parity |
+| D | `phase-b/events` | PR #66 merged; optional validated gameplay observations |
+| E | `phase-b/qa` | Combined functional acceptance, fresh public replay oracles and eight mutation controls completed |
+| F | `phase-b/dx` | Adoption/examples and benchmark runbook prepared for the fourth task PR; runtime CI receipts complete |
+| E's reviewer | Read-only | Independent QA-harness controls reviewed and addressed |
+
+The [results](PHASE_B_RESULTS.md) separate the six fresh public replay checks,
+78 byte-identical Parquet files, 862 gameplay observations, typed/raw and
+movement checks, full suites and historical comparison data. All 133 runtime
+source/config hashes matched between the independent frozen QA source and
+actual runtime integration. Quantitative speed/CPU/RSS acceptance is deferred
+to the user and is not claimed.
+
+This ledger is included in the fourth, documentation-only task PR. The
+terminal [PR #58 receipt](https://github.com/yakisoba0728/vrfkit/pull/58)
+identifies that PR, its accepted head, the final documentation merge SHA and
+the separately executed final integration/Draft PR CI. Use that full final
+SHA for later benchmarking, not the intermediate runtime SHA above.
+
+## Historical initial allocation
 
 | Role | Branch | State at initial checkpoint |
 | --- | --- | --- |
@@ -83,9 +107,17 @@ has not been revalidated and no private corpus execution is claimed.
 - Keep at most four core task PRs and record unsuccessful experiments rather
   than adopting uncertain performance changes.
 
-## Resume
+## Resume and remaining work
 
 Read the newest checkpoint on [PR #58](https://github.com/yakisoba0728/vrfkit/pull/58)
 and resolve current remote branches before continuing. Apply the later user
-policy above rather than the initial performance plan. This ledger does not
-claim final Phase B functional acceptance, performance acceptance or a merge.
+policy above rather than the initial performance plan. Runtime functionality
+is accepted; final documentation publication and final-head CI are recorded
+in the terminal PR receipt so this report does not claim that an earlier run
+tested its own later documentation commit.
+
+Further quantitative evaluation is user-run. Reader checkpoint callbacks,
+nonseekable input, richer player/round/movement joins and a fresh private-corpus
+audit remain separate work. Main merge, formal releases and registry
+publication remain excluded. Once the final-head gates are observed and the
+terminal receipt is posted, Phase B stops at that recorded integration SHA.

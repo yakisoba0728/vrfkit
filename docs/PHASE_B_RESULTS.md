@@ -4,10 +4,17 @@ Phase B continues integration `9c133fb423c521d7df25b6ef19cb546fa489de4e`.
 The main branch remains outside this work. PR #58 stays open and draft;
 releases and registry publication are not part of this phase.
 
-This document is prepared before final acceptance. The latest checkpoint on
-[PR #58](https://github.com/yakisoba0728/vrfkit/pull/58) is authoritative for
-accepted task heads, actual integration commits and their CI results. Pending
-checks below must not be read as successful executions.
+The runtime changes passed independent acceptance and were merged through
+PRs #65, #66 and #67. Their combined integration commit is
+`e294fcf13c2d66ff47d45067341eb6f6e32eb27f`, tree
+`c76a2f1fc5dcbf4285538c6531fe6e5e4bc300ae`. Its post-merge integration CI passed
+11/11 jobs and Draft PR #58 CI passed 10/10 jobs.
+
+This tracked report accompanies the fourth, documentation-only task PR. The
+terminal receipt on [PR #58](https://github.com/yakisoba0728/vrfkit/pull/58)
+records that PR, the final documentation merge commit and CI executed on the
+actual final integration revision. The runtime checkpoint above must not be
+substituted for that later final revision in a user-run comparison.
 
 ## Changed performance policy
 
@@ -111,17 +118,102 @@ correctness checks identify their actual dev/test profile; required hosted
 checks independently validate the optimized release package. No alternate
 profile is presented as a repository-default release measurement.
 
-## Independent acceptance and publication
+## Independent acceptance
 
-Independent combined-source QA, meaningful implementation mutations, the full
-local sweep, each task PR's required CI and actual final integration CI are
-pending at this preparation checkpoint. Their exact source heads, outcomes and
-limitations will be recorded before this phase is marked complete.
+The [independent QA record](evidence/phase_b/independent_qa/README.md)
+accepts the combined runtime source without a blocking finding. The local full sweep used source
+`9800679c8747fb1f2bcda6b2736bb0053c04206c`; fresh replay checks used
+`2fbead4f716f12f7c5d41ff067ff4ee63a55dc90`, which adds only the dictionary
+implementation record. Every one of the 133 tracked runtime source/config
+hashes matched the actual merged runtime integration commit. The
+[source correspondence receipt](evidence/phase-b-runtime-source-correspondence.json)
+separates local source verification from hosted synthetic-merge checks.
 
-The six primary roles were actually created, and the independent QA role
-created one additional read-only harness reviewer. Resuming a role does not
-create another unique agent. The final receipt records observed completion
-counts and concurrency rather than the planned allocation.
+| Check | Observed result and scope |
+| --- | --- |
+| Rust 1.86 local workspace | 826 tests passed; no failed or ignored tests |
+| Core-only runtime | 169 `vrfkit` tests and 39 container tests passed |
+| Python | 1,178 tests passed |
+| Feature matrix | 27 core-only/singleton cases passed |
+| Static/documentation checks | rustfmt, all-target/all-feature Clippy with denied warnings, strict Rustdoc, measured documentation, ASCII and schema/type generators passed |
+| Rust/Python interoperability | Exported Rust Parquet was accepted by the PyArrow verifier |
+| Public replay scope | Fresh executions on 12.05, 12.08, 12.09, 12.10, 12.11 and 13.00; 76 decoded checkpoints |
+| Export equivalence | All 78 Parquet files byte-identical to accepted Phase A outputs; nonvolatile manifests and summary/native counters equal |
+| Independent typed/raw values | 60,169 values across 16 specified identities; no missing identity, raw-width error or value mismatch |
+| Gameplay | 862 fresh observations: 560 native and 302 phase observations; zero value, multiplicity or source-order differences |
+| Movement reference | Three public small fixtures; 16,748 unique wire updates representing 16,899 moves; no missing reference update, extra Rust component or latest-move mismatch after f32 quantization |
+| Meaningful failure controls | All eight implementation mutations failed their intended assertions; clean restoration passed 22 Reader/CLI/gameplay and 24 export tests |
+
+Fresh gameplay observations were checked against independently decoded raw
+values from fresh combined-source exports. The movement comparison instead
+uses frozen C# outputs with checked content hashes and reference manifest
+revision `fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8`; C# was not rerun. It covers
+main-stream variant-1 movement components and the reference's latest move per
+update. Earlier moves are counted, but their values are not emitted by that
+reference. Decimal reference differences before f32 quantization remain in
+the receipts; this is not an exact-byte equality claim between JSON and
+Parquet representations.
+
+The frozen local CLI and probes were explicitly built with the Cargo test
+profile, optimization level 2, no debug information or incremental builds,
+with debug assertions and overflow checks enabled. They are not the default
+release binaries. Sources were hashed and clean executables frozen before
+mutation builds; source restoration alone is not binary restoration. All
+frozen executable hashes remained unchanged after QA.
+
+The separate QA-harness reviewer identified three controls that were applied:
+freeze the clean executables before mutants, reject Python optimized mode
+that would disable assertions, and verify the reference revision from its
+manifest. A discovery pass that found only three `.vrf` files was rejected as
+six-input evidence. The accepted rerun used read-only, SHA-pinned aliases for
+the three `.replay` inputs and verified all six. No private replay was run.
+
+## Pull requests and hosted CI
+
+Only the coordinator merged task PRs, all into the existing integration
+branch. Each runtime PR passed 11/11 required jobs on its exact head; the
+tested synthetic tree was checked against the merged tree. When preceding
+PRs changed the base, the regenerated synthetic merge tree was checked again.
+
+| Task PR | Accepted head | Integration merge |
+| --- | --- | --- |
+| [#65: bounded CLI input](https://github.com/yakisoba0728/vrfkit/pull/65) | `384d0c043c4a00b0087c45b3ef8655b1c22a04c7` | `a6eb925586f182867d4230996d45c45282495405` |
+| [#66: gameplay observations](https://github.com/yakisoba0728/vrfkit/pull/66) | `45f787c460b8d7a54876572d3c7e6a1aeb01dafc` | `9b71c9d61ef1c89a415a2161536c74c4da75ce6e` |
+| [#67: dictionary operation reduction](https://github.com/yakisoba0728/vrfkit/pull/67) | `d56daa16f4c67052cc0eff1556599ace4046b60f` | `e294fcf13c2d66ff47d45067341eb6f6e32eb27f` |
+
+The [task CI receipt](evidence/phase-b-runtime-pr-ci.json) retains run, job,
+checkout and log evidence. The final runtime PR observed 826 Linux and 827
+Windows Rust tests; each of its four Python jobs passed 1,178 tests. Rust
+1.86.0 and stable 1.100.0, Windows/Linux, the feature matrix, strict
+documentation, public replay checks and the Windows release package passed.
+Earlier runtime PRs have the smaller test inventories appropriate to their
+source. The [integration receipt](evidence/phase-b-runtime-integration.json)
+records merge gates, commits and current-branch checks.
+
+The combined runtime push run
+[43836533296](https://github.com/yakisoba0728/vrfkit/actions/runs/43836533296)
+passed 11/11 jobs; Draft PR #58 run
+[43836541263](https://github.com/yakisoba0728/vrfkit/actions/runs/43836541263)
+passed 10/10. These runs validate the merged runtime tree. The fourth task PR
+and actual final documentation merge receive their own CI before the terminal
+receipt is published; earlier successful runs are not labeled as final-head
+executions. The [post-merge CI receipt](evidence/phase-b-runtime-postmerge-ci.json)
+records all 21 job outcomes, checkout identities and selected log evidence.
+
+## Actual agent execution
+
+Seven unique non-root agents were created: A profiling, B implementation,
+C CLI/Reader, D gameplay, E independent QA, F adoption/CI, and E's additional
+read-only QA-harness reviewer. The maximum observed concurrency was three
+non-root agents plus the coordinator, four total. Resuming A or F did not
+create another unique agent.
+
+All seven produced their assigned implementation or review evidence. F's
+final-head CI monitoring continues through the publication gate; the terminal
+receipt records terminal completion counts. No worker failure was observed.
+Local compiler SIGKILLs, rejected stale artifacts and the interrupted resource
+session are separately recorded execution outcomes, not successful tests or
+failed-agent counts.
 
 ## Remaining scope
 
