@@ -147,17 +147,55 @@ process memory. The input buffer, decompressed chunks, strings, GUID mappings
 and retained consumer output require additional memory. See
 [Schema allocation limits](SCHEMA_LIMITS.md).
 
-The initial Reader API does not accept custom schema limits or an injected
-cache. `vrf_schema::NetGuidCache::with_limits` configures a cache used directly
-by lower-level parser integrations; creating such a cache does not alter
-`ReplayReader`.
+Use `read_with_schema_limits` or `read_path_with_schema_limits` to choose
+budgets for one complete main-stream read:
 
-A main-stream schema declaration that exceeds the limits fails the read.
-Earlier callbacks remain provisional. The low-level schema API returns
-`SchemaError::ResourceLimit`; the existing frame boundary renders that error
-into `FrameError::Schema(String)`, which reaches the Reader through
-`ReadError::Replay`. Checkpoint contents remain outside this Reader API's
-validation scope.
+```rust
+use std::convert::Infallible;
+use vrfkit::{ReplayReader, SchemaLimits};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let limits = SchemaLimits {
+        max_groups: 1_024,
+        max_field_slots: 65_536,
+    };
+    let summary = ReplayReader::new().read_path_with_schema_limits(
+        "match.vrf",
+        limits,
+        |_| Ok::<(), Infallible>(()),
+    )?;
+    println!("{} movement rows", summary.movement_rows);
+    Ok(())
+}
+```
+
+For bytes already in memory, call
+`reader.read_with_schema_limits(&bytes, limits, callback)`. The configured
+cache accumulates declarations across every ReplayData chunk of this read.
+Each later read starts fresh; its limits never inherit another call's choices.
+`read` and `read_path` keep using `SchemaLimits::default()`.
+
+Zero is a real limit: zero groups rejects even empty group declarations, and
+zero slots allows only empty groups within the group limit. Raising a budget
+increases the allocation an input can request. These limits do not constrain
+the input file, native Event payloads, decompressed chunks, GUID mappings or
+consumer storage. `read_path_with_schema_limits` still buffers the complete
+file before parsing. Checkpoint contents remain skipped and outside this
+Reader API's validation scope.
+
+A refused declaration fails the read before allocating its field slots.
+Earlier callbacks remain provisional, and no successful summary is returned.
+The error reaches the Reader through `ReadError::Replay`; its
+`std::error::Error::source()` chain retains `SchemaError::ResourceLimit` with
+the actual resource, requested amount and configured limit. `SchemaError` is
+re-exported by `vrfkit` so callers can downcast sources without parsing error
+messages. Malformed schema errors retain their distinct typed causes too.
+A consumer error still returns the original `E` and takes precedence over a
+later schema refusal encountered while the current frame chunk unwinds.
+
+Lower-level integrations can continue using
+`vrf_schema::NetGuidCache::with_limits` directly. Creating a separate cache
+does not configure a `ReplayReader` call.
 
 ## Compatibility
 
@@ -169,3 +207,16 @@ updating. Commit the application's Cargo lockfile for reproducible dependencies.
 The shared implementation does not add a separate decoding pass. Rust consumers can replace subprocess
 execution with the reader when they need main-stream records, while keeping
 the existing CLI for checkpoint exports.
+
+### Typed schema errors
+
+`FrameError::Schema` now contains `vrf_schema::SchemaError` instead of a
+rendered `String`. This is a source API change for callers that construct or
+destructure that variant. Match the schema variant to distinguish resource
+policy from corrupt data; call `error.to_string()` when a string is needed.
+The formatted CLI message is unchanged. The standard error source chain now
+retains the schema cause instead of ending at the frame boundary.
+
+Existing `ReplayReader`, `ReplayReader::new()`, `Default`, `read` and
+`read_path` calls remain valid. The configurable methods are additive, and
+default limits, CLI arguments and Parquet schemas are unchanged.

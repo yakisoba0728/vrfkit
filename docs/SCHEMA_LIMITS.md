@@ -72,6 +72,21 @@ prevent that caller from allocating outside the declaration APIs.
 Downstream exhaustive `SchemaError` matches must handle the new
 `ResourceLimit` variant. No exported column or valid-value decoding changes.
 
+The high-level `vrfkit::ReplayReader` accepts the same `SchemaLimits` through
+`read_with_schema_limits(data, limits, callback)` and
+`read_path_with_schema_limits(path, limits, callback)`. Limits apply to the
+entire main stream, including declarations in later ReplayData chunks, and
+reset on the next call. Existing `read` and `read_path` calls use defaults.
+See the [Reader configuration example](RUST_API.md#resource-limits).
+
+`FrameError::Schema` now retains `SchemaError` as its typed source instead of
+converting it to a `String`. Existing displayed messages are unchanged, and
+`ReadError::Replay` exposes the cause through the standard error source chain.
+Downstream code constructing or destructuring `FrameError::Schema(String)`
+must handle the typed payload; use `to_string()` for logging. Checkpoint error
+types already retain the schema source. The high-level Reader still skips
+checkpoints, and its path method still buffers the complete input file.
+
 ## Observed public-fixture margin
 
 The following figures were measured from checkpoint declaration Parquet files

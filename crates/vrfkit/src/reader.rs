@@ -9,6 +9,7 @@ use vrf_decode::OverlayErrorRow;
 use vrf_export::{ActorRecord, FieldRecord, MovementRecord, NetGuidRecord, PartialRecord};
 use vrf_frame::FrameSkips;
 use vrf_net::stats::NetStats;
+use vrf_schema::SchemaLimits;
 
 use crate::error::CliError;
 use crate::oracle::{Verdict, verdict_from_stats};
@@ -158,10 +159,33 @@ impl ReplayReader {
     pub fn read<E>(
         &self,
         data: &[u8],
+        consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
+    ) -> Result<ReplaySummary, ReadError<E>> {
+        self.read_with_schema_limits(data, SchemaLimits::default(), consumer)
+    }
+
+    /// Decode with explicit limits for this read's replay-wide schema cache.
+    ///
+    /// The limits cover registered groups and declared field slots, including
+    /// empty slots. They do not bound total memory, input or decompressed
+    /// buffers, strings, GUID mappings or output retained by the consumer.
+    /// Zero is allowed: zero groups refuses every declaration; zero slots
+    /// allows only empty groups. Raising a limit increases the allocation an
+    /// input can request. Checkpoints are still skipped.
+    ///
+    /// A refused declaration returns [`ReadError::Replay`]. Its error source
+    /// chain retains [`crate::SchemaError::ResourceLimit`] with the requested
+    /// amount and limit; no success summary is returned. Earlier callbacks
+    /// remain provisional, and consumer errors keep [`Self::read`]'s priority.
+    /// Limits and parser state never carry over to a later read.
+    pub fn read_with_schema_limits<E>(
+        &self,
+        data: &[u8],
+        schema_limits: SchemaLimits,
         mut consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
     ) -> Result<ReplaySummary, ReadError<E>> {
         let mut consumer_error = None;
-        let result = read_main_stream(data, |event| {
+        let result = read_main_stream(data, schema_limits, |event| {
             consumer(event).map_err(|error| {
                 consumer_error = Some(error);
                 CliError::Usage("replay consumer stopped".to_owned())
@@ -180,8 +204,21 @@ impl ReplayReader {
         path: impl AsRef<Path>,
         consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
     ) -> Result<ReplaySummary, ReadError<E>> {
+        self.read_path_with_schema_limits(path, SchemaLimits::default(), consumer)
+    }
+
+    /// Buffer a whole file, then decode it with [`Self::read_with_schema_limits`].
+    ///
+    /// Schema limits apply after reading the input and do not bound its size.
+    /// The file is only opened for reading. See [`Self::read_path`] for scope.
+    pub fn read_path_with_schema_limits<E>(
+        &self,
+        path: impl AsRef<Path>,
+        schema_limits: SchemaLimits,
+        consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
+    ) -> Result<ReplaySummary, ReadError<E>> {
         let data = std::fs::read(path).map_err(CliError::from)?;
-        self.read(&data, consumer)
+        self.read_with_schema_limits(&data, schema_limits, consumer)
     }
 }
 
@@ -223,11 +260,12 @@ impl RowCounts {
 
 fn read_main_stream(
     data: &[u8],
+    schema_limits: SchemaLimits,
     mut consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), CliError>,
 ) -> Result<ReplaySummary, CliError> {
     let metadata = parse_preamble(data)?;
     let replay = Replay::new(&metadata);
-    let mut pass = Pass::new(&replay)?;
+    let mut pass = Pass::with_schema_limits(&replay, schema_limits)?;
     consumer(ReplayEvent::Metadata(&metadata))?;
 
     let mut stats = ExportStats::default();
