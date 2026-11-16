@@ -7,24 +7,11 @@
 
 #![forbid(unsafe_code)]
 
-mod cli;
-mod diagnose;
-#[cfg(feature = "export")]
-mod driver;
-mod error;
-mod inspect;
-#[cfg(feature = "export")]
-mod manifest;
-mod oracle;
-mod pass;
-mod report;
-mod sink;
-
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
-    match cli::run(&args) {
+    match vrfkit::run_cli(&args) {
         // Not always SUCCESS: `validate` returns its own code (`oracle::Verdict`).
         Ok(code) => ExitCode::from(code),
         Err(e) => {

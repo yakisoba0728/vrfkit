@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "CLI for inspecting, validating, and exporting VALORANT replay files"
+description = "Rust reader API and CLI for inspecting, validating, and exporting VALORANT replays"
 
 [[bin]]
 name = "vrfkit"

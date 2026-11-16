@@ -1,7 +1,7 @@
 # vrfkit
 
 A Rust toolkit that parses VALORANT replay files (`.vrf`, Unreal Engine network
-replay format) and exports them to Parquet. A workspace of 10 crates (plus a
+replay format), streams records through a Rust API and exports them to Parquet. A workspace of 10 crates (plus a
 test-only `dev/vrf-testkit` and the `extract-component-classes` tool) and a
 Python `tools/` validation suite. `#![forbid(unsafe_code)]` is in every crate;
 there is no `unsafe` block anywhere in the workspace. The only native FFI the
@@ -29,8 +29,8 @@ and through [`fbf24b6`](https://github.com/michel-giehl/ValorantReplayParser/com
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Test suites (2026-11-16):** **767 Rust tests (Windows)**,
-**766 Rust tests (non-Windows)** and **1108 Python tests**.
+**Test suites (2026-11-16):** **775 Rust tests (Windows)**,
+**774 Rust tests (non-Windows)** and **1108 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -148,12 +148,15 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
   the kill log: 132/132 in order on one 13.01 replay, 9,677/9,677 over 71
   replays on 13.02.
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
+- **Rust reader API** -- synchronous borrowed record batches and native Event
+  payloads through the same main-stream decoder, with explicit quality counters;
+  see the [library guide](docs/RUST_API.md).
 - **Bounded schema declarations** -- configurable group and field-slot budgets
   reject excess declarations before allocating dense slots; see
   [schema resource limits](docs/SCHEMA_LIMITS.md) for the scope and migration.
 - **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
   Oodle, isolated in an external crate.
-- **767 Rust tests (Windows)** / **766 Rust tests (non-Windows)** plus
+- **775 Rust tests (Windows)** / **774 Rust tests (non-Windows)** plus
   a layered validation suite (framing / bytes / decode
   errors / semantics).
 
@@ -194,6 +197,18 @@ is refused, never deleted.
 > per-crate usage live in [`docs/USAGE.md`](docs/USAGE.md).
 > This document is about *why it is built this way*.
 
+### Rust applications
+
+Use `ReplayReader` for main-stream records and native Event payloads without
+writing Parquet. It borrows callback batches, preserves raw windows and returns
+quality counters. `read_path` buffers the input file; checkpoint snapshots are
+reported as skipped. The [Rust API guide](docs/RUST_API.md) covers ownership,
+errors, source dependencies and quality checks. Run its aggregate-only example:
+
+```bash
+cargo +1.86.0 run --release -p vrfkit --no-default-features --example stream_replay -- match.vrf
+```
+
 ## Output
 
 The main export writes six Parquet tables plus `manifest.json`; `--checkpoints`
@@ -204,7 +219,7 @@ timestamp) are in [`docs/USAGE.md` section 3](docs/USAGE.md#3-output).
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**766 passing (non-Windows)**; the Windows suite contains **767 tests (Windows)**.
+**774 passing (non-Windows)**; the Windows suite contains **775 tests (Windows)**.
 The full Python suite has **1108 passing** tests. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for

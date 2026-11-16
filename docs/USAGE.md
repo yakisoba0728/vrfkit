@@ -674,6 +674,11 @@ preserved, uninterpreted streams, so it is not a count of lost payload bits.
 
 ## 4. Using it as a library
 
+Start with [`ReplayReader`](RUST_API.md) to receive borrowed field, movement,
+actor and rejected-partial batches, plus native Event payloads. It uses the same
+main-stream decoder as the CLI and does not require Parquet dependencies.
+Checkpoint snapshots remain available through `export --checkpoints`.
+
 Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 `vrf-bitio` is `no_std` + optional `alloc`.
 
@@ -688,7 +693,7 @@ Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 | Field decoder + nested arrays + type overlay + effects | `vrf-decode` | `array` `effect` `overlay` `structs` |
 | Movement decoder | `vrf-movement` | none |
 | Parquet writer | `vrf-export` | `parquet` + per-table |
-| Unified CLI | `vrfkit` | `export` (default) |
+| Streaming main-pass reader and CLI | `vrfkit` | `export` (default; optional for the reader) |
 
 ZSTD is deliberately *not* feature-gated out -- every writer picks it, so
 disabling it would produce files this crate could not explain.
@@ -1121,7 +1126,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-767 Rust tests (Windows), 766 Rust tests (non-Windows), and 1108 Python tests.
+775 Rust tests (Windows), 774 Rust tests (non-Windows), and 1108 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
