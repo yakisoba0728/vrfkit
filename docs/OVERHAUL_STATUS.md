@@ -1,7 +1,9 @@
 # Overhaul execution ledger
 
-The current continuation is tracked in [Phase B status](PHASE_B_STATUS.md)
-and [Phase B results](PHASE_B_RESULTS.md). The user has assigned final
+The current continuation is tracked in [Phase C status](PHASE_C_STATUS.md)
+and [Phase C results](PHASE_C_RESULTS.md). [Phase B status](PHASE_B_STATUS.md)
+and [Phase B results](PHASE_B_RESULTS.md) retain their completed phase's scope.
+The user has assigned final
 quantitative performance comparison to themselves; functional verification
 and integration gates remain required. [Phase A status](PHASE_A_STATUS.md)
 and the historical checkpoint below retain their original evidence and scope.
@@ -82,7 +84,12 @@ exactly equals integrated `ed7dc309`; it did not execute that later commit objec
 6. Keep the final Draft PR to main unmerged. No release or registry deployment
    follows automatically from CI success or this ledger.
 
-## Open research and validation backlog
+## Historical research and validation backlog
+
+This table preserves the backlog at that historical runtime checkpoint. Reader
+file input, optional checkpoint callbacks and explicitly bounded nonseekable
+input were subsequently completed within the documented Phase B/C scope;
+the current contracts and remaining limits are in [Phase C results](PHASE_C_RESULTS.md).
 
 | Priority | Work | Evidence required before adoption |
 | --- | --- | --- |
