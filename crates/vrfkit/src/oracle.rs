@@ -41,7 +41,7 @@ use crate::sink::ExportStats;
 pub enum Verdict {
     /// Content blocks were found and every one of them framed.
     Passed,
-    /// At least one failure [`verdict_from_stats`] counts.
+    /// At least one failure covered by ReplayData block validation.
     ValidationFailed,
     /// No RepLayout or ClassNetCache blocks at all -- nothing was validated.
     NoContentBlocks,
@@ -83,7 +83,7 @@ impl Verdict {
 /// is 0 on 45 replays of 24 builds, main and checkpoint passes.
 /// `package_map_exports` (a superset of `rep_layout_export_bunches`) fails the
 /// run: the bunch content after the exports is never read. 0 on 1,018 replays.
-fn verdict_from_stats(stats: &NetStats, replay_data_trailing_bytes: u64) -> Verdict {
+pub(crate) fn verdict_from_stats(stats: &NetStats, replay_data_trailing_bytes: u64) -> Verdict {
     let total_with_content = stats.rep_layout_blocks + stats.class_net_cache_blocks;
     let failures = stats.malformed_packets
         + stats.unfinished_partials
