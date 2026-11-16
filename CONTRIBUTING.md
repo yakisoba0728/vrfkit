@@ -242,6 +242,12 @@ a contributor without one is not blocked — but it means an unset variable read
 as a pass at a glance. If you meant to run them, read the output and check it
 says how many replays it walked.
 
+`check_export_baseline.py` rejects an obsolete movement-counter baseline before
+that missing-input skip. The archived private export/checkpoint baselines need
+genuine remeasurement for the [native component migration](docs/NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration);
+their historical numbers must not be converted into new counters. Removing the
+old summary/manifest fields requires a minor version bump before a release.
+
 ## The load-bearing invariants (do not break)
 
 These corrupt downstream consumers silently — no test fails when they break.

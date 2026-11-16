@@ -15,7 +15,7 @@ const CHARACTER: u32 = 53;
 const RPC: &str = "ReplaysClientReceiveRemoteCharacterUpdatesSingleArrayNoAutonomous";
 const CLASS: &str = "/Script/Test.ReaderMovement";
 
-fn movement_rpc() -> BitWriter {
+fn movement_rpc(input_body: &[bool]) -> BitWriter {
     let mut data = BitWriter::new();
     data.u8(0x52);
     for index in 0..2 {
@@ -45,9 +45,13 @@ fn movement_rpc() -> BitWriter {
     }
     data.bits(0, 3);
     // Native component envelope: movement, the absolute input-section end,
-    // and the two empty component headers. No replay bytes are embedded.
-    let input_end = data.len() + 16 + 8;
-    data.u16(input_end as u16).u8(0xA3).u8(0xA4);
+    // and the component headers with an optional unresolved input body.
+    // No replay bytes are embedded.
+    let input_end = data.len() + 16 + 8 + input_body.len();
+    data.u16(input_end as u16)
+        .u8(0xA3)
+        .extend_bits(input_body)
+        .u8(0xA4);
     let unused = (8 - data.len() % 8) % 8;
     data.repeat(false, unused);
     let mut component = BitWriter::new();
@@ -82,8 +86,8 @@ fn movement_rpc() -> BitWriter {
 /// Encode only aligned words of the declared 12.10 transform. The generated
 /// block is round-tripped before framing, isolating Reader failures from a
 /// malformed test encoder. Transform correctness has separate golden tests.
-fn content_block() -> BitWriter {
-    let rpc = movement_rpc();
+fn content_block(input_body: &[bool]) -> BitWriter {
+    let rpc = movement_rpc(input_body);
     let mut plain = BitWriter::new();
     plain
         .serialized_int(0, 2)
@@ -149,8 +153,8 @@ fn packet(payload: &[bool], open: bool, partial: Option<(bool, bool)>) -> Vec<u8
     pack(&bits)
 }
 
-fn replay() -> Vec<u8> {
-    let block = content_block();
+fn replay(input_body: &[bool]) -> Vec<u8> {
+    let block = content_block(input_body);
     let mut opened = BitWriter::new();
     opened.int_packed(ACTOR).extend_bits(&block);
     // Empty packets create non-adjacent fragment IDs without changing the
@@ -194,7 +198,7 @@ fn replay() -> Vec<u8> {
 
 #[test]
 fn reader_delivers_paired_movement_provenance_after_real_partial_reassembly() {
-    let data = replay();
+    let data = replay(&[]);
     let mut observed = Vec::new();
     let mut movement_batches = 0;
     let summary = ReplayReader::new()
@@ -251,4 +255,46 @@ fn reader_delivers_paired_movement_provenance_after_real_partial_reassembly() {
         assert_eq!(provenance.component_ordinal, 0);
         assert_eq!(provenance.move_index, move_index);
     }
+}
+
+#[test]
+fn reader_preserves_the_whole_rpc_when_input_component_body_is_unresolved() {
+    let input_body = [true];
+    let rpc = movement_rpc(&input_body);
+    let expected_raw = pack(&rpc);
+    let data = replay(&input_body);
+    let mut fields = Vec::new();
+    let mut movement_rows = 0;
+    let summary = ReplayReader::new()
+        .read(&data, |event| {
+            if let ReplayEvent::Records(batch) = event {
+                assert_eq!(batch.movement.len(), batch.movement_provenance.len());
+                movement_rows += batch.movement.len();
+                fields.extend(
+                    batch
+                        .fields
+                        .iter()
+                        .filter(|field| {
+                            field.field_name.as_deref() == Some(RPC) && field.bit_count > 0
+                        })
+                        .cloned(),
+                );
+            }
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+
+    // Both the reassembled RPC and the later ordinary RPC keep their decoded
+    // movement prefix plus every original raw bit of the unsupported body.
+    assert_eq!(movement_rows, 4);
+    assert_eq!(fields.len(), 2);
+    for field in fields {
+        assert_eq!(field.bit_count, rpc.bit_len());
+        assert_eq!(field.raw_bits.as_deref(), Some(expected_raw.as_slice()));
+    }
+    assert_eq!(summary.movement_rows, 4);
+    assert_eq!(summary.decode_counters["movement_rpc_errors"], 2);
+    assert_eq!(summary.network.lost_content_blocks(), 0);
+    assert_eq!(summary.network.partial_errors, 0);
+    assert_eq!(summary.block_verdict(), ValidationVerdict::Passed);
 }

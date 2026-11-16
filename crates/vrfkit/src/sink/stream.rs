@@ -188,9 +188,8 @@ impl FieldSink for ExportSink<'_> {
             let fallback_reader = reader.clone();
             let failed = self.decode_movement_rpc(reader, handle, rpc_index);
             // A clean batch is movement.parquet row for row; a failed or partial
-            // one cannot reproduce its input, so the whole payload is kept. Bits
-            // a section leaves unread in a clean batch are only tallied
-            // (`movement_*_section_tail*`).
+            // one cannot reproduce its input, so the whole payload is kept.
+            // Unknown component headers or bodies follow the same failure path.
             self.push_field(FieldValues {
                 handle,
                 field_name,
@@ -1427,8 +1426,16 @@ mod tests {
     }
 
     fn movement_rpc_fixture(move_count: u32, fail_last: bool) -> Vec<bool> {
+        movement_rpc_fixture_with_body(move_count, fail_last, None)
+    }
+
+    fn movement_rpc_fixture_with_body(
+        move_count: u32,
+        fail_last: bool,
+        body: Option<&str>,
+    ) -> Vec<bool> {
         let mut component = Vec::new();
-        component.u16(0).u8(0x52);
+        component.u8(0x52);
         for index in 0..move_count {
             component.bits(u64::from(index % 7 + 1), 3);
             component.bit(true).u8(0).u8(0).u8(0);
@@ -1444,6 +1451,23 @@ mod tests {
             component.bit(fail_last && index + 1 == move_count);
         }
         component.bits(0, 3);
+        let input_end = (component.len() + 24 + usize::from(body == Some("input"))) as u16;
+        component.u16(input_end).u8(0xA3);
+        if body == Some("input") {
+            component.bit(true);
+        }
+        component.u8(0xA4);
+        if body == Some("discrepancy") {
+            component.bit(true);
+        }
+        let unused = (8 - component.len() % 8) % 8;
+        component.repeat(false, unused);
+        let mut native = Vec::new();
+        native
+            .i32((component.len() / 8) as i32)
+            .extend_bits(&component)
+            .u8(unused as u8);
+        let component = native;
         let mut update = Vec::new();
         update
             .int_packed(3)
@@ -1627,6 +1651,47 @@ mod tests {
     }
 
     #[test]
+    fn unknown_native_component_bodies_keep_every_move_and_the_whole_raw_rpc() {
+        for body in ["input", "discrepancy"] {
+            let bits = movement_rpc_fixture_with_body(2, false, Some(body));
+            let bytes = pack(&bits);
+            let mut rig = movement_test_rig();
+            rig.records.capture_movement_provenance = true;
+            let mut sink = rig.sink();
+            sink.set_current_group_path(Arc::from("/Script/Test.Movement_ClassNetCache"));
+            sink.on_rpc(
+                0,
+                bits.len() as u32,
+                BitReader::with_bit_len(&bytes, bits.len() as u64).unwrap(),
+            );
+            assert_eq!(sink.stats.movement_rpc_errors, 1, "{body}");
+            assert_eq!(sink.stats.movement_component_errors, 1, "{body}");
+            assert_eq!(sink.stats.movement_component_complete, 0, "{body}");
+            assert_eq!(sink.stats.movement_component_input_headers, 1, "{body}");
+            assert_eq!(
+                sink.stats.movement_component_discrepancy_headers,
+                u64::from(body == "discrepancy"),
+                "{body}"
+            );
+            assert_eq!(sink.records.movement.len(), 2, "{body}");
+            assert_eq!(sink.records.movement_provenance.len(), 2, "{body}");
+            assert_eq!(sink.records.movement_provenance[0].move_index, 0, "{body}");
+            assert_eq!(sink.records.movement_provenance[1].move_index, 1, "{body}");
+            assert_eq!(sink.records.fields.len(), 1, "{body}");
+            assert_eq!(
+                sink.records.fields[0].bit_count,
+                bits.len() as u32,
+                "{body}"
+            );
+            assert_eq!(
+                sink.records.fields[0].raw_bits.as_deref(),
+                Some(bytes.as_slice()),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
     fn a_failed_movement_decode_retains_the_whole_rpc_payload() {
         let mut update = Vec::new();
         update.int_packed(3); // shooter GUID handle 2
@@ -1636,7 +1701,7 @@ mod tests {
         }
         update.int_packed(4); // component stream handle 3
         update.int_packed(8);
-        update.extend(std::iter::repeat_n(false, 8)); // short u16 header
+        update.extend(std::iter::repeat_n(false, 8)); // short native i32 byte count
         update.int_packed(0);
 
         let mut array = Vec::new();

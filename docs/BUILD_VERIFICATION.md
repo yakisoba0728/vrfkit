@@ -1,5 +1,12 @@
 # Common build verification
 
+This document and its committed report retain historical measurements at the
+source revisions named below. They have not been rerun against the native
+movement component counter contract. The current correction has a separate
+[six-public-replay main/checkpoint validation](NATIVE_MOVEMENT_COMPONENTS.md#post-fix-public-validation);
+the private corpus and its archived export baselines require genuine
+remeasurement before a release containing that migration.
+
 All **1,018 unique available replays**, spanning **24 supported builds**, were
 checked with parser commit `259ed10c7e0c9d87c852f80fab7535d38d2e187f`. The two
 supplied roots held 1,074 paths; SHA-256 deduplication removed 56 copies.

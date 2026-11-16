@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "scope": "Phase A recovery; previously prepared local implementation recovered without reimplementing it",
+  "integration_baseline": "d44bcd2b22209cf6a0fabf3996ecc514f5cab606",
+  "recovered_candidate_commit": "97e6c59cbf956437d6f4cf3c985a1ac4f814fce5",
+  "historical_binary_build_commit": "2e3526fb867c58400046b5d294aa58d01496e11a",
+  "parser_source_files_compared": 151,
+  "parser_source_mismatches": [],
+  "historical_receipts_preserved": true,
+  "fresh_checks": {
+    "before-rpc-preservation.log": {
+      "sha256": "27c476ba848eb8311281b9e99ba74e9b66d8201b4a8fd9e27d1c15c1c1722709",
+      "exit_code": 101,
+      "passed": 0,
+      "failed": 1,
+      "failure": "raw_bits was None for an unsupported one-bit A3 body"
+    },
+    "after-core-tests.log": {
+      "sha256": "749b957b90ed84c3f8d6eddae1125f9bbf194e5d53ffe526b7c2a609af402e5d",
+      "exit_code": 0,
+      "passed": 171,
+      "failed": 0,
+      "ignored": 0
+    },
+    "python-tests.log": {
+      "sha256": "c0513ee36ac11bf826eb30e06fb132da72607b0aadb65e78725ad4f5cc5f5de6",
+      "exit_code": 0,
+      "tests": 1178,
+      "result": "OK"
+    },
+    "clippy-core.log": {
+      "sha256": "e2ec442042f9838b422b406e25a5e69143a41b6326ebbfafea0501f2679abd4f",
+      "exit_code": 0
+    }
+  },
+  "fresh_commands": [
+    "cargo +1.86.0 test -p vrfkit --no-default-features --locked --test movement_reader reader_preserves_the_whole_rpc_when_input_component_body_is_unresolved -- --exact [baseline + generated regression only]",
+    "cargo +1.86.0 test -p vrf-movement -p vrfkit --no-default-features --locked",
+    "python -W error -m unittest discover -b -s tools/tests -p test_*.py",
+    "cargo +1.86.0 fmt --all --check",
+    "cargo +1.86.0 clippy -p vrf-movement -p vrfkit --all-targets --no-default-features --locked -- -D warnings"
+  ],
+  "historical_evidence_limit": "The native-movement-public-* receipts describe the original pre-interruption six-public audit, not a second execution. Current independent QA and hosted CI are separate integration gates.",
+  "fresh_public_audit": "pending",
+  "fresh_windows_ci": "pending",
+  "private_replays_decoded": 0
+}
