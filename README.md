@@ -38,8 +38,13 @@ checked the same way on 3 replays, and 2 meet every criterion; all 5
 [build verification](docs/BUILD_VERIFICATION.md) for the measured scope, common
 checks and remaining limits.
 
+- First source build and Python/Rust recipes: [`docs/ADOPTION.md`](docs/ADOPTION.md)
 - Rust callbacks and ownership: [`docs/RUST_API.md`](docs/RUST_API.md)
+- Optional gameplay observations: [`docs/GAMEPLAY_API.md`](docs/GAMEPLAY_API.md)
 - JSONL conversion and encodings: [`docs/JSONL.md`](docs/JSONL.md)
+- Pinned comparison with ValorantReplayParser: [`docs/REFERENCE_COMPARISON.md`](docs/REFERENCE_COMPARISON.md)
+- Phase B work and acceptance status: [`docs/PHASE_B_STATUS.md`](docs/PHASE_B_STATUS.md)
+- User-run performance comparison: [`docs/PHASE_B_BENCHMARK_HANDOFF.md`](docs/PHASE_B_BENCHMARK_HANDOFF.md)
 - Current engineering evidence and limitations: [`docs/OVERHAUL_RESULTS_2026_11_16.md`](docs/OVERHAUL_RESULTS_2026_11_16.md)
 - Run it, every tool and every output column: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable, and whether it is typed: [`docs/DATA.md`](docs/DATA.md)
@@ -47,8 +52,17 @@ checks and remaining limits.
 
 ## Quick start
 
+These examples describe the `integration/vrfkit-overhaul` source branch.
+Select it explicitly; `main` and an older release package may expose different
+APIs. Record the full source revision when reproducing a result or embedding
+the library.
+
 ```bash
-# From the repository root; install the pinned toolchain once if needed.
+git clone --branch integration/vrfkit-overhaul --single-branch https://github.com/yakisoba0728/vrfkit.git
+cd vrfkit
+git rev-parse HEAD
+
+# Install the pinned toolchain once if needed.
 rustup toolchain install 1.86.0 --profile minimal
 cargo +1.86.0 build --release -p vrfkit --locked
 
@@ -59,8 +73,10 @@ cargo +1.86.0 build --release -p vrfkit --locked
 
 On Windows PowerShell, use `.\target\release\vrfkit.exe` for the executable.
 A source build does not automatically add the binary to `PATH`. The Rust API
-and JSONL additions are available from source; see tagged releases for the
-features of a particular packaged version.
+and Python tooling here are available from source; see tagged releases for the
+features of a particular packaged version. The workspace crates are not yet
+published to crates.io. The [adoption guide](docs/ADOPTION.md) covers an exact
+source pin, dependency flags and a first projected Python read.
 
 `inspect` parses container metadata and lists chunks without decoding packets.
 `validate` walks ReplayData content blocks and reports its structural verdict;
@@ -76,14 +92,23 @@ is refused, never deleted.
 ### Rust applications
 
 Use `ReplayReader` for main-stream records and native Event payloads without
-writing Parquet. It borrows callback batches, preserves raw windows and returns
-quality counters. `read_path` buffers the input file; checkpoint snapshots are
-reported as skipped. The [Rust API guide](docs/RUST_API.md) covers ownership,
-errors, source dependencies and quality checks. Run its aggregate-only example:
+writing Parquet. It borrows callback batches, preserves available raw windows
+and returns quality counters. `read_path` reads container chunks from a
+read-only, seekable file; it does not retain the complete replay. Individual
+chunks, metadata, parser state and any output you retain still consume memory.
+Checkpoint snapshots are reported as skipped. The [Rust API guide](docs/RUST_API.md)
+covers ownership, errors, source dependencies and quality checks. Run its
+aggregate-only examples:
 
 ```bash
-cargo +1.86.0 run --release -p vrfkit --no-default-features --example stream_replay -- match.vrf
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked --example stream_replay -- match.vrf
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked --example gameplay_events -- match.vrf
 ```
+
+The optional [gameplay helpers](docs/GAMEPLAY_API.md) project validated native
+round starts, deaths and spike events, plus observed round-phase fields. They
+run only when called. They retain source evidence and unresolved actor GUIDs;
+they do not build a complete match or infer player identities.
 
 ## Why this exists
 
@@ -98,7 +123,10 @@ overlay.
 This is a preservation strategy with explicit accounting. Framing failures,
 missing schema attribution and semantic coverage remain separate measurements.
 Successful movement decodes can be represented by their rows instead of a
-duplicate raw RPC. See the [current validation evidence](docs/OVERHAUL_RESULTS_2026_11_16.md)
+duplicate raw RPC, and synthesized child rows may have no independent raw
+window. This is not a lossless replay archive. See the
+[adoption limits](docs/ADOPTION.md#support-and-preservation-limits) and
+[current validation evidence](docs/OVERHAUL_RESULTS_2026_11_16.md)
 for the tested inputs, exact-output comparisons and remaining unknowns.
 
 ## Supported VALORANT builds
@@ -241,9 +269,12 @@ Convert any existing main or checkpoint Parquet table with selected columns:
 
 ```bash
 python -m pip install -r requirements.txt
-python tools/export_jsonl.py --export match-export --table fields --out fields.jsonl
+python tools/export_jsonl.py --export match-export --table fields \
+  --columns bit_count raw_bits value_i64 value_f64 value_bool value_str --out fields.jsonl
 ```
 
+For a direct Python read, the [batch recipe](docs/ADOPTION.md#python-parquet-and-jsonl)
+projects the same columns and prints aggregate counts from one batch at a time.
 The [JSONL format](docs/JSONL.md) includes a schema header, exact integer tokens,
 hexadecimal binary values and explicit nulls. Conversion uses bounded row batches
 and publishes the completed file atomically. It preserves selected values and

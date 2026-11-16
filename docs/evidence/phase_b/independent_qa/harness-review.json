@@ -1,0 +1,42 @@
+{
+  "reviewer": "Agent E child qa_harness_review",
+  "status": "completed",
+  "independence": "Read-only reviewer, separate from authors C, D and B; no runtime implementation edits.",
+  "prohibitions": [
+    "No builds",
+    "No tests",
+    "No replay execution",
+    "No performance measurement",
+    "No source edits",
+    "No external-service operations"
+  ],
+  "findings": [
+    {
+      "finding": "Restoring source does not restore compiled mutant artifacts.",
+      "resolution": "Build and freeze clean binaries, complete replay oracles before mutation, recheck frozen hashes afterward; target artifacts are never accepted after mutation without an explicit clean-source build."
+    },
+    {
+      "finding": "Python optimization disables assertion-based oracle gates.",
+      "resolution": "All three archived scripts refuse startup when __debug__ is false. The two oracle/mutation scripts were invoked with -O and refused with exit 1."
+    },
+    {
+      "finding": "A literal reference commit did not establish manifest provenance.",
+      "resolution": "Read and verify the full parser_version commit suffix from each frozen C# manifest, in addition to input SHA, completion and historical raw-output hash. All three match the pinned parser commit."
+    }
+  ],
+  "negative_controls": [
+    {
+      "script": "qa_fresh_oracles.py",
+      "optimized_python_exit": 1,
+      "refused_assertion_disabled_mode": true,
+      "stderr_sha256": "9557f569de9f1def915b549925797e12b0b4013789158bf58f356b0da456da78"
+    },
+    {
+      "script": "qa_mutations.py",
+      "optimized_python_exit": 1,
+      "refused_assertion_disabled_mode": true,
+      "stderr_sha256": "602437d6768a867203c4bad64c39b595ce663c62be6908ca9415728cc182799e"
+    }
+  ],
+  "blocking_findings_after_resolution": []
+}

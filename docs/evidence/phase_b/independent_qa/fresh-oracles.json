@@ -1,0 +1,53 @@
+{
+  "complete": true,
+  "source_commit": "2fbead4f716f12f7c5d41ff067ff4ee63a55dc90",
+  "binaries_sha256": {
+    "cli": "29fa495b19b7dbce2bfe7bbedc1dc9be2492a4c6a5aca2a9d1468d3d74c657d4",
+    "gameplay_probe": "b69c3568859e50ee3f2083933400585ece11afd3ce4f2976c9689dbfd5574935",
+    "movement_probe": "3c69189f091ef1e988172f69fefeb96cfa4317063a1cf2ce8497a82c166f3f45"
+  },
+  "private_replays_executed": 0,
+  "public_replays": 6,
+  "movement_fixtures": 3,
+  "native_observations": 560,
+  "phase_observations": 302,
+  "exact_parquet_tables": 78,
+  "performance_claim": null,
+  "steps": [
+    {
+      "name": "public-corpus",
+      "exit_code": 0,
+      "log_sha256": "46eff5f27d4ed367f58a66ca235c9413af84467c74f41bc64bb5b1b9ed30d099"
+    },
+    {
+      "name": "all-typed-identities",
+      "exit_code": 0,
+      "log_sha256": "7ad9772f8877db46c73e787b30ae63617d1d1442fd97eb5dd43ce8cef7eaedc2"
+    },
+    {
+      "name": "12.10-movement",
+      "exit_code": 0,
+      "log_sha256": "38d72b18f394d8a7608eaac5795e600f5114e1baa7fa37fb83411621e158ce5a"
+    },
+    {
+      "name": "12.11-movement",
+      "exit_code": 0,
+      "log_sha256": "38d72b18f394d8a7608eaac5795e600f5114e1baa7fa37fb83411621e158ce5a"
+    },
+    {
+      "name": "13.00-movement",
+      "exit_code": 0,
+      "log_sha256": "38d72b18f394d8a7608eaac5795e600f5114e1baa7fa37fb83411621e158ce5a"
+    },
+    {
+      "name": "adoption-fields",
+      "exit_code": 0,
+      "log_sha256": "efaa075559449899ee6455ef8944c0ac7aba6cc6d194f7d6942a266990b81549"
+    },
+    {
+      "name": "adoption-checkpoint_fields",
+      "exit_code": 0,
+      "log_sha256": "4d16eba52c4e83f973e6bedc3fbea541f1bbe834406eaad13e5b6890937609d1"
+    }
+  ]
+}

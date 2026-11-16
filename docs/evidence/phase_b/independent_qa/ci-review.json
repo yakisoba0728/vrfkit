@@ -1,0 +1,412 @@
+{
+  "method": "Independent read-only review of Agent F sanitized terminal CI receipt plus local immutable Git objects. E did not fetch GitHub logs independently.",
+  "collector_evidence_commit": "5ad41454de0aa33d62a60ad57e5317d79ac46ac6",
+  "collector_evidence_path": "docs/evidence/phase-b-runtime-pr-ci.json",
+  "collector_evidence_sha256": "08926efb210321b5bebce44206e7a86b2f832626ec221ddaaae7137dd04aa0e8",
+  "runs": [
+    {
+      "pr": 65,
+      "run_url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474",
+      "run_id": 43834772474,
+      "head_sha": "384d0c043c4a00b0087c45b3ef8655b1c22a04c7",
+      "head_tree": "60ac0b8c1cb98d73ccf5b185a6efef7d4753ecf3",
+      "synthetic_checkout_sha": "be25443a2a2496657b81424261d4503163bcb1c3",
+      "checkout_tree_equals_head_tree": true,
+      "head_tree_verified_from_local_git_object": true,
+      "checkout_tree_verification": "Reviewed Agent F API receipt; synthetic checkout object is not present in the local object database.",
+      "job_outcomes": {
+        "total": 11,
+        "success": 11,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "step_outcomes": {
+        "total": 128,
+        "success": 128,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "observed_counts": {
+        "linux_msrv": {
+          "job_id": 133188565453,
+          "command": "cargo +1.86.0 test --workspace --all-features --locked",
+          "passed": 812,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 39,
+          "command_lines": [
+            551,
+            1627
+          ],
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_msrv": {
+          "job_id": 133188566295,
+          "command": "python -W error tools/check_docs.py",
+          "rust_passed": 813,
+          "python_ran": 1178,
+          "feature_cases": 27,
+          "count_line": {
+            "line": 770,
+            "text": "tests: rust 813 (Windows), tools 1178"
+          },
+          "feature_line": {
+            "line": 653,
+            "text": "feature matrix: 27 cases"
+          },
+          "documentation_guard_ok": true,
+          "rust_ignored": null,
+          "rust_filtered": null,
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_stable": {
+          "job_id": 133188564949,
+          "command": "cargo +stable test --workspace --all-features --locked",
+          "compiler": [
+            "rustc 1.100.0 (0ef1bc386 2026-11-09)"
+          ],
+          "passed": 813,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 39,
+          "command_lines": [
+            484,
+            1574
+          ]
+        },
+        "python_matrix": [
+          {
+            "job_id": 133188565240,
+            "python": "3.13",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          },
+          {
+            "job_id": 133188565317,
+            "python": "3.12",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          },
+          {
+            "job_id": 133188565566,
+            "python": "3.13",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          },
+          {
+            "job_id": 133188565622,
+            "python": "3.12",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          }
+        ]
+      },
+      "changed_source_and_test_hashes_match_qa": {
+        "crates/vrfkit/src/driver/checkpoints.rs": "07426092654600a0536262ddb2750f5ea4c71e7d887bec1973cb698de5593974",
+        "crates/vrfkit/src/driver/mod.rs": "a02301d862b9ad44053fbd75945461e021b78a486d439ebb8c7f9a1ba6f14e87",
+        "crates/vrfkit/src/oracle.rs": "ceb675bf5bd84ce1794d7a531ed02d71d8d664b9ebc9cc89a67790d143800eea",
+        "crates/vrfkit/src/reader_input.rs": "2817fb61c2e1e45b568074c33d8d35cd720c8b9c4329ecbc09ef4ae2e46a04b7",
+        "crates/vrfkit/tests/cli_input.rs": "0c7c158261d162d43701eca8e3010e6ecb9794afbb37bef12f16dd367b2db485"
+      },
+      "windows_package_job_success": true
+    },
+    {
+      "pr": 66,
+      "run_url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862",
+      "run_id": 43834808862,
+      "head_sha": "45f787c460b8d7a54876572d3c7e6a1aeb01dafc",
+      "head_tree": "448c075ad4fb21797ddd5c9fb7a196a08b863e5a",
+      "synthetic_checkout_sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9",
+      "checkout_tree_equals_head_tree": true,
+      "head_tree_verified_from_local_git_object": true,
+      "checkout_tree_verification": "Reviewed Agent F API receipt; synthetic checkout object is not present in the local object database.",
+      "job_outcomes": {
+        "total": 11,
+        "success": 11,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "step_outcomes": {
+        "total": 128,
+        "success": 128,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "observed_counts": {
+        "linux_msrv": {
+          "job_id": 133188684696,
+          "command": "cargo +1.86.0 test --workspace --all-features --locked",
+          "passed": 824,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 40,
+          "command_lines": [
+            553,
+            1647
+          ],
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_msrv": {
+          "job_id": 133188684757,
+          "command": "python -W error tools/check_docs.py",
+          "rust_passed": 825,
+          "python_ran": 1178,
+          "feature_cases": 27,
+          "count_line": {
+            "line": 780,
+            "text": "tests: rust 825 (Windows), tools 1178"
+          },
+          "feature_line": {
+            "line": 663,
+            "text": "feature matrix: 27 cases"
+          },
+          "documentation_guard_ok": true,
+          "rust_ignored": null,
+          "rust_filtered": null,
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_stable": {
+          "job_id": 133188684456,
+          "command": "cargo +stable test --workspace --all-features --locked",
+          "compiler": [
+            "rustc 1.100.0 (0ef1bc386 2026-11-09)"
+          ],
+          "passed": 825,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 40,
+          "command_lines": [
+            484,
+            1592
+          ]
+        },
+        "python_matrix": [
+          {
+            "job_id": 133188684998,
+            "python": "3.12",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          },
+          {
+            "job_id": 133188685038,
+            "python": "3.13",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          },
+          {
+            "job_id": 133188685051,
+            "python": "3.13",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          },
+          {
+            "job_id": 133188685076,
+            "python": "3.12",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          }
+        ]
+      },
+      "changed_source_and_test_hashes_match_qa": {
+        "crates/vrfkit/src/gameplay.rs": "1d711056b4d96251450191953f67109b01d5634fb994ea99b1f9588c3393f399",
+        "crates/vrfkit/src/lib.rs": "0482dcd9ce1e6d8d3a932868dd8a5588ed7278dfcd59c17f14af44445b56bc5f",
+        "crates/vrfkit/tests/gameplay.rs": "ef71d275961c4f01798c16081345f9b400497270522ab0e5d649d3c30566f792",
+        "crates/vrfkit/examples/gameplay_events.rs": "f0f22e0e95e2d4086992b2e874083971bbe63820f1ae0cc93168095aad8bb8c6"
+      },
+      "windows_package_job_success": true
+    },
+    {
+      "pr": 67,
+      "run_url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291",
+      "run_id": 43834838291,
+      "head_sha": "d56daa16f4c67052cc0eff1556599ace4046b60f",
+      "head_tree": "c76a2f1fc5dcbf4285538c6531fe6e5e4bc300ae",
+      "synthetic_checkout_sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0",
+      "checkout_tree_equals_head_tree": true,
+      "head_tree_verified_from_local_git_object": true,
+      "checkout_tree_verification": "Reviewed Agent F API receipt; synthetic checkout object is not present in the local object database.",
+      "job_outcomes": {
+        "total": 11,
+        "success": 11,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "step_outcomes": {
+        "total": 128,
+        "success": 128,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "observed_counts": {
+        "linux_msrv": {
+          "job_id": 133188782136,
+          "command": "cargo +1.86.0 test --workspace --all-features --locked",
+          "passed": 826,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 40,
+          "command_lines": [
+            550,
+            1646
+          ],
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_msrv": {
+          "job_id": 133188781782,
+          "command": "python -W error tools/check_docs.py",
+          "rust_passed": 827,
+          "python_ran": 1178,
+          "feature_cases": 27,
+          "count_line": {
+            "line": 771,
+            "text": "tests: rust 827 (Windows), tools 1178"
+          },
+          "feature_line": {
+            "line": 654,
+            "text": "feature matrix: 27 cases"
+          },
+          "documentation_guard_ok": true,
+          "rust_ignored": null,
+          "rust_filtered": null,
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_stable": {
+          "job_id": 133188781957,
+          "command": "cargo +stable test --workspace --all-features --locked",
+          "compiler": [
+            "rustc 1.100.0 (0ef1bc386 2026-11-09)"
+          ],
+          "passed": 827,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 40,
+          "command_lines": [
+            485,
+            1595
+          ]
+        },
+        "python_matrix": [
+          {
+            "job_id": 133188781835,
+            "python": "3.12",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          },
+          {
+            "job_id": 133188781873,
+            "python": "3.13",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          },
+          {
+            "job_id": 133188782025,
+            "python": "3.13",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          },
+          {
+            "job_id": 133188782246,
+            "python": "3.12",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          }
+        ]
+      },
+      "changed_source_and_test_hashes_match_qa": {
+        "crates/vrf-export/src/schema.rs": "8511565c966ef8ece355451ff9b9a2be5440da714bfba77c5cc99e38555d8986",
+        "crates/vrf-export/tests/roundtrip.rs": "49f8d23077c94d06c08670309b799db4f286ed07057d96f50a3a5b01f05ce95e"
+      },
+      "windows_package_job_success": true
+    }
+  ],
+  "integration_runtime_correspondence": {
+    "commit": "e294fcf13c2d66ff47d45067341eb6f6e32eb27f",
+    "runtime_files_checked": 133,
+    "all_match_frozen_build": true,
+    "integration_ci": "Final exact integration CI remains the root coordinator gate; not asserted by this receipt."
+  }
+}

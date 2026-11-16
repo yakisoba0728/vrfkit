@@ -1,0 +1,215 @@
+{
+  "samples": 8471,
+  "lost": 0,
+  "image_only_symbols": {
+    "libc.so.6": 1917,
+    "libm.so.6": 4
+  },
+  "outer_symbols": [
+    {
+      "symbol": "parquet::column::writer::GenericColumnWriter<E>::write_mini_batch",
+      "samples": 714,
+      "percent": 8.429
+    },
+    {
+      "symbol": "ZSTD_compressBlock_fast",
+      "samples": 433,
+      "percent": 5.112
+    },
+    {
+      "symbol": "vrf_transform::TransformVersion::apply",
+      "samples": 346,
+      "percent": 4.085
+    },
+    {
+      "symbol": "parquet::encodings::rle::RleEncoder::put",
+      "samples": 300,
+      "percent": 3.541
+    },
+    {
+      "symbol": "arrow_array::builder::generic_bytes_dictionary_builder::GenericByteDictionaryBuilder<K,T>::append_option",
+      "samples": 229,
+      "percent": 2.703
+    },
+    {
+      "symbol": "vrf_bitio::BitReader::read_int_packed",
+      "samples": 219,
+      "percent": 2.585
+    },
+    {
+      "symbol": "vrfkit::sink::intern::pooled",
+      "samples": 216,
+      "percent": 2.55
+    },
+    {
+      "symbol": "vrfkit::sink::stream::<impl vrf_net::field::FieldSink for vrfkit::sink::ExportSink>::on_rpc",
+      "samples": 214,
+      "percent": 2.526
+    },
+    {
+      "symbol": "<oozextract::algorithm::mermaid::Mermaid as oozextract::algorithm::Algorithm>::process",
+      "samples": 175,
+      "percent": 2.066
+    },
+    {
+      "symbol": "hashbrown::map::HashMap<K,V,S,A>::get_inner",
+      "samples": 156,
+      "percent": 1.842
+    },
+    {
+      "symbol": "oozextract::decoder::pointer::<impl oozextract::decoder::Core>::repeat_copy_64",
+      "samples": 146,
+      "percent": 1.724
+    },
+    {
+      "symbol": "parquet::util::interner::Interner<S>::intern",
+      "samples": 136,
+      "percent": 1.605
+    },
+    {
+      "symbol": "vrf_bitio::BitReader::read_quantized_vector",
+      "samples": 131,
+      "percent": 1.546
+    },
+    {
+      "symbol": "vrf_export::schema::<impl vrf_export::record::FieldRecord>::columns",
+      "samples": 129,
+      "percent": 1.523
+    },
+    {
+      "symbol": "std::thread::scoped::scope",
+      "samples": 128,
+      "percent": 1.511
+    },
+    {
+      "symbol": "ZSTD_encodeSequences_bmi2",
+      "samples": 124,
+      "percent": 1.464
+    },
+    {
+      "symbol": "vrf_movement::moves::parse_single_move",
+      "samples": 123,
+      "percent": 1.452
+    },
+    {
+      "symbol": "vrf_bitio::load_u64_padded",
+      "samples": 123,
+      "percent": 1.452
+    },
+    {
+      "symbol": "vrfkit::sink::stream::<impl vrf_net::pipeline::ReplicationSink for vrfkit::sink::ExportSink>::on_content_block",
+      "samples": 119,
+      "percent": 1.405
+    },
+    {
+      "symbol": "vrf_bitio::BitReader::copy_bits_to",
+      "samples": 115,
+      "percent": 1.358
+    },
+    {
+      "symbol": "vrf_net::pipeline::ReplicationReader::process_packet",
+      "samples": 111,
+      "percent": 1.31
+    },
+    {
+      "symbol": "vrf_decode::overlay::resolve_entry",
+      "samples": 101,
+      "percent": 1.192
+    },
+    {
+      "symbol": "parquet::encodings::rle::RleEncoder::flush_bit_packed_run",
+      "samples": 86,
+      "percent": 1.015
+    },
+    {
+      "symbol": "vrf_movement::moves::parse_movement_section",
+      "samples": 74,
+      "percent": 0.874
+    },
+    {
+      "symbol": "ahash::random_state::RandomState::hash_one",
+      "samples": 67,
+      "percent": 0.791
+    },
+    {
+      "symbol": "HIST_count_parallel_wksp",
+      "samples": 64,
+      "percent": 0.756
+    },
+    {
+      "symbol": "parquet::arrow::arrow_writer::levels::LevelInfoBuilder::write",
+      "samples": 63,
+      "percent": 0.744
+    },
+    {
+      "symbol": "ZSTD_compressBlock_fast_noDict_5_1",
+      "samples": 62,
+      "percent": 0.732
+    },
+    {
+      "symbol": "vrf_movement::rpc::read_component_header",
+      "samples": 60,
+      "percent": 0.708
+    },
+    {
+      "symbol": "vrfkit::sink::stream::<impl vrf_net::field::FieldSink for vrfkit::sink::ExportSink>::on_field",
+      "samples": 59,
+      "percent": 0.696
+    },
+    {
+      "symbol": "vrf_decode::overlay::resolve_in_group",
+      "samples": 55,
+      "percent": 0.649
+    },
+    {
+      "symbol": "vrf_net::pipeline::ReplicationReader::process_complete_payload",
+      "samples": 54,
+      "percent": 0.637
+    },
+    {
+      "symbol": "vrf_decode::overlay::OverlayTable::lookup_hashed",
+      "samples": 53,
+      "percent": 0.626
+    },
+    {
+      "symbol": "vrfkit::driver::push_partials",
+      "samples": 49,
+      "percent": 0.578
+    },
+    {
+      "symbol": "vrf_export::writer::TableWriter<T,W>::flush_buffer",
+      "samples": 48,
+      "percent": 0.567
+    },
+    {
+      "symbol": "vrfkit::sink::rpc::copy_raw_bits",
+      "samples": 47,
+      "percent": 0.555
+    },
+    {
+      "symbol": "vrf_export::schema::<impl vrf_export::record::MovementRecord>::columns",
+      "samples": 46,
+      "percent": 0.543
+    },
+    {
+      "symbol": "parquet::column::writer::GenericColumnWriter<E>::add_data_page",
+      "samples": 43,
+      "percent": 0.508
+    },
+    {
+      "symbol": "vrfkit::sink::ExportSink::push_field",
+      "samples": 42,
+      "percent": 0.496
+    },
+    {
+      "symbol": "HUF_compress1X_usingCTable_internal_bmi2",
+      "samples": 42,
+      "percent": 0.496
+    }
+  ],
+  "event": "PERF_COUNT_SW_CPU_CLOCK",
+  "frequency_hz": 1999,
+  "sampled_threads": 6,
+  "exclude_kernel": true,
+  "attribution": "Instruction-pointer sample outer-symbol ranges, not call stacks. Statically inlined code is included in its containing symbol. Shared libc image is deliberately not assigned stripped nearest-export names."
+}

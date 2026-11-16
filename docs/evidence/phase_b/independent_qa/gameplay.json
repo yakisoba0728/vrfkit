@@ -1,0 +1,156 @@
+{
+  "source_commit": "2fbead4f716f12f7c5d41ff067ff4ee63a55dc90",
+  "probe_sha256": "b69c3568859e50ee3f2083933400585ece11afd3ce4f2976c9689dbfd5574935",
+  "oracle_exports": {
+    "fresh": true,
+    "source_commit": "2fbead4f716f12f7c5d41ff067ff4ee63a55dc90",
+    "cli_sha256": "29fa495b19b7dbce2bfe7bbedc1dc9be2492a4c6a5aca2a9d1468d3d74c657d4"
+  },
+  "native_decoder": "Existing independent Python extract_kill_ledger.validate_event_payload plus raw struct decoding",
+  "phase_decoder": "Exact schema identity and raw eight-bit byte compared to the sole typed value",
+  "reports": [
+    {
+      "build": "12.05",
+      "input_sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+      "native_counts": {
+        "roundStarted": 19,
+        "characterDeath": 130,
+        "spikePlanted": 13,
+        "spikeDefused": 6,
+        "spikeExploded": 1
+      },
+      "phase_counts": {
+        "2": 19,
+        "3": 19,
+        "4": 19,
+        "5": 19,
+        "6": 1
+      },
+      "unprojected_native_counts": {
+        "characterUltimateUsed": 31,
+        "switchTeams": 1
+      },
+      "native_observations_compared": 169,
+      "phase_observations_compared": 77,
+      "skipped_checkpoints": 19,
+      "mismatches": 0,
+      "probe_output_sha256": "c0649bb67ec8959fcc284d346ac067e733c17508f65a2ffe9c6300a6e8b5904c"
+    },
+    {
+      "build": "12.08",
+      "input_sha256": "78e706843ea6992e5502d58f9b41c23ac5470a9e36e810d45e8724fb47a91201",
+      "native_counts": {
+        "roundStarted": 17,
+        "characterDeath": 128,
+        "spikePlanted": 9,
+        "spikeDefused": 4
+      },
+      "phase_counts": {
+        "2": 17,
+        "3": 17,
+        "4": 17,
+        "5": 17,
+        "6": 1
+      },
+      "unprojected_native_counts": {
+        "characterUltimateUsed": 18,
+        "switchTeams": 1
+      },
+      "native_observations_compared": 158,
+      "phase_observations_compared": 69,
+      "skipped_checkpoints": 17,
+      "mismatches": 0,
+      "probe_output_sha256": "7da7a9c651349423edb5fea11519e6a785c034303beb0e05b0d878bdb82172a3"
+    },
+    {
+      "build": "12.09",
+      "input_sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "native_counts": {
+        "roundStarted": 21,
+        "characterDeath": 166,
+        "spikePlanted": 15,
+        "spikeExploded": 4,
+        "spikeDefused": 8
+      },
+      "phase_counts": {
+        "2": 21,
+        "3": 21,
+        "4": 21,
+        "5": 21,
+        "6": 1
+      },
+      "unprojected_native_counts": {
+        "characterUltimateUsed": 39,
+        "switchTeams": 1
+      },
+      "native_observations_compared": 214,
+      "phase_observations_compared": 85,
+      "skipped_checkpoints": 21,
+      "mismatches": 0,
+      "probe_output_sha256": "2dbca3e445630fc97a4bb1b597b524130a13b28319e861803a66aa5c9c5a7a2a"
+    },
+    {
+      "build": "12.10",
+      "input_sha256": "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606",
+      "native_counts": {
+        "roundStarted": 7
+      },
+      "phase_counts": {
+        "2": 7,
+        "3": 7,
+        "4": 6,
+        "5": 6
+      },
+      "unprojected_native_counts": {},
+      "native_observations_compared": 7,
+      "phase_observations_compared": 26,
+      "skipped_checkpoints": 7,
+      "mismatches": 0,
+      "probe_output_sha256": "978960432b0b89b58e0051d87b1b47bf4732421333272e24dce459a05550ddb1"
+    },
+    {
+      "build": "12.11",
+      "input_sha256": "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd",
+      "native_counts": {
+        "roundStarted": 6
+      },
+      "phase_counts": {
+        "2": 6,
+        "3": 6,
+        "4": 6,
+        "5": 5
+      },
+      "unprojected_native_counts": {},
+      "native_observations_compared": 6,
+      "phase_observations_compared": 23,
+      "skipped_checkpoints": 6,
+      "mismatches": 0,
+      "probe_output_sha256": "ec66d939fdc83c49adefc3a3847bcc7de699a97fc642487dd4adc7e06e6cd325"
+    },
+    {
+      "build": "13.00",
+      "input_sha256": "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a",
+      "native_counts": {
+        "roundStarted": 6
+      },
+      "phase_counts": {
+        "2": 6,
+        "3": 6,
+        "4": 5,
+        "5": 5
+      },
+      "unprojected_native_counts": {},
+      "native_observations_compared": 6,
+      "phase_observations_compared": 22,
+      "skipped_checkpoints": 6,
+      "mismatches": 0,
+      "probe_output_sha256": "0b5671a0579683b8aacd0ca64f09298e70ac2652ba7041ca054dc7e803063d7d"
+    }
+  ],
+  "mismatches": 0,
+  "limits": [
+    "Native GUIDs remain unresolved; no player identity, kill-credit, damage or movement joins are certified.",
+    "Ordering is checked within each source stream, not between native Event and replication timelines.",
+    "Reader checkpoints are counted as skipped; gameplay does not decode checkpoints."
+  ]
+}

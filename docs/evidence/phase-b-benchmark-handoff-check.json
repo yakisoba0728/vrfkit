@@ -1,0 +1,70 @@
+{
+  "scope": "Phase B user-run benchmark handoff validation; commands and synthetic fixtures only",
+  "parent_revision": "2b0554f68218138f5a02577b62d769c951befb70",
+  "policy": "No real replay benchmark series or Rust compilation executed for this handoff",
+  "helper_sha256": "cfd83af7d10d477d3520edc9e57a9390b2950bec924ec00e116cef3ccaf31681",
+  "harness_sha256": "6ec1c13a9310da426a6dc5c329220e302f234896a0dd01ba1888f61697650674",
+  "runbook_sha256": "299515514977f85b9b072d46cb969d2922613d64d71ebaee4f17a552ff55e097",
+  "command_validation": {
+    "bash_blocks_parsed_without_execution": 3,
+    "harness_help_exit_code": 0,
+    "helper_help_exit_code": 0,
+    "cargo_1_86_build_help_confirmed_flags": [
+      "--bin",
+      "--release",
+      "--target",
+      "--target-dir",
+      "--message-format",
+      "--locked"
+    ],
+    "rustc_release": "1.86.0",
+    "cargo_version": "1.86.0"
+  },
+  "existing_harness_suite": {
+    "command": "python -W error -m unittest discover -b -s tools/tests -p 'test_benchmark_resources.py'",
+    "passed": 20,
+    "failed": 0,
+    "result": "OK",
+    "input": "synthetic processes, inert replay marker and synthetic Parquet envelopes; no actual replay"
+  },
+  "freezing_helper_smoke": {
+    "positive": "Synthetic clean Git source and Cargo JSON copied inert non-executable bytes with matching binary/source hashes and a completed receipt",
+    "refusal_cases": [
+      "failed-build",
+      "missing-build-finished",
+      "stale-dependency",
+      "stale-binary",
+      "other-worktree-manifest",
+      "other-worktree-source",
+      "missing-runtime-crate",
+      "outside-target",
+      "wrong-optimization",
+      "wrong-debug-level",
+      "wrong-features",
+      "duplicate-binary",
+      "wrong-cli-manifest",
+      "wrong-cli-source",
+      "wrong-revision",
+      "dirty-source",
+      "wrong-compiler",
+      "existing-destination"
+    ],
+    "all_refusals_exit_one_without_accepted_receipt": true,
+    "existing_destination_unchanged": true,
+    "real_compilations": 0,
+    "real_replay_runs": 0
+  },
+  "docs_guard": {
+    "command": "python -W error tools/check_docs.py --fast",
+    "exit_code": 1,
+    "reported_missing_references": 12,
+    "cause": "CLI input guide plus gameplay guide/example dependencies are not present on the isolated DX branch",
+    "other_reported_problems": [],
+    "required_followup": "Coordinator reruns the full guard on the combined branch with dependencies and verified suite counts"
+  },
+  "limits": [
+    "The complete build-and-benchmark runbook was not executed",
+    "Artifact metadata was synthetic in the helper smoke, not a new Rust build",
+    "No final candidate revision or performance improvement is asserted"
+  ]
+}

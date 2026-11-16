@@ -3,6 +3,8 @@
 The CLI, output schemas, library use, `tools/` scripts, and validation suite.
 
 Design rationale is in [`../README.md`](../README.md).
+For a first checkout, source pin and executable Rust/Python recipes, start
+with the [adoption guide](ADOPTION.md).
 
 ## Table of contents
 
@@ -18,6 +20,12 @@ Design rationale is in [`../README.md`](../README.md).
 ---
 
 ## 1. Build
+
+The API and examples documented here come from `integration/vrfkit-overhaul`.
+Use the [source checkout instructions](ADOPTION.md#select-and-record-the-source)
+and record `git rev-parse HEAD`; an unqualified checkout of `main` can have a
+different interface. Source API compatibility is not promised across revisions,
+and the crates are not yet published to crates.io.
 
 Build commands are in [CONTRIBUTING.md](../CONTRIBUTING.md#build). `export` is
 a default feature: without it (`--no-default-features`) `arrow`/`parquet`/`zstd`
@@ -36,6 +44,18 @@ vrfkit validate <file.vrf> [--diagnostics]
 vrfkit diag     <file.vrf> [--json <path>] [--include-payloads]
 vrfkit export   <file.vrf> --out <dir> [--checkpoints]
 ```
+
+The commands below use `vrfkit` as executable shorthand. After a source build,
+use `./target/release/vrfkit` on Linux/macOS or
+`.\target\release\vrfkit.exe` in Windows PowerShell, unless you installed it
+on `PATH`. A custom `CARGO_TARGET_DIR` changes that build-output location.
+
+`validate` and `export` use read-only, seekable file input with chunk buffering;
+`export --checkpoints` uses a separate checkpoint cursor. Keep the input file
+unchanged until the command completes. This avoids retaining the complete
+replay, but it does not impose a fixed process-memory limit. `inspect` and
+`diag` retain their existing whole-file paths. See [CLI input](CLI_INPUT_STREAMING.md)
+for buffering, failure and publication details.
 
 ### `inspect`
 
@@ -681,6 +701,15 @@ actor and rejected-partial batches, plus native Event payloads. It uses the same
 main-stream decoder as the CLI and does not require Parquet dependencies.
 Checkpoint snapshots remain available through `export --checkpoints`.
 
+`read_path` reads container chunks from a file; `read(&bytes, ...)` borrows an
+existing snapshot. Neither API accepts an arbitrary non-seekable stream.
+Callback rows are provisional until the read succeeds, and their borrowed
+slices cannot outlive the callback. [Optional gameplay helpers](GAMEPLAY_API.md)
+project a documented subset of native Event chunks and round-phase field
+observations without changing ordinary Reader or CLI work. The
+[Rust and Python recipes](ADOPTION.md#rust-without-parquet) show how to choose
+the smallest integration layer and retain explicit quality checks.
+
 Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 `vrf-bitio` is `no_std` + optional `alloc`.
 
@@ -1071,7 +1100,7 @@ This measures value presence, not semantic understanding or block preservation.
 | `player_identity.py` | Python module used by `extract_player_effects.py`, `extract_spike_carrier.py`, `extract_ability_lifecycle.py`, `extract_healing_observations.py` and `extract_damage_events.py`, not a command. Admits every non-zero `SpawnedCharacter` value in main `fields.parquet` (BombPlayerState and its Swiftplay alias) as a player body, joined to the manifest `subject` -- not only the manifest's last value, which drops the pawn a player had before reconnecting. A pawn claimed by two PlayerStates or subjects is a conflict. Its counts (earlier pawns, conflicts, manifest disagreements, untyped or foreign rows) are reported with their zeros by every tool that uses it. |
 | `analyze_raw_properties.py` | Streams a deterministic size-stratified corpus sample (or `--all`) one temporary export at a time and inventories preserved unnamed/raw replicated properties. Reports only build-level counts, bit widths, and anonymous recurrence ranks; it never prints replay paths/names, group/actor/object/handle/checksum identifiers, hashes, or payloads. Exits nonzero if an unnamed property row lacks exact-length `raw_bits`. Use `--format json` for a deterministic, versioned aggregate document. |
 | `bench_export.py` | Times a full `export` against `tools/baselines/bench.json`; `--checkpoints` times `export --checkpoints` against its own `export_checkpoints` slot. A smoke detector, not a profiler -- wall clock is noisy, so the default tolerance is 25% and it answers "did something get twice as slow", nothing finer. Reports a run *faster* than the baseline too: that means the recorded number no longer describes the code. |
-| `benchmark_resources.py` | Alternates complete baseline/candidate exports with warmups; records wall/CPU time, peak RSS, throughput and output sizes, and refuses a comparison unless Parquet bytes, normalized manifests and quality counters match. See [resource comparisons](RESOURCE_BENCHMARKS.md) for privacy, platform limits and commands. |
+| `benchmark_resources.py` | Alternates complete baseline/candidate exports with warmups; records wall/CPU time, peak RSS, throughput and output sizes, and refuses a comparison unless Parquet bytes, normalized manifests and quality counters match. See [resource comparisons](RESOURCE_BENCHMARKS.md) for privacy and platform limits, and the [user-run Phase B handoff](PHASE_B_BENCHMARK_HANDOFF.md) for isolated builds, provenance and controls. |
 | `extract_active_effects.py` | Derives an `active_effects.parquet` view from an export -- one row per persistent ability instance (smoke/wall/molly/slow/trap/recon/orb) with class, spawn position, and open/close lifetime. A `dormant` event does NOT end an instance -- a settled smoke that stops replicating has not despawned -- so those instances stay open-ended and the summary counts them. The data already lives in `actors.parquet`; this filters and pairs it. Each row carries `actor_kind` (`projectile`/`game_object`/`zone`/`patch`/`pawn`/`other`, from the class leaf prefix): a projectile and the zone it places are two rows by design, and the kind lets a consumer count either. Weapons (`Gun_` leaves, such as Chamber's ult gun) and Breach's through-wall flash are not effects; Brimstone's orbital strike is a `damage_zone`. Every type and kind prints with its zero. `--tracks <path>` also writes `actor_tracks.parquet`: one row per `ReplicatedMovement` update (location, velocity, yaw) or `MulticastAddSmokeScreenPoint.Translation` wall point, with the class and a `source` column; an untyped row is kept with null coordinates and counted by class. |
 | `extract_spike_carrier.py` | Derives a `spike_carrier.parquet` view -- one row per spike custody interval, resolved through to the manifest `subject`. Reads `BombEquippable_C.Owner` on the spike's own channel rather than the inventory side, so it covers carrying-in-the-backpack and not just in-hand, and it follows proxy carriers (Gekko's Wingman) back through `Instigator`. A carrier is any `SpawnedCharacter` pawn of a player, including one from before a reconnect; `carrier_identity_provenance` says which. |
 | `minimap.py` | Minimap projection (`project`, crossed axes: u from `pos_y`, v from `pos_x`) and park-slot mask (`parked`, on both x and z), importable. As a command, `--export <dir> --maps <valorant-api /v1/maps JSON>` prints the share of live movement rows inside [0,1]짼 and the u/v range, and exits 1 for a map the file lacks or leaves at zero, or a share below 99%. The constants file is the user's; nothing in the repo carries it. See [DATA.md](DATA.md#minimap-projection). |
@@ -1302,6 +1331,11 @@ directory. Preserved copies live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
 ---
 
 ## 8. Known limits
+
+Build acceptance and preservation are separate from semantic completeness.
+The [adoption limits](ADOPTION.md#support-and-preservation-limits) distinguish
+historical corpus audits, current public checks, raw-window availability and
+the optional gameplay layer's deliberately unresolved identities.
 
 - **Untyped residual** -- the [`export`](#export) `Typed` is ~83.1% (denominator
   including RPC parameters). **Untyped != lost** (`raw_bits` preserved). Each

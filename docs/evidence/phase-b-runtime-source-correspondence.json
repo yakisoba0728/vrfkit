@@ -1,0 +1,18 @@
+{
+  "source_commit": "2fbead4f716f12f7c5d41ff067ff4ee63a55dc90",
+  "frozen_profile": "Cargo test profile: opt-level 2, no debug information, no incremental compilation; debug assertions remain enabled",
+  "default_release": false,
+  "comparisons": [
+    {
+      "commit": "e294fcf13c2d66ff47d45067341eb6f6e32eb27f",
+      "checked_files": 133,
+      "mismatches": []
+    },
+    {
+      "commit": "df9c066131e5a4b437bccc7069f2aeebf6c822a6",
+      "checked_files": 133,
+      "mismatches": []
+    }
+  ],
+  "performance_claim": null
+}
