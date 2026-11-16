@@ -30,7 +30,7 @@ only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
 **Test suites (2026-11-16):** **775 Rust tests (Windows)**,
-**774 Rust tests (non-Windows)** and **1108 Python tests**.
+**774 Rust tests (non-Windows)** and **1127 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -216,11 +216,25 @@ adds seven checkpoint tables. The tables, their columns, the join rules and
 the traps (a per-round tick, `open` / `close` / `dormant`, an `FDateTime`
 timestamp) are in [`docs/USAGE.md` section 3](docs/USAGE.md#3-output).
 
+### JSONL for Python and other consumers
+
+Convert any existing main or checkpoint Parquet table with selected columns:
+
+```bash
+python -m pip install -r requirements.txt
+python tools/export_jsonl.py --export match-export --table fields --out fields.jsonl
+```
+
+The [JSONL format](docs/JSONL.md) includes a schema header, exact integer tokens,
+hexadecimal binary values and explicit nulls. Conversion uses bounded row batches
+and publishes the completed file atomically. It preserves selected values and
+row order; it does not infer gameplay events or retain Parquet physical encoding.
+
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
 **774 passing (non-Windows)**; the Windows suite contains **775 tests (Windows)**.
-The full Python suite has **1108 passing** tests. The documentation guard
+The full Python suite has **1127 passing** tests. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.
