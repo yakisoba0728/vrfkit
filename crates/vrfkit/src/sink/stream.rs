@@ -143,7 +143,7 @@ impl FieldSink for ExportSink<'_> {
         // with the whole payload is still emitted below.
         if let Some(raw) = raw_bits.as_deref() {
             let name = field_name.as_deref();
-            self.emit_flattened_array(name, field_checksum, raw, bit_count);
+            self.emit_flattened_array(handle, name, field_checksum, raw, bit_count);
             self.decode_struct_blob(name, raw, bit_count);
             self.emit_multi_contents(name, raw, bit_count);
         }

@@ -148,6 +148,9 @@ pub struct ExportStats {
     /// (`active_blind_array_bits`); the parent row keeps the byte, and no other
     /// number moves if a build makes such trailers common.
     pub active_blinds_empty_trailers: u64,
+    /// Empty FocusProjectiles deltas carrying exactly one final zero byte.
+    /// The measured route keeps that byte in its raw parent.
+    pub focus_projectiles_empty_trailers: u64,
     /// EffectContainer RPC parameters turned into a `value_str` JSON array:
     /// the decoder's only success signal there, as the overlay buckets are
     /// filled first. Failures land in `overlay.decoded_err`; the
@@ -256,6 +259,7 @@ pub struct ExportStats {
     pub route_children_requested_ignore_actors: u64,
     pub route_children_active_blinds: u64,
     pub route_children_projectile_path: u64,
+    pub route_children_focus_projectiles: u64,
 }
 
 /// `counters` and `counters_mut` over one list per struct. Each destructure
@@ -292,7 +296,8 @@ macro_rules! export_counters {
 export_counters! {
     "" ExportStats {
         fields_emitted, rpcs_emitted, actor_opens, actor_closes, content_blocks,
-        tracked_rewards_opaque_empty_variants, active_blinds_empty_trailers, effect_blobs_decoded,
+        tracked_rewards_opaque_empty_variants, active_blinds_empty_trailers,
+        focus_projectiles_empty_trailers, effect_blobs_decoded,
         struct_blobs_decoded, multi_contents_items_emitted, cnc_rpcs_emitted,
         cnc_bruteforce_payloads_attempted, cnc_bruteforce_payloads_unwalked,
         rep_layout_cnc_tails_decoded, rep_layout_cnc_tails_preserved, struct_blobs_failed,
@@ -305,7 +310,7 @@ export_counters! {
         route_children_player_information, route_children_tracked_rewards,
         route_children_selected_v2, route_children_kill_data, route_children_server_active_effects,
         route_children_requested_ignore_actors, route_children_active_blinds,
-        route_children_projectile_path
+        route_children_projectile_path, route_children_focus_projectiles
     } except { overlay, array, struct_blob_first_error, movement_first_error }
     "overlay_" OverlayStats.overlay {
         decoded_ok, decoded_err, raw_or_skip, not_in_table, no_field_name, handle_conflicts_refused
@@ -335,6 +340,7 @@ impl ExportStats {
             }
             MeasuredArrayRoute::ActiveBlinds => &mut self.route_children_active_blinds,
             MeasuredArrayRoute::NetworkedProjectilePath => &mut self.route_children_projectile_path,
+            MeasuredArrayRoute::FocusProjectiles => &mut self.route_children_focus_projectiles,
         }
     }
 
@@ -640,7 +646,6 @@ impl<'a> ExportSink<'a> {
         self.measured_array_routes.admits(route)
     }
 
-    #[cfg(feature = "export")]
     pub(super) fn enable_checkpoint_block_context(
         &mut self,
         checkpoint: CheckpointIdentity,

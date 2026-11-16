@@ -90,6 +90,15 @@ impl FileInput {
         replay: &Replay<'_>,
         on_chunk: &mut dyn FnMut(Chunk<'_>) -> Result<(), CliError>,
     ) -> Result<u64, CliError> {
+        self.for_each_chunk_with_checkpoints(replay, false, on_chunk)
+    }
+
+    pub fn for_each_chunk_with_checkpoints(
+        self,
+        replay: &Replay<'_>,
+        checkpoints: bool,
+        on_chunk: &mut dyn FnMut(Chunk<'_>) -> Result<(), CliError>,
+    ) -> Result<u64, CliError> {
         let (compressed, encrypted) = (replay.compressed, replay.encrypted);
         let Self {
             mut main,
@@ -132,12 +141,16 @@ impl FileInput {
                 }
             });
             let mut unknown = 0;
-            let mut event_payload = Vec::new();
+            let mut payload = Vec::new();
             while let Some((kind, size)) = main.next_header()? {
-                if kind == ChunkType::Event {
-                    event_payload.resize(size, 0);
-                    main.file.read_exact(&mut event_payload)?;
-                    on_chunk(Chunk::Event(&event_payload))?;
+                if kind == ChunkType::Event || (checkpoints && kind == ChunkType::Checkpoint) {
+                    payload.resize(size, 0);
+                    main.file.read_exact(&mut payload)?;
+                    on_chunk(if kind == ChunkType::Event {
+                        Chunk::Event(&payload)
+                    } else {
+                        Chunk::Checkpoint(&payload)
+                    })?;
                     continue;
                 }
                 main.skip_payload()?;
@@ -148,8 +161,7 @@ impl FileInput {
                         })??;
                         on_chunk(Chunk::ReplayData(plain, unread))?;
                     }
-                    // The high-level Reader deliberately does not decode
-                    // snapshots. Its callback only counts their occurrence.
+                    // Main-only callers count snapshots without buffering.
                     ChunkType::Checkpoint => on_chunk(Chunk::Checkpoint(&[]))?,
                     ChunkType::Unknown(_) => unknown += 1,
                     ChunkType::Header => {}
