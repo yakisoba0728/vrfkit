@@ -14,6 +14,13 @@ pub enum CliError {
     #[error("frame error: {0}")]
     Frame(#[from] vrf_frame::FrameError),
 
+    #[error("checkpoint {checkpoint}: {error}")]
+    CheckpointSchema {
+        checkpoint: String,
+        #[source]
+        error: vrf_schema::SchemaError,
+    },
+
     #[error("export error: {0}")]
     Export(#[from] vrf_export::ExportError),
 
