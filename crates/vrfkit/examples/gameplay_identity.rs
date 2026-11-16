@@ -2,13 +2,17 @@
 
 use std::collections::BTreeMap;
 
-use vrfkit::gameplay::{IdentityError, IdentityResolution, MainIdentityTimeline, spawned_character_observation};
+use vrfkit::gameplay::{
+    IdentityError, IdentityResolution, MainIdentityTimeline, spawned_character_observation,
+};
 use vrfkit::{ReplayEvent, ReplayReader};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let input = args.next().ok_or("usage: gameplay_identity <replay.vrf>")?;
-    if args.next().is_some() { return Err("usage: gameplay_identity <replay.vrf>".into()); }
+    if args.next().is_some() {
+        return Err("usage: gameplay_identity <replay.vrf>".into());
+    }
     let mut timeline = MainIdentityTimeline::new();
     let mut counts = BTreeMap::from([
         ("spawned_character_declarations", 0_u64),
@@ -42,7 +46,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok::<(), IdentityError>(())
     })?;
     // A later failure must not publish a successful-looking partial aggregate.
-    for (key, count) in counts { println!("{key}: {count}"); }
+    for (key, count) in counts {
+        println!("{key}: {count}");
+    }
     println!("skipped_checkpoints: {}", summary.skipped_checkpoint_chunks);
     println!("block_verdict: {:?}", summary.block_verdict());
     Ok(())
