@@ -1,0 +1,46 @@
+{
+  "system": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "cpu_count": 9,
+  "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "target_triple": "x86_64-unknown-linux-gnu",
+  "build_environment": {
+    "RUSTFLAGS": "",
+    "CARGO_ENCODED_RUSTFLAGS": "",
+    "CARGO_BUILD_JOBS": "1",
+    "CARGO_INCREMENTAL": "0"
+  },
+  "configuration_files": {},
+  "cc": "cc (Debian 14.2.0-19) 14.2.0",
+  "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+  "git": "git version 2.52.0",
+  "cargo_configuration_ancestor_search_complete": true,
+  "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+  "os_release": "Debian GNU/Linux 13 (trixie), 13.6",
+  "filesystem": "overlay, same /workspace mount for inputs and exports; warm filesystem cache; no exclusive-host claim",
+  "memory_observation": {
+    "observed_utc": "2026-11-16T13:54:10.684697+00:00",
+    "proc_meminfo_bytes": {
+      "MemTotal": 10451427328,
+      "MemAvailable": 5138071552
+    },
+    "rlimit_address_space": [
+      -1,
+      -1
+    ],
+    "cgroup_memory_limit": null,
+    "cgroup_cpu_quota": null,
+    "limitation": "cgroup memory.max and cpu.max unavailable in this sandbox; proc memory is an observation, not a proven enforced container limit"
+  },
+  "input_output_same_filesystem": true,
+  "cache_policy": "Warm filesystem cache; no fsync, cache drop, power-state tuning or cold-reset; same host/session with coordinated absence of agent builds/tests during timed series; no exclusive-host guarantee."
+}
