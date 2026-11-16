@@ -1,5 +1,9 @@
 # Overhaul execution ledger
 
+The active continuation is [final consolidation and independent QA](FINAL_CONSOLIDATION_STATUS.md).
+The sections below preserve the earlier execution checkpoint; their phase,
+benchmark and multi-PR instructions are historical, not the current work plan.
+
 The current continuation is tracked in [Phase C status](PHASE_C_STATUS.md)
 and [Phase C results](PHASE_C_RESULTS.md). [Phase B status](PHASE_B_STATUS.md)
 and [Phase B results](PHASE_B_RESULTS.md) retain their completed phase's scope.
