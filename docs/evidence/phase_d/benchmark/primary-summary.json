@@ -199,7 +199,9 @@
       "output_fingerprint": "e2af2788165cc54ad652a8c715428efa96845557373df6e2528a1f9c99a2edbf",
       "parquet_bytes": 31820307,
       "strict_outputs_equivalent": true,
-      "failed_attempts": []
+      "failed_attempts": [],
+      "performance_conclusion": "INCONCLUSIVE",
+      "conclusion_basis": "Every wall comparison contains paired ratios on both sides of1; the observed median effect overlaps substantial same-binary variation. No samples removed; this does not establish a general speed improvement or regression."
     },
     {
       "build": "12.05",
@@ -391,7 +393,9 @@
       "output_fingerprint": "ed738ab50d368502c0284bfd0caad74fab6f99b5175bf9767b9603fb63032ca1",
       "parquet_bytes": 33843013,
       "strict_outputs_equivalent": true,
-      "failed_attempts": []
+      "failed_attempts": [],
+      "performance_conclusion": "INCONCLUSIVE",
+      "conclusion_basis": "Every wall comparison contains paired ratios on both sides of1; the observed median effect overlaps substantial same-binary variation. No samples removed; this does not establish a general speed improvement or regression."
     },
     {
       "build": "12.09",
@@ -583,7 +587,9 @@
       "output_fingerprint": "ad57771f5c2f1f32c31d772d4a90fdcfc0904626e6e1ed1f79751443beb6e242",
       "parquet_bytes": 41345617,
       "strict_outputs_equivalent": true,
-      "failed_attempts": []
+      "failed_attempts": [],
+      "performance_conclusion": "INCONCLUSIVE",
+      "conclusion_basis": "Every wall comparison contains paired ratios on both sides of1; the observed median effect overlaps substantial same-binary variation. No samples removed; this does not establish a general speed improvement or regression."
     },
     {
       "build": "12.09",
@@ -775,7 +781,9 @@
       "output_fingerprint": "eefb9255221e68b16c8fe1098d427dd8a0dfae7d295691ecee025b7be60e7039",
       "parquet_bytes": 43984122,
       "strict_outputs_equivalent": true,
-      "failed_attempts": []
+      "failed_attempts": [],
+      "performance_conclusion": "INCONCLUSIVE",
+      "conclusion_basis": "Every wall comparison contains paired ratios on both sides of1; the observed median effect overlaps substantial same-binary variation. No samples removed; this does not establish a general speed improvement or regression."
     },
     {
       "build": "13.00",
@@ -967,7 +975,9 @@
       "output_fingerprint": "140c0f93cf523452792040d38eefb5d12109bed5709c29c3af5df9cc31c6db50",
       "parquet_bytes": 211858,
       "strict_outputs_equivalent": true,
-      "failed_attempts": []
+      "failed_attempts": [],
+      "performance_conclusion": "INCONCLUSIVE",
+      "conclusion_basis": "Every wall comparison contains paired ratios on both sides of1; the observed median effect overlaps substantial same-binary variation. No samples removed; this does not establish a general speed improvement or regression."
     },
     {
       "build": "13.00",
@@ -1159,7 +1169,12 @@
       "output_fingerprint": "7e6c1d6a0402e400ee1a6bd8df370e2d81aee368de1640ceb84482c84dd1659c",
       "parquet_bytes": 325675,
       "strict_outputs_equivalent": true,
-      "failed_attempts": []
+      "failed_attempts": [],
+      "performance_conclusion": "INCONCLUSIVE",
+      "conclusion_basis": "Every wall comparison contains paired ratios on both sides of1; the observed median effect overlaps substantial same-binary variation. No samples removed; this does not establish a general speed improvement or regression."
     }
-  ]
+  ],
+  "failed_attempts": 0,
+  "performance_conclusion": "INCONCLUSIVE",
+  "conclusion_basis": "Same-binary controls show substantial variation and all6 comparison series reverse direction between pairs. No confirmed speed superiority or material regression is established."
 }

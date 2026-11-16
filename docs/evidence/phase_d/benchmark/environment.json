@@ -26,7 +26,7 @@
   "cargo_configuration_ancestor_search_complete": true,
   "cpu_model": "AMD EPYC 9V74 80-Core Processor",
   "os_release": "Debian GNU/Linux 13 (trixie), 13.6",
-  "filesystem": "overlay, same /workspace mount for inputs and exports; warm filesystem cache; no exclusive-host claim",
+  "filesystem": "overlayfs; same mount for inputs and exports; warm filesystem cache; no exclusive-host claim",
   "memory_observation": {
     "observed_utc": "2026-11-16T13:54:10.684697+00:00",
     "proc_meminfo_bytes": {
