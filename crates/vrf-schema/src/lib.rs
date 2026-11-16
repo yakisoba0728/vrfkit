@@ -40,7 +40,7 @@ mod resolve;
 #[cfg(feature = "checkpoint")]
 mod checkpoint;
 
-pub use cache::NetGuidCache;
+pub use cache::{NetGuidCache, SchemaLimits};
 pub use error::SchemaError;
 pub use export::{NetFieldExport, NetFieldExportGroup};
 pub use guid::{ExportFlags, NetGuidEntry, NetworkGuid};
