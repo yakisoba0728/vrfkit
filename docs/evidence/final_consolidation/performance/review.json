@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "role": "C: performance / memory / I/O",
+  "completed_utc": "2026-11-16T23:45:42.718565+00:00",
+  "status": "BOUNDED_REVIEW_COMPLETE",
+  "performance_measurement_status": "NOT_EXECUTED",
+  "base_source": "6e54158f0747ce55334f7138e7d5ce7ee8068bb1",
+  "product_baseline": "8581642283bd5a571967129d73897db8ee5408ba",
+  "new_optimizations_implemented": 0,
+  "new_optimizations_accepted": 0,
+  "new_benchmark_series": 0,
+  "new_replay_executions": 0,
+  "new_reference_builds": 0,
+  "remote_mutations": 0,
+  "decision": "No newly isolated bottleneck and no valid quiet control window justify another experiment. Preserve the withdrawn Phase D decision; do not assert throughput, RSS or performance nonregression.",
+  "source_sha256": {
+    "CLAUDE.md": "838ec1b1ffdf46d119f096f8c20a26fab7c4deb046260a2e6fbb860f92552817",
+    "CONTRIBUTING.md": "a72eab227fa3c51206b7e1bc3bacc64591ac2b7c56d3348b789f805a4f019eee",
+    "docs/PHASE_D_RESULTS.md": "f6e90f88809465a63afd5adac4b6a26b722ec7ff6224016bb5b5a9f3bace5b8d",
+    "docs/PERFORMANCE_NOTES.md": "db139618cb3fe005143a1ad9aa740abbf110090ff8cbf12b7d4ca28d4abcc438",
+    "tools/benchmark_resources.py": "6ec1c13a9310da426a6dc5c329220e302f234896a0dd01ba1888f61697650674",
+    "tools/tests/test_benchmark_resources.py": "1bc04bed23cd55cd58ffe7f6f924a9ac484bd580170620713e3092437b52a5b4",
+    "tools/bench_export.py": "0c986476ada36c4b2ad02395702994677d68810cfd082572c2c01e452333c609",
+    "crates/vrf-export/src/writer.rs": "b6dd7210d2b82b32eb1f68a6b4c53bb8e13437440c787bd396df8d0a77efd113",
+    "crates/vrf-export/src/schema.rs": "8511565c966ef8ece355451ff9b9a2be5440da714bfba77c5cc99e38555d8986",
+    "crates/vrf-export/src/record.rs": "572f0cb1ddc99adb200e747670595605a3e4b583f05c60f2504daf910f6c79bb",
+    "crates/vrf-export/src/tables/fields.rs": "0070379380b8f7c1bf06202c6fd78a9473f7a17c3676c1a6b2f6b3bc3a973243",
+    "crates/vrfkit/src/pass.rs": "9735fc0a95f38623df48fc5bacf37adbdb04515b6e834230a5859a79026a427a",
+    "crates/vrfkit/src/reader_input.rs": "e8b9dc7a0206b0026514ffe2b5c2aacbccca46b0e3d821490ca8e75c2951ed34",
+    "crates/vrfkit/src/reader.rs": "74c015f5aa04dd27885fcd960480574e17e05b3b7ca5530d423b75078702e82c",
+    "crates/vrfkit/src/driver/mod.rs": "e67ab3c9285ee56b3c556459e4dc7992bbd77b905c81424aaf15ce47972133f9",
+    "crates/vrfkit/src/driver/writers.rs": "2967b9dd42a8bcfdf41396ecfa28c6526ae8255caad5b06d9f0cd0f245a1ef47"
+  },
+  "immutable_patch_reviews": [
+    {
+      "commit": "aa00e6a480d874da543dcb0eefab0590be4166fa",
+      "test_predecessor": "8db7d967cf03655c5109fd9d12d8d0def927eee3",
+      "status": "NO_STATIC_BLOCKER",
+      "runtime_tests_by_this_reviewer": 0,
+      "runtime_owner": "Coordinator and independent QA",
+      "source_sha256": {
+        "crates/vrf-net/src/bunch.rs": "1fda537a2481fbac0c28cfe579c2c027538edec01d35135b7573f1ae874665d1",
+        "crates/vrf-net/src/error.rs": "d7713a3809ad93897801475f0fa4f0a4fd814983fb94bb41d21a9caff6c1f1d5",
+        "crates/vrf-net/src/packet.rs": "6a6cd99fcd43e21a27175969b0eb37aeded4e65d554357f809f0c15f2b4a8915",
+        "crates/vrf-net/src/pipeline/mod.rs": "ab80e5a10b3cf072586b2718f7adbc162e83649594226ed0fb0633e009b0ccc2",
+        "crates/vrfkit/src/sink/stream.rs": "a260d4d96960c0435b89b2a585cc3a041545c6a6437f56a3029756b548e6418d"
+      },
+      "migration": "Downstream exhaustive matches must handle PayloadOverrun in the two public enums."
+    },
+    {
+      "commit": "f849f62ed10518905dce845743e07daa2d55a8b3",
+      "status": "NO_STATIC_BLOCKER",
+      "classification": "RESOURCE_ADMISSION_HARDENING",
+      "runtime_tests_by_this_reviewer": 0,
+      "runtime_owner": "Author and independent QA",
+      "source_sha256": {
+        "crates/vrf-schema/src/checkpoint.rs": "6c6978ad6be9305ce33206b18f712e6c12e4fe41ad9fb7b3d43637b8a98f4047"
+      },
+      "limit_scope": "256 MiB cumulative resolved UTF-8 GUID path bytes per checkpoint, not process RSS."
+    }
+  ],
+  "retained_evidence_sha256": {
+    "docs/evidence/phase_d/benchmark/protocol.json": "365588484d27ae413052b7dab40de8bef56be8072c581950785981ac2decdc1e",
+    "docs/evidence/phase_d/benchmark/primary-summary.json": "3cd9315300822e7846cdb09bc9cff978cd3a82784c90715ec2accdef3b2f4f14",
+    "docs/evidence/phase_d/benchmark/profile-summary.json": "b0fa1be18c8431f0f3dc54368040f4af26662bc4bbdd7a1c22249df90bae435b",
+    "docs/evidence/phase_d/optimization-measurement/protocol.json": "370e1250b56f3dd11681d658961b74f64ec1eff4695af84d0c8c99f4283c9e40",
+    "docs/evidence/phase_d/optimization-measurement/summary.json": "ac3e0e3e05418bdc726f08f47efe578707702f6b21394d877a969cc9b3bf4a73",
+    "docs/evidence/phase_d/optimization-measurement/decision.json": "63008e59311e6532ddd87220e3a9fe60533164ea7cd5dff3e417880dcc4d4330",
+    "docs/evidence/phase_d/optimization/disposition.json": "87fc8104a166f946ec8f0627f8d65e71fa85daed027f1f19bccf9310fd293b1b",
+    "docs/evidence/phase_d/optimization/allocator.json": "942fb1de93f352f225e5f9d5cdbfc499d1349ba3dacd7440abe4e9c8e778f390",
+    "docs/evidence/phase_d/cross-parser-summary.json": "bd35b758afc2f13bd48283bcd7f1c65a7e748081cf2c979e76b37d0ebd0205b1"
+  },
+  "new_checks": [
+    {
+      "name": "benchmark harness focused unit module",
+      "command": "PYTHONPATH=tools:tools/tests python -W error -m unittest discover -v -s tools/tests -p 'test_benchmark_resources.py'",
+      "python": "Python 3.12.14",
+      "exit_code": 0,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "log": "harness-tests.log",
+      "scope": "Synthetic workers and failure gates; no real replay/performance sample."
+    },
+    {
+      "name": "independent retained arithmetic",
+      "command": "python -W error docs/evidence/final_consolidation/performance/review_retained.py",
+      "exit_code": 0,
+      "retained_series": 20,
+      "retained_records": 280,
+      "warmups": 40,
+      "measured": 240,
+      "summary_cells": 2640,
+      "receipt": "retained-arithmetic.json"
+    },
+    {
+      "name": "arithmetic checker negative controls",
+      "detected": 4,
+      "restoration": "PASS",
+      "receipt": "arithmetic-controls.json",
+      "mutations": [
+        "sample exit code 9",
+        "changed output fingerprint",
+        "incorrect baseline wall median",
+        "missing native movement counter"
+      ]
+    }
+  ],
+  "limitations": [
+    "Static patch review does not replace author/independent runtime tests or final integration CI.",
+    "Historical evidence arithmetic does not add new benchmark executions or unique corpus coverage.",
+    "No retained historical replay or Parquet files were reopened; recorded metadata/hash correspondence was checked.",
+    "No physical-storage latency, per-core utilization, summed process-tree memory, allocation census or new stage profile.",
+    "Reference default complete exports remain NOT_COMPARABLE; no C# performance ratio.",
+    "No private corpus execution, Windows runtime execution or final-HEAD hosted CI by this role."
+  ],
+  "local_artifact_sha256": {
+    "README.md": "e4b3443c038f289d0e4228b5aa0422ec2f0d684f3863aa921fa8743cda98d0c8",
+    "arithmetic-controls.json": "ed939d2d4d0a9f45ccf62aedd1237a520f3c31b47f737fcfbd5acdb982b2652f",
+    "harness-tests.log": "18b457710cbe8295cd0916079d8210a546c1467c10f0aeb9039d2aafcf55fe46",
+    "reference-review.json": "ddb5cacd2cadeba3e412c3fea4825878e51859eaf65d26591ee73086832b5abf",
+    "retained-arithmetic.json": "b661da272a84ad07f89f67e2fbee30f3d5293773e8e948b9cd6fcbd661f6f856",
+    "review_retained.py": "ef1d01503ca497a3ceb308d7903e664403dfb54e1eff5c3f1406a169ce0ad74c"
+  }
+}

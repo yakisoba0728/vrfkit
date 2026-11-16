@@ -1,0 +1,41 @@
+   Compiling thiserror v2.0.19
+   Compiling vrf-bitio v0.6.0 ($QA_ROOT/worktrees/qa-final/crates/vrf-bitio)
+   Compiling utf8parse v0.2.2
+   Compiling futures-core v0.3.33
+   Compiling futures-sink v0.3.33
+   Compiling futures-channel v0.3.33
+   Compiling anstyle-parse v1.0.0
+   Compiling anstyle-query v1.1.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling pin-project-lite v0.2.17
+   Compiling colorchoice v1.0.5
+   Compiling slab v0.4.12
+   Compiling futures-io v0.3.33
+   Compiling anstyle v1.0.14
+   Compiling memchr v2.8.3
+   Compiling log v0.4.33
+   Compiling futures-task v0.3.33
+   Compiling futures-util v0.3.33
+   Compiling env_filter v2.0.0
+   Compiling anstream v1.0.0
+   Compiling bytemuck v1.25.2
+   Compiling safe_arch v0.7.4
+   Compiling env_logger v0.11.11
+   Compiling futures-executor v0.3.33
+   Compiling oozextract v0.5.4
+   Compiling futures v0.3.33
+   Compiling test-log v0.2.21
+   Compiling wide v0.7.33
+   Compiling vrf-schema v0.6.0 ($QA_ROOT/worktrees/qa-final/crates/vrf-schema)
+   Compiling bytes v1.12.1
+   Compiling vrf-transform v0.6.0 ($QA_ROOT/worktrees/qa-final/crates/vrf-transform)
+   Compiling smallvec v1.15.2
+   Compiling vrf-export v0.6.0 ($QA_ROOT/worktrees/qa-final/crates/vrf-export)
+   Compiling vrf-net v0.6.0 ($QA_ROOT/worktrees/qa-final/crates/vrf-net)
+   Compiling vrf-container v0.6.0 ($QA_ROOT/worktrees/qa-final/crates/vrf-container)
+   Compiling vrf-frame v0.6.0 ($QA_ROOT/worktrees/qa-final/crates/vrf-frame)
+   Compiling vrf-decode v0.6.0 ($QA_ROOT/worktrees/qa-final/crates/vrf-decode)
+   Compiling vrf-movement v0.6.0 ($QA_ROOT/worktrees/qa-final/crates/vrf-movement)
+   Compiling vrfkit v0.6.0 ($QA_ROOT/worktrees/qa-final/crates/vrfkit)
+   Compiling vrf-testkit v0.0.0 ($QA_ROOT/worktrees/qa-final/dev/vrf-testkit)
+    Finished `dev` profile [unoptimized] target(s) in 22.42s

@@ -143,6 +143,7 @@ pub enum PartialPayloadReason {
     OverlappingInitial,
     MismatchedContinuation,
     NonByteAlignedFragment,
+    PayloadOverrun,
     ActiveStateLimit,
     BufferedBitsLimit,
     AllocationFailure,
@@ -578,6 +579,9 @@ impl ReplicationReader {
                 Some(PartialSequenceKind::NonByteAlignedFragment) => {
                     stage.stats.partial_non_byte_aligned += 1;
                 }
+                // Pipeline staging supplies the complete declared bit window;
+                // the public accumulator also defends direct callers.
+                Some(PartialSequenceKind::PayloadOverrun) => {}
                 None => {}
             }
 
@@ -799,6 +803,7 @@ fn partial_payload_reason(cause: PartialDiscardCause) -> PartialPayloadReason {
         Sequence(PartialSequenceKind::NonByteAlignedFragment) => {
             PartialPayloadReason::NonByteAlignedFragment
         }
+        Sequence(PartialSequenceKind::PayloadOverrun) => PartialPayloadReason::PayloadOverrun,
         Resource(PartialResourceLimit::ActiveStates) => PartialPayloadReason::ActiveStateLimit,
         Resource(PartialResourceLimit::BufferedBits) => PartialPayloadReason::BufferedBitsLimit,
         Resource(PartialResourceLimit::Allocation) => PartialPayloadReason::AllocationFailure,

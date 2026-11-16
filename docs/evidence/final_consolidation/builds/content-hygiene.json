@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "scope": "Changed/new files relative to recovered8581642 before final evidence completion; final diff is checked again at freeze",
+  "inspected_changed_files": 103,
+  "high_signal_secret_patterns": [
+    "github_token",
+    "private_key",
+    "openai_key",
+    "signed_blob_url"
+  ],
+  "matches": [],
+  "largest_files": [
+    {
+      "bytes": 108618,
+      "path": "crates/vrf-net/src/pipeline/mod.rs"
+    },
+    {
+      "bytes": 98623,
+      "path": "docs/USAGE.md"
+    },
+    {
+      "bytes": 96361,
+      "path": "crates/vrfkit/src/sink/stream.rs"
+    },
+    {
+      "bytes": 86278,
+      "path": "docs/evidence/final_consolidation/builds/candidate-cargo.jsonl"
+    },
+    {
+      "bytes": 52173,
+      "path": "docs/evidence/final_consolidation/builds/candidate-build.json"
+    }
+  ],
+  "limits": "Bounded heuristic scan plus source/evidence review; not a guarantee that every possible sensitive string is recognized. No replay/Parquet bytes are staged."
+}

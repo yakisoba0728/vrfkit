@@ -29,8 +29,9 @@ and through [`fbf24b6`](https://github.com/michel-giehl/ValorantReplayParser/com
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Test suites (2026-11-16):** **872 Rust tests (Windows)**,
-**871 Rust tests (non-Windows)** and **1181 Python tests**.
+**Candidate suite totals (2026-11-17):** **886 Rust tests (Windows)**,
+**885 Rust tests (non-Windows)** and **1181 Python tests**. Final integrated
+execution and platform acceptance are recorded in the consolidation receipt.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -40,6 +41,7 @@ checks and remaining limits.
 
 - First source build and Python/Rust recipes: [`docs/ADOPTION.md`](docs/ADOPTION.md)
 - Rust callbacks and ownership: [`docs/RUST_API.md`](docs/RUST_API.md)
+- Final consolidation, current QA and review gates: [`docs/FINAL_CONSOLIDATION_STATUS.md`](docs/FINAL_CONSOLIDATION_STATUS.md)
 - Optional gameplay observations: [`docs/GAMEPLAY_API.md`](docs/GAMEPLAY_API.md)
 - JSONL conversion and encodings: [`docs/JSONL.md`](docs/JSONL.md)
 - Pinned comparison with ValorantReplayParser: [`docs/REFERENCE_COMPARISON.md`](docs/REFERENCE_COMPARISON.md)
@@ -48,7 +50,8 @@ checks and remaining limits.
 - Phase D 0.6.0 candidate and package gates: [`docs/PHASE_D_RELEASE_CHECKLIST.md`](docs/PHASE_D_RELEASE_CHECKLIST.md)
 - Phase B work and acceptance status: [`docs/PHASE_B_STATUS.md`](docs/PHASE_B_STATUS.md)
 - Reproducible performance comparison: [`docs/PHASE_B_BENCHMARK_HANDOFF.md`](docs/PHASE_B_BENCHMARK_HANDOFF.md)
-- Current measured qualification and limits: [`docs/PHASE_D_RESULTS.md`](docs/PHASE_D_RESULTS.md)
+- Historical controlled measurements and limits: [`docs/PHASE_D_RESULTS.md`](docs/PHASE_D_RESULTS.md)
+- Final correction migration: [`docs/FINAL_CONSOLIDATION_MIGRATION.md`](docs/FINAL_CONSOLIDATION_MIGRATION.md)
 - Run it, every tool and every output column: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable, and whether it is typed: [`docs/DATA.md`](docs/DATA.md)
 - Build it, test it, open a PR: [`CONTRIBUTING.md`](CONTRIBUTING.md) (agents: [`CLAUDE.md`](CLAUDE.md))
@@ -142,7 +145,7 @@ Successful movement decodes can be represented by their rows instead of a
 duplicate raw RPC, and synthesized child rows may have no independent raw
 window. This is not a lossless replay archive. See the
 [adoption limits](docs/ADOPTION.md#support-and-preservation-limits) and
-[current validation evidence](docs/OVERHAUL_RESULTS_2026_11_16.md)
+[current validation evidence](docs/FINAL_CONSOLIDATION_STATUS.md)
 for the tested inputs, exact-output comparisons and remaining unknowns.
 
 ## Supported VALORANT builds
@@ -151,10 +154,11 @@ The table below retains the historical, revision-specific audits linked in
 [build verification](docs/BUILD_VERIFICATION.md). The initial overhaul checked
 six public inputs; later [Phase C acceptance](docs/PHASE_C_RESULTS.md) covered
 ten public inputs across seven builds, including 99 checkpoints. Those are
-historical executions at the recorded source revisions, not a new Phase D
-corpus run. Phase C did not rerun the private corpus. The
-[candidate checklist](docs/PHASE_D_RELEASE_CHECKLIST.md) requires current
-qualification to identify its own inputs, source and limits separately.
+historical executions at the recorded source revisions. The
+[final consolidation](docs/FINAL_CONSOLIDATION_STATUS.md) separately reports
+five fresh public inputs across five builds and 59 checkpoints. Neither run
+establishes new private-corpus coverage; metadata inspection and actual replay
+execution remain separate evidence.
 
 | 🎮 Build | 🌿 Branch | ✅ Clean/checked | 🔎 Verified by |
 |---|---|---:|---|
@@ -255,7 +259,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Workspace unsafe-code policy** — `#![forbid(unsafe_code)]` in every crate.
   Dependencies have separate policies; default Parquet compression includes
   native Zstd. The core-only Reader excludes Arrow, Parquet and Zstd.
-- **872 Rust tests (Windows)** / **871 Rust tests (non-Windows)** plus
+- **886 Rust tests (Windows)** / **885 Rust tests (non-Windows)** plus
   a layered validation suite (framing / bytes / decode
   errors / semantics).
 
@@ -301,18 +305,21 @@ row order; it does not infer gameplay events or retain Parquet physical encoding
 
 ## Status
 
-Current measured qualification is recorded in
-[Phase D results](docs/PHASE_D_RESULTS.md) and its fixed final source/CI receipt.
-Output-preserving controlled comparisons completed, but performance superiority
-remains inconclusive; the single optimization experiment was withdrawn.
-The unpublished 0.6.0 candidate retains the accepted runtime.
+Current implementation and independent QA are tracked in
+[final consolidation](docs/FINAL_CONSOLIDATION_STATUS.md) and its fixed final
+acceptance receipt. [Phase D results](docs/PHASE_D_RESULTS.md) retain the prior
+controlled measurements: performance superiority remains inconclusive and
+the single optimization experiment was withdrawn. The unpublished 0.6.0
+candidate additionally receives the correctness/resource fixes documented in
+the consolidation ledger; no new ordinary-replay speedup is implied.
 [Phase C results](docs/PHASE_C_RESULTS.md), the [changelog](CHANGELOG.md) and
 [migration guide](docs/PHASE_C_MIGRATION.md) describe the included API/output
 changes. Main merge and publication remain separate user decisions.
 
-Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**871 passing (non-Windows)**; the Windows suite contains **872 tests (Windows)**.
-The full Python suite has **1181 passing** tests. The documentation guard
+Integrated workspace qualification is in progress. The 14 new regression test
+functions bring the suites to **885 Rust tests (non-Windows)** and
+**886 Rust tests (Windows)**; final actual execution belongs to the linked
+receipt. The full Python suite has **1181 passing** tests in the fresh local run. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.

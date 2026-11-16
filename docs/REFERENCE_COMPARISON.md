@@ -20,6 +20,10 @@ that source. vrfkit's column describes this integration branch's API; the
 measured comparisons later in this document retain their original vrfkit
 revision and replay scope.
 
+The [final performance/reference review](evidence/final_consolidation/performance/README.md)
+freshly checked the same HEAD, release collection and five source contracts.
+It found no reference delta and performed no new reference replay benchmark.
+
 | Contract | vrfkit | ValorantReplayParser at the pinned source |
 | --- | --- | --- |
 | Library integration | Rust 1.86, borrowed `ReplayReader` callbacks; source dependency with default features disabled removes the Parquet writer graph. | .NET 10, synchronous `IReplayEventSink` and a detached read result. The pinned [README](https://github.com/michel-giehl/ValorantReplayParser/blob/fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8/README.md) documents an experimental NuGet package and an unreleased event-project migration. |

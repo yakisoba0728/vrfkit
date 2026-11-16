@@ -7,6 +7,9 @@ second decoder to keep in sync.
 
 This API is currently available from source. The workspace crates are not
 published to crates.io; API compatibility follows the source revision you pin.
+The [final consolidation migration](FINAL_CONSOLIDATION_MIGRATION.md) describes
+new direct-network error cases and the checkpoint path budget. The earlier
+[API and counter migration](PHASE_C_MIGRATION.md) remains applicable.
 For a neighboring checkout:
 
 ```toml
@@ -401,6 +404,12 @@ and its decoded archive. It does not retain all snapshots or a whole-file copy.
 Record slices and declaration references are callback-scoped. Callers own any
 retained copies. Schema limits bound groups and field slots in each independent
 cache; they do not impose a fixed total memory bound.
+
+Checkpoint GUID declarations also have a separate fixed 256 MiB cumulative
+resolved-path byte budget, including repeated/indexed paths. Excess is reported
+as a typed `SchemaError::ResourceLimit` before the refused entry's callback or
+cache insertion. It resets per checkpoint and does not change the two fields
+of `SchemaLimits`; see [checkpoint path expansion](SCHEMA_LIMITS.md#checkpoint-guid-path-expansion).
 
 ### Failure ordering and migration
 

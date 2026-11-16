@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "input_count": 5,
+  "successful": 5,
+  "inputs": [
+    {
+      "build": "12.05",
+      "url": "https://media.githubusercontent.com/media/Matthias1590/unsupported-replays/c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe/replays/12.05/sample-1.replay",
+      "sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+      "bytes": 54702346,
+      "actual_sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+      "actual_bytes": 54702346,
+      "status": "PASS"
+    },
+    {
+      "build": "12.09",
+      "url": "https://media.githubusercontent.com/media/Matthias1590/unsupported-replays/c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe/replays/12.09/sample-1.replay",
+      "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "bytes": 61015648,
+      "actual_sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "actual_bytes": 61015648,
+      "status": "PASS"
+    },
+    {
+      "build": "12.10",
+      "url": "https://raw.githubusercontent.com/michel-giehl/ValorantReplayParser/b51d67423b7b4952d59051cf91e55efa1c42da05/tests/Test.Integration/Replays/9f8b32c5-c243-41ec-bbbb-832582edf652.12_10.vrf",
+      "sha256": "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606",
+      "actual_sha256": "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606",
+      "actual_bytes": 525616,
+      "status": "PASS"
+    },
+    {
+      "build": "12.11",
+      "url": "https://raw.githubusercontent.com/michel-giehl/ValorantReplayParser/b51d67423b7b4952d59051cf91e55efa1c42da05/tests/Test.Integration/Replays/5c673443-5bdc-4576-b416-aab3f62471a5.12_11.vrf",
+      "sha256": "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd",
+      "actual_sha256": "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd",
+      "actual_bytes": 410628,
+      "status": "PASS"
+    },
+    {
+      "build": "13.00",
+      "url": "https://raw.githubusercontent.com/michel-giehl/ValorantReplayParser/b51d67423b7b4952d59051cf91e55efa1c42da05/tests/Test.Integration/Replays/12974d2b-848f-490d-80ba-5f03a033c2d5.13_00.vrf",
+      "sha256": "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a",
+      "bytes": 431908,
+      "actual_sha256": "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a",
+      "actual_bytes": 431908,
+      "status": "PASS"
+    }
+  ]
+}

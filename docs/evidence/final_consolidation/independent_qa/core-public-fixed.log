@@ -1,0 +1,19 @@
+   Compiling vrf-schema v0.6.0 ($QA_ROOT/worktrees/qa/crates/vrf-schema)
+   Compiling vrf-net v0.6.0 ($QA_ROOT/worktrees/qa/crates/vrf-net)
+    Finished `test` profile [optimized] target(s) in 7.44s
+     Running tests/qa_final_payload_bounds.rs ($QA_ROOT/target-qa/debug/deps/qa_final_payload_bounds-c0216c342fc1a484)
+
+running 3 tests
+test qa_empty_short_fragment_is_refused_without_panicking_or_claiming_bytes ... ok
+test qa_refused_channel_can_restart_and_an_absurd_bit_claim_stays_bounded ... ok
+test qa_short_continuation_preserves_prior_bytes_and_does_not_touch_other_channels ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/qa_final_path_budget.rs ($QA_ROOT/target-qa/debug/deps/qa_final_path_budget-f988af37fdedc05f)
+
+running 2 tests
+test qa_public_budget_accepts_exactly_256_mib_of_resolved_paths ... ok
+test qa_public_budget_rejects_one_extra_reference_before_callback_and_cache ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.80s

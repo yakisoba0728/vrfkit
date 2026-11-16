@@ -149,7 +149,9 @@ fn decode_single_update(
                 } else {
                     // Not a u32. The field is consumed, so the framing
                     // survives, but the update has no character to attribute
-                    // moves to: a loss, not "no moves".
+                    // later moves to, even if an earlier occurrence was
+                    // valid: a loss, not "no moves".
+                    shooter_guid = None;
                     result.error_count += 1;
                 }
             }

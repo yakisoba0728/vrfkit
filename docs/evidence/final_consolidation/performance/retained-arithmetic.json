@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "reviewed_utc": "2026-11-16T23:43:22.539846+00:00",
+  "scope": "New arithmetic review of retained Phase D records; zero new performance executions.",
+  "new_replay_executions": 0,
+  "new_performance_measurements": 0,
+  "retained_series_checked": 20,
+  "retained_records_checked": 280,
+  "retained_warmups_checked": 40,
+  "retained_measured_records_checked": 240,
+  "summary_statistic_cells_checked": 2640,
+  "series_sha256": {
+    "docs/evidence/phase_d/benchmark/control-12.05-main.json": "bbdd5a930a2c80210d3fc5a6ac6fa31654a226e252cfea3334bb3b2a80ad5250",
+    "docs/evidence/phase_d/benchmark/comparison-12.05-main.json": "63c0ce26488fd63b203d69b4d4d94f60e94e75c64b18499263f8ac68b315bde7",
+    "docs/evidence/phase_d/benchmark/control-12.05-checkpoints.json": "3279715d0b6c55fea20648bc045d35b3b9213d181f2d26f1db73a7973664d70d",
+    "docs/evidence/phase_d/benchmark/comparison-12.05-checkpoints.json": "c9b506cee374369a3785bd2acd9751c99678ce76396e343b7b64f6e8cac666f0",
+    "docs/evidence/phase_d/benchmark/control-12.09-main.json": "ffefa745af80cffb30a10c5a7ff739b2dfdde81e4ba73582ce01db6499e390a5",
+    "docs/evidence/phase_d/benchmark/comparison-12.09-main.json": "616e6ce1c1d6cb65a6d05f23c372e084526e6395e51020e50304e4961b9cb18c",
+    "docs/evidence/phase_d/benchmark/control-12.09-checkpoints.json": "ebb0b747886bdbdfe9f593aff6c94b5186ff2c0939fac099a447ce071d3c9606",
+    "docs/evidence/phase_d/benchmark/comparison-12.09-checkpoints.json": "5a869e9a32251556bf7ce007c9803089b441f59734d082a63ba58673074f690e",
+    "docs/evidence/phase_d/benchmark/control-13.00-main.json": "bf75d5221f7c15ef205e96900601d46c15098eda5e7958df8a4b11da6e660b72",
+    "docs/evidence/phase_d/benchmark/comparison-13.00-main.json": "ca35bf6ec95d6e7b9e10f3d2a54de4fcd369e73cc8b92a94e733301ca87a8960",
+    "docs/evidence/phase_d/benchmark/control-13.00-checkpoints.json": "48b32f82a43070c0dbf80b3d6acf6022a9b79f8e57eef36d3a7376cbbdc062e1",
+    "docs/evidence/phase_d/benchmark/comparison-13.00-checkpoints.json": "d68c54f4c6b5e68e9df1a91165dfb41553f42f987fabd3e1f1e4b6477edfdcef",
+    "docs/evidence/phase_d/optimization-measurement/control-12.05-main.json": "7badc1a93daf71c2d93b9b1d793c35e71c0918c333dd236e7f04c64882149a04",
+    "docs/evidence/phase_d/optimization-measurement/comparison-12.05-main.json": "ca618c2e9f107eaf4c024300c9703db518be218abc7e8d8c7ace87241053c596",
+    "docs/evidence/phase_d/optimization-measurement/control-12.05-checkpoints.json": "c782af65d133af0f6d0b6dc070bc6c18d5be08b9220377ea8a85de47cdf93853",
+    "docs/evidence/phase_d/optimization-measurement/comparison-12.05-checkpoints.json": "ec2d205c35aa7478b44184326023ce6568b4ae040200583a9282c85fbc6db146",
+    "docs/evidence/phase_d/optimization-measurement/control-12.09-main.json": "7e7d56d171ff5a2f8fc135ac9d6a68fde9cb8ee54158175b81da437bc24ec85c",
+    "docs/evidence/phase_d/optimization-measurement/comparison-12.09-main.json": "5637b29558e7745643fb0b0636e5429fd46013b3de6e8e6bcd90533e56f4eb81",
+    "docs/evidence/phase_d/optimization-measurement/control-12.09-checkpoints.json": "4e6246807972b7d6c3cd92e2d300b0bc70172d88b13ea4d8384d010051458b5d",
+    "docs/evidence/phase_d/optimization-measurement/comparison-12.09-checkpoints.json": "883d10806a2b46e5c8d1c66e54c1ddd1dfc6da6e02acdba92887c818812f09cd"
+  },
+  "conditions": [
+    {
+      "phase_d_directory": "benchmark",
+      "build": "12.05",
+      "mode": "main",
+      "historical_wall_classification": "INCONCLUSIVE",
+      "wall_pairs_on_both_sides_of_one": true,
+      "wall_ranges_overlap_same_binary_control": true,
+      "paired_wall_percent_change": 9.546329024675803,
+      "same_binary_wall_range": [
+        0.8952095880312072,
+        1.2841825108199008
+      ],
+      "paired_rss_percent_change": 0.3363161163467687,
+      "rss_increases": 4,
+      "paired_rss_percent_range": [
+        -4.9785707166351,
+        4.001723487908659
+      ]
+    },
+    {
+      "phase_d_directory": "benchmark",
+      "build": "12.05",
+      "mode": "checkpoints",
+      "historical_wall_classification": "INCONCLUSIVE",
+      "wall_pairs_on_both_sides_of_one": true,
+      "wall_ranges_overlap_same_binary_control": true,
+      "paired_wall_percent_change": 3.0874751862806304,
+      "same_binary_wall_range": [
+        0.8832922362179044,
+        1.1776914501265925
+      ],
+      "paired_rss_percent_change": 0.4453471620655236,
+      "rss_increases": 4,
+      "paired_rss_percent_range": [
+        -1.2411978092325193,
+        2.907148120854819
+      ]
+    },
+    {
+      "phase_d_directory": "benchmark",
+      "build": "12.09",
+      "mode": "main",
+      "historical_wall_classification": "INCONCLUSIVE",
+      "wall_pairs_on_both_sides_of_one": true,
+      "wall_ranges_overlap_same_binary_control": true,
+      "paired_wall_percent_change": 1.1181353709469821,
+      "same_binary_wall_range": [
+        0.7718256624769539,
+        1.0086185516900243
+      ],
+      "paired_rss_percent_change": -0.3510804715187277,
+      "rss_increases": 2,
+      "paired_rss_percent_range": [
+        -4.099033910900774,
+        1.1141841169498123
+      ]
+    },
+    {
+      "phase_d_directory": "benchmark",
+      "build": "12.09",
+      "mode": "checkpoints",
+      "historical_wall_classification": "INCONCLUSIVE",
+      "wall_pairs_on_both_sides_of_one": true,
+      "wall_ranges_overlap_same_binary_control": true,
+      "paired_wall_percent_change": 3.2076542163855803,
+      "same_binary_wall_range": [
+        0.8951973766160173,
+        1.118905174414475
+      ],
+      "paired_rss_percent_change": -1.169073070610771,
+      "rss_increases": 2,
+      "paired_rss_percent_range": [
+        -4.243910786606586,
+        4.361146152459905
+      ]
+    },
+    {
+      "phase_d_directory": "benchmark",
+      "build": "13.00",
+      "mode": "main",
+      "historical_wall_classification": "INCONCLUSIVE",
+      "wall_pairs_on_both_sides_of_one": true,
+      "wall_ranges_overlap_same_binary_control": true,
+      "paired_wall_percent_change": -6.482572934025866,
+      "same_binary_wall_range": [
+        0.8646841150269449,
+        1.168042665191325
+      ],
+      "paired_rss_percent_change": 0.0,
+      "rss_increases": 2,
+      "paired_rss_percent_range": [
+        0.0,
+        0.8474576271186418
+      ]
+    },
+    {
+      "phase_d_directory": "benchmark",
+      "build": "13.00",
+      "mode": "checkpoints",
+      "historical_wall_classification": "INCONCLUSIVE",
+      "wall_pairs_on_both_sides_of_one": true,
+      "wall_ranges_overlap_same_binary_control": true,
+      "paired_wall_percent_change": -4.78038845462605,
+      "same_binary_wall_range": [
+        0.9566482918698886,
+        1.6411499957207667
+      ],
+      "paired_rss_percent_change": 0.5556221786950921,
+      "rss_increases": 6,
+      "paired_rss_percent_range": [
+        0.37878787878788955,
+        1.1437542049786975
+      ]
+    },
+    {
+      "phase_d_directory": "optimization-measurement",
+      "build": "12.05",
+      "mode": "main",
+      "historical_wall_classification": "INCONCLUSIVE",
+      "wall_pairs_on_both_sides_of_one": true,
+      "wall_ranges_overlap_same_binary_control": true,
+      "paired_wall_percent_change": -5.878388378122567,
+      "same_binary_wall_range": [
+        0.9724970976165391,
+        1.1553447052973005
+      ],
+      "paired_rss_percent_change": 0.7788099816709915,
+      "rss_increases": 4,
+      "paired_rss_percent_range": [
+        -3.8046272493573285,
+        1.8282903881107648
+      ]
+    },
+    {
+      "phase_d_directory": "optimization-measurement",
+      "build": "12.05",
+      "mode": "checkpoints",
+      "historical_wall_classification": "INCONCLUSIVE",
+      "wall_pairs_on_both_sides_of_one": true,
+      "wall_ranges_overlap_same_binary_control": true,
+      "paired_wall_percent_change": -4.546191324773263,
+      "same_binary_wall_range": [
+        0.8575228830175764,
+        1.0549649977028868
+      ],
+      "paired_rss_percent_change": 0.7315956377759614,
+      "rss_increases": 3,
+      "paired_rss_percent_range": [
+        -1.5951929611216387,
+        2.8758632902426084
+      ]
+    },
+    {
+      "phase_d_directory": "optimization-measurement",
+      "build": "12.09",
+      "mode": "main",
+      "historical_wall_classification": "INCONCLUSIVE",
+      "wall_pairs_on_both_sides_of_one": true,
+      "wall_ranges_overlap_same_binary_control": true,
+      "paired_wall_percent_change": 0.6947180320018065,
+      "same_binary_wall_range": [
+        0.9003607156236745,
+        1.1565366806776474
+      ],
+      "paired_rss_percent_change": 1.184524291422262,
+      "rss_increases": 4,
+      "paired_rss_percent_range": [
+        -3.016325057157754,
+        2.0446406263013195
+      ]
+    },
+    {
+      "phase_d_directory": "optimization-measurement",
+      "build": "12.09",
+      "mode": "checkpoints",
+      "historical_wall_classification": "INCONCLUSIVE",
+      "wall_pairs_on_both_sides_of_one": true,
+      "wall_ranges_overlap_same_binary_control": true,
+      "paired_wall_percent_change": -0.8743840179890272,
+      "same_binary_wall_range": [
+        0.9330232568069312,
+        1.1660333248649069
+      ],
+      "paired_rss_percent_change": 1.5822599253902947,
+      "rss_increases": 6,
+      "paired_rss_percent_range": [
+        0.6723198061780788,
+        3.1098413832098215
+      ]
+    }
+  ],
+  "retained_allocator_deltas": {
+    "realloc_calls": -1571,
+    "heap_total_reported": 27201974,
+    "heap_peak_reported": 3464100,
+    "scope": "One historical interposed pair; not process RSS or ordinary throughput."
+  },
+  "limitations": [
+    "Retained fingerprints are recomputed from retained hash/counter metadata; no historical replay or Parquet file was reopened.",
+    "No exclusive host, new A/A control, new binary comparison, stage profile or allocation probe was performed.",
+    "Overlapping ranges are descriptive evidence, not a confidence interval, equivalence test or proof of no regression."
+  ]
+}

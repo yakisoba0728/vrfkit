@@ -179,3 +179,73 @@ fn late_input_and_checkpoint_errors_leave_prior_export_unchanged() {
     }
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[cfg(feature = "export")]
+#[test]
+fn export_refuses_to_replace_a_directory_containing_its_input() {
+    let dir = scratch("cli-input", "source-in-output");
+    // Replay content, not the extension, determines what the CLI can read.
+    // These names would otherwise pass the destination's owned-file check.
+    for name in [
+        "fields.parquet",
+        "manifest.json",
+        "checkpoint_fields.parquet",
+    ] {
+        let out = dir.join(name.replace('.', "-"));
+        fs::create_dir(&out).unwrap();
+        let source = out.join(name);
+        let data = preamble();
+        fs::write(&source, &data).unwrap();
+        let run = vrfkit(&["export", path_arg(&source), "--out", path_arg(&out)]);
+        assert_eq!(run.code, Some(1), "{}\n{}", run.stdout, run.stderr);
+        assert!(run.stderr.contains("input replay"), "{}", run.stderr);
+        assert_eq!(fs::read(&source).unwrap(), data);
+        assert_eq!(fs::read_dir(&out).unwrap().count(), 1);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+        let out = dir.join("fields-parquet");
+        let source = out.join("fields.parquet");
+        let input_alias = dir.join("input-alias.vrf");
+        let output_alias = dir.join("output-alias");
+        symlink(&source, &input_alias).unwrap();
+        symlink(&out, &output_alias).unwrap();
+        for (input, destination) in [(&input_alias, &out), (&source, &output_alias)] {
+            let run = vrfkit(&["export", path_arg(input), "--out", path_arg(destination)]);
+            assert_eq!(run.code, Some(1), "{}\n{}", run.stdout, run.stderr);
+            assert!(run.stderr.contains("input replay"), "{}", run.stderr);
+            assert_eq!(fs::read(&source).unwrap(), preamble());
+            assert_eq!(fs::read_dir(&out).unwrap().count(), 1);
+        }
+        fs::remove_file(input_alias).unwrap();
+        fs::remove_file(output_alias).unwrap();
+    }
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 3);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(feature = "export")]
+#[test]
+fn export_can_replace_an_output_hardlink_to_an_external_input() {
+    let dir = scratch("cli-input", "external-source");
+    let out = dir.join("out");
+    let source_dir = dir.join("out-source");
+    fs::create_dir(&out).unwrap();
+    fs::create_dir(&source_dir).unwrap();
+    let source = source_dir.join("fields.parquet");
+    let data = preamble();
+    fs::write(&source, &data).unwrap();
+    fs::hard_link(&source, out.join("fields.parquet")).unwrap();
+    let run = vrfkit(&["export", path_arg(&source), "--out", path_arg(&out)]);
+    assert_eq!(run.code, Some(0), "{}\n{}", run.stdout, run.stderr);
+    assert_eq!(fs::read(&source).unwrap(), data);
+    assert!(
+        fs::read(out.join("fields.parquet"))
+            .unwrap()
+            .starts_with(b"PAR1")
+    );
+    assert_eq!(fs::read_dir(&out).unwrap().count(), 7);
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+    fs::remove_dir_all(dir).unwrap();
+}

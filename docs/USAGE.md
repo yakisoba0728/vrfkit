@@ -5,9 +5,10 @@ The CLI, output schemas, library use, `tools/` scripts, and validation suite.
 Design rationale is in [`../README.md`](../README.md).
 For a first checkout, source pin and executable Rust/Python recipes, start
 with the [adoption guide](ADOPTION.md).
-Current source changes and acceptance are in [Phase C results](PHASE_C_RESULTS.md);
-review [API/counter migration and release preparation](PHASE_C_MIGRATION.md)
-when upgrading an existing consumer.
+Current source changes and acceptance are in
+[final consolidation](FINAL_CONSOLIDATION_STATUS.md). Review the
+[final migration](FINAL_CONSOLIDATION_MIGRATION.md) and the earlier
+[API/counter migration](PHASE_C_MIGRATION.md) when upgrading an existing consumer.
 
 ## Table of contents
 
@@ -1169,7 +1170,9 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-872 Rust tests (Windows), 871 Rust tests (non-Windows), and 1181 Python tests.
+886 Rust tests (Windows), 885 Rust tests (non-Windows), and 1181 Python tests.
+Final integrated execution and exact-source CI are recorded in the
+[consolidation receipt](FINAL_CONSOLIDATION_STATUS.md).
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.

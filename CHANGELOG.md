@@ -8,6 +8,25 @@ release. PR #58 remains draft, open and unmerged. The
 [Phase D release checklist](docs/PHASE_D_RELEASE_CHECKLIST.md) records the
 required final-source, package and approval gates.
 
+The [final consolidation](docs/FINAL_CONSOLIDATION_STATUS.md) adds corrections
+to the recovered Phase A-D candidate:
+
+- Refuse export destinations containing the input replay before staging,
+  including inputs whose names match generated output tables.
+- Preserve the prior diagnostic JSON on a failed Windows replacement by
+  removing the delete-before-rename step.
+- Clear stale movement identity after a malformed repeated shooter GUID,
+  retaining preceding valid rows and the complete raw RPC.
+- Bound cumulative resolved checkpoint GUID paths to 256 MiB per archive
+  before indexed-string copying, observer delivery and cache insertion.
+- Reject short direct partial-bunch buffers explicitly and compute packet
+  bit lengths with checked wide arithmetic.
+
+The two public partial-error enums add `PayloadOverrun`; exhaustive matches
+need a new case. See the [final migration](docs/FINAL_CONSOLIDATION_MIGRATION.md)
+for error, checkpoint and publication behavior. No speculative wire-type
+correction or new ordinary-replay performance claim is included.
+
 - All ten production workspace crates and their lockfile entries use 0.6.0;
   the two unpublished development tools retain their independent metadata.
 - The native movement migration replaces eight obsolete tail/trailer counters

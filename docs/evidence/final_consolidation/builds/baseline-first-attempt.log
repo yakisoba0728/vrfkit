@@ -1,0 +1,93 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling autocfg v1.5.1
+   Compiling libm v0.2.16
+   Compiling syn v2.0.119
+   Compiling num-traits v0.2.19
+   Compiling libc v0.2.189
+   Compiling zerocopy v0.8.55
+   Compiling zerocopy-derive v0.8.55
+   Compiling cfg-if v1.0.4
+   Compiling jobserver v0.1.35
+   Compiling syn v3.0.3
+   Compiling bytes v1.12.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling thiserror v2.0.19
+   Compiling shlex v2.0.1
+   Compiling cc v1.4.0
+   Compiling thiserror-impl v2.0.19
+   Compiling num-integer v0.1.46
+   Compiling version_check v0.9.5
+   Compiling getrandom v0.3.4
+   Compiling pkg-config v0.3.33
+   Compiling ahash v0.8.12
+   Compiling num-bigint v0.4.8
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling half v2.7.1
+   Compiling vrf-bitio v0.6.0 ($WORK_ROOT/worktrees/baseline/crates/vrf-bitio)
+   Compiling semver v1.0.28
+   Compiling rustc_version v0.4.1
+   Compiling arrow-buffer v59.1.0
+   Compiling arrow-schema v59.1.0
+   Compiling futures-core v0.3.33
+   Compiling futures-sink v0.3.33
+   Compiling once_cell v1.21.4
+   Compiling iana-time-zone v0.1.65
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-parse v1.0.0
+   Compiling chrono v0.4.45
+   Compiling futures-channel v0.3.33
+   Compiling arrow-data v59.1.0
+   Compiling flatbuffers v25.12.19
+   Compiling futures-macro v0.3.33
+   Compiling num-complex v0.4.6
+   Compiling anstyle v1.0.14
+   Compiling futures-io v0.3.33
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-task v0.3.33
+   Compiling slab v0.4.12
+   Compiling anstyle-query v1.1.5
+   Compiling zstd-safe v7.2.4
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling memchr v2.8.3
+   Compiling colorchoice v1.0.5
+   Compiling log v0.4.33
+   Compiling hashbrown v0.17.1
+   Compiling arrow-array v59.1.0
+   Compiling env_filter v2.0.0
+   Compiling anstream v1.0.0
+   Compiling futures-util v0.3.33
+   Compiling test-log-core v0.2.21
+   Compiling paste v1.0.15
+   Compiling bitflags v2.13.1
+   Compiling bytemuck v1.25.2
+   Compiling safe_arch v0.7.4
+   Compiling test-log-macros v0.2.21
+   Compiling futures-executor v0.3.33
+   Compiling env_logger v0.11.11
+   Compiling arrow-select v59.1.0
+   Compiling oozextract v0.5.4
+   Compiling zstd v0.13.3
+   Compiling test-log v0.2.21
+   Compiling futures v0.3.33
+   Compiling wide v0.7.33
+   Compiling vrf-schema v0.6.0 ($WORK_ROOT/worktrees/baseline/crates/vrf-schema)
+   Compiling arrow-ipc v59.1.0
+   Compiling twox-hash v2.1.3
+   Compiling base64 v0.22.1
+   Compiling seq-macro v0.3.6
+   Compiling parquet v59.1.0
+   Compiling vrf-transform v0.6.0 ($WORK_ROOT/worktrees/baseline/crates/vrf-transform)
+   Compiling smallvec v1.15.2
+   Compiling vrf-export v0.6.0 ($WORK_ROOT/worktrees/baseline/crates/vrf-export)
+   Compiling vrf-net v0.6.0 ($WORK_ROOT/worktrees/baseline/crates/vrf-net)
+   Compiling vrf-container v0.6.0 ($WORK_ROOT/worktrees/baseline/crates/vrf-container)
+   Compiling vrf-frame v0.6.0 ($WORK_ROOT/worktrees/baseline/crates/vrf-frame)
+   Compiling vrf-movement v0.6.0 ($WORK_ROOT/worktrees/baseline/crates/vrf-movement)
+   Compiling vrf-decode v0.6.0 ($WORK_ROOT/worktrees/baseline/crates/vrf-decode)
+   Compiling vrfkit v0.6.0 ($WORK_ROOT/worktrees/baseline/crates/vrfkit)
+error: could not compile `vrfkit` (bin "vrfkit")
+
+Caused by:
+  process didn't exit successfully: `/home/agent/.rustup/toolchains/1.86.0-x86_64-unknown-linux-gnu/bin/rustc --crate-name vrfkit --edition=2024 crates/vrfkit/src/main.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin --emit=dep-info,link -C opt-level=3 -C lto=fat -C codegen-units=1 -C debuginfo=1 --cfg 'feature="default"' --cfg 'feature="export"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("default", "export"))' -C metadata=428c1495a20a81dd -C extra-filename=-e3a7aeb814d4177a --out-dir $WORK_ROOT/target-baseline/release/deps -L dependency=$WORK_ROOT/target-baseline/release/deps --extern smallvec=$WORK_ROOT/target-baseline/release/deps/libsmallvec-d1a69845e92a8f8a.rlib --extern thiserror=$WORK_ROOT/target-baseline/release/deps/libthiserror-118db0b2e8febb40.rlib --extern vrf_bitio=$WORK_ROOT/target-baseline/release/deps/libvrf_bitio-217e46a83c15be5e.rlib --extern vrf_container=$WORK_ROOT/target-baseline/release/deps/libvrf_container-8d192e6fedba4712.rlib --extern vrf_decode=$WORK_ROOT/target-baseline/release/deps/libvrf_decode-35b81258bee10d62.rlib --extern vrf_export=$WORK_ROOT/target-baseline/release/deps/libvrf_export-1646b31ed74e9797.rlib --extern vrf_frame=$WORK_ROOT/target-baseline/release/deps/libvrf_frame-f9d24adbae06bc63.rlib --extern vrf_movement=$WORK_ROOT/target-baseline/release/deps/libvrf_movement-d88074629f41d8d2.rlib --extern vrf_net=$WORK_ROOT/target-baseline/release/deps/libvrf_net-8f9f228d199655ce.rlib --extern vrf_schema=$WORK_ROOT/target-baseline/release/deps/libvrf_schema-742d4e0dbe7e25c8.rlib --extern vrfkit=$WORK_ROOT/target-baseline/release/deps/libvrfkit-9b2beeaa12065ff2.rlib -L native=$WORK_ROOT/target-baseline/release/build/zstd-sys-f1b090b73cb34c80/out` (signal: 9, SIGKILL: kill)

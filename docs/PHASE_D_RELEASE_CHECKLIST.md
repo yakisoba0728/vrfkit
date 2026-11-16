@@ -1,5 +1,10 @@
 # Phase D 0.6.0 candidate and release gates
 
+This is the historical Phase D checklist. The later
+[final consolidation](FINAL_CONSOLIDATION_STATUS.md) and its fixed acceptance
+receipt supersede its current-source and completion pointers; the Phase D
+measurements and original scope below remain unchanged.
+
 This prepares an unpublished **0.6.0** source candidate on
 `integration/vrfkit-overhaul`. It does not authorize a main merge, removal of
 PR #58's Draft status, tag creation, GitHub Release or registry upload.

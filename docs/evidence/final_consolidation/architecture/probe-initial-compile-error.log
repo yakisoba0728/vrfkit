@@ -1,0 +1,30 @@
+    Updating crates.io index
+     Locking 8 packages to latest Rust 1.86.0 compatible versions
+ Downloading crates ...
+  Downloaded thiserror v2.0.21
+  Downloaded thiserror-impl v2.0.21
+  Downloaded unicode-ident v1.0.27
+  Downloaded syn v3.0.10
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling thiserror v2.0.21
+   Compiling vrf-bitio v0.6.0 (<worktree>/crates/vrf-bitio)
+   Compiling syn v3.0.10
+   Compiling thiserror-impl v2.0.21
+   Compiling vrf-schema v0.6.0 (<worktree>/crates/vrf-schema)
+   Compiling checkpoint-path-budget-probe v0.0.0 (<probe>)
+error[E0603]: module `checkpoint` is private
+  --> src/main.rs:2:17
+   |
+2  | use vrf_schema::checkpoint::read_checkpoint_tables;
+   |                 ^^^^^^^^^^ private module
+   |
+note: the module `checkpoint` is defined here
+  --> <worktree>/crates/vrf-schema/src/lib.rs:41:1
+   |
+41 | mod checkpoint;
+   | ^^^^^^^^^^^^^^
+
+For more information about this error, try `rustc --explain E0603`.
+error: could not compile `checkpoint-path-budget-probe` (bin "checkpoint-path-budget-probe") due to 1 previous error

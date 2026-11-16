@@ -84,8 +84,34 @@ converting it to a `String`. Existing displayed messages are unchanged, and
 `ReadError::Replay` exposes the cause through the standard error source chain.
 Downstream code constructing or destructuring `FrameError::Schema(String)`
 must handle the typed payload; use `to_string()` for logging. Checkpoint error
-types already retain the schema source. The high-level Reader still skips
-checkpoints, and its path method still buffers the complete input file.
+types already retain the schema source. The high-level Reader skips
+checkpoints by default; `ReadOptions` opts into separate snapshot callbacks.
+Its path methods buffer container chunks rather than the complete input file.
+
+## Checkpoint GUID path expansion
+
+Each checkpoint permits at most **256 MiB of cumulative resolved UTF-8 GUID
+path bytes**. A short indexed reference can name a long literal, so the
+encoded archive size and GUID count alone do not bound expanded strings.
+The parser charges every declaration, including literal, indexed, legacy
+decimal and repeated-GUID entries, before cloning an indexed path, invoking
+that entry's observer or inserting it into the cache. The exact boundary is
+accepted; the next excess byte returns `SchemaError::ResourceLimit` for
+`checkpoint resolved GUID path bytes`.
+
+Earlier observer calls remain provisional. A refused GUID entry is not
+delivered or stored. Previously delivered declarations remain available;
+truncated flags and invalid path indices retain their original error priority.
+The budget starts afresh for each checkpoint archive. It is a separate fixed
+checkpoint policy, not a field of the two-member `SchemaLimits` configuration
+and not a total process-RSS cap or a bound on live-stream GUID paths.
+
+The limit covers both cache strings and later owned summary-row expansion.
+Merely sharing cached strings would move the same amplification into those
+detached rows. This change rejects pathological expanded inputs explicitly;
+it does not silently truncate names or discard raw indexed identities. Fresh
+regression and public-fixture evidence is indexed in
+[final consolidation](FINAL_CONSOLIDATION_STATUS.md).
 
 ## Observed public-fixture margin
 

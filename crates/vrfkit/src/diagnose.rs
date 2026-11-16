@@ -268,18 +268,18 @@ fn write_json_file(path: &str, json: &str) -> Result<(), CliError> {
     }
     drop(file);
 
-    #[cfg(windows)]
-    if path.try_exists()? {
-        if let Err(error) = fs::remove_file(path) {
-            let _ = fs::remove_file(&temp);
-            return Err(error.into());
-        }
-    }
-    if let Err(error) = fs::rename(&temp, path) {
+    if let Err(error) = publish_json_file(&temp, path) {
         let _ = fs::remove_file(&temp);
         return Err(error.into());
     }
     Ok(())
+}
+
+/// Keep the prior report intact if the staged file cannot be published.
+fn publish_json_file(staged: &Path, destination: &Path) -> std::io::Result<()> {
+    // rename replaces an existing file on Windows too. Removing it first
+    // would discard the prior complete report if the rename then failed.
+    fs::rename(staged, destination)
 }
 
 /// Walk one Checkpoint chunk as `export --checkpoints` does, minus the
@@ -459,8 +459,8 @@ fn json_number_or_null<T: std::fmt::Display>(value: Option<T>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        NetStats, build_label, json_number_or_null, net_members, push_json_string,
-        reject_input_output_alias, write_json_file,
+        NetStats, build_label, json_number_or_null, net_members, publish_json_file,
+        push_json_string, reject_input_output_alias, write_json_file,
     };
 
     /// Each counter under its own name with its own value, then the three
@@ -545,6 +545,35 @@ mod tests {
 
         assert_eq!(std::fs::read(&source).unwrap(), b"original replay bytes");
         assert_eq!(std::fs::read(&output).unwrap(), b"{\"ok\":true}\n");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn failed_json_publication_preserves_the_prior_report() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vrfkit-diag-failed-publication-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        let output = dir.join("report.json");
+        let staged = dir.join("staged.tmp");
+        std::fs::write(&output, b"previous complete report").unwrap();
+        std::fs::write(&staged, b"new complete report").unwrap();
+        // Fault injection at the publication boundary, without a timing race.
+        std::fs::remove_file(&staged).unwrap();
+
+        let error = publish_json_file(&staged, &output).unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(
+            std::fs::read(&output).ok().as_deref(),
+            Some(b"previous complete report".as_slice())
+        );
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

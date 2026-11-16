@@ -90,7 +90,7 @@ pub struct PartialBunchResult {
     pub resource_limit: Option<PartialResourceLimit>,
     /// Previously/currently buffered bits discarded by the refusal.
     pub discarded_bits: usize,
-    /// Sequence/alignment cause when this fragment was rejected.
+    /// Sequence, alignment or payload-length cause when this fragment was rejected.
     pub error_kind: Option<PartialSequenceKind>,
     /// The fragment replaced an incomplete initial, independently of whether
     /// a second error later rejected the replacement.
@@ -139,6 +139,9 @@ impl PartialBunchAccumulator {
 
     /// Add one fragment and report the outcome: whether a completed payload is
     /// ready (`should_process`) and every bit and payload this call discarded.
+    /// A byte slice shorter than its declared bit count is refused before
+    /// sequence admission. The prior assembly is returned in `displaced`;
+    /// `discarded_bits` counts only supplied bits, never the missing bytes.
     #[allow(clippy::too_many_arguments)]
     pub fn add_fragment(
         &mut self,
@@ -150,6 +153,24 @@ impl PartialBunchAccumulator {
         stats_partial_fragments: &mut u64,
         stats_partial_completed: &mut u64,
     ) -> PartialBunchResult {
+        if payload_bit_count.div_ceil(8) > payload_data.len() {
+            let kind = PartialSequenceKind::PayloadOverrun;
+            *stats_partial_errors += 1;
+            header.has_partial_error = true;
+            header.partial_error_kind = Some(kind);
+            let displaced = self.take_as(ch_index, PartialDiscardCause::Sequence(kind));
+            let discarded_bits = displaced.iter().fold(
+                payload_data.len().saturating_mul(8),
+                |bits, (partial, _)| bits.saturating_add(partial.bit_count),
+            );
+            return PartialBunchResult {
+                header,
+                error_kind: Some(kind),
+                discarded_bits,
+                displaced,
+                ..Default::default()
+            };
+        }
         if header.b_partial_initial
             && !self.fragments.contains_key(&ch_index)
             && self.fragments.len() >= self.max_active
@@ -529,6 +550,59 @@ mod tests {
         assert_eq!(buf[0], 0xAB);
         assert_eq!(buf[1], 0xCD);
         assert_eq!(acc.total_buffered_bits(), 0);
+    }
+
+    #[test]
+    fn a_short_fragment_is_rejected_without_panicking_or_inventing_bits() {
+        for (bytes, bits) in [(&[][..], 8), (&[0xAB][..], 9), (&[0xCD][..], usize::MAX)] {
+            let mut acc = PartialBunchAccumulator::new();
+            let mut c = Counters::default();
+            let result = c.add(&mut acc, initial(1, 1, true), bytes, bits);
+            assert!(result.header.has_partial_error);
+            assert_eq!(result.error_kind, Some(PartialSequenceKind::PayloadOverrun));
+            assert!(!result.should_process);
+            assert_eq!(result.discarded_bits, bytes.len() * 8);
+            assert_eq!(acc.active_count(), 0);
+            assert_eq!(acc.total_buffered_bits(), 0);
+            assert_eq!((c.errs, c.frags, c.comps), (1, 0, 0));
+        }
+    }
+
+    #[test]
+    fn a_short_fragment_preserves_the_retired_assembly_and_allows_recovery() {
+        for replacement in [false, true] {
+            let mut acc = PartialBunchAccumulator::new();
+            let mut c = Counters::default();
+            c.add(&mut acc, initial(1, 1, true), &[0xAA], 8);
+            let header = if replacement {
+                initial(1, 2, true)
+            } else {
+                reliable_final(1)
+            };
+            let rejected = c.add(&mut acc, header, &[0xBB], 16);
+            assert!(rejected.header.has_partial_error);
+            assert!(!rejected.should_process);
+            assert_eq!(rejected.discarded_bits, 16, "only the two supplied bytes");
+            assert_eq!(rejected.displaced.len(), 1);
+            assert_eq!(rejected.displaced[0].0.buffer, [0xAA]);
+            assert_eq!(rejected.displaced[0].0.bit_count, 8);
+            assert_eq!(
+                rejected.displaced[0].1,
+                PartialDiscardCause::Sequence(PartialSequenceKind::PayloadOverrun)
+            );
+            assert_eq!(acc.active_count(), 0);
+            assert_eq!(acc.total_buffered_bits(), 0);
+            assert_eq!((c.errs, c.frags, c.comps), (1, 1, 0));
+
+            c.add(&mut acc, initial(1, 1, true), &[0xCC], 8);
+            assert!(
+                c.add(&mut acc, reliable_final(1), &[0xDD], 8)
+                    .should_process
+            );
+            let (bytes, bits, _) = acc.take_completed(1).unwrap();
+            assert_eq!((bytes, bits), (vec![0xCC, 0xDD], 16));
+            assert_eq!((c.errs, c.frags, c.comps), (1, 3, 1));
+        }
     }
 
     /// A zero-payload final is still the second fragment: `partial_fragments`

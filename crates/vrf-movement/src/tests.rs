@@ -425,6 +425,45 @@ fn a_component_stream_ahead_of_its_guid_is_counted() {
 }
 
 #[test]
+fn a_malformed_repeated_guid_invalidates_only_later_component_attribution() {
+    let stream = real_stream(&[build_move(false, 7, 1.0, 2.0, 3.0)]);
+    for width in [0, 31, 33, 64] {
+        let mut update = update_with_stream(11, &stream);
+        update.truncate(update.len() - 8); // continue this update before its zero handle
+        update
+            .int_packed(SHOOTER_CHARACTER_NET_GUID_HANDLE + 1)
+            .int_packed(width)
+            .bits(0, width)
+            .int_packed(COMPONENT_DATA_STREAM_HANDLE + 1)
+            .int_packed(stream.bit_len())
+            .extend_bits(&stream)
+            .int_packed(SHOOTER_CHARACTER_NET_GUID_HANDLE + 1)
+            .int_packed(32)
+            .u32(22)
+            .int_packed(COMPONENT_DATA_STREAM_HANDLE + 1)
+            .int_packed(stream.bit_len())
+            .extend_bits(&stream)
+            .int_packed(0);
+
+        let (result, moves) = decode_with_context(&wrap_updates_array(&updates_array(&[update])));
+
+        assert_eq!(moves.len(), 2, "{width} bits: stale GUID emitted a move");
+        assert_eq!(moves[0].0.shooter_character_net_guid, 11);
+        assert_eq!(moves[0].1.component_ordinal, 0);
+        assert_eq!(moves[1].0.shooter_character_net_guid, 22);
+        assert_eq!(moves[1].1.component_ordinal, 2);
+        assert_eq!(result.total_moves, 2);
+        assert_eq!(result.component_streams, 2);
+        assert_eq!(result.component_complete, 2);
+        assert_eq!(result.component_errors, 0);
+        assert_eq!(
+            result.error_count, 2,
+            "{width} bits: the GUID, the orphaned stream"
+        );
+    }
+}
+
+#[test]
 fn a_stream_that_fails_to_decode_does_not_drop_the_updates_after_it() {
     // The decoder is past the whole length-delimited stream before reading
     // it, so a failure inside costs only that stream.

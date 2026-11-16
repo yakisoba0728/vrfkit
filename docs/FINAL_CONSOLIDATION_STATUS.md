@@ -6,6 +6,8 @@
 candidate. It is not final acceptance, permission to merge main, or permission
 to publish. The sole review entry point remains
 [Draft PR #58](https://github.com/yakisoba0728/vrfkit/pull/58).
+The [fixed acceptance receipt](https://github.com/yakisoba0728/vrfkit/pull/58#issuecomment-6932599335)
+will record the final source and actual CI/artifact identities after all gates.
 
 ## Recovered immutable baseline
 
@@ -45,16 +47,55 @@ relabelled as new execution.
 
 | Role | Worktree / branch | Current scope |
 | --- | --- | --- |
-| A | `final/core-correctness` | Core bounds, raw preservation and movement attribution |
-| D | `final/reader-cli` | Reader, gameplay, CLI publication/input preservation |
-| E | `final/independent-qa` | Independent regression, adversarial and public-corpus verification |
-| F | `final/ci-release` | Bounded CI/package audit complete; final exact-HEAD gates pending |
-| B | Not started yet | Architecture and incremental refactoring; queued by worker capacity |
-| C | Not started yet | Performance/memory review; bounded by valid measurement evidence |
+| A | `final/core-correctness` | Completed: malformed movement identity fix and author regression |
+| D | `final/reader-fixes` | Export source protection and diagnostic replacement; tests in progress |
+| E | `final/independent-qa` | Independent core/Reader checks complete; frozen candidate corpus and mutation checks in progress |
+| F | `final/ci-release` | Baseline audit complete; resumed for final exact-HEAD CI and artifact gates |
+| B | `final/architecture` | Completed: checkpoint path admission fix and architecture review |
+| C | `final/performance-review` | Completed: bounded source/harness review; no fresh timing claims |
 
-Maximum available concurrency is three specialists plus the coordinator.
-Actual created/completed counts will be recorded at final acceptance rather
-than inferred from the six role names.
+Six unique specialists have been created; the observed maximum is three
+specialists concurrently, plus the coordinator. A, B and C are complete. F
+completed its first audit and has resumed for final gates; D and E are active.
+No agent failure has been observed. Final completion counts will be recorded
+in the acceptance receipt.
+
+## Implemented correction checkpoint
+
+The isolated, clean runtime source is
+`1d2d8f6fe68f3ad1f196bca5adac24b0d3fbee6c` (tree
+`833dae7add06f21589ffdae9680d5df12a5f89fe`). This is the local build source;
+the published checkpoint is reconciled by complete tree and file fingerprints.
+All six corrections are implemented. Final regular-suite and hosted checks
+remain pending in this checkpoint.
+
+| Severity | Correction | Completed evidence |
+| --- | --- | --- |
+| P1 | Refuse an export directory containing its replay source, including output-owned filenames and canonical aliases | Author baseline failure; fixed package suite 259 pass; independent six containment refusals and safe sibling/hardlink cases pass |
+| P2 | Keep the prior diagnostic report if Windows rename fails | Delete-before-rename removed; author regression passes; compiled old-algorithm Linux negative control and restoration in progress; native Windows gate pending |
+| P2 | Clear stale shooter identity after a malformed repeated GUID | Author before/after and independent Reader/partial/two-checkpoint checks; compiled mutation detected and restored executable hash equal |
+| P2 | Bound resolved checkpoint GUID paths before amplification | Seven new author tests; independent public 256 MiB exact-boundary/excess probes fail before and pass after |
+| P2 | Reject direct partial-buffer bit claims beyond available bytes | Two author tests and three independent public-API tests preserve prior/neighbor state and honest byte accounting |
+| P2 | Avoid signed packet-length overflow | Allocation-free old-arithmetic boundary fails before; checked-wide regression and full network package debug/release suites pass |
+
+The [migration](FINAL_CONSOLIDATION_MIGRATION.md) covers the new public enum
+cases and fixed checkpoint policy. No dependency, lockfile, generated wire
+mapping, workflow, production version or required counter is changed.
+
+The frozen default-release candidate is
+`c3a3010083b81332e03d90b888d38dfe069dfb659f3c866637cfed0051d6d417`.
+All workspace release artifacts were cleared before recompilation; Cargo
+reported current source paths and `fresh: false` for all 11 local artifacts.
+The earlier baseline SIGKILL remains a failed attempt; its separate serialized
+retry succeeded with unchanged release flags.
+
+Fresh independent candidate results already completed: five public inputs,
+59 checkpoints, 65 byte-equal Parquet tables, 43,844 typed/raw comparisons,
+all 16 evidence specifications observed, 30 main-only tables unchanged,
+39 JSONL tables/138,727 rows, 22 detected missing-counter controls and 25 CLI
+adversity cases. The complete stable manifests and 153 CLI counter values per
+input match baseline. All 43 selected integrated contracts pass. Real-input GameplayIdentity and
+final-source mutation receipt integration are still running. These observations add no private-corpus coverage.
 
 ## Evidence and acceptance gates
 
@@ -68,8 +109,10 @@ Local Rust 1.86 and Python 3.12 execution has been prepared. GitHub provider
 access reads private archive metadata; the local Git client has no private
 archive or write credential. The connected GitHub mutation API is used for
 authorized integration publication; no credential extraction is needed.
-Private binary acquisition and validation are still unexecuted at this
-checkpoint. A metadata read is not a replay test.
+Private metadata contains 1,011 assets across 24 releases; actual binary
+downloads, hash checks and replay executions remain **NOT_EXECUTED (0)** because
+no available authenticated binary transport serves private Release assets.
+A metadata read is not a replay test; no credentials were extracted.
 
 ## Recovery procedure
 

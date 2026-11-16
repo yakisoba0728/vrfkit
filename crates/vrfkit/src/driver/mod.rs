@@ -78,7 +78,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     );
 
     let destination = PathBuf::from(out_dir);
-    let output = OutputTransaction::begin(&destination)?;
+    let output = OutputTransaction::begin(&destination, Path::new(vrf_path))?;
     let out_path = output.path();
 
     let create = |name: &str| -> Result<BufWriter<fs::File>, CliError> {

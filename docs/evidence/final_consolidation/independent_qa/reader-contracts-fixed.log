@@ -1,0 +1,76 @@
+   Compiling vrf-frame v0.6.0 ($QA_ROOT/worktrees/qa/crates/vrf-frame)
+   Compiling vrfkit v0.6.0 ($QA_ROOT/worktrees/qa/crates/vrfkit)
+    Finished `test` profile [optimized] target(s) in 1m 05s
+     Running tests/gameplay_lifecycle.rs ($QA_ROOT/target-qa/debug/deps/gameplay_lifecycle-7c0d79414cf1da35)
+
+running 3 tests
+test ended_character_declaration_does_not_make_fresh_relation_ambiguous ... ok
+test same_packet_close_and_declaration_remain_ambiguous ... ok
+test ended_player_state_declaration_does_not_make_fresh_relation_ambiguous ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/movement_reader.rs ($QA_ROOT/target-qa/debug/deps/movement_reader-fa51ee895f9aecdf)
+
+running 3 tests
+test reader_delivers_paired_movement_provenance_after_real_partial_reassembly ... ok
+test reader_preserves_the_whole_rpc_when_input_component_body_is_unresolved ... ok
+test checkpoint_movement_keeps_provenance_raw_rpc_and_all_native_counters ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/qa_final_guid.rs ($QA_ROOT/target-qa/debug/deps/qa_final_guid-46903756cf92d1e5)
+
+running 1 test
+test qa_malformed_guid_never_reuses_identity_and_keeps_raw_main_and_checkpoints ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/qa_phase_c_contracts.rs ($QA_ROOT/target-qa/debug/deps/qa_phase_c_contracts-86a5c38b72e92c48)
+
+running 9 tests
+test qa_bounded_terminal_io_error_and_consumer_error_retain_original_objects ... ok
+test qa_identity_strict_packet_boundary_retains_owned_evidence ... ok
+test qa_checkpoint_partial_ownership_and_separate_counters ... ok
+test qa_identity_conflict_close_reopen_and_dormancy_are_distinct ... ok
+test qa_movement_rejects_absent_misaligned_and_reversed_provenance ... ok
+test qa_bounded_checkpoint_callbacks_wait_for_eof_and_caps_consume_one_probe ... ok
+test qa_movement_uses_initial_fragment_and_preserves_exact_rows ... ok
+test qa_identity_rejects_raw_and_schema_mutations_and_invalidates_atomically ... ok
+test qa_checkpoint_consumer_error_at_each_phase_prevents_later_work ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/reader_bounded.rs ($QA_ROOT/target-qa/debug/deps/reader_bounded-4368f04ddded61f4)
+
+running 11 tests
+test empty_reads_terminate_and_zero_limit_does_not_mean_unlimited ... ok
+test largest_limit_does_not_overflow_or_reserve_up_front_and_accepts_dyn_read ... ok
+test later_structural_failure_leaves_only_provisional_callbacks ... ok
+test main_schema_limit_keeps_typed_cause ... ok
+test io_failure_keeps_original_payload_even_on_the_exact_limit_probe ... ok
+test callback_error_keeps_value_and_outranks_later_parse_failure ... ok
+test short_reads_and_interruptions_do_not_lose_bytes ... ok
+test checkpoint_schema_limit_keeps_typed_cause ... ok
+test an_excess_byte_refuses_input_before_callbacks_and_stops_reading ... ok
+test checkpoint_callbacks_and_summaries_match_slice_order_for_both_options ... ok
+test exact_limit_requires_eof_before_callbacks_and_matches_slice ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/reader_checkpoints.rs ($QA_ROOT/target-qa/debug/deps/reader_checkpoints-c2b287e35b4883be)
+
+running 11 tests
+test checkpoint_consumer_error_keeps_identity_and_outranks_later_frame_failure ... ok
+test checkpoint_schema_limits_are_independent_and_keep_the_typed_cause ... ok
+test declaration_callback_error_stops_before_later_malformed_table_bytes ... ok
+test checkpoint_summary_callback_can_stop_without_a_successful_replay_summary ... ok
+test empty_snapshot_and_empty_frame_each_complete_without_record_callbacks ... ok
+test checkpoint_and_main_partials_finish_in_their_own_namespaces ... ok
+test late_checkpoint_failure_invalidates_earlier_snapshot_completion ... ok
+test snapshots_preserve_declarations_raw_rows_order_and_independent_state ... ok
+test legacy_and_default_options_skip_even_malformed_snapshots ... ok
+test first_structural_failure_follows_file_order_even_with_main_prefetch ... ok
+test file_input_callbacks_equal_slice_with_reused_payload_and_record_buffers ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "baseline_source": "8581642283bd5a571967129d73897db8ee5408ba",
+  "test_only_commit": "8db7d967cf03655c5109fd9d12d8d0def927eee3",
+  "fixed_code_commit": "aa00e6a480d874da543dcb0eefab0590be4166fa",
+  "author": "coordinator",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "rustc": "rustc 1.86.0 (05f9846f8 2025-03-31)\nbinary: rustc\ncommit-hash: 05f9846f893b09a1be1fc8560e33fc3c815cfecb\ncommit-date: 2025-03-31\nhost: x86_64-unknown-linux-gnu\nrelease: 1.86.0\nLLVM version: 19.1.7\n",
+  "build_jobs": 1,
+  "findings": [
+    {
+      "severity": "P2",
+      "finding": "Direct PartialBunchAccumulator callers can panic or overstate discarded bits with a short byte slice and a larger bit count",
+      "baseline_tests": 2,
+      "baseline_failed": 2,
+      "baseline_exit_code": 101,
+      "fixed_regression_tests": 2,
+      "fixed_passed": 2
+    },
+    {
+      "severity": "P2",
+      "finding": "Packet bit-size calculation narrows to i32 before multiplying, overflowing at 268435456 bytes",
+      "baseline_tests": 1,
+      "baseline_failed": 1,
+      "baseline_exit_code": 101,
+      "fixed_regression_tests": 1,
+      "fixed_passed": 1,
+      "method": "Extract the unchanged arithmetic into a length-taking private helper, then exercise length/sentinel boundaries without allocating a 256 MiB packet"
+    }
+  ],
+  "fixed_debug_suite": {
+    "package": "vrf-net",
+    "passed": 119,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "fixed_release_suite": {
+    "package": "vrf-net",
+    "passed": 119,
+    "failed": 0,
+    "exit_code": 0,
+    "profile": "unchanged workspace release: opt-level3, fat LTO, codegen-units1, debug1"
+  },
+  "checks": [
+    {
+      "command": [
+        "/home/agent/.cargo/bin/cargo",
+        "+1.86.0",
+        "test",
+        "-p",
+        "vrf-net",
+        "--release",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "log": "release-suite.log"
+    },
+    {
+      "command": [
+        "/home/agent/.cargo/bin/cargo",
+        "+1.86.0",
+        "clippy",
+        "-p",
+        "vrf-net",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "log": "clippy.log"
+    },
+    {
+      "command": [
+        "/home/agent/.cargo/bin/cargo",
+        "+1.86.0",
+        "fmt",
+        "-p",
+        "vrf-net",
+        "-p",
+        "vrfkit",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "fmt.log"
+    }
+  ],
+  "source_sha256": {
+    "Cargo.lock": "ef4c199b359baeca53be4c5d634a288ab4c7e00e1590c8d0948b186e5c5c316a",
+    "crates/vrf-net/src/bunch.rs": "1fda537a2481fbac0c28cfe579c2c027538edec01d35135b7573f1ae874665d1",
+    "crates/vrf-net/src/error.rs": "d7713a3809ad93897801475f0fa4f0a4fd814983fb94bb41d21a9caff6c1f1d5",
+    "crates/vrf-net/src/packet.rs": "6a6cd99fcd43e21a27175969b0eb37aeded4e65d554357f809f0c15f2b4a8915",
+    "crates/vrf-net/src/pipeline/mod.rs": "ab80e5a10b3cf072586b2718f7adbc162e83649594226ed0fb0633e009b0ccc2",
+    "crates/vrfkit/src/sink/stream.rs": "a260d4d96960c0435b89b2a585cc3a041545c6a6437f56a3029756b548e6418d"
+  },
+  "log_sha256": {
+    "before-packet.log": "d7ae56f272f324d7de81106b100c8aeb9021297e36ed5708537ff360935bd86f",
+    "before-short.log": "e86f8dc9c458f1d5e54da38d271023bf377fe2824ca104092778d8e63368cfba",
+    "clippy.log": "881b4e08d79fed1d2d354e94394b01e7b9a144bed18ddac465f81fe962f0a37f",
+    "fixed-suite.log": "07c7c144202f06cc13bca2ec32686bdff672ae69320b11f7674a0c5e52001cc0",
+    "fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "release-suite.log": "9d85409a5c23e46720255463a735be0f045938307c927134a2dea3f4b73e6f53"
+  },
+  "independence": {
+    "author_tests": "This receipt records coordinator-authored regressions. Separate role E public-API probes and role C source review are linked from the final evidence index; they are not included in the 119 regular tests."
+  },
+  "limits": [
+    "No Windows execution is claimed by this receipt.",
+    "Normal DemoFrame packet input already caps packets at 2048 bytes; the wide-length finding concerns the direct packet API.",
+    "No ordinary throughput, latency or RSS improvement is claimed.",
+    "PartialSequenceKind::PayloadOverrun and PartialPayloadReason::PayloadOverrun are public enum additions and require updating downstream exhaustive matches.",
+    "The normal pipeline supplies a complete declared byte window; the early guard protects direct accumulator callers and adds no manifest counter."
+  ],
+  "original_log_sha256": {
+    "fixed-suite.log": "a2b6b52de6000e27294d52ee4d648dbc853f86ea30200c8bf116bf1326bbf918",
+    "release-suite.log": "fb3005c827fcfb876b4e1b1849048cb5dc697da5a4d004909ea9c3f75975dc6f"
+  },
+  "published_log_normalization": "Terminal blank lines normalized; original hashes retained for affected logs"
+}

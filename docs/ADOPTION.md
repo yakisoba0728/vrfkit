@@ -5,6 +5,13 @@ borrowed main records and optional snapshots in Rust, and the Python tools for d
 analysis or JSONL conversion. These paths share the existing decoder and
 preservation policy; they expose different output and ownership contracts.
 
+The source remains an unpublished 0.6.0 candidate. Use the
+[final consolidation status](FINAL_CONSOLIDATION_STATUS.md) and its fixed
+acceptance receipt to identify the reviewed source and actual CI/package
+results. The [final migration](FINAL_CONSOLIDATION_MIGRATION.md) adds direct
+network error cases, checkpoint path admission and CLI publication corrections
+to the earlier API/counter migration. Registry publication remains separate.
+
 | Need | Entry point | Read next |
 | --- | --- | --- |
 | Inspect metadata or check ReplayData framing | `vrfkit inspect` / `validate` | [CLI and verdict scope](USAGE.md#2-cli) |

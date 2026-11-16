@@ -1,0 +1,5 @@
+   Compiling thiserror v2.0.19
+    Checking vrf-bitio v0.6.0 (/workspace/scratch/5a322f957689/worktrees/core/crates/vrf-bitio)
+    Checking vrf-testkit v0.0.0 (/workspace/scratch/5a322f957689/worktrees/core/dev/vrf-testkit)
+    Checking vrf-movement v0.6.0 (/workspace/scratch/5a322f957689/worktrees/core/crates/vrf-movement)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.48s

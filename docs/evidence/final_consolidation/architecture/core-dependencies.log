@@ -1,0 +1,94 @@
+vrfkit v0.6.0 (<worktree>/crates/vrfkit)
+├── smallvec v1.15.2
+├── thiserror v2.0.19
+│   └── thiserror-impl v2.0.19 (proc-macro)
+│       ├── proc-macro2 v1.0.107
+│       │   └── unicode-ident v1.0.24
+│       ├── quote v1.0.47
+│       │   └── proc-macro2 v1.0.107 (*)
+│       └── syn v3.0.3
+│           ├── proc-macro2 v1.0.107 (*)
+│           ├── quote v1.0.47 (*)
+│           └── unicode-ident v1.0.24
+├── vrf-bitio v0.6.0 (<worktree>/crates/vrf-bitio)
+├── vrf-container v0.6.0 (<worktree>/crates/vrf-container)
+│   ├── oozextract v0.5.4
+│   │   ├── bytemuck v1.25.2
+│   │   ├── bytes v1.12.1
+│   │   ├── futures v0.3.33
+│   │   │   ├── futures-channel v0.3.33
+│   │   │   │   ├── futures-core v0.3.33
+│   │   │   │   └── futures-sink v0.3.33
+│   │   │   ├── futures-core v0.3.33
+│   │   │   ├── futures-executor v0.3.33
+│   │   │   │   ├── futures-core v0.3.33
+│   │   │   │   ├── futures-task v0.3.33
+│   │   │   │   └── futures-util v0.3.33
+│   │   │   │       ├── futures-channel v0.3.33 (*)
+│   │   │   │       ├── futures-core v0.3.33
+│   │   │   │       ├── futures-io v0.3.33
+│   │   │   │       ├── futures-macro v0.3.33 (proc-macro)
+│   │   │   │       │   ├── proc-macro2 v1.0.107 (*)
+│   │   │   │       │   ├── quote v1.0.47 (*)
+│   │   │   │       │   └── syn v2.0.119
+│   │   │   │       │       ├── proc-macro2 v1.0.107 (*)
+│   │   │   │       │       ├── quote v1.0.47 (*)
+│   │   │   │       │       └── unicode-ident v1.0.24
+│   │   │   │       ├── futures-sink v0.3.33
+│   │   │   │       ├── futures-task v0.3.33
+│   │   │   │       ├── memchr v2.8.3
+│   │   │   │       ├── pin-project-lite v0.2.17
+│   │   │   │       └── slab v0.4.12
+│   │   │   ├── futures-io v0.3.33
+│   │   │   ├── futures-sink v0.3.33
+│   │   │   ├── futures-task v0.3.33
+│   │   │   └── futures-util v0.3.33 (*)
+│   │   ├── log v0.4.33
+│   │   ├── test-log v0.2.21
+│   │   │   ├── env_logger v0.11.11
+│   │   │   │   ├── anstream v1.0.0
+│   │   │   │   │   ├── anstyle v1.0.14
+│   │   │   │   │   ├── anstyle-parse v1.0.0
+│   │   │   │   │   │   └── utf8parse v0.2.2
+│   │   │   │   │   ├── anstyle-query v1.1.5
+│   │   │   │   │   ├── colorchoice v1.0.5
+│   │   │   │   │   ├── is_terminal_polyfill v1.70.2
+│   │   │   │   │   └── utf8parse v0.2.2
+│   │   │   │   ├── anstyle v1.0.14
+│   │   │   │   ├── env_filter v2.0.0
+│   │   │   │   │   └── log v0.4.33
+│   │   │   │   └── log v0.4.33
+│   │   │   └── test-log-macros v0.2.21 (proc-macro)
+│   │   │       ├── syn v2.0.119 (*)
+│   │   │       └── test-log-core v0.2.21
+│   │   │           ├── proc-macro2 v1.0.107 (*)
+│   │   │           ├── quote v1.0.47 (*)
+│   │   │           └── syn v2.0.119 (*)
+│   │   └── wide v0.7.33
+│   │       ├── bytemuck v1.25.2
+│   │       └── safe_arch v0.7.4
+│   │           └── bytemuck v1.25.2
+│   ├── thiserror v2.0.19 (*)
+│   └── vrf-bitio v0.6.0 (<worktree>/crates/vrf-bitio)
+├── vrf-decode v0.6.0 (<worktree>/crates/vrf-decode)
+│   ├── thiserror v2.0.19 (*)
+│   └── vrf-bitio v0.6.0 (<worktree>/crates/vrf-bitio)
+├── vrf-export v0.6.0 (<worktree>/crates/vrf-export)
+│   ├── smallvec v1.15.2
+│   └── thiserror v2.0.19 (*)
+├── vrf-frame v0.6.0 (<worktree>/crates/vrf-frame)
+│   ├── thiserror v2.0.19 (*)
+│   ├── vrf-bitio v0.6.0 (<worktree>/crates/vrf-bitio)
+│   └── vrf-schema v0.6.0 (<worktree>/crates/vrf-schema)
+│       ├── thiserror v2.0.19 (*)
+│       └── vrf-bitio v0.6.0 (<worktree>/crates/vrf-bitio)
+├── vrf-movement v0.6.0 (<worktree>/crates/vrf-movement)
+│   ├── thiserror v2.0.19 (*)
+│   └── vrf-bitio v0.6.0 (<worktree>/crates/vrf-bitio)
+├── vrf-net v0.6.0 (<worktree>/crates/vrf-net)
+│   ├── thiserror v2.0.19 (*)
+│   ├── vrf-bitio v0.6.0 (<worktree>/crates/vrf-bitio)
+│   ├── vrf-schema v0.6.0 (<worktree>/crates/vrf-schema) (*)
+│   └── vrf-transform v0.6.0 (<worktree>/crates/vrf-transform)
+│       └── vrf-bitio v0.6.0 (<worktree>/crates/vrf-bitio)
+└── vrf-schema v0.6.0 (<worktree>/crates/vrf-schema) (*)

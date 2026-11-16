@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "status": "FINAL_PUBLIC_AND_CONTRACTS_PASS_IDENTITY_AND_FINAL_MUTATION_PENDING",
+  "recorded_utc": "2026-11-16T23:54:13.775251+00:00",
+  "runtime_source_commit": "1d2d8f6fe68f3ad1f196bca5adac24b0d3fbee6c",
+  "runtime_source_tree": "833dae7add06f21589ffdae9680d5df12a5f89fe",
+  "frozen_executable_sha256": "c3a3010083b81332e03d90b888d38dfe069dfb659f3c866637cfed0051d6d417",
+  "frozen_executable_bytes": 38832064,
+  "candidate_build_receipt_sha256": "b1f3f4729e4ed44295cc4467db85e7ea3adbc1ae08332b245dfeb58f8ae47243",
+  "cargo_lock_sha256": "ef4c199b359baeca53be4c5d634a288ab4c7e00e1590c8d0948b186e5c5c316a",
+  "build_profile": "Unchanged workspace default release: opt-level3, fat LTO, codegen-units1, debug1",
+  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "pyarrow": "26.0.1",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "independent_corpus_provenance": {
+    "date_utc": "2026-11-16T23:51:07.149644+00:00",
+    "parser_commit": "1d2d8f6fe68f3ad1f196bca5adac24b0d3fbee6c",
+    "parser_sources_sha256": "5d22230f663883a547da42442438aebac70ce1fc1f3c539c98168ae7eb0070bc",
+    "exe_sha256": "c3a3010083b81332e03d90b888d38dfe069dfb659f3c866637cfed0051d6d417",
+    "runner_sha256": "bc4f6b05c1c4204ac8c5181afe8ead9de2f36e3de101cbe455c0a3f0b88c7794",
+    "evidence_sha256": "1d2fd9890eccd843e53dd33f2bfb2ea95240cbe10974e045bb7fdfd3b15a7c34",
+    "discovered_paths": 5,
+    "unique_replays": 5,
+    "duplicates": 0,
+    "corpus_sha256": "5bdb50e59f82b4ce3e103c407b0886b4d91a91c781ca9a33016ac78ade618ef4"
+  },
+  "reports": {
+    "candidate-corpus-report": "d22e621de683059db55bb33fe4d08f374bf474f13ff032988a6d2dc646baa06c",
+    "final-public-comparison": "69a1be7296691d6d05f3d3c6513e33200f41352ca0c5d43b367e35102d6d46b4",
+    "candidate-cli-adversity": "c66f96cb6aa36edbd0335c1811f87b1577d9b3dda385a1488f8ffe90472d63cd",
+    "final-contracts": "5fc5ec84757c42b7d01836b2ae383ffb1fa6e962ba78548c2c04bdb723139382"
+  },
+  "published_logs": {
+    "candidate-corpus": {
+      "raw_sha256": "6c1f92929e17d39f5ed06643d7bbff7ff9e7cc9928b1f818d4d0d8afec97fa25",
+      "published_sha256": "6c1f92929e17d39f5ed06643d7bbff7ff9e7cc9928b1f818d4d0d8afec97fa25"
+    },
+    "final-public-comparison": {
+      "raw_sha256": "b4c8c088a8ed00f5a023a8c2e4a7c83d81dd6ace36dd374c3c6fbd552f3bd031",
+      "published_sha256": "b4c8c088a8ed00f5a023a8c2e4a7c83d81dd6ace36dd374c3c6fbd552f3bd031"
+    },
+    "candidate-cli-adversity": {
+      "raw_sha256": "f5a0bffc13fe5ccbae02aa133d7803f99e844c92a7ad59e02a817855b6641441",
+      "published_sha256": "f5a0bffc13fe5ccbae02aa133d7803f99e844c92a7ad59e02a817855b6641441"
+    },
+    "final-contracts": {
+      "raw_sha256": "ab0a37366b028a8db829301c3647a7b639b7c2aed8eb1f2abefe9f3fbe9cb9be",
+      "published_sha256": "d14233f103788f115b060089658bc3a4c7dcba64dba77e99a9925c71daaf7615"
+    },
+    "identity-adapter-build": {
+      "raw_sha256": "7b46b0ff93a39b0048b652783d3ce6b055622fb1cf9400bd260ac28f7d5b33f3",
+      "published_sha256": "e79d104ec90f597409e0a7ed29e0aa9fe9f57150194f9f7a08c4cab9a37e319d"
+    }
+  },
+  "log_transformations": [
+    "Workspace prefix replaced with $QA_ROOT",
+    "Terminal blank lines normalized; outcomes preserved"
+  ],
+  "results": {
+    "distinct_public_inputs": 5,
+    "builds": [
+      "12.05",
+      "12.09",
+      "12.10",
+      "12.11",
+      "13.00"
+    ],
+    "checkpoint_chunks": 59,
+    "oracle_blocks": 1380345,
+    "typed_values_compared": 43844,
+    "typed_specifications_observed": 16,
+    "absent_from_every_input": [],
+    "parquet_tables_byte_equal_to_baseline": 65,
+    "stable_manifests_equal": 5,
+    "summary_counter_values_compared": 765,
+    "main_only_tables_byte_equal": 30,
+    "main_and_checkpoint_rpc_loss_zero": true,
+    "jsonl_tables": 39,
+    "jsonl_rows": 138727,
+    "jsonl_binary_bytes": 298133,
+    "mandatory_counter_negative_controls_detected": 22,
+    "cli_adversarial_cases_passed": 25,
+    "selected_contracts_passed": 43,
+    "selected_contracts_overlap_regular_suite": 28
+  },
+  "commands": [
+    [
+      "python",
+      "-W",
+      "error",
+      "tools/verify_build_corpus.py",
+      "--exe",
+      "$QA_ROOT/frozen/candidate-vrfkit",
+      "--corpus",
+      "$QA_ROOT/qa-inputs",
+      "--work-dir",
+      "$QA_ROOT/qa-work/candidate-corpus",
+      "--output",
+      "$QA_ROOT/qa-work/candidate-corpus-report.json",
+      "--jobs",
+      "1"
+    ],
+    [
+      "python",
+      "-W",
+      "error",
+      "compare_public.py",
+      "--source",
+      "$QA_ROOT/worktrees/candidate-release",
+      "--baseline",
+      "$QA_ROOT/qa-work/baseline-corpus",
+      "--candidate",
+      "$QA_ROOT/qa-work/candidate-corpus",
+      "--candidate-exe",
+      "$QA_ROOT/frozen/candidate-vrfkit",
+      "--input-receipt",
+      "input-acquisition.json",
+      "--work",
+      "$QA_ROOT/qa-work/final-public-comparison",
+      "--output",
+      "$QA_ROOT/qa-work/final-public-comparison.json"
+    ],
+    [
+      "python",
+      "-W",
+      "error",
+      "adversarial_cli.py",
+      "--exe",
+      "$QA_ROOT/frozen/candidate-vrfkit",
+      "--replay",
+      "$QA_ROOT/qa-inputs/build_1300/public-13.00.vrf",
+      "--work",
+      "$QA_ROOT/qa-work/candidate-cli-adversity",
+      "--output",
+      "$QA_ROOT/qa-work/candidate-cli-adversity.json"
+    ],
+    [
+      "python",
+      "-W",
+      "error",
+      "run_final_contracts.py",
+      "--source",
+      "$QA_ROOT/worktrees/qa-final",
+      "--target",
+      "$QA_ROOT/target-qa",
+      "--work",
+      "$QA_ROOT/qa-work/final-contracts",
+      "--output",
+      "$QA_ROOT/qa-work/final-contracts.json"
+    ]
+  ],
+  "preservation": {
+    "frozen_candidate_source_clean": true,
+    "frozen_executable_unchanged": true,
+    "all_original_inputs_hash_equal_and_read_only": true
+  },
+  "pending": [
+    "Fresh five-input GameplayIdentity interval join",
+    "Compiled movement mutant and exact artifact restoration on final source",
+    "Coordinator full CI and Windows package gates"
+  ],
+  "limitations": [
+    "The five inputs are counted once; repeated commands and derivatives do not add distinct corpus inputs.",
+    "All43selected contracts are freshly executed;28maintained tests overlap the regular suite,9are retained independent contracts,6are newly authored independent tests.",
+    "The exact test/identity adapter build uses no-default-features and is separate from the full-feature frozen default-release CLI.",
+    "No private replay binary was downloaded or executed.",
+    "No new process-memory or quantitative performance claim."
+  ]
+}
