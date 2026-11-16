@@ -7,6 +7,26 @@ import check_baseline_schemas as schemas
 
 
 class BaselineSchemaTests(TempDirTestCase):
+    def test_focus_counts_are_required_currently_and_never_invented_in_archives(self):
+        names = ("route_children_focus_projectiles", "focus_projectiles_empty_trailers")
+        archived_path = schemas.BASELINES / "export_02d4d478.json"
+        archived = json.loads(archived_path.read_text(encoding="utf-8"))
+        self.assertEqual(schemas.validate_export_baseline(archived_path, archived), [])
+        self.assertTrue(all(name not in archived["counters"] for name in names))
+        current = {"replay": "synthetic.vrf",
+                   "counters": dict.fromkeys(schemas.MAIN_COUNTERS, 0),
+                   "parquet": {name: {"rows": 0, "bytes": 0, "sha256": "a" * 64}
+                               for name in schemas.MAIN_PARQUET}}
+        path = Path("export_synthetic.json")
+        self.assertEqual(schemas.validate_export_baseline(path, current), [])
+        for name in names:
+            missing = json.loads(json.dumps(current))
+            del missing["counters"][name]
+            self.assertIn(name, " ".join(schemas.validate_export_baseline(path, missing)))
+            invented = json.loads(json.dumps(archived))
+            invented["counters"][name] = 0
+            self.assertTrue(schemas.validate_export_baseline(archived_path, invented))
+
     def test_committed_baselines_are_schema_valid_and_cross_consistent(self):
         self.assertEqual(schemas.validate_repository(), [])
 

@@ -16,7 +16,22 @@ use vrf_export::{
 use vrfkit::{CheckpointEvent, ReadOptions, ReplayEvent, ReplayReader};
 
 fn add(counters: &mut BTreeMap<String, u64>, category: &str, name: &str, value: u64) {
+    let name = if category == "sink" {
+        sink_name(name)
+    } else {
+        name
+    };
     *counters.entry(format!("{category}\t{name}")).or_default() += value;
+}
+
+fn sink_name(name: &str) -> &str {
+    match name {
+        "rpcs_emitted" => "sink_rpcs_emitted",
+        "actor_opens" => "sink_actor_opens",
+        "actor_closes" => "sink_actor_closes",
+        "content_blocks" => "sink_content_blocks",
+        other => other,
+    }
 }
 
 fn same(left: &CheckpointIdentity, right: &CheckpointIdentity) {
@@ -55,6 +70,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut seen = [0_u64; 7];
     let mut current_rows = [0_u64; 5];
     let mut partial_bits = 0_u64;
+    let mut checkpoint_diagnostics = 0_usize;
+    let mut checkpoint_network = vrf_net::NetStats::default();
     let summary = ReplayReader.read_path_with_options(
         replay,
         ReadOptions {
@@ -154,9 +171,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             })?;
                         }
                         seen[6] += snapshot.net_guids.len() as u64;
-                        for (name, value) in snapshot.network.counters() {
-                            add(&mut counters, "net", name, value);
-                        }
+                        checkpoint_network.absorb(&mut snapshot.network.clone());
                         for (name, value) in &snapshot.decode_counters {
                             add(&mut counters, "sink", name, *value);
                         }
@@ -239,6 +254,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
                         assert_eq!(snapshot.decode_error_count, 0);
                         assert!(snapshot.decode_errors.is_empty());
+                        checkpoint_diagnostics += snapshot.stream_failures.len();
+                        assert!(snapshot.first_movement_error.is_none());
+                        assert!(snapshot.first_struct_error.is_none());
                         completed += 1;
                         active = None;
                     }
@@ -250,6 +268,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         },
     )?;
     assert!(active.is_none());
+    assert_eq!(summary.decode_error_count, 0);
+    assert!(summary.decode_errors.is_empty());
+    assert!(summary.first_movement_error.is_none());
+    assert!(summary.first_struct_error.is_none());
     assert_eq!(summary.checkpoints.chunks, u64::from(completed));
     assert_eq!(summary.skipped_checkpoint_chunks, 0);
     assert_eq!(summary.checkpoints.field_rows, seen[3]);
@@ -268,14 +290,32 @@ fn main() -> Result<(), Box<dyn Error>> {
         "checkpoint_partial_bits",
         partial_bits,
     );
+    println!(
+        "D\tmain_stream_diagnostics\t{}",
+        summary.stream_failures.len()
+    );
+    println!("D\tcheckpoint_stream_diagnostics\t{checkpoint_diagnostics}");
+    for (name, value) in checkpoint_network.counters() {
+        add(&mut counters, "net", name, value);
+    }
+    add(
+        &mut counters,
+        "net",
+        "diagnostics_retained",
+        checkpoint_network.diagnostics.len() as u64,
+    );
     for (category, count) in counters {
         println!("C\t{category}\t{count}");
     }
     for (name, count) in summary.network.counters() {
         println!("M\tnet\t{name}\t{count}");
     }
+    println!(
+        "M\tnet\tdiagnostics_retained\t{}",
+        summary.network.diagnostics.len()
+    );
     for (name, count) in summary.decode_counters {
-        println!("M\tsink\t{name}\t{count}");
+        println!("M\tsink\t{}\t{count}", sink_name(name));
     }
     for (name, count) in [
         ("guid_entries", seen[0]),

@@ -56,10 +56,11 @@ movement value, exact proof tuple, and explicit resolution status from the
 Rust probe. It does not use time proximity, player account information, or
 final GUID paths to infer earlier identity.
 
-`contracts.rs` contains seven independently authored synthetic tests covering
+`contracts.rs` contains nine independently authored synthetic tests covering
 strict packet boundaries, retained owned evidence, null retirement, ambiguity,
 close/reopen, dormancy, conflicting opens, fragment ranges, missing/misaligned
-provenance, malformed raw/schema evidence, and checkpoint consumer errors.
+provenance, malformed raw/schema evidence, checkpoint consumer errors, and
+bounded nonseekable input.
 Successful execution and meaningful source mutations are still pending.
 
 ## Data handling and reproducibility

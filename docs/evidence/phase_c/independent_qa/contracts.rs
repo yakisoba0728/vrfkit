@@ -104,17 +104,34 @@ fn source(initial: u32, completion: u32) -> MovementProvenance {
     }
 }
 
-fn records<'a>(
-    moves: &'a [MovementRecord],
-    sources: &'a [MovementProvenance],
-) -> ReplayRecords<'a> {
-    ReplayRecords {
-        fields: &[],
-        actors: &[],
-        movement: moves,
-        movement_provenance: sources,
-        partials: &[],
-    }
+fn with_records(
+    moves: &[MovementRecord],
+    sources: &[MovementProvenance],
+    mut check: impl FnMut(ReplayRecords<'_>),
+) {
+    // Obtain the non-exhaustive public batch through the actual Reader, then
+    // replace its public borrowed slices for malformed-provenance controls.
+    let packet = unfinished_partial_packet();
+    let frames = frame(1.0, &[], 0, &[&packet]);
+    let mut data = replay_info(&Info::default());
+    data.extend(chunk(0, &header_payload()));
+    data.extend(chunk(1, &replay_data(&frames, frames.len())));
+    let mut count = 0;
+    ReplayReader
+        .read(&data, |event| {
+            if let ReplayEvent::Records(mut batch) = event {
+                batch.fields = &[];
+                batch.actors = &[];
+                batch.movement = moves;
+                batch.movement_provenance = sources;
+                batch.partials = &[];
+                check(batch);
+                count += 1;
+            }
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+    assert_eq!(count, 1);
 }
 
 #[test]
@@ -232,23 +249,25 @@ fn qa_movement_uses_initial_fragment_and_preserves_exact_rows() {
         .unwrap();
     let moves = [movement(4)];
     let sources = [source(2, 4)];
-    let batch = records(&moves, &sources);
-    timeline.observe_records(&batch).unwrap();
-    let result = timeline.movement_identity(&batch, 0).unwrap();
-    assert!(std::ptr::eq(result.movement, &moves[0]));
-    assert!(std::ptr::eq(result.provenance, &sources[0]));
-    assert_eq!(result.movement.pos_x.to_bits(), 1.25_f32.to_bits());
-    assert_eq!(result.provenance.source.unwrap().object_net_guid, Some(0));
-    assert!(matches!(
-        result.identity,
-        IdentityResolution::Unresolved(IdentityUnresolved::ConcurrentChange)
-    ));
+    with_records(&moves, &sources, |batch| {
+        timeline.observe_records(&batch).unwrap();
+        let result = timeline.movement_identity(&batch, 0).unwrap();
+        assert!(std::ptr::eq(result.movement, &moves[0]));
+        assert!(std::ptr::eq(result.provenance, &sources[0]));
+        assert_eq!(result.movement.pos_x.to_bits(), 1.25_f32.to_bits());
+        assert_eq!(result.provenance.source.unwrap().object_net_guid, Some(0));
+        assert!(matches!(
+            result.identity,
+            IdentityResolution::Unresolved(IdentityUnresolved::ConcurrentChange)
+        ));
+    });
     let sources = [source(4, 4)];
-    let batch = records(&moves, &sources);
-    assert!(matches!(
-        timeline.movement_identity(&batch, 0).unwrap().identity,
-        IdentityResolution::Resolved(_)
-    ));
+    with_records(&moves, &sources, |batch| {
+        assert!(matches!(
+            timeline.movement_identity(&batch, 0).unwrap().identity,
+            IdentityResolution::Resolved(_)
+        ));
+    });
 }
 
 #[test]
@@ -288,18 +307,20 @@ fn qa_movement_rejects_absent_misaligned_and_reversed_provenance() {
     let moves = [movement(3)];
     let valid = [source(2, 3)];
     let mut timeline = known();
-    timeline.observe_records(&records(&moves, &valid)).unwrap();
+    with_records(&moves, &valid, |batch| {
+        timeline.observe_records(&batch).unwrap()
+    });
     let mut absent = valid;
     absent[0].source = None;
     let bad = [source(4, 3)];
     let mismatch = [source(2, 2)];
     for sources in [&[][..], &absent[..], &bad[..], &mismatch[..]] {
-        assert_eq!(
-            timeline
-                .movement_identity(&records(&moves, sources), 0)
-                .unwrap_err(),
-            IdentityError::MovementProvenance
-        );
+        with_records(&moves, sources, |batch| {
+            assert_eq!(
+                timeline.movement_identity(&batch, 0).unwrap_err(),
+                IdentityError::MovementProvenance
+            );
+        });
     }
     assert!(matches!(
         resolution(&timeline, 2),
@@ -420,4 +441,136 @@ fn qa_checkpoint_consumer_error_at_each_phase_prevents_later_work() {
             other => panic!("consumer cause lost: {other:?}"),
         }
     }
+}
+
+struct Chopped<'a> {
+    bytes: &'a [u8],
+    consumed: usize,
+    calls: usize,
+    eof: std::rc::Rc<std::cell::Cell<bool>>,
+}
+
+impl std::io::Read for Chopped<'_> {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        self.calls += 1;
+        assert!(!out.is_empty());
+        if self.calls % 5 == 1 {
+            return Err(std::io::ErrorKind::Interrupted.into());
+        }
+        let count = out.len().min(7).min(self.bytes.len() - self.consumed);
+        out[..count].copy_from_slice(&self.bytes[self.consumed..self.consumed + count]);
+        self.consumed += count;
+        if count == 0 {
+            self.eof.set(true);
+        }
+        Ok(count)
+    }
+}
+
+#[test]
+fn qa_bounded_checkpoint_callbacks_wait_for_eof_and_caps_consume_one_probe() {
+    let data = replay_with_partial_checkpoints();
+    let options = ReadOptions {
+        checkpoints: true,
+        ..Default::default()
+    };
+    let mut expected = Vec::new();
+    let expected_summary = ReplayReader
+        .read_with_options(&data, options, |event| {
+            expected.push(format!("{event:?}"));
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+    for limit in [data.len(), data.len() + 11] {
+        let eof = std::rc::Rc::new(std::cell::Cell::new(false));
+        let mut input = Chopped {
+            bytes: &data,
+            consumed: 0,
+            calls: 0,
+            eof: eof.clone(),
+        };
+        let mut actual = Vec::new();
+        let summary = ReplayReader
+            .read_bounded(&mut input, limit, options, |event| {
+                assert!(eof.get(), "callback before input completion");
+                actual.push(format!("{event:?}"));
+                Ok::<(), Infallible>(())
+            })
+            .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(format!("{summary:?}"), format!("{expected_summary:?}"));
+        assert_eq!(input.consumed, data.len());
+    }
+    for limit in [0, 1, data.len() - 1] {
+        let eof = std::rc::Rc::new(std::cell::Cell::new(false));
+        let mut input = Chopped {
+            bytes: &data,
+            consumed: 0,
+            calls: 0,
+            eof: eof.clone(),
+        };
+        let mut calls = 0;
+        let result = ReplayReader.read_bounded(&mut input, limit, options, |_| {
+            calls += 1;
+            Ok::<(), Infallible>(())
+        });
+        assert!(
+            matches!(result, Err(ReadError::InputLimit { limit: observed }) if observed == limit)
+        );
+        assert_eq!(calls, 0);
+        assert_eq!(input.consumed, limit + 1);
+        assert!(!eof.get());
+    }
+}
+
+#[test]
+fn qa_bounded_terminal_io_error_and_consumer_error_retain_original_objects() {
+    use std::io::Read;
+    #[derive(Debug)]
+    struct Marker(u32);
+    impl std::fmt::Display for Marker {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "independent-io-marker-{}", self.0)
+        }
+    }
+    impl std::error::Error for Marker {}
+    struct Fail(Option<std::io::Error>);
+    impl Read for Fail {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(self.0.take().unwrap())
+        }
+    }
+    let data = replay_with_partial_checkpoints();
+    let marker = Box::new(Marker(529));
+    let pointer = &*marker as *const Marker;
+    let marker: Box<dyn std::error::Error + Send + Sync> = marker;
+    let failure = std::io::Error::new(std::io::ErrorKind::BrokenPipe, marker);
+    let mut input = std::io::Cursor::new(&data).chain(Fail(Some(failure)));
+    let mut calls = 0;
+    let result = ReplayReader.read_bounded(&mut input, data.len(), ReadOptions::default(), |_| {
+        calls += 1;
+        Ok::<(), Infallible>(())
+    });
+    let Err(ReadError::Replay(vrfkit::ReplayError::Io(error))) = result else {
+        panic!("I/O cause lost")
+    };
+    assert_eq!(calls, 0);
+    assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
+    assert_eq!(
+        error.get_ref().unwrap().downcast_ref::<Marker>().unwrap() as *const Marker,
+        pointer
+    );
+
+    let marker = Box::new(99_u32);
+    let pointer = &*marker as *const u32;
+    let mut marker = Some(marker);
+    let mut input = std::io::Cursor::new(&data);
+    let result = ReplayReader.read_bounded(&mut input, data.len(), ReadOptions::default(), |_| {
+        Err(marker.take().unwrap())
+    });
+    let Err(ReadError::Consumer(value)) = result else {
+        panic!("consumer cause lost")
+    };
+    assert_eq!(&*value as *const u32, pointer);
+    assert_eq!(input.position(), data.len() as u64);
 }

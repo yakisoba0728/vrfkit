@@ -109,6 +109,7 @@ class Oracle:
         if character == 0:
             return ("null",)
         candidates = []
+        retired = False
         for state in sorted(self.claims):
             index = bisect_left(self.claim_packets[state], initial) - 1
             if index < 0:
@@ -119,12 +120,17 @@ class Oracle:
             epoch = self.epoch(state, initial)
             if epoch is not None and epoch["end"] is not None and epoch["end"]["packet_id"] < initial:
                 continue
+            epochs = (epoch, self.epoch(character, initial))
+            if any(life is not None and life["previous_end"] is not None and row["packet_id"] < life["previous_end"]
+                   for life in epochs):
+                retired = True
+                continue
             candidates.append(row)
         if len(candidates) > 1:
             return ("ambiguous", *(f"{r['actor_net_guid']}:{r['packet_id']}:{r['time_ms']}:{r['raw_bits'].hex()}"
                                     for r in candidates))
         if not candidates:
-            return ("unresolved", "NoReference")
+            return ("unresolved", "PreviousLifetime" if retired else "NoReference")
         row = candidates[0]
         state = self.epoch(row["actor_net_guid"], initial)
         body = self.epoch(character, initial)

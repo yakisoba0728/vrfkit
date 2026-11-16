@@ -59,8 +59,12 @@ def main():
             dependency_file = executable.with_suffix(".d")
             dependencies = []
             if dependency_file.exists():
-                dependencies = [Path(path) for path in dependency_file.read_text().splitlines()[0].split(": ", 1)[1].split()
-                                if "/crates/" in path and "/registry/" not in path]
+                for item in dependency_file.read_text().splitlines()[0].split(": ", 1)[1].split():
+                    path = Path(item)
+                    if not path.is_absolute():
+                        path = args.source / path
+                    if "/crates/" in str(path) and "/registry/" not in str(path):
+                        dependencies.append(path)
                 assert dependencies and all(path.is_relative_to(args.source) and path.is_file() for path in dependencies)
             found[name] = {"sha256": sha(destination), "bytes": destination.stat().st_size,
                 "target_source": str(source.relative_to(args.source)), "profile": record["profile"],
@@ -88,14 +92,24 @@ def main():
         for name in examples:
             command += ["--example", name]
         binaries = build("binaries", command, ["vrfkit", *examples])
-        contracts = build("contracts", ["cargo", "+1.86.0", "test", "-p", "vrfkit", "--all-features", "--locked",
-            "--no-run", "--message-format=json", "--test", "qa_phase_c_contracts"], ["qa_phase_c_contracts"])
-        result = subprocess.run([str(args.output / "qa_phase_c_contracts"), "--nocapture"], cwd=args.source,
-                                env=env, text=True, capture_output=True)
-        (args.output / "contracts-run.log").write_text(result.stdout + result.stderr)
-        assert result.returncode == 0, "independent contract failure"
-        counts = re.search(r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out", result.stdout)
-        assert counts is not None and int(counts[1]) >= 7 and all(int(counts[i]) == 0 for i in range(2, 6))
+        suites = {"qa_phase_c_contracts": (9, "independently authored by E"),
+                  "gameplay_lifecycle": (3, "external public API regression tests independently rerun"),
+                  "reader_checkpoints": (11, "A author tests independently rerun"),
+                  "reader_bounded": (11, "D author tests independently rerun")}
+        command = ["cargo", "+1.86.0", "test", "-p", "vrfkit", "--all-features", "--locked", "--no-run", "--message-format=json"]
+        for name in suites:
+            command += ["--test", name]
+        contracts = build("contracts", command, list(suites))
+        test_counts = {}
+        for name, (expected, origin) in suites.items():
+            result = subprocess.run([str(args.output / name), "--nocapture"], cwd=args.source,
+                                    env=env, text=True, capture_output=True)
+            (args.output / (name + "-run.log")).write_text(result.stdout + result.stderr)
+            assert result.returncode == 0, "independent contract failure"
+            counts = re.search(r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out", result.stdout)
+            assert counts is not None and int(counts[1]) == expected and all(int(counts[i]) == 0 for i in range(2, 6))
+            test_counts[name] = {"passed": int(counts[1]), "failed": 0, "ignored": 0, "origin": origin,
+                                 "run_log_sha256": sha(args.output / (name + "-run.log"))}
     finally:
         for destination, origin in temporary.items():
             assert (args.source / destination).read_bytes() == origin.read_bytes()
@@ -105,11 +119,12 @@ def main():
         "rustc": subprocess.check_output(["rustc", "+1.86.0", "-Vv"], env=env, text=True).strip(),
         "profile": "Cargo test profile opt-level2, debug assertions enabled, no debuginfo/incremental; not release-performance build",
         "temporary_sources_sha256": {str(origin.relative_to(args.source)): sha(origin) for origin in temporary.values()},
-        "binaries": binaries, "contracts": contracts, "independent_contracts_passed": int(counts[1]),
-        "contracts_run_log_sha256": sha(args.output / "contracts-run.log"), "tracked_runtime_unchanged": True,
+        "binaries": binaries, "contracts": contracts, "independent_contracts": test_counts,
+        "independently_authored_contracts_passed": test_counts["qa_phase_c_contracts"]["passed"],
+        "total_focused_contracts_passed": sum(row["passed"] for row in test_counts.values()), "tracked_runtime_unchanged": True,
         "performance_claim": None}
     (args.output / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
-    print("independent contracts passed: " + counts[1], flush=True)
+    print("focused contracts passed: " + str(receipt["total_focused_contracts_passed"]), flush=True)
 
 
 if __name__ == "__main__":

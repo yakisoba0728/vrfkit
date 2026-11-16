@@ -22,10 +22,15 @@ from typing import NamedTuple
 from atomic_io import atomic_write_text
 
 ROUTE_CHILDREN = ("Route children: {} player info / {} rewards / {} selected / {} kills / "
-                  "{} active effects / {} ignore actors / {} blinds / {} projectile path")
+                  "{} active effects / {} ignore actors / {} blinds / {} projectile path / {} focus projectiles")
 ROUTES = tuple(f"route_children_{name}" for name in (
     "player_information", "tracked_rewards", "selected_v2", "kill_data",
-    "server_active_effects", "requested_ignore_actors", "active_blinds", "projectile_path"))
+    "server_active_effects", "requested_ignore_actors", "active_blinds", "projectile_path",
+    "focus_projectiles"))
+
+# Added with the exact 12.05 FocusProjectiles route. Archived private
+# baselines predate these counts; their absence must not become measured zero.
+FOCUS_PROJECTILES_COUNTERS = ("route_children_focus_projectiles", "focus_projectiles_empty_trailers")
 
 # Current native ComponentDataStream counters. Legacy names identify archived
 # measurements only: they must never be interpreted as native envelope data.
@@ -98,6 +103,7 @@ LINES = (
     ("Reward opaque: {} empty variants", "tracked_rewards_opaque_empty_variants", "PG"),
     # Empty deltas whose trailing zero byte was spared: a measured tolerance.
     ("ActiveBlinds trailers: {} empty deltas", "active_blinds_empty_trailers", "PG"),
+    ("FocusProjectiles trailers: {} empty deltas", "focus_projectiles_empty_trailers", "PG"),
     ("Truncated RPCs: {}", "truncated_rpcs", "G"),
     ("RPC param walks: {}", "rpc_param_walks", "PG"),
     ("Event layout err: {}", "event_layout_mismatches", "P"),
@@ -154,6 +160,8 @@ LINES = (
     ("Checkpoint reward opaque: {} empty variants",
      "cp_tracked_rewards_opaque_empty_variants", "PG"),
     ("Checkpoint ActiveBlinds trailers: {} empty deltas", "cp_active_blinds_empty_trailers",
+     "PG"),
+    ("Checkpoint FocusProjectiles trailers: {} empty deltas", "cp_focus_projectiles_empty_trailers",
      "PG"),
     ("Checkpoint movement components: {} attempted / {} complete / {} errors / {} empty",
      "cp_movement_component_streams cp_movement_component_complete "

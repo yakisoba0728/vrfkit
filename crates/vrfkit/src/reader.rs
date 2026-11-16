@@ -1,6 +1,7 @@
 //! Library entry point over the CLI's shared main and checkpoint decode passes.
 
 use std::collections::BTreeMap;
+use std::io::{self, Read};
 use std::path::Path;
 
 use thiserror::Error;
@@ -20,10 +21,14 @@ use crate::pass::{Chunk, Pass, Replay, for_each_chunk, net_guid_rows};
 use crate::reader_input::FileInput;
 use crate::sink::{ExportStats, RecordBuffers};
 
-/// A parser/I/O failure or the original error returned by a consumer callback.
+/// An input limit, parser/I/O failure, or original consumer callback error.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ReadError<E> {
+    /// The encoded input exceeded the caller's explicit byte limit. No
+    /// callbacks were invoked; one byte beyond the limit was consumed.
+    #[error("replay input exceeds the {limit}-byte limit")]
+    InputLimit { limit: usize },
     /// The replay could not be read under the parser's structural rules.
     #[error(transparent)]
     Replay(#[from] CliError),
@@ -154,7 +159,8 @@ impl ReplaySummary {
 /// Each call creates independent replay state, so the reader can be reused or
 /// shared. [`Self::read`] borrows a complete byte slice; [`Self::read_path`]
 /// reads one encoded chunk at a time from a file. At most one additional
-/// decompressed ReplayData chunk is prefetched.
+/// decompressed ReplayData chunk is prefetched. [`Self::read_bounded`] accepts
+/// a nonseekable source by buffering its complete input under an explicit cap.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ReplayReader;
 
@@ -233,6 +239,73 @@ impl ReplayReader {
         read_input(metadata, options, consumer, |replay, on_chunk| {
             for_each_chunk(data, replay, on_chunk)
         })
+    }
+
+    /// Buffer a nonseekable source under an explicit encoded-byte limit, then
+    /// decode it with [`Self::read_with_options`]. No temporary files are used.
+    ///
+    /// This is whole-input buffering, not incremental input decoding. No
+    /// callbacks run until a nonempty read request returns `Ok(0)` (EOF) and
+    /// the input fits within `max_input_bytes`. Short reads are accepted and
+    /// [`io::ErrorKind::Interrupted`] is retried. Other I/O errors retain their
+    /// original value through [`ReadError::Replay`].
+    ///
+    /// At the exact limit, a one-byte read distinguishes EOF from excess input.
+    /// Excess input returns [`ReadError::InputLimit`] before any callback, after
+    /// consuming exactly one byte beyond the limit. A zero limit admits only
+    /// empty input, which then fails the replay parser's preamble validation.
+    /// The input is never rewound, including after errors or callback rejection.
+    ///
+    /// The retained input length and requested vector capacity are capped at
+    /// `max_input_bytes`, with one additional 8 KiB read buffer. Allocation is
+    /// incremental; the limit is not reserved up front. Allocator overhead,
+    /// parser state, decompression and consumer storage are separate and are
+    /// not bounded by this limit. Allocation refusal becomes an I/O error with
+    /// [`io::ErrorKind::OutOfMemory`].
+    ///
+    /// Calls may block until EOF, including the probe at the exact limit. Set
+    /// timeouts or cancellation on the input itself; a callback cannot cancel
+    /// the buffering phase. [`ReadOptions`] and all subsequent parser/callback
+    /// contracts are unchanged, including provisional delivery until success.
+    pub fn read_bounded<R: Read + ?Sized, E>(
+        &self,
+        input: &mut R,
+        max_input_bytes: usize,
+        options: ReadOptions,
+        consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
+    ) -> Result<ReplaySummary, ReadError<E>> {
+        let mut data = Vec::new();
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let remaining = max_input_bytes - data.len();
+            // A nonempty probe is necessary at the exact limit: an empty
+            // request can return zero even when unread input remains.
+            let request = remaining.min(buffer.len()).max(1);
+            let count = match input.read(&mut buffer[..request]) {
+                Ok(0) => break,
+                Ok(count) => count,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(CliError::Io(error).into()),
+            };
+            if count > remaining {
+                return Err(ReadError::InputLimit {
+                    limit: max_input_bytes,
+                });
+            }
+            if data.capacity() < data.len() + count {
+                let capacity = data
+                    .capacity()
+                    .saturating_mul(2)
+                    .max(buffer.len())
+                    .min(max_input_bytes);
+                data.try_reserve_exact(capacity - data.len())
+                    .map_err(|error| {
+                        CliError::Io(io::Error::new(io::ErrorKind::OutOfMemory, error))
+                    })?;
+            }
+            data.extend_from_slice(&buffer[..count]);
+        }
+        self.read_with_options(&data, options, consumer)
     }
 
     /// Read a file in chunks and stream decoded output with the same decoder

@@ -64,3 +64,29 @@ independent raw/export comparison, output preservation and final integration
 CI must still complete before acceptance. Checkpoint identity, account joins,
 native death/player timestamp joins, kill credit and full round outcomes
 remain outside this optional main-stream API.
+
+## Lifecycle follow-up from independent public-API tests
+
+`lifecycle_followup.json` binds a later correction to its own source hashes.
+Three public-API tests from commit
+`57f992575989e03d94c33ad4c5a89772fcd08494` were preserved byte-for-byte in
+`crates/vrfkit/tests/gameplay_lifecycle.rs`. Against author commit
+`5acf6c0233678e2c4a68d72de1e05b2279b43b62`, two failed and one passed:
+declarations from a retired PlayerState or character lifetime could wrongly
+make a fresh relation ambiguous. The same-packet uncertainty test already
+passed.
+
+Candidate selection now excludes a declaration strictly earlier than the
+current lifetime's prior end. Equal-packet declarations remain possible
+conflicts because the separate lifecycle/field vectors do not establish
+their order. A lone retired claim remains `Unresolved(PreviousLifetime)`;
+historical queries and raw evidence are retained.
+
+After the correction, all three preserved tests, all 15 identity unit tests
+and all 12 prior gameplay tests passed. Core all-targets strict Clippy and
+strict rustdoc also passed. An additional mutation changed the strict cutoff
+to an inclusive cutoff; the same-packet ambiguity test failed by assertion
+as required. Exact source was restored and the three public-API tests passed
+again. The earlier aggregate example and four-mutation receipt remain
+historical checks of their recorded hashes; final independent replay parity
+and platform CI must use this corrected source.

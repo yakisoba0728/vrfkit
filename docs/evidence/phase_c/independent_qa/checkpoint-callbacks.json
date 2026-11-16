@@ -1,0 +1,282 @@
+[
+  {
+    "build": "12.08",
+    "input_sha256": "78e706843ea6992e5502d58f9b41c23ac5470a9e36e810d45e8724fb47a91201",
+    "callback_tables_byte_equal": 7,
+    "snapshot_chunks": 17,
+    "scalar_counters_equal": 25,
+    "counter_maps_equal": {
+      "M_net": 46,
+      "M_sink": 54,
+      "C_net": 46,
+      "C_sink": 54
+    },
+    "first_error_options_checked": 4,
+    "callback_rows": {
+      "guid_entries": 70183,
+      "groups": 7578,
+      "exports": 45144,
+      "fields": 312318,
+      "actors": 3121,
+      "blocks": 20896,
+      "guids": 70183
+    },
+    "observed_diagnostic_list_counts": {
+      "main_stream_diagnostics": 32,
+      "checkpoint_stream_diagnostics": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "build": "12.11",
+    "input_sha256": "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd",
+    "callback_tables_byte_equal": 7,
+    "snapshot_chunks": 6,
+    "scalar_counters_equal": 25,
+    "counter_maps_equal": {
+      "M_net": 46,
+      "M_sink": 54,
+      "C_net": 46,
+      "C_sink": 54
+    },
+    "first_error_options_checked": 4,
+    "callback_rows": {
+      "guid_entries": 3762,
+      "groups": 969,
+      "exports": 4578,
+      "fields": 12169,
+      "actors": 322,
+      "blocks": 1363,
+      "guids": 3762
+    },
+    "observed_diagnostic_list_counts": {
+      "main_stream_diagnostics": 32,
+      "checkpoint_stream_diagnostics": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "build": "12.09",
+    "input_sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+    "callback_tables_byte_equal": 7,
+    "snapshot_chunks": 21,
+    "scalar_counters_equal": 25,
+    "counter_maps_equal": {
+      "M_net": 46,
+      "M_sink": 54,
+      "C_net": 46,
+      "C_sink": 54
+    },
+    "first_error_options_checked": 4,
+    "callback_rows": {
+      "guid_entries": 100639,
+      "groups": 10296,
+      "exports": 61164,
+      "fields": 439892,
+      "actors": 3970,
+      "blocks": 27930,
+      "guids": 100639
+    },
+    "observed_diagnostic_list_counts": {
+      "main_stream_diagnostics": 32,
+      "checkpoint_stream_diagnostics": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "build": "13.00",
+    "input_sha256": "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a",
+    "callback_tables_byte_equal": 7,
+    "snapshot_chunks": 6,
+    "scalar_counters_equal": 25,
+    "counter_maps_equal": {
+      "M_net": 46,
+      "M_sink": 54,
+      "C_net": 46,
+      "C_sink": 54
+    },
+    "first_error_options_checked": 4,
+    "callback_rows": {
+      "guid_entries": 3837,
+      "groups": 941,
+      "exports": 4173,
+      "fields": 6292,
+      "actors": 353,
+      "blocks": 1343,
+      "guids": 3837
+    },
+    "observed_diagnostic_list_counts": {
+      "main_stream_diagnostics": 32,
+      "checkpoint_stream_diagnostics": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "build": "12.05",
+    "input_sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+    "callback_tables_byte_equal": 7,
+    "snapshot_chunks": 19,
+    "scalar_counters_equal": 25,
+    "counter_maps_equal": {
+      "M_net": 46,
+      "M_sink": 54,
+      "C_net": 46,
+      "C_sink": 54
+    },
+    "first_error_options_checked": 4,
+    "callback_rows": {
+      "guid_entries": 84274,
+      "groups": 8720,
+      "exports": 50382,
+      "fields": 358253,
+      "actors": 3227,
+      "blocks": 22182,
+      "guids": 84274
+    },
+    "observed_diagnostic_list_counts": {
+      "main_stream_diagnostics": 32,
+      "checkpoint_stream_diagnostics": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "build": "12.10",
+    "input_sha256": "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606",
+    "callback_tables_byte_equal": 7,
+    "snapshot_chunks": 7,
+    "scalar_counters_equal": 25,
+    "counter_maps_equal": {
+      "M_net": 46,
+      "M_sink": 54,
+      "C_net": 46,
+      "C_sink": 54
+    },
+    "first_error_options_checked": 4,
+    "callback_rows": {
+      "guid_entries": 4215,
+      "groups": 1091,
+      "exports": 4930,
+      "fields": 13980,
+      "actors": 333,
+      "blocks": 1501,
+      "guids": 4215
+    },
+    "observed_diagnostic_list_counts": {
+      "main_stream_diagnostics": 32,
+      "checkpoint_stream_diagnostics": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "build": "++Ares-Core+release-13.01",
+    "input_sha256": "12cd225dd357d7fce907c3e57a1c72a96f00199d8d176c84ab29b27fd36a3745",
+    "callback_tables_byte_equal": 7,
+    "snapshot_chunks": 5,
+    "scalar_counters_equal": 25,
+    "counter_maps_equal": {
+      "M_net": 46,
+      "M_sink": 54,
+      "C_net": 46,
+      "C_sink": 54
+    },
+    "first_error_options_checked": 4,
+    "callback_rows": {
+      "guid_entries": 3700,
+      "groups": 982,
+      "exports": 4682,
+      "fields": 9982,
+      "actors": 244,
+      "blocks": 1137,
+      "guids": 3700
+    },
+    "observed_diagnostic_list_counts": {
+      "main_stream_diagnostics": 32,
+      "checkpoint_stream_diagnostics": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "build": "++Ares-Core+release-13.01",
+    "input_sha256": "a4dd202886eabbd285f2165c53fadc523581d59ea09d9c07af5401561f424299",
+    "callback_tables_byte_equal": 7,
+    "snapshot_chunks": 6,
+    "scalar_counters_equal": 25,
+    "counter_maps_equal": {
+      "M_net": 46,
+      "M_sink": 54,
+      "C_net": 46,
+      "C_sink": 54
+    },
+    "first_error_options_checked": 4,
+    "callback_rows": {
+      "guid_entries": 4242,
+      "groups": 1083,
+      "exports": 4918,
+      "fields": 12057,
+      "actors": 281,
+      "blocks": 1338,
+      "guids": 4242
+    },
+    "observed_diagnostic_list_counts": {
+      "main_stream_diagnostics": 32,
+      "checkpoint_stream_diagnostics": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "build": "++Ares-Core+release-13.01",
+    "input_sha256": "a3bf9a374e8afb969dc327fe578f65fafecba5c62ad50c2fad2834d41918021d",
+    "callback_tables_byte_equal": 7,
+    "snapshot_chunks": 5,
+    "scalar_counters_equal": 25,
+    "counter_maps_equal": {
+      "M_net": 46,
+      "M_sink": 54,
+      "C_net": 46,
+      "C_sink": 54
+    },
+    "first_error_options_checked": 4,
+    "callback_rows": {
+      "guid_entries": 3759,
+      "groups": 922,
+      "exports": 4517,
+      "fields": 9918,
+      "actors": 229,
+      "blocks": 1094,
+      "guids": 3759
+    },
+    "observed_diagnostic_list_counts": {
+      "main_stream_diagnostics": 32,
+      "checkpoint_stream_diagnostics": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "build": "++Ares-Core+release-12.08",
+    "input_sha256": "44d4fd3e12ee536091bc7745682a328dffb48a5c0f022b4eb18249f817ee28a5",
+    "callback_tables_byte_equal": 7,
+    "snapshot_chunks": 7,
+    "scalar_counters_equal": 25,
+    "counter_maps_equal": {
+      "M_net": 46,
+      "M_sink": 54,
+      "C_net": 46,
+      "C_sink": 54
+    },
+    "first_error_options_checked": 4,
+    "callback_rows": {
+      "guid_entries": 4241,
+      "groups": 1097,
+      "exports": 4921,
+      "fields": 13971,
+      "actors": 333,
+      "blocks": 1507,
+      "guids": 4241
+    },
+    "observed_diagnostic_list_counts": {
+      "main_stream_diagnostics": 32,
+      "checkpoint_stream_diagnostics": 0
+    },
+    "mismatches": 0
+  }
+]

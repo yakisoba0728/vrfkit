@@ -442,7 +442,11 @@ class CheckpointGuidCrossCheckTests(TempDirTestCase):
                    "  Component headers: 0 input / 0 discrepancy\n"
                    "  Checkpoint component headers: 0 input / 0 discrepancy\n"
                    "  ActiveBlinds trailers: 0 empty deltas\n"
+                   "  FocusProjectiles trailers: 0 empty deltas\n"
+                   "  Route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles\n"
                    "  Checkpoint ActiveBlinds trailers: 0 empty deltas\n"
+                   "  Checkpoint FocusProjectiles trailers: 0 empty deltas\n"
+                   "  Checkpoint route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles\n"
                    "  Trailing bytes:   {trailing}\n"
                    f"GUID entries: {len(DECLARATIONS)}\n"
                    f"GUID paths: {literals} literals / {indices} indices / {indices} resolved\n")
@@ -496,6 +500,7 @@ class ContentIdentityTests(unittest.TestCase):
 #: values in each pass, and the summary counters that agree with it.
 MAIN_SINK = {"tracked_rewards_opaque_empty_variants": 4470,
              "targeting_world_locations_decoded": 12, "active_blinds_empty_trailers": 13,
+             "route_children_focus_projectiles": 31, "focus_projectiles_empty_trailers": 2,
              "movement_component_streams": 11, "movement_component_complete": 11,
              "movement_component_errors": 0, "movement_component_empty": 1,
              "movement_component_envelopes": 11, "movement_component_payload_bytes": 300,
@@ -503,6 +508,7 @@ MAIN_SINK = {"tracked_rewards_opaque_empty_variants": 4470,
              "movement_component_discrepancy_headers": 9}
 CP_SINK = {"tracked_rewards_opaque_empty_variants": 7, "targeting_world_locations_decoded": 0,
            "active_blinds_empty_trailers": 23,
+           "route_children_focus_projectiles": 41, "focus_projectiles_empty_trailers": 3,
            "movement_component_streams": 21, "movement_component_complete": 21,
            "movement_component_errors": 0, "movement_component_empty": 2,
            "movement_component_envelopes": 21, "movement_component_payload_bytes": 570,
@@ -529,6 +535,20 @@ AGREEING_COUNTERS = {**MAIN_SINK, **{"cp_" + k: v for k, v in CP_SINK.items()},
 class ManifestCheckTests(TempDirTestCase):
     """Each MANIFEST_CHECKS count must equal the summary's in both passes,
     zeros included, and be a count the manifest actually holds."""
+
+    def test_focus_manifest_counts_cannot_be_missing_or_disagree_with_the_summary(self):
+        for checkpoint in (False, True):
+            for key in ("route_children_focus_projectiles", "focus_projectiles_empty_trailers"):
+                quality = manifest_quality()
+                scope = quality["checkpoints"] if checkpoint else quality
+                del scope["sink"][key]
+                self.assertIn("manifest omits sink component/opaque tally quality data",
+                              self.errors(quality, AGREEING_COUNTERS))
+                summary_key = ("cp_" if checkpoint else "") + key
+                changed = dict(AGREEING_COUNTERS)
+                changed[summary_key] += 1
+                self.assertIn(f"manifest {summary_key}=",
+                              self.errors(manifest_quality(), changed))
 
     def test_native_envelopes_are_read_independently_in_both_passes(self):
         text = ("Movement err: Component envelopes: 9 validated / 99 payload bytes / 4 unused bits\n"
@@ -692,6 +712,8 @@ Movement components: 0 attempted / 0 complete / 0 errors / 0 empty
 Component envelopes: 0 validated / 0 payload bytes / 0 unused bits
 Component headers: 0 input / 0 discrepancy
 ActiveBlinds trailers: 0 empty deltas
+FocusProjectiles trailers: 0 empty deltas
+Route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles
 """
 
     def run_fake_export(self, *, fail: bool):
@@ -723,7 +745,7 @@ ActiveBlinds trailers: 0 empty deltas
                 "stage.mkdir()\n"
                 "for name in ('actors', 'fields', 'movement', 'net_guids', 'events', 'partials'):\n"
                 "    pq.write_table(pa.table({'value': [1]}), stage / (name + '.parquet'))\n"
-                "(stage / 'manifest.json').write_text(json.dumps({'quality': {'sink': {'tracked_rewards_opaque_empty_variants': 0, 'targeting_world_locations_decoded': 0, 'movement_rpc_errors': 0, **dict.fromkeys(('movement_component_streams', 'movement_component_complete', 'movement_component_errors', 'movement_component_empty', 'movement_component_envelopes', 'movement_component_payload_bytes', 'movement_component_unused_bits', 'movement_component_input_headers', 'movement_component_discrepancy_headers'), 0), 'active_blinds_empty_trailers': 0}, 'frame_external_data_blobs': 0, 'frame_external_data_bytes': 0, 'frame_game_specific_bytes': 0, 'frame_non_finite_times': 0}}), encoding='utf-8')\n"
+                "(stage / 'manifest.json').write_text(json.dumps({'quality': {'sink': {'tracked_rewards_opaque_empty_variants': 0, 'targeting_world_locations_decoded': 0, 'movement_rpc_errors': 0, **dict.fromkeys(('movement_component_streams', 'movement_component_complete', 'movement_component_errors', 'movement_component_empty', 'movement_component_envelopes', 'movement_component_payload_bytes', 'movement_component_unused_bits', 'movement_component_input_headers', 'movement_component_discrepancy_headers'), 0), 'active_blinds_empty_trailers': 0, 'route_children_focus_projectiles': 0, 'focus_projectiles_empty_trailers': 0}, 'frame_external_data_blobs': 0, 'frame_external_data_bytes': 0, 'frame_game_specific_bytes': 0, 'frame_non_finite_times': 0}}), encoding='utf-8')\n"
                 "os.replace(out, backup)\n"
                 "os.replace(stage, out)\n"
                 "shutil.rmtree(backup)\n"

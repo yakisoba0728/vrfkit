@@ -1,4 +1,4 @@
-# Streaming Rust reader
+# Rust reader
 
 The `vrfkit` crate exposes `ReplayReader` alongside its CLI. It runs the same
 main-stream parser, raw preservation and typed overlay as `validate` and
@@ -70,12 +70,12 @@ callback ordering and quality counters. The CLI's `validate` and `export`
 commands now reuse the same file input source; `export --checkpoints` adds an
 independent checkpoint cursor. See [CLI file input](CLI_INPUT_STREAMING.md).
 
-Input memory scales with the largest encoded chunk, current and prefetched
+File-input memory scales with the largest encoded chunk, current and prefetched
 decoded chunks, metadata and parser state, rather than total file size.
 An individual Event payload and Header payload are still buffered in full;
 there is no new fixed total-memory guarantee. The consumer controls how much
-output it retains. Generic streaming from an arbitrary `Read` source is not
-part of the high-level Reader API; the file path requires seeking.
+output it retains. The file path requires seeking. An arbitrary `Read` source
+can instead use the explicitly capped whole-input mode described below.
 
 Keep the input file unchanged until the read returns. File-backed input is
 not an immutable snapshot. A detected length change or I/O failure aborts the
@@ -84,6 +84,78 @@ Use `read(&bytes, ...)` on an owned snapshot if that isolation is required.
 
 The [input-streaming measurements](READER_INPUT_STREAMING.md) record the
 memory comparison, rejected scheduling experiment and exact evidence scope.
+
+## Nonseekable input with an explicit byte cap
+
+`read_bounded` accepts any synchronous `std::io::Read`, including a pipe,
+stdin or `&mut dyn Read`. The caller must supply `max_input_bytes` and
+`ReadOptions`. It buffers the complete encoded input, then calls the same
+`read_with_options` decoder used for borrowed bytes. This is bounded
+whole-input buffering; decoding and callbacks do not begin until EOF.
+It does not seek or create temporary files.
+
+```rust
+use std::convert::Infallible;
+use std::io;
+use vrfkit::{ReadOptions, ReplayReader};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = io::stdin().lock();
+    let max_input_bytes = 64 * 1024 * 1024; // application policy, not a default
+    let summary = ReplayReader.read_bounded(
+        &mut input,
+        max_input_bytes,
+        ReadOptions { checkpoints: true, ..ReadOptions::default() },
+        |_| Ok::<(), Infallible>(()),
+    )?;
+    println!("{} snapshots completed", summary.checkpoints.chunks);
+    Ok(())
+}
+```
+
+The runnable example takes a mandatory decimal byte cap and prints only
+aggregate counts after a successful read. On a shell supporting input
+redirection:
+
+```bash
+cargo +1.86.0 run -p vrfkit --no-default-features --example read_bounded_stdin -- 67108864 --checkpoints < match.vrf
+```
+
+| Condition | Behavior |
+| --- | --- |
+| EOF at or below the cap | Begin parsing and deliver the same callbacks, raw rows, summaries and checkpoint order as `read_with_options`. |
+| Input exactly at the cap | Issue one additional one-byte read to distinguish EOF from excess input. That read can block. |
+| One byte exceeds the cap | Return `ReadError::InputLimit { limit }` with no callbacks. Exactly one excess byte is consumed and no later read is attempted. |
+| Empty input or zero cap | Zero permits only empty input. Empty input reaches ordinary preamble validation and fails as a container error. Zero never means unlimited. |
+| Short read or `Interrupted` | Continue accumulating bytes; retry `Interrupted`, including during the EOF probe. |
+| Other I/O error, including `WouldBlock` | Return the original error through `ReadError::Replay(ReplayError::Io(_))` before any callback. |
+| First `Ok(0)` from a nonempty read request | Treat it as EOF; do not poll for later data. |
+| Consumer rejection | Return the original `ReadError::Consumer(E)` and stop further callbacks. The complete input has already been consumed. |
+
+The retained encoded length and requested vector capacity are capped at the
+given limit. Allocation grows as bytes arrive; even a very large limit is not
+reserved up front. The input loop also uses an 8 KiB scratch buffer. Allocation
+refusal reports an I/O error with `ErrorKind::OutOfMemory`. Allocator overhead
+and transient allocation behavior, decompressed chunks, parser state, GUID
+maps, schema storage and data retained by callbacks are separate costs. The
+encoded-byte cap is not a fixed bound on total process memory; choose it for
+the application's input policy and continue to apply schema limits as needed.
+
+This synchronous method may wait for EOF indefinitely. Configure timeouts or
+cancellation on the source when needed; consumer callbacks cannot cancel the
+buffering phase. It consumes the source from its current position and never
+rewinds it. For caller-supplied wrappers that read ahead, the byte count applies
+to what their `Read` implementation delivers to this method; underlying reads
+remain controlled by that wrapper. A source error or excess byte takes priority
+over any parser or consumer error because decoding has not started yet.
+
+EOF and the size check do not validate the replay as a whole. Later structural
+errors can still follow provisional callbacks. Checkpoint decoding and schema
+limits use the supplied `ReadOptions`, with the same independent snapshot
+state and file-order error policy as the slice API. Existing `read` and
+`read_path` defaults are unchanged. `ReadError` was already non-exhaustive;
+handle the additive `InputLimit` variant if input policy refusals need a
+separate application response. This mode works without default features.
 
 ## Callback and ownership contract
 

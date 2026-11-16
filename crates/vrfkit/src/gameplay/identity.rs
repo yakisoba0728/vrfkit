@@ -132,7 +132,8 @@ pub struct BodyIdentity<'a> {
 pub enum IdentityResolution<'a> {
     Null,
     Unresolved(IdentityUnresolved),
-    /// Conflicting current declarations, retained in PlayerState GUID order.
+    /// Conflicting non-retired declarations, including indeterminate same-packet
+    /// lifetime boundaries, retained in PlayerState GUID order.
     Ambiguous {
         declarations: Vec<&'a FieldRecord>,
     },
@@ -376,22 +377,39 @@ impl MainIdentityTimeline {
             return Unresolved(IdentityUnresolved::UnobservedPacket);
         }
         let mut candidates = Vec::new();
+        let mut retired_reference = false;
+        let character_previous_end = self
+            .lifetime_before(character.net_guid, packet)
+            .and_then(|life| life.previous_end);
         for history in self.declarations.values() {
             let index = history.partition_point(|row| row.packet_id < packet);
             let Some(row) = index.checked_sub(1).and_then(|index| history.get(index)) else {
                 continue;
             };
             if row.value_i64 == Some(i64::from(character.net_guid)) {
-                let ended = self
-                    .lifetime_before(row.actor_net_guid, packet)
-                    .is_some_and(|life| {
-                        life.ended
-                            .as_ref()
-                            .is_some_and(|end| end.packet_id < packet)
-                    });
-                if !ended {
-                    candidates.push(row);
+                let state_life = self.lifetime_before(row.actor_net_guid, packet);
+                let ended = state_life.is_some_and(|life| {
+                    life.ended
+                        .as_ref()
+                        .is_some_and(|end| end.packet_id < packet)
+                });
+                if ended {
+                    continue;
                 }
+                // Only a strictly later end proves this declaration retired.
+                // Equal-packet field/lifecycle order remains indeterminate.
+                let retired = [
+                    state_life.and_then(|life| life.previous_end),
+                    character_previous_end,
+                ]
+                .into_iter()
+                .flatten()
+                .any(|end| row.packet_id < end);
+                if retired {
+                    retired_reference = true;
+                    continue;
+                }
+                candidates.push(row);
             }
         }
         if candidates.len() > 1 {
@@ -400,7 +418,11 @@ impl MainIdentityTimeline {
             };
         }
         let Some(declaration) = candidates.first().copied() else {
-            return Unresolved(IdentityUnresolved::NoReference);
+            return Unresolved(if retired_reference {
+                IdentityUnresolved::PreviousLifetime
+            } else {
+                IdentityUnresolved::NoReference
+            });
         };
         let Some(state_life) = self.live_before(declaration.actor_net_guid, packet) else {
             return Unresolved(IdentityUnresolved::Lifecycle);
