@@ -28,6 +28,26 @@ pub struct MovementMove {
     pub move_type: u8,
 }
 
+/// The wire location of one emitted move inside its RPC payload.
+///
+/// All ordinals are zero-based and count encountered occurrences, including
+/// ones that emit no move. They do not collapse repeated array properties,
+/// sparse update indices or component properties. A move is a decoded prefix;
+/// a later error or replacement can still occur in the same RPC.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MovementContext {
+    /// Occurrence of the RemoteCharacterUpdates array property in the RPC.
+    pub array_ordinal: u32,
+    /// Arrival ordinal within this array, distinct from its sparse wire index.
+    pub update_ordinal: u32,
+    /// Sparse array index, decoded as `encodedIndex - 1`.
+    pub update_index: u32,
+    /// Occurrence of ComponentDataStream within this update.
+    pub component_ordinal: u32,
+    /// Decoded move ordinal within this component, independent of marker wrap.
+    pub move_index: u32,
+}
+
 /// A character update descriptor. The decoder never builds one (moves go out
 /// through its callback); kept for callers that construct it.
 #[derive(Debug, Clone)]

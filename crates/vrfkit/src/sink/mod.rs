@@ -29,10 +29,11 @@ use vrf_decode::{
     OverlayTable, group_hash_state,
 };
 use vrf_export::{
-    ActorRecord, CheckpointBlockRecord, CheckpointIdentity, FieldRecord, MovementRecord,
-    PartialRecord,
+    ActorRecord, CheckpointBlockRecord, CheckpointIdentity, FieldRecord, MovementProvenance,
+    MovementRecord, PartialRecord,
 };
 use vrf_net::net_guid::GuidPathSink;
+use vrf_net::pipeline::ContentBlockContext;
 use vrf_net::types::NetworkGuid;
 use vrf_schema::{FxHashMap, NetGuidCache};
 
@@ -541,6 +542,9 @@ mod stats_tests {
 pub struct RecordBuffers {
     pub fields: Vec<FieldRecord>,
     pub movement: Vec<MovementRecord>,
+    /// Companion rows are collected only for consumers that request them.
+    pub movement_provenance: Vec<MovementProvenance>,
+    pub capture_movement_provenance: bool,
     pub actors: Vec<ActorRecord>,
     pub partials: Vec<PartialRecord>,
     pub checkpoint_blocks: Vec<CheckpointBlockRecord>,
@@ -581,6 +585,9 @@ pub struct ExportSink<'a> {
     current_group_resolution_source: &'static str,
     current_function_count_source: &'static str,
     current_resolution_memo_hit: bool,
+    current_movement_context: Option<ContentBlockContext>,
+    /// Packet-local callback count, independent of the cumulative lent stats.
+    next_rpc_index: u32,
 }
 
 impl<'a> ExportSink<'a> {
@@ -592,6 +599,7 @@ impl<'a> ExportSink<'a> {
     ) -> Self {
         records.fields.clear();
         records.movement.clear();
+        records.movement_provenance.clear();
         records.actors.clear();
         records.partials.clear();
         records.checkpoint_blocks.clear();
@@ -616,6 +624,8 @@ impl<'a> ExportSink<'a> {
             current_group_resolution_source: "unset",
             current_function_count_source: "unset",
             current_resolution_memo_hit: false,
+            current_movement_context: None,
+            next_rpc_index: 0,
         }
     }
 

@@ -29,8 +29,8 @@ and through [`fbf24b6`](https://github.com/michel-giehl/ValorantReplayParser/com
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Test suites (2026-11-16):** **783 Rust tests (Windows)**,
-**782 Rust tests (non-Windows)** and **1143 Python tests**.
+**Test suites (2026-11-16):** **792 Rust tests (Windows)**,
+**791 Rust tests (non-Windows)** and **1143 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -208,7 +208,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Workspace unsafe-code policy** — `#![forbid(unsafe_code)]` in every crate.
   Dependencies have separate policies; default Parquet compression includes
   native Zstd. The core-only Reader excludes Arrow, Parquet and Zstd.
-- **783 Rust tests (Windows)** / **782 Rust tests (non-Windows)** plus
+- **792 Rust tests (Windows)** / **791 Rust tests (non-Windows)** plus
   a layered validation suite (framing / bytes / decode
   errors / semantics).
 
@@ -252,7 +252,7 @@ row order; it does not infer gameplay events or retain Parquet physical encoding
 ## Status
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**782 passing (non-Windows)**; the Windows suite contains **783 tests (Windows)**.
+**791 passing (non-Windows)**; the Windows suite contains **792 tests (Windows)**.
 The full Python suite has **1143 passing** tests. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
