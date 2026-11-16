@@ -48,7 +48,7 @@ pub use oodle::{
     ReplayDataMeta, decompress_replay_data, decompress_replay_data_with_trailing,
     parse_replay_data_meta,
 };
-pub use preamble::{Preamble, parse_preamble};
+pub use preamble::{Preamble, PreambleReadError, parse_preamble, read_preamble};
 
 #[cfg(feature = "checkpoint")]
 pub use checkpoint::{

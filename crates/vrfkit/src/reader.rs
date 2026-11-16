@@ -16,6 +16,7 @@ use vrf_schema::SchemaLimits;
 use crate::error::CliError;
 use crate::oracle::{Verdict, verdict_from_stats};
 use crate::pass::{Chunk, Pass, Replay, for_each_chunk};
+use crate::reader_input::FileInput;
 use crate::sink::{ExportStats, RecordBuffers};
 
 /// A parser/I/O failure or the original error returned by a consumer callback.
@@ -136,9 +137,9 @@ impl ReplaySummary {
 /// Stateless reader using the same ordered decode pipeline as the CLI.
 ///
 /// Each call creates independent replay state, so the reader can be reused or
-/// shared. Decoded output is streamed; input is still a complete byte slice.
-/// [`Self::read_path`] buffers the entire input file, just as the CLI does.
-/// At most one additional decompressed ReplayData chunk is prefetched.
+/// shared. [`Self::read`] borrows a complete byte slice; [`Self::read_path`]
+/// reads one encoded chunk at a time from a file. At most one additional
+/// decompressed ReplayData chunk is prefetched.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ReplayReader;
 
@@ -188,23 +189,22 @@ impl ReplayReader {
         &self,
         data: &[u8],
         schema_limits: SchemaLimits,
-        mut consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
+        consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
     ) -> Result<ReplaySummary, ReadError<E>> {
-        let mut consumer_error = None;
-        let result = read_main_stream(data, schema_limits, |event| {
-            consumer(event).map_err(|error| {
-                consumer_error = Some(error);
-                CliError::Usage("replay consumer stopped".to_owned())
-            })
-        });
-        match consumer_error {
-            Some(error) => Err(ReadError::Consumer(error)),
-            None => result.map_err(ReadError::Replay),
-        }
+        let metadata = parse_preamble(data).map_err(CliError::from)?;
+        read_input(metadata, schema_limits, consumer, |replay, on_chunk| {
+            for_each_chunk(data, replay, on_chunk)
+        })
     }
 
-    /// Read a whole file into memory, then stream decoded output with
-    /// [`Self::read`]. The input file is only opened for reading.
+    /// Read a file in chunks and stream decoded output with the same decoder
+    /// as [`Self::read`]. The input file is only opened for reading and must
+    /// remain unchanged until this call returns. It is not snapshotted.
+    ///
+    /// Memory depends on the largest encoded chunk, the current and one
+    /// prefetched decompressed chunk, metadata and parser/consumer state;
+    /// it does not retain a copy of the complete file. Checkpoint and unknown
+    /// chunk payloads are range-checked and skipped without buffering.
     pub fn read_path<E>(
         &self,
         path: impl AsRef<Path>,
@@ -213,9 +213,10 @@ impl ReplayReader {
         self.read_path_with_schema_limits(path, SchemaLimits::default(), consumer)
     }
 
-    /// Buffer a whole file, then decode it with [`Self::read_with_schema_limits`].
+    /// Stream a file with explicit schema limits, as in
+    /// [`Self::read_with_schema_limits`].
     ///
-    /// Schema limits apply after reading the input and do not bound its size.
+    /// Schema limits do not bound encoded or decompressed chunk sizes.
     /// The file is only opened for reading. See [`Self::read_path`] for scope.
     pub fn read_path_with_schema_limits<E>(
         &self,
@@ -223,8 +224,37 @@ impl ReplayReader {
         schema_limits: SchemaLimits,
         consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
     ) -> Result<ReplaySummary, ReadError<E>> {
-        let data = std::fs::read(path).map_err(CliError::from)?;
-        self.read_with_schema_limits(&data, schema_limits, consumer)
+        let (metadata, input) = FileInput::open(path.as_ref())?;
+        read_input(metadata, schema_limits, consumer, |replay, on_chunk| {
+            input.for_each_chunk(replay, on_chunk)
+        })
+    }
+}
+
+fn read_input<E>(
+    metadata: Preamble,
+    schema_limits: SchemaLimits,
+    mut consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), E>,
+    chunks: impl FnOnce(
+        &Replay<'_>,
+        &mut dyn FnMut(Chunk<'_>) -> Result<(), CliError>,
+    ) -> Result<u64, CliError>,
+) -> Result<ReplaySummary, ReadError<E>> {
+    let mut consumer_error = None;
+    let result = read_main_stream(
+        metadata,
+        schema_limits,
+        |event| {
+            consumer(event).map_err(|error| {
+                consumer_error = Some(error);
+                CliError::Usage("replay consumer stopped".to_owned())
+            })
+        },
+        chunks,
+    );
+    match consumer_error {
+        Some(error) => Err(ReadError::Consumer(error)),
+        None => result.map_err(ReadError::Replay),
     }
 }
 
@@ -266,11 +296,14 @@ impl RowCounts {
 }
 
 fn read_main_stream(
-    data: &[u8],
+    metadata: Preamble,
     schema_limits: SchemaLimits,
     mut consumer: impl FnMut(ReplayEvent<'_>) -> Result<(), CliError>,
+    chunks: impl FnOnce(
+        &Replay<'_>,
+        &mut dyn FnMut(Chunk<'_>) -> Result<(), CliError>,
+    ) -> Result<u64, CliError>,
 ) -> Result<ReplaySummary, CliError> {
-    let metadata = parse_preamble(data)?;
     let replay = Replay::new(&metadata);
     let mut pass = Pass::with_schema_limits(&replay, schema_limits)?;
     pass.buffers.capture_movement_provenance = true;
@@ -283,7 +316,7 @@ fn read_main_stream(
     let mut replay_data_trailing_bytes = 0;
     let mut event_chunks = 0;
     let mut event_trailing_bytes = 0;
-    let unknown_chunks = for_each_chunk(data, &replay, |chunk| {
+    let unknown_chunks = chunks(&replay, &mut |chunk| {
         match chunk {
             Chunk::ReplayData(frames, unread) => {
                 pass.walk(&frames, &mut stats, |buffers| {

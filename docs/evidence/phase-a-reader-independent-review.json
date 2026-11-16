@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "reviewer": "Agent E (independent from Reader author)",
+  "runtime_reviewed": {
+    "qa_commit": "fc1f30a9c4a3a4c49183d246fdf0a31d415570d0",
+    "qa_tree": "931d8a8db1675f624876472cc4f88bed977872d7",
+    "native_qa_base": "ba1b2adfb30d6e3fa68c5fdf3c87042135a250c6",
+    "reader_author_commits": [
+      "d78f30abc4ff9de837e53d5cd9273d96c2b416f8",
+      "6a9ea4eb485ff9de6abfa12c2cf036904ba83d91"
+    ],
+    "reader_files_identical_to_author": {
+      "crates/vrf-container/src/lib.rs": "a0c16b17e7494a7ca509b655993224364f2943e415ebd8076596a277f5254318",
+      "crates/vrf-container/src/preamble.rs": "5fa34543b622757f3a5979f4929931670fcca1c5b2f6be1d616826ddd7f5bb93",
+      "crates/vrf-container/tests/read_preamble.rs": "1991d5c31e6078c24142109f51493da970829ab6fcd4a6315dac4e6cb90a7de1",
+      "crates/vrfkit/examples/reader_input_probe.rs": "ba6daa7f4f3e1bbfd7d7bede16f388ed7b19ddad477ca2a77029d8e638a22ff1",
+      "crates/vrfkit/src/lib.rs": "ec4c30e881655e446d37a95d8657ecdec57884c20fda09f8ffe4d61c74a74a54",
+      "crates/vrfkit/src/reader.rs": "5c6835b72c035476db75e6ad34d13a348934fa5a6d70d0dae6b1e3fbe711020a",
+      "crates/vrfkit/src/reader_input.rs": "51701e9071fa8692d8a9a3a2dc01e5f4b4fdbdcb7b2f3428ceef4e283fb4ca3a",
+      "crates/vrfkit/tests/reader_input.rs": "743426ddc6f1184668f0dc54d1117ca31aecc5cf943591d1cdda79da8bf5c684"
+    },
+    "inline_candidate_present": false
+  },
+  "toolchain": "Rust 1.86.0; no-default-features; locked dependencies; Linux",
+  "fresh_executions": {
+    "independent_helper": {
+      "tests_passed": 6,
+      "tests_failed": 0,
+      "native_cases_through_read_path": 31,
+      "additional_behavioral_cases": 2,
+      "sparse_fixture_construction_tests": 1,
+      "normal_cargo_suite_count_change": 0
+    },
+    "existing_reader_api_tests_passed": 15,
+    "existing_reader_input_tests_passed": 6,
+    "existing_preamble_tests_passed": 5,
+    "logs": {
+      "reader-independent-final.log": {
+        "sha256": "c81237f76745133848e6be73756721e624cd23ea0101b5c85f004381e81e8cef",
+        "passed": 6,
+        "failed": 0
+      },
+      "reader-existing-combined.log": {
+        "sha256": "fa8c8a5dee96b274ccc579529360994d75e11f6da45f59dc3122fb0340c8609f",
+        "passed": 21,
+        "failed": 0
+      },
+      "reader-preamble-combined.log": {
+        "sha256": "628480ff0a3130b90a0431d58437f65d80fe9ec17fa32bb962c099c9f7642d3f",
+        "passed": 5,
+        "failed": 0
+      }
+    },
+    "memory_receipt": "phase-a-reader-memory-independent.json"
+  },
+  "helper_sha256": {
+    "phase_a_reader_input.rs": "5488a9b111bd4f84a235ace95ab5885b75737e129e82439442e31b5d2940564d",
+    "phase_a_reader_memory.rs": "1cfa47c8f151ebfb97de69fd42971aae675aa273caedbc95f0a74dda300d7200",
+    "phase_a_reader_memory.py": "ab79327b40c96ac0673b7e679f675e0aba1b19e81c11da689b98c459d27fde3c",
+    "phase_a_measurement_review.py": "5962752e06e276d94387aea1183dce75b0b27f22c120024aa8871b58dde7473b"
+  },
+  "checks": [
+    "Independent A3/A4 and signed-envelope cases now traverse file input, preserving raw RPC, Movement prefix, provenance and later records.",
+    "Records consumer error returns the original boxed object and outranks a prefetched later error; no subsequent callback occurs.",
+    "Typed later container truncation agrees with slice input; earlier callbacks remain delivered but no successful summary is returned.",
+    "Existing tests freshly run on combined Native+Reader cover all truncated preamble/chunk prefixes, maximum admitted info prefix, large Header, bounded read counts, Event stop, skip range checks and schema-limit APIs.",
+    "Two independent read-only file cursors avoid shared-offset try_clone behavior; each payload is read by one cursor, apart from the bounded preamble probe.",
+    "Sparse skipped-payload proof succeeds under a 512MiB address-space limit; same executable whole-file buffering fails specifically with OutOfMemory."
+  ],
+  "measurements_review": "phase-a-measurements-independent.json",
+  "performance_conclusion": {
+    "candidate_withdrawal_supported": true,
+    "accepted_runtime_optimizations": 0,
+    "withdrawal_commit": "325acda3092600aa3944c7d123f12a4fcdd6890b",
+    "withdrawal_runtime_diff_against_baseline": "empty across crates",
+    "review_scope": "Recomputed each recorded pair, medians, CPU utilization and CPU totals; checked report hashes, before/after provenance, control and reverse-label executable identities, six Reader parity entries, 60 export receipts and 668 recorded Parquet fingerprints. No fresh benchmark or actual export reread performed in this review."
+  },
+  "limits": [
+    "Linux local QA does not substitute for final hosted Windows/Linux, feature matrix, rustdoc, Clippy, Python and replay CI.",
+    "Six real replay file/slice parity entries are author executions reviewed for consistency, not six independent combined-source decodes.",
+    "CLI and Parquet file loading remain unchanged; the accepted Reader improvement is input memory use, with no stable speed improvement claimed.",
+    "Memory scales with encoded/current/prefetched chunks, full Event/Header payloads and parser/consumer state; no fixed global cap.",
+    "Consumer stop prevents further callbacks; scoped worker can finish current decoding or scan a header-only tail before joining, without a bounded cancellation-time guarantee.",
+    "Files must remain unchanged during reading; same-length concurrent writes or replacement are outside the documented snapshot guarantee.",
+    "Sparse proof is synthetic, skips payloads and does not establish large decoded-chunk memory bounds."
+  ]
+}

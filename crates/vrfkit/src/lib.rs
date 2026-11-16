@@ -38,6 +38,7 @@ mod manifest;
 mod oracle;
 mod pass;
 mod reader;
+mod reader_input;
 mod report;
 mod sink;
 

@@ -1,0 +1,337 @@
+{
+  "schema_version": 1,
+  "decision": "withdrawn",
+  "accepted_runtime_optimizations": 0,
+  "candidate_source_commit": "8a8810e3b7c676eae785b7d3066fabcc571da0b6",
+  "candidate_source_tree": "078e1007c6c77d9c29a1657bdce87636f1b30982",
+  "baseline_source_commit": "f94d5cf1c38fdbfc97cecd4d7f290d2612ec70ac",
+  "baseline_binary_sha256": "e506eaaf0f443252a90ea7de22d3b316e5971575b32fcfab60632f6817eeb35a",
+  "candidate_binary_sha256": "e8fcd54da746dcf2bd0e4ed478a753b037ab628c135d5eecb7fac2eefcd6e04a",
+  "series": {
+    "1209-checkpoints": {
+      "report_sha256": "7e972b4ea51ad83e8b537652c75e80dc05996181812579a0957973156bf3d79f",
+      "exports": 16,
+      "tables_per_export": 13,
+      "configuration": {
+        "warmup_pairs": 1,
+        "measured_pairs": 7,
+        "checkpoints": true,
+        "timeout_seconds": 1800
+      },
+      "input": {
+        "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+        "bytes": 61015648
+      },
+      "roles": {
+        "baseline": "unannotated",
+        "candidate": "inline"
+      },
+      "medians": {
+        "baseline": {
+          "wall_seconds": 2.028977859998122,
+          "cpu_total_seconds": 4.939242,
+          "cpu_utilization_percent": 236.36769843884466,
+          "peak_rss_bytes": 196775936,
+          "input_mib_per_second": 28.67900017230264,
+          "parquet_bytes": 43984122,
+          "output_bytes": 44676171
+        },
+        "candidate": {
+          "wall_seconds": 1.9425312239982304,
+          "cpu_total_seconds": 4.883211999999999,
+          "cpu_utilization_percent": 249.36944408628088,
+          "peak_rss_bytes": 197349376,
+          "input_mib_per_second": 29.955274683676016,
+          "parquet_bytes": 43984122,
+          "output_bytes": 44676171
+        }
+      },
+      "paired_ratios": {
+        "wall_seconds": {
+          "candidate_over_baseline": [
+            0.7972403075960349,
+            1.0869154895777708,
+            1.0482011718636683,
+            0.8737595032219679,
+            0.8599486366995631,
+            0.8793351728684516,
+            0.9694602646714485
+          ],
+          "median_candidate_over_baseline": 0.8793351728684516
+        },
+        "cpu_total_seconds": {
+          "candidate_over_baseline": [
+            0.8561229392182012,
+            0.9835987091187474,
+            1.0508808250013988,
+            0.9089273212367402,
+            0.9400360720714332,
+            1.0835391132241992,
+            1.0124250541282382
+          ],
+          "median_candidate_over_baseline": 0.9835987091187474
+        },
+        "peak_rss_bytes": {
+          "candidate_over_baseline": [
+            1.0140448852862114,
+            0.9804643780142854,
+            1.0249578485044024,
+            0.9914512222889197,
+            1.051774857815258,
+            0.9979953642798972,
+            0.9643120998194057
+          ],
+          "median_candidate_over_baseline": 0.9979953642798972
+        }
+      },
+      "distinct_output_fingerprints": [
+        "c9c38a18a9b807d642251b93522b01f3acaab5b3cc3757990323f94f5fddf3cf"
+      ]
+    },
+    "1205-main": {
+      "report_sha256": "a6558a552eddc5b96eaee126d2fe21a00d1b0a10ee1bf5a34b1086d672b10460",
+      "exports": 16,
+      "tables_per_export": 6,
+      "configuration": {
+        "warmup_pairs": 1,
+        "measured_pairs": 7,
+        "checkpoints": false,
+        "timeout_seconds": 1800
+      },
+      "input": {
+        "sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+        "bytes": 54702346
+      },
+      "roles": {
+        "baseline": "unannotated",
+        "candidate": "inline"
+      },
+      "medians": {
+        "baseline": {
+          "wall_seconds": 1.485687879998295,
+          "cpu_total_seconds": 3.0720769999999997,
+          "cpu_utilization_percent": 204.15358940601243,
+          "peak_rss_bytes": 133054464,
+          "input_mib_per_second": 35.113850715015616,
+          "parquet_bytes": 31815958,
+          "output_bytes": 32463843
+        },
+        "candidate": {
+          "wall_seconds": 1.3582155180010886,
+          "cpu_total_seconds": 2.904734,
+          "cpu_utilization_percent": 204.139821180882,
+          "peak_rss_bytes": 132976640,
+          "input_mib_per_second": 38.409384766966234,
+          "parquet_bytes": 31815958,
+          "output_bytes": 32463843
+        }
+      },
+      "paired_ratios": {
+        "wall_seconds": {
+          "candidate_over_baseline": [
+            1.0509162732173145,
+            1.0733415151766892,
+            0.9380548983539451,
+            0.9728466319378098,
+            0.8440391968623608,
+            1.0435540158097738,
+            0.9141997698753841
+          ],
+          "median_candidate_over_baseline": 0.9728466319378098
+        },
+        "cpu_total_seconds": {
+          "candidate_over_baseline": [
+            0.9784423906288254,
+            1.1435685993367877,
+            0.9454252890792431,
+            0.949747027825149,
+            0.8424545395144915,
+            0.9824308018574719,
+            0.8993745445146575
+          ],
+          "median_candidate_over_baseline": 0.949747027825149
+        },
+        "peak_rss_bytes": {
+          "candidate_over_baseline": [
+            0.9842914438502673,
+            1.052587386490857,
+            1.0153244722439405,
+            1.0206349206349206,
+            0.9947050855805936,
+            0.9520011858879336,
+            1.023708036464329
+          ],
+          "median_candidate_over_baseline": 1.0153244722439405
+        }
+      },
+      "distinct_output_fingerprints": [
+        "22cf0a6a0bcf02fe6bf8aa47ba71cbb16c36add91e09ad33d57acdf8b0fb55e3"
+      ]
+    },
+    "same-binary": {
+      "report_sha256": "c5d1a2277ca70ae6c469b9def196ac7c2de0d9f4731e132f3f9c4af56e8451c8",
+      "exports": 12,
+      "tables_per_export": 13,
+      "configuration": {
+        "warmup_pairs": 1,
+        "measured_pairs": 5,
+        "checkpoints": true,
+        "timeout_seconds": 1800
+      },
+      "input": {
+        "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+        "bytes": 61015648
+      },
+      "roles": {
+        "baseline": "inline",
+        "candidate": "inline"
+      },
+      "medians": {
+        "baseline": {
+          "wall_seconds": 1.6705014940016554,
+          "cpu_total_seconds": 4.136004,
+          "cpu_utilization_percent": 250.10055412463416,
+          "peak_rss_bytes": 195891200,
+          "input_mib_per_second": 34.833286055371055,
+          "parquet_bytes": 43984122,
+          "output_bytes": 44676171
+        },
+        "candidate": {
+          "wall_seconds": 1.624042103998363,
+          "cpu_total_seconds": 4.2989559999999996,
+          "cpu_utilization_percent": 258.8007624280341,
+          "peak_rss_bytes": 195514368,
+          "input_mib_per_second": 35.82977082504446,
+          "parquet_bytes": 43984122,
+          "output_bytes": 44676171
+        }
+      },
+      "paired_ratios": {
+        "wall_seconds": {
+          "candidate_over_baseline": [
+            0.9742091190253631,
+            1.062175863449226,
+            0.8867037217307521,
+            1.0504733639369195,
+            0.9721883577056852
+          ],
+          "median_candidate_over_baseline": 0.9742091190253631
+        },
+        "cpu_total_seconds": {
+          "candidate_over_baseline": [
+            1.0756607280592347,
+            1.039398414508303,
+            0.886007446756502,
+            1.0335209828307932,
+            1.0613742555309524
+          ],
+          "median_candidate_over_baseline": 1.039398414508303
+        },
+        "peak_rss_bytes": {
+          "candidate_over_baseline": [
+            0.993045279668541,
+            1.0047167842384273,
+            0.9973026659696811,
+            0.977614385778069,
+            1.0360274946669827
+          ],
+          "median_candidate_over_baseline": 0.9973026659696811
+        }
+      },
+      "distinct_output_fingerprints": [
+        "c9c38a18a9b807d642251b93522b01f3acaab5b3cc3757990323f94f5fddf3cf"
+      ]
+    },
+    "1209-reversed": {
+      "report_sha256": "60520ccef0389afece321fe7b95a66ab1a2d553b0c1732ef3c8d17d86127dd69",
+      "exports": 16,
+      "tables_per_export": 13,
+      "configuration": {
+        "warmup_pairs": 1,
+        "measured_pairs": 7,
+        "checkpoints": true,
+        "timeout_seconds": 1800
+      },
+      "input": {
+        "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+        "bytes": 61015648
+      },
+      "roles": {
+        "baseline": "inline",
+        "candidate": "unannotated"
+      },
+      "medians": {
+        "baseline": {
+          "wall_seconds": 1.575242208000418,
+          "cpu_total_seconds": 4.102078,
+          "cpu_utilization_percent": 252.81381998106943,
+          "peak_rss_bytes": 194510848,
+          "input_mib_per_second": 36.93975193208443,
+          "parquet_bytes": 43984122,
+          "output_bytes": 44676171
+        },
+        "candidate": {
+          "wall_seconds": 1.737708090000524,
+          "cpu_total_seconds": 4.227251,
+          "cpu_utilization_percent": 251.5021385662531,
+          "peak_rss_bytes": 195178496,
+          "input_mib_per_second": 33.486093971322205,
+          "parquet_bytes": 43984122,
+          "output_bytes": 44676171
+        }
+      },
+      "paired_ratios": {
+        "wall_seconds": {
+          "candidate_over_baseline": [
+            0.8775906530045785,
+            1.1547160429235197,
+            1.1090594864853711,
+            0.9679107124456164,
+            1.0742850090813894,
+            1.0436947668445662,
+            0.9262199480819086
+          ],
+          "median_candidate_over_baseline": 1.0436947668445662
+        },
+        "cpu_total_seconds": {
+          "candidate_over_baseline": [
+            0.9003821454329044,
+            1.1864137570166973,
+            1.0248643089079934,
+            0.9309328101513429,
+            1.0226931497901268,
+            0.9831005190298385,
+            0.9592365681529018
+          ],
+          "median_candidate_over_baseline": 0.9831005190298385
+        },
+        "peak_rss_bytes": {
+          "candidate_over_baseline": [
+            0.9862976838532073,
+            1.0388534627036417,
+            0.9986944070080862,
+            1.0196140528671565,
+            0.9746746684815113,
+            1.010215591546598,
+            0.9964730632786074
+          ],
+          "median_candidate_over_baseline": 0.9986944070080862
+        }
+      },
+      "distinct_output_fingerprints": [
+        "c9c38a18a9b807d642251b93522b01f3acaab5b3cc3757990323f94f5fddf3cf"
+      ]
+    }
+  },
+  "total_exports": 60,
+  "equivalent_exports": 60,
+  "parquet_files_fingerprinted": 668,
+  "logical_source_delta": "one inline(always) attribute; later reverted",
+  "unmeasured": [
+    "allocation_count",
+    "allocated_bytes",
+    "isolated_io_time",
+    "Windows_resource_comparison"
+  ],
+  "reason": "The second-input wall effect overlaps the identical-binary control, CPU direction reverses in the reverse-label confirmation, and individual paired ratios show material environmental variation. Code-generation and output-preservation evidence do not prove a throughput/CPU gain."
+}
