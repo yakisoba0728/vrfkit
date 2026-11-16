@@ -7,8 +7,10 @@ main replication stream. Calling the helpers opts in; ordinary Reader and CLI
 paths do not call them or perform additional gameplay work.
 
 This is an observation API. It does not assemble a complete match, resolve
-accounts, award kill credit or infer missing events. Every projection borrows
-its source evidence; raw Event payloads and field rows remain unchanged.
+accounts, award kill credit or infer missing events. Stateless projections
+borrow source evidence. The optional `MainIdentityTimeline` retains identity
+and lifecycle evidence for packet-scoped queries; raw Event payloads and field
+rows remain unchanged.
 
 ```rust
 use vrfkit::{ReplayEvent, ReplayReader};
@@ -84,8 +86,9 @@ be a byte-valued integer and equal the exact eight-bit raw window.
 Repeated observations remain repeated. No previous state is retained, so the
 API does not invent a transition before the first observation or deduplicate
 repeated phases. Source timestamps are not sorted or used to guess order.
-Checkpoint fields must not be passed as main fields; Reader currently skips
-checkpoint snapshots and reports their count separately.
+Checkpoint fields must not be passed as main fields. The default Reader calls
+skip checkpoint snapshots and report their count separately; optional
+checkpoint delivery remains a distinct source and state scope.
 
 The Rust projection reuses the existing field decode and the Python phase
 mapping's meaning. It deliberately does not duplicate the richer algorithms
@@ -98,9 +101,120 @@ python tools/extract_rounds.py --export out/match --out out/rounds.parquet
 python tools/extract_damage_events.py --export out/match --out out/damage.parquet
 ```
 
-Full round-end results, player identity, movement association, damage details
-and ability semantics are outside this initial Rust API. Spike native
+Full round-end results, account identity, damage details and ability semantics
+remain outside this API. The optional main-stream body relation and movement
+association below do not infer those meanings. Spike native
 payloads contain no planter, defuser or site; this API supplies none.
+
+## Packet-scoped body identity and movement
+
+`spawned_character_observation(&FieldRecord)` projects only the measured
+BombPlayerState `SpawnedCharacter` identity and its canonical Swiftplay alias,
+checksum `1413303948`, on the actor itself. The sole integer overlay must be a
+u32 and equal a completely consumed packed NetGUID raw window. Zero remains
+an explicit null declaration. An unknown group, checksum, nested object,
+conflicting overlay, truncated GUID or extra raw tail is an error; other field
+names return `None`. The exact borrowed row is available as `source`.
+
+The body criterion comes from `tools/player_identity.py` and the existing
+typed overlay. A pawn's `PlayerState`, `Owner` or `PossessedCharacter` is not
+accepted as independent proof that it is a player's body. The new Rust layer
+does not copy the Python tool's whole-export account join: it records what
+was observed before an explicit packet boundary. No final `net_guids`
+snapshot, manifest account, coordinate proximity or future write is used.
+
+```rust
+use vrfkit::{ReplayEvent, ReplayReader};
+use vrfkit::gameplay::{IdentityError, IdentityResolution, MainIdentityTimeline};
+
+let mut identities = MainIdentityTimeline::new();
+let mut resolved_moves = 0_u64;
+let summary = ReplayReader::new().read_path("match.vrf", |event| {
+    if let ReplayEvent::Records(batch) = event {
+        identities.observe_records(&batch)?;
+        for index in 0..batch.movement.len() {
+            let association = identities.movement_identity(&batch, index)?;
+            if let IdentityResolution::Resolved(body) = association.identity {
+                resolved_moves += 1;
+                // This is the observed PlayerState/body relation, not an account.
+                let _ = (body.player_state_net_guid, body.declaration.packet_id);
+            }
+        }
+    }
+    Ok::<(), IdentityError>(())
+})?;
+// Publish only after Reader success; all prior observations were provisional.
+println!("{resolved_moves} associated moves; {:?}", summary.block_verdict());
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Use a fresh timeline per replay and feed every main `Records` callback once,
+in callback order. Checkpoint callbacks remain independent and must not be
+fed to this main timeline. `observe_packet` is the equivalent entry point for
+owned main actor/field rows; it requires the complete packet vectors in their
+original per-vector order. It does not infer ordering between those vectors.
+Partial-only final flushes do not add evidence. An invalid observation or
+non-increasing packet invalidates the timeline, preventing an ignored error
+from silently leaving an older relation active.
+
+| Result | Exact meaning |
+| --- | --- |
+| `Null` | The queried character GUID is zero. |
+| `Unresolved(reason)` | No current preceding declaration, unobserved packet boundary, missing/ended/conflicting actor lifecycle, prior-lifetime declaration, indeterminate same-packet order, or invalid timeline. |
+| `Ambiguous { declarations }` | Multiple non-retired PlayerState declarations name this character, including declarations whose same-packet lifetime boundary is indeterminate. All source declarations remain available in PlayerState GUID order. |
+| `Resolved(BodyIdentity)` | One current declaration names this character and both actor lifetimes are observed and compatible. The result borrows the complete declaration and both original actor opens. It is not account resolution or kill attribution. |
+
+`resolve_before_packet(reference, packet)` considers only writes and lifecycle
+events in packets strictly smaller than `packet`. Timestamps, including zero
+and regressions, remain evidence but do not define ordering. The query can
+reach at most the boundary immediately after the latest observed packet;
+it cannot predict a later unseen stream. A later write cannot backfill an
+earlier query. A null write or new body retires the current relation while
+historical queries still see the previous relation. This differs intentionally
+from the Python whole-export history, which keeps earlier reconnect bodies.
+
+Only an actor `close` or replacement on an active channel ends its observed
+lifetime. `dormant` releases the channel without destroying the actor, and a
+later reopen preserves that lifetime. An open while the GUID is still active
+on a channel is conflicting lifecycle evidence, not proof of continuity.
+After close/reuse a fresh body declaration is required; a declaration in the
+same packet as a close cannot be assigned to one side of that close.
+A declaration strictly before the new lifetime's prior end is retired from
+current candidate selection, so it cannot make a fresh relation ambiguous.
+A declaration in the same packet as that end remains a potential conflict;
+discarding it would invent order between the lifecycle and field vectors.
+Historical queries retain the original declarations and their earlier results.
+
+`movement_identity(&batch, index)` uses the exact same-index movement row and
+`MovementProvenance`. Its transport completion packet must equal the movement
+packet, the initial packet cannot be later, and the complete batch must already
+have been observed. The source's actor may be the replay controller: identity
+uses the movement row's wire character GUID and does not equate those actors.
+The returned structure borrows both original records unchanged.
+The relation describes the observed transport window; it is not backdated
+to the decoded move's server tick or a native Event timestamp.
+
+The association requires a body relation established before the initial
+fragment packet and no relevant reference write or lifetime change through
+the completion packet, inclusive. A change in that interval stays
+`Unresolved(ConcurrentChange)`, including an otherwise valid same-packet
+write. The Reader's separate row vectors cannot establish its order with the
+movement RPC. This deliberate loss of coverage prevents a plausible but
+unproven association. Native death chunks have no main packet identity;
+this layer provides no timestamp-based death/player join.
+
+The timeline retains only identity declarations and actor lifecycle evidence,
+not all field and movement rows; its memory grows with that retained history.
+It is opt-in, can be dropped by the caller, and adds no work to ordinary Reader
+or CLI export. No performance improvement is claimed.
+
+An aggregate-only example prints all four identity counts, including zeros,
+without player identifiers:
+
+```bash
+cargo +1.86.0 run --release -p vrfkit --no-default-features \
+  --example gameplay_identity -- match.vrf
+```
 
 ## Reference comparison
 
@@ -117,7 +231,20 @@ chunks and explicit observed phase values, while its existing Python layer
 continues the richer analytical joins. These are different contracts; no
 event-coverage or performance superiority claim follows from this API.
 
-## Executed validation
+## Phase C author validation
+
+The [author check record](evidence/phase_c/gameplay/README.md) records 15 new
+identity/lifecycle/movement tests, the 12 prior gameplay tests, four detected
+implementation mutations, strict core Clippy/rustdoc and a fresh public 12.10
+aggregate example. The example observed one declaration and 8,907 resolved
+movement associations. Independent value/order parity and final platform CI
+are separate required acceptance gates, not claims made by that example.
+The same record's lifecycle follow-up preserves three independently authored
+public-API regressions: two exposed retired claims incorrectly retaining
+ambiguity. All three pass after the correction, and an inclusive-cutoff
+mutation fails the same-packet uncertainty test as intended.
+
+## Phase B validation (historical)
 
 The [reproduction record](evidence/phase_b/gameplay/README.md) documents six
 fresh Reader executions and an independent Python/raw-byte comparison:
