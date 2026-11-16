@@ -58,7 +58,7 @@ use vrf_bitio::{BitError, BitReader};
 
 use crate::cache::NetGuidCache;
 use crate::error::{Result, SchemaError};
-use crate::export::{NetFieldExport, NetFieldExportGroup};
+use crate::export::NetFieldExport;
 use crate::guid::NetworkGuid;
 use crate::reader::{MAX_FIELDS_PER_GROUP, MAX_FSTRING_BYTES, read_fname};
 
@@ -330,11 +330,7 @@ pub fn read_checkpoint_tables_with_sink_mode<S: CheckpointTableSink>(
         sink.on_export_group(group_ordinal, path_name_index, &path, declared)
             .map_err(CheckpointReadError::Sink)?;
 
-        cache.add_export_group(NetFieldExportGroup::new(
-            path.clone(),
-            path_name_index,
-            declared,
-        ))?;
+        cache.declare_export_group(path.clone(), path_name_index, declared)?;
 
         for slot in 0..declared {
             let exported_flag = reader.read_u8()?;

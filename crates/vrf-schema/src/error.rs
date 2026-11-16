@@ -24,6 +24,15 @@ pub enum SchemaError {
     #[error("net-field export declares {count} field slots, maximum is {max}")]
     FieldCountOverflow { count: u32, max: u32 },
 
+    /// A group declaration would exceed this cache's configured resource
+    /// budget. This is a policy refusal, not a claim about the game's format.
+    #[error("schema {resource} require {requested}, configured limit is {limit}")]
+    ResourceLimit {
+        resource: &'static str,
+        requested: usize,
+        limit: usize,
+    },
+
     /// `path_group` and `index_group` are the canonical paths the incoming path
     /// and index select.
     #[error(
