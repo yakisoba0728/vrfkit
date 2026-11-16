@@ -21,11 +21,16 @@ fresh parser state for each snapshot and writes separate checkpoint tables.
 It retains one reusable encoded checkpoint buffer, plus the current decoded
 snapshot. Main data, checkpoint identity and output ordering are unchanged.
 
-The native counters, Parquet schemas and manifest contract are unchanged.
+The Phase B file-input refactor left native counters, Parquet schemas and
+manifest semantics unchanged. Phase C deliberately extends the exact Clay
+FocusProjectiles route and required counters; see
+[the output migration](PHASE_C_MIGRATION.md#export-and-counter-migration).
 `source_size_bytes` is the input file's observed length, including skipped
 payloads. `validate` still counts checkpoints as skipped and its verdict
-covers the main ReplayData stream only. This change does not introduce Reader
-checkpoint callbacks or accept arbitrary non-seekable streams.
+covers the main ReplayData stream only. The file-input refactor itself did
+not add Reader checkpoint callbacks or nonseekable input. Phase C adds both
+as explicit library options; [the Reader contract](RUST_API.md) distinguishes
+chunk-buffered paths from finite whole-input buffering with a required cap.
 
 ## Memory and errors
 
@@ -57,8 +62,10 @@ rollback. They compare all 13 Parquet files from compact and padded inputs,
 and check the manifest's actual source size and checkpoint count. Existing
 Reader, checkpoint, publication and unread-byte tests remain applicable.
 
-Resource measurements and public replay comparisons must use the exact
-candidate executable and Phase A baseline, with identical export options.
+The Phase B comparison below used the exact candidate and Phase A baseline
+with identical export options. For the current source, use the explicit
+schema/output-compatible baseline in the [user-run benchmark handoff](PHASE_B_BENCHMARK_HANDOFF.md);
+unmodified historical binaries lack the new required counter keys.
 Sparse skip tests establish the skipped-payload behavior; they do not
 establish a memory bound for decoded chunks or a throughput improvement.
 

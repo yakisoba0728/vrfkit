@@ -5,6 +5,9 @@ The CLI, output schemas, library use, `tools/` scripts, and validation suite.
 Design rationale is in [`../README.md`](../README.md).
 For a first checkout, source pin and executable Rust/Python recipes, start
 with the [adoption guide](ADOPTION.md).
+Current source changes and acceptance are in [Phase C results](PHASE_C_RESULTS.md);
+review [API/counter migration and release preparation](PHASE_C_MIGRATION.md)
+when upgrading an existing consumer.
 
 ## Table of contents
 
@@ -675,6 +678,8 @@ Every loss and fallback counter for the run, including the checkpoint pass when
 | `movement_component_envelopes`, `movement_component_payload_bytes`, `movement_component_unused_bits` | Valid signed-32-bit native envelopes, their payload bytes and declared unused high bits. A valid envelope can still contain an unsupported or malformed body; unused bits are outside its logical payload. |
 | `movement_component_input_headers`, `movement_component_discrepancy_headers` | Recognized A3 input headers and optional A4 discrepancy headers. Only header-only bodies are decoded. These replace the former movement tail/trailer counters; see the [migration and measured layout](NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration). |
 | `active_blinds_empty_trailers` | In each `sink` block: empty `ActiveBlinds` deltas whose one trailing zero byte the strict array walker was spared; the parent row keeps it. Printed as `ActiveBlinds trailers:` (`Checkpoint ActiveBlinds trailers:`). |
+| `route_children_focus_projectiles` | In each `sink` block: child rows emitted by the exact measured 12.05 Clay `FocusProjectiles` route; the original raw parent remains. This required key is present even at zero. See [the route and evidence](PHASE_C_FOCUS_PROJECTILES.md). |
+| `focus_projectiles_empty_trailers` | In each `sink` block: empty deltas from that exact route with one final zero byte retained in the raw parent. Printed as `FocusProjectiles trailers:` (`Checkpoint FocusProjectiles trailers:`); this required key is present even at zero. |
 | `frame_non_finite_times` | DemoFrames whose time was NaN or infinite; their packets carry 0 ms. `checkpoints.checkpoint_frame_non_finite_times` counts the snapshot frames. Printed as `Frame times:` (`Checkpoint frame times:`), and by `validate`. |
 | `checkpoints.checkpoint_trailing_bytes` | Checkpoint bytes no reader consumed: bytes after an archive inside its chunk, and archive bytes the Oodle codec never read -- the checkpoint twin of `replay_data_trailing_bytes`. Printed as `Trailing bytes:` under `=== Checkpoints ===`, and by `diag --json` as `checkpoint_meta.trailing_bytes`. 0 in all 19,166 checkpoint archives of 1,014 replays, 11.06-13.06; `verify_build_corpus.py` fails a replay where it is not. |
 
@@ -699,14 +704,19 @@ preserved, uninterpreted streams, so it is not a count of lost payload bits.
 Start with [`ReplayReader`](RUST_API.md) to receive borrowed field, movement,
 actor and rejected-partial batches, plus native Event payloads. It uses the same
 main-stream decoder as the CLI and does not require Parquet dependencies.
-Checkpoint snapshots remain available through `export --checkpoints`.
+Checkpoint callbacks are optional through `ReadOptions`; default Reader calls
+continue to skip them. `export --checkpoints` writes separate snapshot tables.
 
 `read_path` reads container chunks from a file; `read(&bytes, ...)` borrows an
-existing snapshot. Neither API accepts an arbitrary non-seekable stream.
+existing snapshot. `read_bounded` accepts finite nonseekable `Read` input with
+an explicit byte cap, buffers through EOF, and then runs the same parser;
+see [its memory and I/O contract](RUST_API.md#nonseekable-input-with-an-explicit-byte-cap).
 Callback rows are provisional until the read succeeds, and their borrowed
 slices cannot outlive the callback. [Optional gameplay helpers](GAMEPLAY_API.md)
 project a documented subset of native Event chunks and round-phase field
-observations without changing ordinary Reader or CLI work. The
+observations without changing ordinary Reader or CLI work. A separate
+`MainIdentityTimeline` supports evidence-preserving body/movement association;
+it requires ordered main records and keeps missing/ambiguous results explicit. The
 [Rust and Python recipes](ADOPTION.md#rust-without-parquet) show how to choose
 the smallest integration layer and retain explicit quality checks.
 
@@ -724,7 +734,7 @@ Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 | Field decoder + nested arrays + type overlay + effects | `vrf-decode` | `array` `effect` `overlay` `structs` |
 | Movement decoder | `vrf-movement` | none |
 | Parquet writer | `vrf-export` | `parquet` + per-table |
-| Streaming main-pass reader and CLI | `vrfkit` | `export` (default; optional for the reader) |
+| Main/checkpoint reader and CLI | `vrfkit` | `export` (default; optional for the reader) |
 
 ZSTD is deliberately *not* feature-gated out -- every writer picks it, so
 disabling it would produce files this crate could not explain.

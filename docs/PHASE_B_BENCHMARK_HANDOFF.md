@@ -1,10 +1,13 @@
-# Phase B benchmark handoff
+# Phase C benchmark handoff
+
+The filename is retained for existing links. This revision supersedes the
+Phase B candidate/baseline instructions with the Phase C output contract.
 
 **Performance comparisons are now user-run.** At the user's request, the
 agents stopped quantitative and repeated replay benchmarking. This runbook
 prepares a reproducible comparison for the user; its commands are not a
 record of measurements already executed. Functional tests, replay output
-checks and CI remain separate acceptance work. No final Phase B speed, CPU
+checks and CI remain separate acceptance work. No Phase C speed, CPU
 or peak-RSS improvement is claimed here. Earlier profiling and rejected
 experiments keep their original scope and history.
 
@@ -19,8 +22,8 @@ performance.
 
 | Input | Required choice |
 | --- | --- |
-| Baseline | Phase A integration `9c133fb423c521d7df25b6ef19cb546fa489de4e` |
-| Candidate | The **full final integration commit ID after functional acceptance**, supplied in the final Phase B receipt. A branch name, an intermediate agent commit or a local QA snapshot is not a substitute. |
+| Baseline | Immutable C-only PR #72 source `1b9bbf222f003e35c882e640c1b19e0bbcc88472`: Phase B integration plus the exact FocusProjectiles route/counter/schema change. This is a proposed output-compatible baseline; every selected input must still pass all harness gates. |
+| Candidate | The **full final integration commit ID after functional acceptance**, supplied in the final Phase C receipt on PR #58 and linked from [Phase C results](PHASE_C_RESULTS.md). A branch name, an intermediate agent commit or a local QA snapshot is not a substitute. |
 | Compiler and target | Rust/Cargo 1.86.0, the same target triple, host, linker and native compiler for both builds |
 | Features and profile | Default `export` features, `--release`, `--locked`, repository release profile: optimization 3, fat LTO, one codegen unit, debug level 1 |
 | Dependency selection | Identical `Cargo.lock` bytes; stop and explain a dependency change before comparing |
@@ -28,6 +31,49 @@ performance.
 | Build flags | Identical Rust/native compiler flags and Cargo configuration; record any deliberate override |
 | Measurements | Full export wall time, CPU, utilization, peak RSS, input throughput and output size; do not reduce output or decoding to improve a number |
 | Controls | An identical-executable comparison on the same replay and mode, with the same repetitions and machine conditions |
+
+### Why the historical baseline changed
+
+Phase C adds `route_children_focus_projectiles` and
+`focus_projectiles_empty_trailers` as required main/checkpoint sink keys. The
+evidence-qualified 12.05 fixture also gains 53 main child rows while retaining
+the original raw parents. Unmodified Phase A and Phase B binaries cannot pass
+the current harness: missing required keys fail even on inputs with zero
+FocusProjectiles rows. Ignoring absent keys, removing child rows or weakening
+manifest equality is not a valid correction.
+
+The [fixed C-only commit](https://github.com/yakisoba0728/vrfkit/commit/1b9bbf222f003e35c882e640c1b19e0bbcc88472)
+is exactly one commit ahead of Phase B integration
+`588be1effc8dfca2bed8810fd51a006828081c1b`. Its
+[source comparison](https://github.com/yakisoba0728/vrfkit/compare/588be1effc8dfca2bed8810fd51a006828081c1b...1b9bbf222f003e35c882e640c1b19e0bbcc88472)
+contains the same semantic/schema extension on top
+of Phase B, before the Reader, identity and bounded-input integrations. Use
+that exact immutable commit even if PR #72's branch later moves to resolve
+integration dependencies. Comparing it with the final candidate can measure
+the aggregate runtime difference **after applying the same decoder/output
+contract to both sides**. It cannot measure the whole Phase A/B-to-Phase C
+change, the cost of the FocusProjectiles feature itself, or an individual
+change's contribution. A strict mismatch stops that input's comparison; an
+expected historical difference is not permission to normalize it away.
+
+First run the final candidate against the same frozen candidate executable
+as a control. If a future comparison needs another baseline, derive and
+review a separately pinned source with the same schema and output semantics;
+retain the identical gates and explain which changes that comparison can
+attribute. No compatibility baseline or performance result is synthesized by
+this runbook.
+
+### Pinning the accepted candidate
+
+The final acceptance comment on [PR #58](https://github.com/yakisoba0728/vrfkit/pull/58)
+must supply the full final integration SHA and CI checkout identity. A commit
+cannot embed its own SHA. If [the in-tree results](PHASE_C_RESULTS.md) pin the
+last runtime candidate, and the acceptance commit changes documentation only,
+the receipt must name both and verify unchanged runtime, harness, lockfile
+and build configuration. Copy the **final accepted integration SHA** into the
+command below; do not benchmark the earlier runtime pin merely because it is
+already printed in a document. This checkpoint does not yet claim final
+integration acceptance.
 
 Select representative inputs and the repetition budget before inspecting
 results. The commands below show one replay, one warmup pair and six measured
@@ -52,7 +98,7 @@ outside the repository and outside the replay directory.
 set -euo pipefail
 
 VRFKIT_BENCH_REPO=$(git rev-parse --show-toplevel)
-VRFKIT_BENCH_BASE=9c133fb423c521d7df25b6ef19cb546fa489de4e
+VRFKIT_BENCH_BASE=1b9bbf222f003e35c882e640c1b19e0bbcc88472
 VRFKIT_BENCH_FINAL=PASTE_FULL_ACCEPTED_INTEGRATION_COMMIT
 VRFKIT_BENCH_ROOT=/absolute/path/to/new-private-benchmark
 VRFKIT_BENCH_REPLAY=/absolute/path/to/unchanged-match.vrf
@@ -167,8 +213,9 @@ tests, exports and other known heavy work; record the host/OS/CPU, power mode,
 storage location and any unavoidable activity in a private experiment note.
 There is no exclusive-host or cold-cache guarantee.
 
-The following runs one same-binary control, then the paired comparison, both
-with checkpoints. Each work directory and JSON report must be new:
+The following runs the final candidate against itself as the control, then
+the C-only baseline against the final candidate, both with checkpoints.
+Each work directory and JSON report must be new:
 
 ```bash
 VRFKIT_BENCH_HARNESS="$VRFKIT_BENCH_ROOT/source-candidate/tools/benchmark_resources.py"
@@ -178,7 +225,7 @@ VRFKIT_BENCH_WARMUPS=1
 VRFKIT_BENCH_REPEATS=6
 
 python "$VRFKIT_BENCH_HARNESS" \
-  --baseline-exe "$VRFKIT_BENCH_BASE_EXE" --candidate-exe "$VRFKIT_BENCH_BASE_EXE" \
+  --baseline-exe "$VRFKIT_BENCH_FINAL_EXE" --candidate-exe "$VRFKIT_BENCH_FINAL_EXE" \
   --replay "$VRFKIT_BENCH_REPLAY" \
   --work-dir "$VRFKIT_BENCH_ROOT/control-checkpoints-work" \
   --output "$VRFKIT_BENCH_ROOT/control-checkpoints.json" \
@@ -240,8 +287,9 @@ This compares two vrfkit revisions doing the same work. The reference parser's
 default enriched NDJSON output has a different contract; these reports cannot
 support a competitor-performance claim. See the
 [pinned comparison](REFERENCE_COMPARISON.md#integration-contracts-at-the-pinned-revision).
-An end-to-end revision comparison also cannot isolate the contribution of any
-one Phase B change.
+This C-only-to-final comparison also cannot isolate the contribution of any
+one Phase C change, and it excludes the semantic cost of adding the exact
+FocusProjectiles output contract to Phase B.
 
 ## 5. Keep functional acceptance separate
 
