@@ -9,7 +9,8 @@ use std::sync::Arc;
 /// schema and `$row::columns(rows)` builds the matching arrays, so a column's
 /// name, type and value cannot come apart (`RecordBatch::try_new` checks only
 /// types). `name?:` is nullable; `dict(d, b)` is `Dictionary<Int32, Utf8>`, its
-/// builder sized for `d` distinct values and `b` bytes a row.
+/// builder sized for `d` distinct values and `b` bytes a row. `dict_runs` has
+/// the same type, batching adjacent equal `Arc<str>` values into one lookup.
 macro_rules! columns {
     (
         $(#[$doc:meta])* $vis:vis fn $schema:ident;
@@ -48,6 +49,9 @@ macro_rules! column {
     (@type bytes) => { DataType::Binary };
     (@type dict($distinct:literal, $bytes:literal)) => {
         DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8))
+    };
+    (@type dict_runs($distinct:literal, $bytes:literal)) => {
+        column!(@type dict($distinct, $bytes))
     };
     (@type $prim:ident) => {
         <column!(@prim $prim) as arrow_array::types::ArrowPrimitiveType>::DATA_TYPE
@@ -89,6 +93,9 @@ macro_rules! column {
     ($rows:ident $name:ident @kind dict($distinct:literal, $bytes:literal)) => {
         column!(@dict $rows, $distinct, $bytes, $rows.clone().map(|r| Some(&*r.$name)))
     };
+    ($rows:ident $name:ident @kind dict_runs($distinct:literal, $bytes:literal)) => {
+        column!(@array dictionary_runs($rows.clone().map(|r| &r.$name), $distinct, $bytes))
+    };
     ($rows:ident $name:ident @opt dict($distinct:literal, $bytes:literal)) => {
         column!(@dict $rows, $distinct, $bytes, $rows.clone().map(|r| r.$name.as_deref()))
     };
@@ -102,6 +109,36 @@ macro_rules! column {
             $rows.clone().map(|r| r.$name),
         ))
     };
+}
+
+/// Runs preserve first-occurrence dictionary order and append one key per row.
+/// Only group paths use this: their adjacent repetition avoids repeated hashes.
+#[cfg(any(feature = "fields", feature = "checkpoint-context"))]
+fn dictionary_runs<'a>(
+    mut values: impl ExactSizeIterator<Item = &'a Arc<str>>,
+    distinct: usize,
+    bytes_per_row: usize,
+) -> arrow_array::DictionaryArray<arrow_array::types::Int32Type> {
+    let mut builder =
+        arrow_array::builder::StringDictionaryBuilder::<arrow_array::types::Int32Type>::with_capacity(
+            values.len(),
+            distinct,
+            values.len() * bytes_per_row,
+        );
+    if let Some(mut previous) = values.next() {
+        let mut count = 1;
+        for value in values {
+            if Arc::ptr_eq(previous, value) || previous.as_ref() == value.as_ref() {
+                count += 1;
+            } else {
+                builder.append_values(previous.as_ref(), count);
+                previous = value;
+                count = 1;
+            }
+        }
+        builder.append_values(previous.as_ref(), count);
+    }
+    builder.finish()
 }
 
 /// Each schema's `Arc` twin, which `ArrowWriter` takes: one line a pairing, so
@@ -265,7 +302,7 @@ columns! {
         channel_index: u32,
         actor_net_guid: u32,
         object_net_guid?: u32,
-        group_path: dict(256, 20),
+        group_path: dict_runs(256, 20),
         handle: u32,
         field_name?: dict(256, 16),
         compatible_checksum?: u32,
@@ -406,5 +443,50 @@ columns! {
         source_payload_bit_count: i32,
         bit_count: u64,
         raw_bits: bytes,
+    }
+}
+
+#[cfg(all(test, any(feature = "fields", feature = "checkpoint-context")))]
+mod tests {
+    use super::*;
+    use arrow_array::Array;
+    use arrow_array::builder::StringDictionaryBuilder;
+    use arrow_array::types::Int32Type;
+
+    #[test]
+    fn dictionary_runs_keep_keys_values_and_first_occurrence_order() {
+        let shared: Arc<str> = Arc::from("shared");
+        let cases: Vec<Vec<Arc<str>>> = vec![
+            vec![],
+            vec![Arc::from("")],
+            vec![shared.clone(); 16_401],
+            vec![
+                shared.clone(),
+                shared,
+                Arc::from("distinct allocation"),
+                Arc::from("distinct allocation"),
+                Arc::from(""),
+                Arc::from(""),
+                Arc::from("shared"),
+                Arc::from("a\0b"),
+                Arc::from("\u{03bb}"),
+                Arc::from("\u{03bb}"),
+                Arc::from("distinct allocation"),
+            ],
+            (0..513).map(|i| Arc::from(format!("unique-{i}"))).collect(),
+        ];
+        for values in cases {
+            let actual = dictionary_runs(values.iter(), 256, 20);
+            let mut elementwise = StringDictionaryBuilder::<Int32Type>::with_capacity(
+                values.len(),
+                256,
+                values.len() * 20,
+            );
+            elementwise.extend(values.iter().map(|value| Some(value.as_ref())));
+            let expected = elementwise.finish();
+            assert_eq!(actual.keys(), expected.keys());
+            assert_eq!(actual.values().to_data(), expected.values().to_data());
+            assert_eq!(actual.nulls(), expected.nulls());
+        }
     }
 }
