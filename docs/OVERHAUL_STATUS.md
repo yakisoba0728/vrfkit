@@ -1,5 +1,8 @@
 # Overhaul execution ledger
 
+The bounded continuation is tracked in [Phase A status](PHASE_A_STATUS.md).
+The historical checkpoint below retains its original measurements and scope.
+
 Updated for the 2026-11-16 session. The detailed
 [verified results](OVERHAUL_RESULTS_2026_11_16.md) and
 [sanitized evidence](evidence/overhaul_2026_11_16.json) record the accepted

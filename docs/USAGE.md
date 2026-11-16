@@ -651,7 +651,9 @@ Every loss and fallback counter for the run, including the checkpoint pass when
 | `event_payloads_decoded` | Event payloads whose exact known arity, tag, public enum name and time relation populated the structural overlay. |
 | `event_payload_unknown_groups` | Event groups outside that measured vocabulary; their raw payload remains preserved. |
 | `event_layout_mismatches` | Known groups that failed any structural guard; all nullable overlay columns remain empty. |
-| `movement_envelope_trailers`, `movement_envelope_trailer_bits` | In each `sink` block: byte-wrapped movement streams and the bits after their envelopes, which nothing reads. Printed as `Envelope trailers:` (`Checkpoint envelope trailers:`); 24 bits per stream on every measured replay, which `verify_build_corpus.py` requires. |
+| `movement_component_streams`, `movement_component_complete`, `movement_component_errors`, `movement_component_empty` | In each `sink` block: native component attempts, complete decodes, failures and complete empty arrays. Attempts must equal complete decodes plus failures. Unsupported bodies count as failures and preserve the whole raw RPC alongside any decoded movement prefix. |
+| `movement_component_envelopes`, `movement_component_payload_bytes`, `movement_component_unused_bits` | Valid signed-32-bit native envelopes, their payload bytes and declared unused high bits. A valid envelope can still contain an unsupported or malformed body; unused bits are outside its logical payload. |
+| `movement_component_input_headers`, `movement_component_discrepancy_headers` | Recognized A3 input headers and optional A4 discrepancy headers. Only header-only bodies are decoded. These replace the former movement tail/trailer counters; see the [migration and measured layout](NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration). |
 | `active_blinds_empty_trailers` | In each `sink` block: empty `ActiveBlinds` deltas whose one trailing zero byte the strict array walker was spared; the parent row keeps it. Printed as `ActiveBlinds trailers:` (`Checkpoint ActiveBlinds trailers:`). |
 | `frame_non_finite_times` | DemoFrames whose time was NaN or infinite; their packets carry 0 ms. `checkpoints.checkpoint_frame_non_finite_times` counts the snapshot frames. Printed as `Frame times:` (`Checkpoint frame times:`), and by `validate`. |
 | `checkpoints.checkpoint_trailing_bytes` | Checkpoint bytes no reader consumed: bytes after an archive inside its chunk, and archive bytes the Oodle codec never read -- the checkpoint twin of `replay_data_trailing_bytes`. Printed as `Trailing bytes:` under `=== Checkpoints ===`, and by `diag --json` as `checkpoint_meta.trailing_bytes`. 0 in all 19,166 checkpoint archives of 1,014 replays, 11.06-13.06; `verify_build_corpus.py` fails a replay where it is not. |
@@ -747,7 +749,7 @@ the list. `check_docs.py` checks both figures.
 | `check_corpus_baseline.py` | Per-build corpus baseline |
 | `check_export_baseline.py` | Export counters + per-file rows/bytes/SHA-256 content identity, and the `Sink tally` fields against the `fields.parquet` rows; with `--checkpoints`, also every checkpoint GUID path against the main stream's own declaration of that GUID ([method](CHECKPOINT_PATH_RESOLUTION.md#cross-check-against-the-main-stream)) |
 | `check_baseline_schemas.py` | All committed baseline schemas, measured SHA-256 hashes, and cross-file replay/counter/table identities. |
-| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads and movement-section tails -- the same zero-required counters as `verify_build_corpus.py` -- and fails when a work counter behind them (decoded rows, struct blobs, array elements and fields, movement rows, `RPC param walks` for truncated RPCs) never moves; the unwalked-CNC gates, the main pass's sized movement-tail gate and the checkpoint movement gates have no work counter and are printed as unbacked (top level; `--recursive` for subdirectories, `--checkpoints` to also decode Checkpoint chunks) |
+| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads and native movement component failures -- the same zero-required counters as `verify_build_corpus.py` -- plus native envelope/header counter consistency. Fails when a work counter behind a gate never moves; the unwalked-CNC and checkpoint movement gates lack observed work and are printed as unbacked (top level; `--recursive` for subdirectories, `--checkpoints` to also decode Checkpoint chunks). |
 | `corpus_scan.py` | Not a check -- the `.vrf` discovery `validate_corpus.py` and `check_decode_errors_corpus.py` share, so the two can no longer glob a directory two different ways and disagree about what "the corpus" is without saying so. Non-recursive by default; read its docstring for why. |
 | `summary_counters.py` | Not a check -- what the guard tools share: the export summary's counter lines as one table, read by `check_export_baseline.py`, `check_decode_errors_corpus.py` and `verify_build_corpus.py`, each pattern anchored on the whole line (a Python test reads every line and the argument behind each count back out of `summary.rs`); and the helpers that run vrfkit and resolve, skip or pin a baseline's input. |
 | `export_scan.py` | Not a check -- the export discovery the tools that read a directory of exports share: it names the staging and backup directories an interrupted `vrfkit export` leaves behind ([section 2](#if-an-export-is-interrupted)), so none of those tools can count one as an export. A Python test reads the names back out of the Rust code that creates them. |
@@ -1128,7 +1130,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-792 Rust tests (Windows), 791 Rust tests (non-Windows), and 1171 Python tests.
+798 Rust tests (Windows), 797 Rust tests (non-Windows), and 1178 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
@@ -1167,8 +1169,12 @@ may leave the private analysis machine.
 These read their inputs from `VRFKIT_CORPUS_DIR` and
 `VRFKIT_VALPLAY_DIR` -- see
 [Environment](../CONTRIBUTING.md#environment) for what each one points at.
-**With the variable unset they print `SKIP` and exit 0**, so read the output
-rather than the exit code.
+**With the variable unset, input-dependent checks can print `SKIP` and exit 0**,
+so read the output rather than the exit code. An exception is
+`check_export_baseline.py` with an obsolete movement-counter baseline: it
+fails before checking for the replay. The committed private export/checkpoint
+baselines retain their historical values and require genuine remeasurement
+under the [native component contract](NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration).
 
 `compare_combat_report.py` is the exception: it exits 2 when either input is
 missing. Its C# side is a CliReader export of the same replay, kept
@@ -1203,8 +1209,8 @@ other difference, and on that one if it stops occurring exactly as listed
 |---|---|---|---|
 | `validate_corpus.py` | Framing (top level of the corpus dir; `--recursive` for subdirectories) | Type errors, broken semantics | ~30 s |
 | `check_export_baseline.py` | Every export counter + per-file rows/bytes/SHA-256 | Other builds | 1 s |
-| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads, movement-section tails, and a decoder whose work counter never moves (top level; `--recursive` for subdirectories) | Broken semantics; a decoder stopped on one build or route while the rest keep its corpus total up; a CNC brute force that never runs (`attempted` is legitimately 0 on some builds, so it backs nothing); a sized movement window (none measured; no work counter backs `Movement tails sized`); Checkpoint chunks, unless `--checkpoints` | ~50 s |
-| `check_decode_errors_corpus.py --checkpoints` | The same failure counters for every Checkpoint chunk too (overlay, struct blobs, array truncations/residual bits, leaf errors, truncated RPCs, movement, unwalked CNC payloads, movement tails), and the checkpoint work counters (decoded fields, blobs, array elements and fields) | Broken semantics; checkpoint movement, movement-tail, CNC brute-force and truncated-RPC failures in practice -- no checkpoint RPC reached those decoders on the 1,018-replay audit (each was a RepLayout tail), so their zero is printed as unbacked | slower: `vrfkit export` also decodes every Checkpoint chunk per replay |
+| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads, native component failures and counter consistency, and a decoder whose work counter never moves (top level; `--recursive` for subdirectories) | Broken semantics; a decoder stopped on one build or route while the rest keep its corpus total up; a CNC brute force that never runs (`attempted` can legitimately be 0); Checkpoint chunks, unless `--checkpoints` | ~50 s in the historical audit; native contract requires remeasurement |
+| `check_decode_errors_corpus.py --checkpoints` | The same failure counters and native component counter consistency for every Checkpoint chunk, plus checkpoint work counters (decoded fields, blobs, array elements and fields) | Broken semantics; checkpoint movement, CNC brute-force and truncated-RPC failures remain unbacked when no checkpoint RPC reaches those decoders. That was the case in the historical 1,018-replay audit; its old movement counters are not current validation | slower: `vrfkit export` also decodes every Checkpoint chunk per replay |
 | `check_metrics_baseline.py` | **Semantics** -- rounds, score, K/D/A (8 builds) | Errors in the metrics pipeline itself | ~46 s |
 | `compare_combat_report.py` | Metrics-input multiset | Framing | seconds |
 
@@ -1230,6 +1236,14 @@ R5  if kills > 0 then damage > 0
 Every baseline check takes `--update`. **When DRIFT appears, explain each line
 before** you use it. The point is not that the numbers are sacred but that
 silent change must be impossible.
+
+The native component migration removes eight incorrectly interpreted movement
+tail/trailer counters and adds nine structural counters. There is no arithmetic
+conversion between those contracts. Preserve the archived reports, export the
+original input with the new executable, inspect all changed counters and
+Parquet hashes, and only then update a baseline. A missing private replay cannot
+validate this migration. The existing historical build table remains historical
+evidence; the native decoder has a separately documented public validation scope.
 
 ---
 
@@ -1362,8 +1376,9 @@ Each replay receives `validate`, `export --checkpoints`, required-counter
 and Parquet row-count checks, and independent Python comparisons for the
 observed fields in `public_fixture_type_evidence.json`. Missing counters,
 nonzero framing/transform/array/type failures and changed inputs fail the
-strict audit, as does a movement envelope trailer total that is not 24 bits
-per stream. Every build must also show positive checkpoint block and
+strict audit, as do obsolete movement counters, failed native components or
+inconsistent envelope/header counts. The main pass must show positive native
+component decoding work. Every build must also show positive checkpoint block and
 decoded-value counts; otherwise `build_errors` makes the command fail. Unknown
 RPCs preserved whole are counted separately from loss.
 Unobserved evidence fields are reported as absent, never as verified values.

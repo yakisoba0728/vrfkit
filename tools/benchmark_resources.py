@@ -44,9 +44,7 @@ SINK_ZERO = (
     "overlay_decoded_err", "struct_blobs_failed", "movement_rpc_errors", "array_truncations",
     "array_errors", "array_unconsumed_nested_bits", "array_unconsumed_root_bits",
     "array_implicit_terminations", "array_leaf_decode_errors", "truncated_rpcs",
-    "cnc_bruteforce_payloads_unwalked", "movement_sized_section_tails",
-    "movement_open_section_tails", "movement_sized_section_trailers",
-    "movement_sized_section_trailer_bits",
+    "cnc_bruteforce_payloads_unwalked", "movement_component_errors",
 )
 QUALITY_ZERO = ("content_blocks_lost", "event_trailing_bytes", "replay_data_trailing_bytes",
                 "event_layout_mismatches", "overlay_error_buckets", "overlay_errors_reported",
@@ -104,6 +102,9 @@ def quality_check(manifest: dict, checkpoints: bool) -> None:
         raise ValueError("unexpected checkpoint scope")
     for scope in scopes:
         net, sink = scope["net"], scope["sink"]
+        movement_errors = sc.movement_contract_errors(sink, require_work=scope is quality)
+        if movement_errors:
+            raise ValueError("; ".join(movement_errors))
         if any(count(net, key) for key in NET_ZERO) or any(count(sink, key) for key in SINK_ZERO):
             raise ValueError("decoder error counter is nonzero")
         if count(net, "rpc_stream_failures") != count(net, "unresolved_rpc_payloads_preserved"):
@@ -112,10 +113,6 @@ def quality_check(manifest: dict, checkpoints: bool) -> None:
             raise ValueError("sink and parser counters differ")
         if not count(net, "content_blocks") or not count(sink, "overlay_decoded_ok"):
             raise ValueError("no positive decoding evidence")
-        if count(sink, "movement_envelope_trailer_bits") != 24 * count(sink, "movement_envelope_trailers"):
-            raise ValueError("movement preservation counters differ")
-    if not count(quality["sink"], "movement_envelope_trailers"):
-        raise ValueError("no movement decoding evidence")
 
 
 def fingerprint(directory: Path, log: Path, checkpoints: bool, input_size: int) -> dict:

@@ -13,30 +13,17 @@ const ANGLE_SCALE: f64 = 360.0 / 65536.0;
 /// Magic byte at the start of a movement section.
 pub(crate) const MOVEMENT_MAGIC: u8 = 0x52;
 
-/// With at most this many bits left after a move the section ends unread: in
-/// every stream measured, a `000` terminator, then 8 to 23 bits not all zero.
-const MAX_MOVEMENT_PADDING_BITS: u64 = 31;
-
-/// Parse the movement section, returning the bits left unread at a stop the
-/// grammar does not explain (see [`RpcDecodeResult::sized_section_tails`]);
-/// 0 for the end within `MAX_MOVEMENT_PADDING_BITS` of a move.
+/// Parse through the explicit zero marker. The caller then reads the input
+/// component boundary and headers from the same logical payload window.
 pub(crate) fn parse_movement_section(
     reader: &mut BitReader<'_>,
     shooter_guid: u32,
     result: &mut RpcDecodeResult,
     emit: &mut impl FnMut(MovementMove),
-) -> Result<u64, MovementError> {
-    if reader.bits_remaining() < 8 {
-        return Ok(reader.bits_remaining());
-    }
-
+) -> Result<(), MovementError> {
     let magic = reader.read_u8()?;
     if magic != MOVEMENT_MAGIC {
         return Err(MovementError::InvalidMagic(magic));
-    }
-
-    if reader.bits_remaining() < 3 {
-        return Ok(reader.bits_remaining());
     }
 
     let mut expected_marker: u8 = 1;
@@ -54,16 +41,11 @@ pub(crate) fn parse_movement_section(
         emit(mv);
         result.total_moves += 1;
 
-        if reader.bits_remaining() <= MAX_MOVEMENT_PADDING_BITS {
-            return Ok(0);
-        }
-
         expected_marker = next_marker(expected_marker);
         marker = reader.read_bits(3)? as u8;
     }
 
-    // A zero marker with more than MAX_MOVEMENT_PADDING_BITS left: a tail.
-    Ok(reader.bits_remaining())
+    Ok(())
 }
 
 /// The marker expected after `marker`: 1 to 7, wrapping to 1 and never 0.

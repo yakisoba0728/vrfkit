@@ -19,7 +19,11 @@ def valid_manifest(checkpoints=False):
         net = dict.fromkeys(bench.NET_ZERO, 0)
         net.update(content_blocks=1, rpc_stream_failures=0, unresolved_rpc_payloads_preserved=0)
         sink = dict.fromkeys(bench.SINK_ZERO, 0)
-        sink.update(overlay_decoded_ok=1, movement_envelope_trailers=1, movement_envelope_trailer_bits=24)
+        sink.update(overlay_decoded_ok=1, **dict.fromkeys(sc.MOVEMENT_COUNTERS, 0))
+        sink.update(movement_component_streams=1, movement_component_complete=1,
+                    movement_component_envelopes=1, movement_component_payload_bytes=30,
+                    movement_component_unused_bits=5, movement_component_input_headers=1,
+                    movement_component_discrepancy_headers=1)
         for a, b in bench.TALLIES:
             sink[a] = net[b] = 1
         return {"net": net, "sink": sink}
@@ -152,7 +156,7 @@ class EquivalenceTests(TempDirTestCase):
                     bench.fingerprint(directory, log, False, 6)
 
     def test_missing_invalid_and_error_counters_are_rejected(self):
-        for mutation in ("missing", "negative", "boolean", "error", "lost_rpc", "no_work", "trailer", "tally"):
+        for mutation in ("missing", "negative", "boolean", "error", "lost_rpc", "no_work", "unused_bits", "tally"):
             with self.subTest(mutation=mutation):
                 manifest = valid_manifest()
                 net, sink = manifest["quality"]["net"], manifest["quality"]["sink"]
@@ -168,8 +172,8 @@ class EquivalenceTests(TempDirTestCase):
                     net["rpc_stream_failures"] = 1
                 elif mutation == "no_work":
                     sink["overlay_decoded_ok"] = 0
-                elif mutation == "trailer":
-                    sink["movement_envelope_trailer_bits"] = 23
+                elif mutation == "unused_bits":
+                    sink["movement_component_unused_bits"] = 8
                 elif mutation == "tally":
                     sink["sink_rpcs_emitted"] = 2
                 with self.assertRaises((ValueError, KeyError)):
@@ -183,6 +187,17 @@ class EquivalenceTests(TempDirTestCase):
         manifest["quality"]["checkpoints"]["checkpoint_chunks"] = 0
         with self.assertRaises(ValueError):
             bench.quality_check(manifest, True)
+
+    def test_obsolete_movement_contract_is_not_an_equivalent_benchmark(self):
+        for checkpoint in (False, True):
+            manifest = valid_manifest(checkpoint)
+            sink = (manifest["quality"]["checkpoints"] if checkpoint
+                    else manifest["quality"])["sink"]
+            for key in sc.MOVEMENT_COUNTERS:
+                del sink[key]
+            sink.update(dict.fromkeys(sc.LEGACY_MOVEMENT_COUNTERS, 0))
+            with self.assertRaisesRegex(ValueError, "obsolete movement counter contract"):
+                bench.quality_check(manifest, checkpoint)
 
     def test_summary_missing_line_or_unreconciled_counters_fail(self):
         directory, log = self.make_export()

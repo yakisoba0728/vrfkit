@@ -10,6 +10,17 @@ class BaselineSchemaTests(TempDirTestCase):
     def test_committed_baselines_are_schema_valid_and_cross_consistent(self):
         self.assertEqual(schemas.validate_repository(), [])
 
+    def test_archived_movement_contract_cannot_mix_current_or_missing_keys(self):
+        for name in ("export_02d4d478.json", "checkpoint_02d4d478.json"):
+            path = schemas.BASELINES / name
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(schemas.validate_export_baseline(path, data), [])
+            data["counters"]["movement_component_streams"] = 0
+            self.assertTrue(schemas.validate_export_baseline(path, data))
+            del data["counters"]["movement_component_streams"]
+            del data["counters"]["movement_envelope_trailer_bits"]
+            self.assertTrue(schemas.validate_export_baseline(path, data))
+
     def test_an_export_without_a_measured_sha256_fails(self):
         for digest in (None, "not-measured"):
             with self.subTest(digest=digest):

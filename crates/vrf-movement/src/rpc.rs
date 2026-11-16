@@ -164,10 +164,14 @@ fn decode_single_update(
                         emit(movement, context);
                         context.move_index += 1;
                     };
+                    result.component_streams += 1;
                     if decode_component_data_stream(&mut sub, guid, result, &mut component_emit)
                         .is_err()
                     {
                         result.error_count += 1;
+                        result.component_errors += 1;
+                    } else {
+                        result.component_complete += 1;
                     }
                 } else {
                     // No GUID: handle 2 was not 32 bits (counted above) or has
@@ -186,77 +190,92 @@ fn decode_single_update(
     Ok(())
 }
 
-/// The leading u16 is an envelope byte count iff it is non-zero and the
-/// envelope fits, else movementBitCount. The choice is final: an inner failure
-/// never rolls back to the other reading.
+/// Native byte array: a signed 32-bit byte count, exactly that many payload
+/// bytes and one unused-bit-count byte. The logical payload excludes the high
+/// unused bits, then contains movement, an absolute input end bit and headers.
 fn decode_component_data_stream(
     reader: &mut BitReader<'_>,
     shooter_guid: u32,
     result: &mut RpcDecodeResult,
     emit: &mut impl FnMut(MovementMove),
 ) -> Result<(), MovementError> {
-    let first_u16 = read_u16_checked(reader)?;
-
-    let byte_count = u64::from(first_u16);
-    if byte_count > 0 && reader.bits_remaining() >= byte_count * 8 {
-        // Wrapped: the envelope's payload starts with its own movementBitCount.
-        let mut inner = reader.sub_reader(byte_count * 8)?;
-        // What follows the envelope is never read; tallied here, before the
-        // section can fail, with the stream counted even when nothing follows.
-        result.envelope_trailer_streams += 1;
-        result.envelope_trailer_bits += reader.bits_remaining();
-        let bit_count = read_u16_checked(&mut inner)?;
-        parse_movement_with_bit_count(&mut inner, bit_count, shooter_guid, result, emit)
-    } else {
-        parse_movement_with_bit_count(reader, first_u16, shooter_guid, result, emit)
-    }
-}
-
-/// Read a u16, failing with `TruncatedComponentHeader` rather than a bare Eof.
-fn read_u16_checked(reader: &mut BitReader<'_>) -> Result<u16, MovementError> {
-    if reader.bits_remaining() < 16 {
+    if reader.bits_remaining() < 32 {
         return Err(MovementError::TruncatedComponentHeader {
             available_bits: reader.bits_remaining(),
         });
     }
-    Ok(reader.read_u16()?)
+    let count = reader.read_i32()?;
+    if count < 0 {
+        return Err(MovementError::NegativeComponentByteCount { count });
+    }
+    let byte_count = count as u32;
+    let payload_bits = u64::from(byte_count) * 8;
+    if reader.bits_remaining() != payload_bits + 8 {
+        return Err(MovementError::ComponentLengthMismatch {
+            byte_count,
+            available_bits: reader.bits_remaining(),
+        });
+    }
+    let mut payload = reader.sub_reader(payload_bits)?;
+    let unused_bits = reader.read_u8()?;
+    if unused_bits > 7 || (byte_count == 0 && unused_bits != 0) {
+        return Err(MovementError::InvalidUnusedBitCount {
+            byte_count,
+            unused_bits,
+        });
+    }
+    result.component_envelopes += 1;
+    result.component_payload_bytes += u64::from(byte_count);
+    result.component_unused_bits += u64::from(unused_bits);
+    if byte_count == 0 {
+        result.component_empty += 1;
+        return Ok(());
+    }
+
+    let mut components = payload.sub_reader(payload_bits - u64::from(unused_bits))?;
+    parse_movement_section(&mut components, shooter_guid, result, emit)?;
+    let end_bit = components.read_u16()?;
+    let minimum = components.position() + 8;
+    if u64::from(end_bit) < minimum || u64::from(end_bit) > components.len_bits() {
+        return Err(MovementError::InvalidInputBoundary {
+            end_bit,
+            minimum,
+            payload_bits: components.len_bits(),
+        });
+    }
+    let mut input = components.sub_reader(u64::from(end_bit) - components.position())?;
+    read_component_header(&mut input, 0xA3, "input")?;
+    result.component_input_headers += 1;
+    require_component_end(&input, "input")?;
+    if !components.at_end() {
+        read_component_header(&mut components, 0xA4, "discrepancy")?;
+        result.component_discrepancy_headers += 1;
+    }
+    require_component_end(&components, "discrepancy")?;
+    Ok(())
 }
 
-/// Parse the movement section in a window of `movement_bit_count` bits, or of
-/// all that remain when that is 0 or larger (an open window), tallying a tail.
-fn parse_movement_with_bit_count(
+fn read_component_header(
     reader: &mut BitReader<'_>,
-    movement_bit_count: u16,
-    shooter_guid: u32,
-    result: &mut RpcDecodeResult,
-    emit: &mut impl FnMut(MovementMove),
+    expected: u8,
+    component: &'static str,
 ) -> Result<(), MovementError> {
-    let remaining = reader.bits_remaining();
-
-    let uses_all_remaining = movement_bit_count == 0 || u64::from(movement_bit_count) > remaining;
-    let bits = if uses_all_remaining {
-        remaining
-    } else {
-        u64::from(movement_bit_count)
-    };
-
-    let mut movement_reader = reader.sub_reader(bits)?;
-    // Outside the sized window, but still inside the component or envelope.
-    // Count before parsing so a failed section cannot hide its trailer.
-    let trailer_bits = reader.bits_remaining();
-    if trailer_bits > 0 {
-        result.sized_section_trailers += 1;
-        result.sized_section_trailer_bits += trailer_bits;
+    let actual = reader.read_u8()?;
+    if actual != expected {
+        return Err(MovementError::UnknownComponentMagic { component, actual });
     }
-    let tail_bits = parse_movement_section(&mut movement_reader, shooter_guid, result, emit)?;
-    if tail_bits > 0 {
-        if uses_all_remaining {
-            result.open_section_tails += 1;
-            result.open_section_tail_bits += tail_bits;
-        } else {
-            result.sized_section_tails += 1;
-            result.sized_section_tail_bits += tail_bits;
-        }
+    Ok(())
+}
+
+fn require_component_end(
+    reader: &BitReader<'_>,
+    component: &'static str,
+) -> Result<(), MovementError> {
+    if !reader.at_end() {
+        return Err(MovementError::UnparsedComponentBody {
+            component,
+            remaining_bits: reader.bits_remaining(),
+        });
     }
     Ok(())
 }

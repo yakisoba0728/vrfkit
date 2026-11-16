@@ -118,11 +118,59 @@ class SpecTests(unittest.TestCase):
 
     def test_labels_name_the_line_and_the_count(self):
         self.assertEqual([sc.label(k) for k in ("overlay_decode_errors", "array_errors",
-                                                "movement_sized_section_tails",
+                                                "movement_component_errors",
                                                 "cp_overlay_decode_errors",
                                                 "cp_array_leaf_decode_errors")],
-                         ["Decode errors", "Array decode errors", "Movement tails sized",
+                         ["Decode errors", "Array decode errors", "Movement components errors",
                           "Checkpoint Overlay errors", "Checkpoint leaf typed decode errors"])
+
+
+class MovementContractTests(unittest.TestCase):
+    def counters(self):
+        return dict(zip(sc.MOVEMENT_COUNTERS, (4, 2, 2, 1, 3, 80, 9, 2, 1)),
+                    movement_rpc_errors=3)
+
+    def test_failed_prefixes_empty_components_and_orphans_reconcile(self):
+        counters = self.counters()
+        self.assertEqual(sc.movement_contract_errors(counters, require_work=True), [])
+        checkpoint = {"cp_" + key: value for key, value in counters.items()}
+        self.assertEqual(sc.movement_contract_errors(checkpoint, "cp_"), [])
+        empty = dict.fromkeys((*sc.MOVEMENT_COUNTERS, "movement_rpc_errors"), 0)
+        self.assertEqual(sc.movement_contract_errors(empty), [])
+        self.assertIn("no movement component decoding evidence",
+                      " ".join(sc.movement_contract_errors(empty, require_work=True)))
+
+    def test_each_native_counter_is_required_and_must_be_a_nonnegative_integer(self):
+        for key in (*sc.MOVEMENT_COUNTERS, "movement_rpc_errors"):
+            for value in (None, True, -1, "0", 0.0, "absent"):
+                with self.subTest(key=key, value=value):
+                    counters = self.counters()
+                    if value == "absent":
+                        del counters[key]
+                    else:
+                        counters[key] = value
+                    self.assertIn(key, " ".join(sc.movement_contract_errors(counters)))
+
+    def test_bookkeeping_cannot_claim_unobserved_headers_or_discarded_bits(self):
+        for key, value in (("streams", 5), ("complete", 4), ("empty", 3),
+                           ("envelopes", 5), ("payload_bytes", 1), ("unused_bits", 15),
+                           ("input_headers", 0), ("input_headers", 3),
+                           ("discrepancy_headers", 3)):
+            with self.subTest(key=key, value=value):
+                counters = self.counters()
+                counters["movement_component_" + key] = value
+                self.assertTrue(sc.movement_contract_errors(counters))
+        counters = self.counters()
+        counters["movement_rpc_errors"] = 1
+        self.assertTrue(sc.movement_contract_errors(counters))
+
+    def test_legacy_counters_are_never_converted_or_accepted_as_extra_keys(self):
+        for prefix in ("", "cp_"):
+            for key in sc.LEGACY_MOVEMENT_COUNTERS:
+                counters = {prefix + key: value for key, value in self.counters().items()}
+                counters[prefix + key] = 0
+                self.assertEqual(sc.movement_contract_errors(counters, prefix),
+                                 [sc.OBSOLETE_MOVEMENT_CONTRACT])
 
 
 class PinOrDiffTests(unittest.TestCase):

@@ -43,15 +43,13 @@ import summary_counters as sc
 
 #: Counters that must be zero on every replay: verify_build_corpus.py's
 #: SINK_ZERO read off the summary (the test pins the correspondence).
-#: CNC `attempted` and the established inside-tail/envelope bits are printed,
-#: not zero gates. The outside-sized-window bits are a separate loss boundary.
+#: CNC `attempted` and native component envelope/header work are printed,
+#: not zero gates. Any malformed or unrepresented component is an error.
 FAILURES = (
     "overlay_decode_errors", "struct_blobs_failed", "movement_rpc_errors", "array_errors",
     "array_truncations", "array_unconsumed_root_bits", "array_unconsumed_nested_bits",
     "array_implicit_terminations", "array_leaf_decode_errors", "truncated_rpcs",
-    "cnc_bruteforce_payloads_unwalked", "movement_sized_section_tails",
-    "movement_open_section_tails",
-    "movement_sized_section_trailers", "movement_sized_section_trailer_bits",
+    "cnc_bruteforce_payloads_unwalked", "movement_component_errors",
 )
 CHECKPOINT_FAILURES = tuple("cp_" + key for key in FAILURES)
 
@@ -73,7 +71,7 @@ MUST_MOVE = (
     ("array_elements_decoded", ("array_errors", "array_truncations", "array_unconsumed_root_bits",
                                 "array_unconsumed_nested_bits", "array_implicit_terminations")),
     ("array_fields_emitted", ("array_leaf_decode_errors",)),
-    ("movement_rows", ("movement_rpc_errors", "movement_open_section_tails")),
+    ("movement_rows", ("movement_rpc_errors", "movement_component_errors")),
     ("rpc_param_walks", ("truncated_rpcs",)),
 )
 #: The checkpoint pass: the same minus movement (at least 2,054 decoded
@@ -86,24 +84,15 @@ UNBACKED = (
     ("cnc_bruteforce_payloads_unwalked",
      "`CNC brute force: N attempted` is legitimately 0 on the 12.10 and 12.11 public "
      "fixtures, so it cannot be a must-move counter"),
-    ("movement_sized_section_tails",
-     "only a sized movement window can count one, and no measured replay has one"),
-    ("movement_sized_section_trailers",
-     "no must-move count exists for fitting sized movement windows"),
-    ("movement_sized_section_trailer_bits",
-     "no must-move count exists for fitting sized movement windows"),
 )
 #: No checkpoint RPC reached `on_rpc` on the 1,018 audit replays (every one a
 #: post-RepLayout ClassNetCache tail), so these gates have nothing to back them.
 CHECKPOINT_UNBACKED = (
     ("cp_movement_rpc_errors", "no checkpoint RPC reaches the movement decoder"),
     ("cp_truncated_rpcs", "no checkpoint RPC reaches the parameter walk"),
-    ("cp_movement_sized_section_tails", "no checkpoint RPC reaches the movement decoder"),
-    ("cp_movement_open_section_tails", "no checkpoint RPC reaches the movement decoder"),
+    ("cp_movement_component_errors", "no checkpoint RPC reaches the movement decoder"),
     ("cp_cnc_bruteforce_payloads_unwalked",
      "no checkpoint RPC reaches the fc=34 brute-force walk (attempted is 0)"),
-    ("cp_movement_sized_section_trailers", "no checkpoint RPC reaches the movement decoder"),
-    ("cp_movement_sized_section_trailer_bits", "no checkpoint RPC reaches the movement decoder"),
 )
 PASSES = {False: (FAILURES, MUST_MOVE, UNBACKED),
           True: (CHECKPOINT_FAILURES, CHECKPOINT_MUST_MOVE, CHECKPOINT_UNBACKED)}
@@ -125,6 +114,10 @@ def read_counters(
     missing = [key for key, value in counters.items() if value is None]
     if missing:
         return None, f"no {sc.WHERE[missing[0]][0].fmt!r} line: {tail}"
+    for prefix in (("", "cp_") if require_checkpoints else ("",)):
+        problems = sc.movement_contract_errors(counters, prefix)
+        if problems:
+            return None, "; ".join(problems)
     return counters, ""
 
 

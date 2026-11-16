@@ -14,7 +14,7 @@ from support import TempDirTestCase, run_cli
 import check_decode_errors_corpus as guard
 
 #: The main-pass sink lines, failure counters at zero. Values from a real 13.02
-#: `--checkpoints` export log, except the CNC, tail, trailer, route and walk lines.
+#: `--checkpoints` export log, except synthetic CNC, movement, route and walk lines.
 CLEAN_SINK = """
 Movement rows:     2407298
 Movement errors:   0
@@ -25,9 +25,9 @@ Route children:    41 player info / 12 rewards / 30 selected / 55 kills / 380 ac
 Truncated RPCs:    0
 RPC param walks:   338107
 CNC brute force:   454 attempted / 0 unwalked
-Movement tails:    0 sized (0 bits) / 0 open (0 bits)
-Movement section trailers: 0 streams / 0 bits
-Envelope trailers: 2380000 streams / 57120000 bits
+Movement components: 3 attempted / 3 complete / 0 errors / 0 empty
+Component envelopes: 3 validated / 90 payload bytes / 5 unused bits
+Component headers: 3 input / 2 discrepancy
 ActiveBlinds trailers: 3 empty deltas
 """
 
@@ -57,9 +57,9 @@ CLEAN_WITH_CHECKPOINTS = LIVE_EXPORT + """
   Checkpoint RPC walks: 0
   Checkpoint reward opaque: 7 empty variants
   Checkpoint movement: 0 failures
-  Checkpoint movement tails: 0 sized (0 bits) / 0 open (0 bits)
-  Checkpoint movement section trailers: 0 streams / 0 bits
-  Checkpoint envelope trailers: 0 streams / 0 bits
+  Checkpoint movement components: 0 attempted / 0 complete / 0 errors / 0 empty
+  Checkpoint component envelopes: 0 validated / 0 payload bytes / 0 unused bits
+  Checkpoint component headers: 0 input / 0 discrepancy
   Checkpoint ActiveBlinds trailers: 1 empty deltas
   Checkpoint CNC:   3 RPC rows
   Checkpoint CNC brute force: 0 attempted / 0 unwalked
@@ -245,9 +245,9 @@ Route children:    1 player info / 1 rewards / 1 selected / 1 kills / 1 active e
 Truncated RPCs:    0
 RPC param walks:   20
 CNC brute force:   4 attempted / 0 unwalked
-Movement tails:    0 sized (0 bits) / 0 open (0 bits)
-Movement section trailers: 0 streams / 0 bits
-Envelope trailers: 5 streams / 120 bits
+Movement components: 5 attempted / 5 complete / 0 errors / 0 empty
+Component envelopes: 5 validated / 150 payload bytes / 7 unused bits
+Component headers: 5 input / 4 discrepancy
 ActiveBlinds trailers: 2 empty deltas
 """
 
@@ -262,9 +262,9 @@ CHECKPOINTS = """
   Checkpoint route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path
   Checkpoint RPC walks: 0
   Checkpoint reward opaque: 0 empty variants
-  Checkpoint movement tails: 0 sized (0 bits) / 0 open (0 bits)
-  Checkpoint movement section trailers: 0 streams / 0 bits
-  Checkpoint envelope trailers: 0 streams / 0 bits
+  Checkpoint movement components: 0 attempted / 0 complete / 0 errors / 0 empty
+  Checkpoint component envelopes: 0 validated / 0 payload bytes / 0 unused bits
+  Checkpoint component headers: 0 input / 0 discrepancy
   Checkpoint ActiveBlinds trailers: 1 empty deltas
   Checkpoint CNC brute force: 0 attempted / 0 unwalked
 """
@@ -342,46 +342,38 @@ class MainWiringTests(TempDirTestCase):
             "Route children: 1 player info / 1 rewards / 1 selected / 1 kills / "
             "1 active effects / 1 ignore actors / 1 blinds / 1 projectile path",
             "CNC brute force: 4 attempted / 0 unwalked",
-            "Movement tails: 0 sized (0 bits) / 0 open (0 bits)",
-            "Movement section trailers: 0 streams / 0 bits",
-            "Envelope trailers: 5 streams / 120 bits", "ActiveBlinds trailers: 2 empty deltas",
+            "Movement components: 5 attempted / 5 complete / 0 errors / 0 empty",
+            "Component envelopes: 5 validated / 150 payload bytes / 7 unused bits",
+            "Component headers: 5 input / 4 discrepancy", "ActiveBlinds trailers: 2 empty deltas",
             "Overlay: 500 decoded / 0 errors / 20 raw-skip / 5 not-in-table / 2 unnamed / "
             "4 conflicts / 1 effect blobs",
             "Checkpoint array: 30 elements / 90 fields / 0 truncations / "
             "0 root bits / 0 nested bits / 0 implicit ends",
             "Checkpoint leaf: 0 typed decode errors",
             "Checkpoint CNC brute force: 0 attempted / 0 unwalked",
-            "Checkpoint movement tails: 0 sized (0 bits) / 0 open (0 bits)",
-            "Checkpoint movement section trailers: 0 streams / 0 bits",
-            "Checkpoint envelope trailers: 0 streams / 0 bits",
+            "Checkpoint movement components: 0 attempted / 0 complete / 0 errors / 0 empty",
+            "Checkpoint component envelopes: 0 validated / 0 payload bytes / 0 unused bits",
+            "Checkpoint component headers: 0 input / 0 discrepancy",
             "Checkpoint ActiveBlinds trailers: 1 empty deltas",
         ):
             with self.subTest(line=line):
                 self.assertRegex(output, rf"(?m)^  {re.escape(line)}$")
         self.assertRegex(
-            output, r"(?m)^  unbacked gates: CNC brute force unwalked \(.+\); "
-                    r"Movement tails sized \(.+\); Movement section trailers streams "
-                    r"\(.+\); Movement section trailers bits \(.+\)$")
+            output, r"(?m)^  unbacked gates: CNC brute force unwalked \(.+\)$")
         self.assertRegex(
             output, r"(?m)^  checkpoint unbacked gates: Checkpoint fails movement \(.+\); "
-                    r"Checkpoint fails truncated RPC \(.+\); Checkpoint movement tails sized "
-                    r"\(.+\); Checkpoint movement tails open \(.+\); Checkpoint CNC brute "
-                    r"force unwalked \(.+\); Checkpoint movement section trailers streams "
-                    r"\(.+\); Checkpoint movement section trailers bits \(.+\)$")
+                    r"Checkpoint fails truncated RPC \(.+\); Checkpoint movement components errors "
+                    r"\(.+\); Checkpoint CNC brute force unwalked \(.+\)$")
         ok = [line for line in output.splitlines() if line.startswith("OK:")]
         self.assertEqual(len(ok), 1, output)
         self.assertIn("11 backed by work that moved (Decoded OK 90, Struct blobs decoded 5, "
                       "Array decode elements 10, Array decode fields 40, Movement rows 100, "
-                      "RPC param walks 20), 4 with no work counter (CNC brute force unwalked, "
-                      "Movement tails sized, Movement section trailers streams, "
-                      "Movement section trailers bits)", ok[0])
+                      "RPC param walks 20), 1 with no work counter (CNC brute force unwalked)", ok[0])
         self.assertIn("8 backed by work that moved (Checkpoint Overlay decoded 500, "
                       "Checkpoint blobs decoded 8, Checkpoint array elements 30, Checkpoint "
-                      "array fields 90), 7 with no work counter (Checkpoint fails movement, "
-                      "Checkpoint fails truncated RPC, Checkpoint movement tails sized, "
-                      "Checkpoint movement tails open, Checkpoint CNC brute force unwalked, "
-                      "Checkpoint movement section trailers streams, "
-                      "Checkpoint movement section trailers bits)",
+                      "array fields 90), 4 with no work counter (Checkpoint fails movement, "
+                      "Checkpoint fails truncated RPC, Checkpoint movement components errors, "
+                      "Checkpoint CNC brute force unwalked)",
                       ok[0])
 
     def test_a_failure_counter_fails_the_run_in_each_pass(self):

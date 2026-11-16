@@ -106,8 +106,9 @@ A component can emit a valid prefix and fail on a later move. Its prefix keeps
 its context, the existing error counters still increase, and the whole failed
 RPC payload remains preserved as raw data. Callbacks remain provisional until
 the Reader succeeds; successful traversal alone does not establish complete
-semantic coverage. These fields do not add a reconstruction guarantee for
-unknown movement flags, section tails or envelope trailers.
+semantic coverage. These fields do not reconstruct unknown movement flags or
+unsupported native input/discrepancy bodies. The [native component decoder](NATIVE_MOVEMENT_COMPONENTS.md)
+counts unsupported bodies as failures and preserves their whole RPC payloads.
 
 ## Versioned diagnostic JSONL
 
