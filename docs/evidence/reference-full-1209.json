@@ -1,0 +1,355 @@
+{
+  "status": "comparison_completed",
+  "build": "12.09",
+  "scope": "One public full match; reference default enrichment versus existing Rust main data; no timings or speed ratio.",
+  "input": {
+    "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+    "bytes": 61015648,
+    "source_revision": "c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe",
+    "source_url": "https://media.githubusercontent.com/media/Matthias1590/unsupported-replays/c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe/replays/12.09/sample-1.replay"
+  },
+  "reference": {
+    "source_commit": "fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8",
+    "source_tree": "bd13edc552534751961fa59f19d967dfd5fe1c6d",
+    "selected_sdk": "10.0.301",
+    "cli_sha256": "85d9eeb8565f6d3f358a9b04d927dda246342566d0ce50956d4b44a50427ee31",
+    "dotnet_host_sha256": "763bfd4dbb1bb3a3b5257c6800eef77bb4abe2127e6ff9c33e2a56e2e814aedf",
+    "build_artifact_hashes": {
+      "CliReader": "6e7d7531da869b0518a253db501cc9a80194ef2bf0191555d033872cbcdeb641",
+      "CliReader.deps.json": "149de629c5d0b7b065ed3375a195153fbc7e58364bef028bb34ca1807ae9d672",
+      "CliReader.dll": "85d9eeb8565f6d3f358a9b04d927dda246342566d0ce50956d4b44a50427ee31",
+      "CliReader.pdb": "ce3d3654d8cf0933f03b7f745ccbc93510119cb628c78246da00c680e5eb1647",
+      "CliReader.runtimeconfig.json": "9950d4583cfc9a106857c0d5b8a75b53e8774852b57b80bc3823a74d44a4d87f",
+      "Microsoft.Extensions.DependencyInjection.Abstractions.dll": "7c97c4463fe0fc11d1f22f4d160b2bd2288981adf1de2717a6ff3fb993ddf294",
+      "Microsoft.Extensions.DependencyInjection.dll": "d646a5cca5e8116ae46b43715297083fa8a38db636eab60e66eeef350d74cd5d",
+      "Microsoft.Extensions.Logging.Abstractions.dll": "a76a735b63e6ef3b0bf41ff92423cbd16103b8952e8306140a9bd650346034dc",
+      "Microsoft.Extensions.Logging.dll": "2c034725abd90afe30a1426e6477cb0693bc79170e1dfdb3cef7146e296a1f71",
+      "Microsoft.Extensions.Options.dll": "58048d710cf2a88d3dea7c933d0b1408464d5aa4245ef736d3d47e6df6ba4db3",
+      "Microsoft.Extensions.Primitives.dll": "6aaf929343fd02415d6cb5d903816c2f1c831b194bfe7a15789879093d0fa6b7",
+      "OozSharp.dll": "be28d3093c79c917931baad36bdab7983ea89b420845080cba683dfeb33a5a72",
+      "Replay.Encoding.dll": "0088572cbe1422b636bb1ba707deb8b38e054e0318b8493f7ffd1f6485a45cf4",
+      "Replay.Encoding.pdb": "512ec7daa0fd69929055bb34f2a98a8f39c3dc23aeef194340ae1318c5768eb8",
+      "Replay.Encoding.xml": "f9f422e82cd4bc8309a91c71aa4509db451c6f902d3d257a0125174d86e2415e",
+      "Replay.Models.dll": "e77291ea7b9cd02c8158d825734992f052c7e514a55b1111d0a45d70bad58c51",
+      "Replay.Models.pdb": "04c38d55a8ab60ac2f50396a87322d3cc50708cbb25d8d721ad3a45ae43fe5ad",
+      "Replay.Models.xml": "fd2e39eea71b6286058f1197a58c3f1a93a51d48b18d1df72347f51fd22e1233",
+      "Replay.Unreal.dll": "00813ecfa507a59e1af55c09871af20160d61427d8bf3a2aec7d56c95682eef0",
+      "Replay.Unreal.pdb": "77930328dab0455d9b367fd1df9871ef8315517c5a5b2edd2ce7492a05c16f2e",
+      "Replay.Unreal.xml": "b2882ac2d2c865fe3b1abed6b6d3fe2be2a51468fd2c9f3d58243b7fbbee9b24",
+      "Replay.Valorant.Events.dll": "5d5d5753260e22eecb36d25ce31c5d2387d6d810c7fd0980079053e33f01408c",
+      "Replay.Valorant.Events.pdb": "b3555b5bfa51e932ef026506c0e6f5d42b744d345cd8e9fcfd90fd92e13cee48",
+      "Replay.Valorant.Events.xml": "d6008f294c3f52130a30ce2d6888ae785c2910b479d0fc30a140c2bb6ad625f7",
+      "Replay.Valorant.dll": "497ef0e54cc020ae0ca1b3168b5a11c5a7ded45830de64b3ab61453ab8cbe7a4",
+      "Replay.Valorant.pdb": "a8a5d2e0a85c950a33099f4add03b43380d93ed60e7398312ec3b427dabcfa5f",
+      "Replay.Valorant.xml": "ef361506cc495e433aa0463537f462176100c6c96cb50b0737a84f19ef3866c7",
+      "Serilog.Sinks.Console.dll": "dc88002ddd9f5fd0ffec9a6568ef89954671f60f2c9161593ee78932538c1e3e",
+      "Serilog.dll": "e6b551a75ff7fff20dd0024670d5c42dfb74afa16d54aa0201106dea400a9505",
+      "System.CommandLine.dll": "4cdbf6bb6e95be417d0fbfd2be0405f5b8caa40cdb6c1c9081ebff343e200e74"
+    },
+    "stats": {
+      "packet_count": 681831,
+      "packets_with_bunches": 681831,
+      "bunch_count": 681831,
+      "malformed_packet_count": 0,
+      "partial_error_count": 0,
+      "total_packet_bytes": 156338055
+    },
+    "counts": {
+      "movement": 2616931,
+      "events": 643900,
+      "actor_spawned": 2424,
+      "actor_closed": 2176,
+      "export_group_received": 273231,
+      "rpc_received": 344843,
+      "valorant_shot_received": 2911,
+      "valorant_footstep_received": 17831,
+      "valorant_flash_cast": 36,
+      "valorant_flash_path_updated": 222,
+      "valorant_flash_exploded": 36,
+      "valorant_flash_player_hit": 51,
+      "valorant_nearsight_cast": 0,
+      "valorant_nearsight_path_updated": 0,
+      "valorant_nearsight_activated": 0,
+      "valorant_nearsight_player_hit": 0,
+      "valorant_nearsight_player_effect_ended": 0,
+      "valorant_wall_placed": 15,
+      "valorant_wall_segment_spawned": 57,
+      "valorant_wall_activated": 0,
+      "valorant_wall_segment_destroyed": 53,
+      "valorant_wall_destroyed": 14,
+      "filtered_export_groups": 519249,
+      "undecoded_export_groups": 103388,
+      "empty_decoded_export_groups": 415861
+    },
+    "parse_status": "completed",
+    "schema_version": 9,
+    "source_hash_matches": true,
+    "source_url": "https://github.com/michel-giehl/ValorantReplayParser/commit/fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8",
+    "retained_diagnostic_count": 0,
+    "total_diagnostic_count": 0,
+    "suppressed_diagnostic_count": 0
+  },
+  "rust": {
+    "export_provenance": {
+      "date_utc": "2026-11-16T00:31:14.154090+00:00",
+      "parser_commit": "93e107a10788021b59fb30c5cb145960c3fd21a0",
+      "parser_sources_sha256": "92328ce1ab9a4236c38ae07c49ed816d259e0107cac4470295e05de48fbff93d",
+      "exe_sha256": "ef02b508753e05ff1bffd96792f402c3639d652406333978fd0fe8917af1c8ad",
+      "runner_sha256": "41eb8f6f3f75c23830b2f471a17177726d6799c6a8966a2003a981997438ec4c",
+      "evidence_sha256": "1d2fd9890eccd843e53dd33f2bfb2ea95240cbe10974e045bb7fdfd3b15a7c34",
+      "discovered_paths": 6,
+      "unique_replays": 6,
+      "duplicates": 0,
+      "corpus_sha256": "3694de8b2fa01ee7b536d45af10f9e0a059206d58e1b1848d390d7870ae14d41"
+    },
+    "export_file_hashes": {
+      "movement.parquet": "6d58428843e2729cf18270045d24c0e00cc1428ac289847b6a2c860402edad3b",
+      "fields.parquet": "1f2523163d6d1127b88557ec23f9ab2e904ad1fe02a36bdd1fdbbc2a61d9403c",
+      "actors.parquet": "92d09756cf4a723af4287ca974cef88d0a512db0e4cad53f1a63e42031f3731e",
+      "checkpoint_blocks.parquet": "7ab65e55538ff5daf91c32953adb2a4a0748840d333d41735f4e046fd5856422",
+      "checkpoint_net_guids.parquet": "f47be39e8a0ccdec7c5d1893a84dd90f6c70e82528539249b1bb5921ae978c88",
+      "events.parquet": "98373fab8deeb28abd823269718b5cef81b679bbd7be16ca709e8f2408aaa7eb",
+      "checkpoint_export_fields.parquet": "dd1f8688d33f2a868f423cc034945b30503e4bf27f371ebadfbea7f4eb76fdc0",
+      "checkpoint_guid_entries.parquet": "02935b9404740b5fdca110a80b20bb7ab3176db40e743f5f7f48c6c383a0d0a0",
+      "net_guids.parquet": "59d05749ccd076ace8cfa7832d4a5040d5f88c7f6a462d35783125db10ab6552",
+      "partials.parquet": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d",
+      "manifest.json": "6b0c552003dadca612024fa1f96c117d6c0514158220d3ea2698e179864189f1",
+      "checkpoint_actors.parquet": "20b6206ecd12f9ac2c9045cb8b05632b806b4e44bd68eeb4b3e40804e5496122",
+      "checkpoint_fields.parquet": "6a42d730d77221d722b90ce57665c48ead426de4e7158a9e4fc355a93b0efeed",
+      "checkpoint_export_groups.parquet": "b04551eb2ff9867e37d382efeece9514319a922fc0a22fa1f11787ad7133596d"
+    },
+    "reexported": false,
+    "stats": {
+      "packet_count": 681831,
+      "bunch_count": 681831,
+      "malformed_packet_count": 0,
+      "partial_error_count": 0,
+      "partial_fragments": 203,
+      "partial_completed": 85
+    },
+    "counts": {
+      "content_blocks": 792498,
+      "rep_layout_blocks": 355205,
+      "class_net_cache_blocks": 437293,
+      "deleted_blocks": 0,
+      "fields": 584487,
+      "rpcs": 428523,
+      "actor_opens": 2424,
+      "actor_closes": 2176,
+      "exported_guids": 0,
+      "skipped_bits": 33939219,
+      "malformed_content_blocks": 0
+    },
+    "movement_rows": 2634029,
+    "existing_audit_12_09": {
+      "content_blocks_lost": 0,
+      "main_rpc_stream_failures": 9151,
+      "main_unresolved_rpc_payloads_preserved": 9151,
+      "main_rpc_loss": 0,
+      "main_movement_rpc_errors": 0,
+      "typed_values_compared": 22490,
+      "typed_mismatches": 0,
+      "type_width_failures": 0,
+      "audit_report_sha256": "27e2d076f7a56b1655d8428a9ecb00b8ffe6f7743100402093292be896c7da0f",
+      "scope": "Existing independent six-fixture audit; only the 12.09 aggregate is reproduced here. No Rust export or typed audit was rerun for this comparison."
+    }
+  },
+  "comparator": {
+    "checkout_commit": "da6986dc9246711486e67150d15699c35f731e58",
+    "reviewed_source_commit": "dbe83ffa2d1a44cfa7dfb949b20d46af19d26624",
+    "source_hashes": {
+      "compare_with_csharp.py": "1193b7586a1628310dd9e0b0c99201a74520265e2284b2d1ec34acbf2e2a69ae",
+      "atomic_io.py": "75ef4d74e1eb0f45546e074c6c88b55e90e41fb441854afa55d25d14cee01a94",
+      "wire_bits.py": "4c0e7f4283a402ee0f9a2ff9d977e1d26a0cfa9fb8bbda1e7d9cb0675c1461a8",
+      "to_valplay_bundle.py": "e85cf1a8e3f6d5aa06b9880ee98df4c5a39877e32f2da494c42c2e346c54c038"
+    },
+    "movement_sample_limit": 50000,
+    "report_sha256": "4e97d19aa6b40be26f70c05e1f581521ec7856c7407e9e6d8362cafdca49c4a8"
+  },
+  "limits": {
+    "total_operation_seconds": 900,
+    "private_output_bytes": 10000000000
+  },
+  "steps": [
+    {
+      "stage": "reference-export",
+      "exit_code": 0,
+      "guard_stop_reason": null
+    },
+    {
+      "stage": "comparison",
+      "exit_code": 0,
+      "guard_stop_reason": null
+    }
+  ],
+  "movement_comparison": [
+    "C# movement rows (in file): 2,616,931",
+    "vrfkit movement rows: 2,634,029",
+    "Sampling first 50,000 C# rows for value comparison...",
+    "Joined: 49,980 / 50,000 (100.0%)",
+    "Missed (no match under selected join): 20",
+    "Ambiguous (multiple candidate rows): 0",
+    "Exact identity rows: 50,000",
+    "Unmatched exact identities: 20",
+    "Legacy rows (identity metadata absent): 0",
+    "Position (max axis) (49,980 rows): max=0.0005, mean=0.0001, p99=0.0005, median=0.0000",
+    "Yaw (49,980 rows): max=0.0000, mean=0.0000, p99=0.0000, median=0.0000",
+    "Pitch (49,980 rows): max=0.0000, mean=0.0000, p99=0.0000, median=0.0000",
+    "Velocity (max axis) (49,980 rows): max=0.0000, mean=0.0000, p99=0.0000, median=0.0000",
+    "Comparison only: numeric tolerances are not applied; nonzero differences require interpretation."
+  ],
+  "totals_comparison": [
+    "Packets                   681,831      681,831      \u2713",
+    "Bunches                   681,831      681,831      \u2713",
+    "Actor opens                 2,424        2,424      \u2713",
+    "Actor closes                2,176        2,176      \u2713",
+    "Movement rows           2,616,931    2,634,029      \u2717"
+  ],
+  "input_unchanged": true,
+  "rust_export_unchanged": true,
+  "rust_binary_unchanged": true,
+  "reference_binaries_unchanged": true,
+  "reference_checkout_unchanged": true,
+  "comparator_sources_unchanged": true,
+  "new_private_output_bytes": 4994350418,
+  "report_schema_version": 1,
+  "counts_comparison": {
+    "packets": {
+      "reference": 681831,
+      "rust": 681831,
+      "equal": true,
+      "rust_minus_reference": 0
+    },
+    "bunches": {
+      "reference": 681831,
+      "rust": 681831,
+      "equal": true,
+      "rust_minus_reference": 0
+    },
+    "actor_opens": {
+      "reference": 2424,
+      "rust": 2424,
+      "equal": true,
+      "rust_minus_reference": 0
+    },
+    "actor_closes": {
+      "reference": 2176,
+      "rust": 2176,
+      "equal": true,
+      "rust_minus_reference": 0
+    },
+    "movement_rows": {
+      "reference": 2616931,
+      "rust": 2634029,
+      "equal": false,
+      "rust_minus_reference": 17098
+    }
+  },
+  "movement_sample": {
+    "selection": "First 50000 reference movement NDJSON rows, in file order; not a random or full-file sample.",
+    "limit": 50000,
+    "reference_total_rows": 2616931,
+    "rows_sampled": 50000,
+    "sample_fraction_of_reference_percent": 1.9106350148322597,
+    "identity_columns": [
+      "packet_id",
+      "character_guid",
+      "movement_timestamp"
+    ],
+    "strong_identity_rows": 50000,
+    "legacy_rows": 0,
+    "matched_unique_rows": 49980,
+    "missing_exact_identities": 20,
+    "ambiguous_rows": 0,
+    "matched_percent": 99.96,
+    "report_rounding_note": "The text comparator prints 100.0% at one decimal place; the actual fraction is 49980/50000 = 99.96%.",
+    "duplicate_reference_identity_keys": 0,
+    "identity_present_but_already_consumed_rows": 0,
+    "max_absolute_error_on_matched_rows": {
+      "position": 0.00046875000043655746,
+      "velocity": 4.8828125045474735e-05,
+      "yaw": 0.0,
+      "pitch": 0.0
+    },
+    "numeric_difference_policy": "Differences are measured, not classified against invented tolerances; velocity is nonzero despite rounded text output."
+  },
+  "unresolved_identity_diagnosis": {
+    "missing_reference_identities_checked": 20,
+    "full_rust_movement_rows_scanned": 2634029,
+    "exact_packet_character_timestamp_matches_anywhere": 0,
+    "missing_rows_with_any_rust_movement_at_same_packet": 0,
+    "same_packet_character_candidate_count_histogram": {
+      "0": 20
+    },
+    "same_character_timestamp_global_candidate_count_histogram": {
+      "20": 10,
+      "21": 10
+    },
+    "missing_rows_with_same_character_timestamp_at_packet_delta_plus_2": 20,
+    "relaxed_matches_accepted": 0,
+    "cause": "unresolved",
+    "interpretation": "All 20 exact packet+character+timestamp identities remain missing. All have a same-character/timestamp candidate two packets later, but that weaker key repeats 20 or 21 times across the full Rust movement table. No relaxed pairing was accepted and no explanation for the packet attribution difference is established."
+  },
+  "commands": {
+    "notation": "Exact executed argument order with the workspace prefix normalized to ${WORKSPACE}. No parser/export command was rerun to create this final report.",
+    "environment_overrides": {
+      "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+      "DOTNET_NOLOGO": "1"
+    },
+    "reference_export": {
+      "cwd": "${WORKSPACE}/reference-parser",
+      "argv": [
+        "${WORKSPACE}/runtime/dotnet/dotnet",
+        "${WORKSPACE}/runtime/reference-build/bin/CliReader/release/CliReader.dll",
+        "export",
+        "${WORKSPACE}/corpus-public/12.09/sample-1.replay",
+        "--output",
+        "${WORKSPACE}/evidence/reference-full-1209-20261116/reference",
+        "--profile",
+        "default"
+      ]
+    },
+    "comparison": {
+      "cwd": "${WORKSPACE}/worktrees/reference-comparison",
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python",
+        "-W",
+        "error",
+        "${WORKSPACE}/worktrees/reference-comparison/tools/compare_with_csharp.py",
+        "${WORKSPACE}/evidence/reference-full-1209-20261116/reference",
+        "${WORKSPACE}/evidence/reference-full-1209-20261116/rust-main-view"
+      ]
+    },
+    "rust_main_view": "A fresh directory containing a copy of the original manifest.json and symlinks to the six existing non-checkpoint Parquet tables; comparison_report.txt is created only in this wrapper.",
+    "diagnosis_method": "Read the first 50000 C# movement rows; compare unique exact packet+character+timestamp keys; then scan all Rust movement identity metadata for the 20 absent keys and weaker character+timestamp alternatives. No value-based or weaker-identity match is accepted."
+  },
+  "interpretation_limits": [
+    "This is one public 12.09 full match, with a first-50000-row movement sample. It does not certify all movement rows, all builds, or the private archive.",
+    "C# uses the default enriched NDJSON export; Rust reuses its main Parquet data. Output scopes and enrichment differ. Checkpoint tables and Event chunks are not cross-validated here.",
+    "Exact packet, bunch, and actor totals agree. Movement row totals differ by 17098 and 20 sampled strong identities remain unresolved; both differences are retained.",
+    "The reference reports completed with zero total, retained, or suppressed diagnostics, but also reports 103388 undecoded export groups. A zero diagnostic count does not establish complete semantic decoding.",
+    "The existing Rust audit reports 9151 RPC stream failures with all 9151 unresolved raw payloads preserved, zero content blocks lost, and zero RPC loss for this fixture. It is not an error-free decoding claim.",
+    "The reference implementation exports its selected movement event representation; vrfkit also retains additional movement rows. No cause is assigned to the total-count difference by this comparison alone.",
+    "Comparator exit 0 indicates the comparison command completed; it is not a strict numerical or full-coverage validation result.",
+    "No timing, CPU, memory, throughput, output-format efficiency, or competitor speed ratio is claimed from this run."
+  ],
+  "privacy": {
+    "input_visibility": "Public source at the pinned revision and hash above.",
+    "private_archive_binaries_used": 0,
+    "raw_rows_or_player_identifiers_in_aggregate": false,
+    "raw_exports_and_logs_published": false,
+    "git_source_mutations": false
+  },
+  "evidence_hashes": {
+    "runner_sha256": "13fd30a73f58719b7088ab8d7c30081a17543f6302b38503888e17f1c8f3fc21",
+    "movement_sample_diagnosis_sha256": "8575b22b9f434e90132edbc9ec7ca07935dbdae10b5bc27f703c29acca0265e3",
+    "unmatched_global_metadata_sha256": "feaf7c8ba7f00dabeee00c85e77b0b2ce673755684b4f60ce9ee4518a9a95b63",
+    "reference_manifest_sha256": "88ce1a7655c35cfda96ed1237ecb83de6682eb1347dbe792d47ea256eac47a04"
+  },
+  "final_read_only_recheck": {
+    "input_unchanged": true,
+    "rust_export_unchanged": true,
+    "reference_checkout_unchanged": true,
+    "comparator_sources_unchanged": true
+  }
+}

@@ -3,17 +3,17 @@
 A Rust toolkit that parses VALORANT replay files (`.vrf`, Unreal Engine network
 replay format), streams records through a Rust API and exports them to Parquet. A workspace of 10 crates (plus a
 test-only `dev/vrf-testkit` and the `extract-component-classes` tool) and a
-Python `tools/` validation suite. `#![forbid(unsafe_code)]` is in every crate;
-there is no `unsafe` block anywhere in the workspace. The only native FFI the
-parser depends on is Oodle decompression, and that lives entirely in the
-external `oozextract` crate. Edition 2024, MSRV 1.86, Apache-2.0.
+Python `tools/` validation suite. Every workspace crate forbids unsafe Rust;
+that policy does not extend to third-party dependencies. Oodle-format
+decompression uses the Rust `oozextract` implementation. Default Parquet
+output uses native Zstd through `zstd-sys`. Edition 2024, MSRV 1.86, Apache-2.0.
 
 ![CI](https://github.com/yakisoba0728/vrfkit/actions/workflows/ci.yml/badge.svg)
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
 ![rust](https://img.shields.io/badge/rust-1.86%2B-orange.svg)
 ![edition](https://img.shields.io/badge/edition-2024-orange.svg)
 ![builds](https://img.shields.io/badge/builds-11.06--13.10-yellow.svg)
-![unsafe](https://img.shields.io/badge/unsafe-none-success.svg)
+![workspace unsafe policy](https://img.shields.io/badge/workspace%20unsafe-forbidden-success.svg)
 
 Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantReplayParser)
 (MIT), with the original reference at
@@ -38,25 +38,76 @@ checked the same way on 3 replays, and 2 meet every criterion; all 5
 [build verification](docs/BUILD_VERIFICATION.md) for the measured scope, common
 checks and remaining limits.
 
+- Rust callbacks and ownership: [`docs/RUST_API.md`](docs/RUST_API.md)
+- JSONL conversion and encodings: [`docs/JSONL.md`](docs/JSONL.md)
+- Current engineering evidence and limitations: [`docs/OVERHAUL_RESULTS_2026_11_16.md`](docs/OVERHAUL_RESULTS_2026_11_16.md)
 - Run it, every tool and every output column: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable, and whether it is typed: [`docs/DATA.md`](docs/DATA.md)
 - Build it, test it, open a PR: [`CONTRIBUTING.md`](CONTRIBUTING.md) (agents: [`CLAUDE.md`](CLAUDE.md))
 
+## Quick start
+
+```bash
+# From the repository root; install the pinned toolchain once if needed.
+rustup toolchain install 1.86.0 --profile minimal
+cargo +1.86.0 build --release -p vrfkit --locked
+
+./target/release/vrfkit inspect match.vrf
+./target/release/vrfkit validate match.vrf --diagnostics
+./target/release/vrfkit export match.vrf --out match-export --checkpoints
+```
+
+On Windows PowerShell, use `.\target\release\vrfkit.exe` for the executable.
+A source build does not automatically add the binary to `PATH`. The Rust API
+and JSONL additions are available from source; see tagged releases for the
+features of a particular packaged version.
+
+`inspect` parses container metadata and lists chunks without decoding packets.
+`validate` walks ReplayData content blocks and reports its structural verdict;
+it writes no files and does not establish checkpoint or semantic correctness.
+`export` writes the Parquet tables and manifest described under [Output](#output) into
+`--out`, which must be new, empty or a previous export: anything else in it
+is refused, never deleted.
+
+> Column schemas, the `tools/` scripts, the full validation suite, and
+> per-crate usage live in [`docs/USAGE.md`](docs/USAGE.md).
+> This document is about *why it is built this way*.
+
+### Rust applications
+
+Use `ReplayReader` for main-stream records and native Event payloads without
+writing Parquet. It borrows callback batches, preserves raw windows and returns
+quality counters. `read_path` buffers the input file; checkpoint snapshots are
+reported as skipped. The [Rust API guide](docs/RUST_API.md) covers ownership,
+errors, source dependencies and quality checks. Run its aggregate-only example:
+
+```bash
+cargo +1.86.0 run --release -p vrfkit --no-default-features --example stream_replay -- match.vrf
+```
+
 ## Why this exists
 
-Most replay parsers export only the fields whose type they know. vrfkit's
-design premise is the opposite: **export every value the replay carries.** This
-is possible because Unreal's property stream is self-describing -- each field
-carries a handle and a bit-length *before* its value, so field boundaries are
-walkable without knowing the type, and the handle-to-name map ships inside the
-replay itself (`NetFieldExportGroup`). Where that map is available, names can
-be resolved independently of types. Unknown properties retain raw payloads;
-typed values are an additive overlay. This is a preservation strategy, not a
-claim that every stream is currently understood: framing failures and missing
-schema attribution are measured separately, and successful movement decodes
-can be represented by their rows instead of a duplicate raw RPC.
+vrfkit preserves raw replicated-property windows alongside decoded values.
+In framed RepLayout streams, a field carries a handle and bit length before
+its value, so a known field boundary can be preserved without knowing its
+type. The replay's `NetFieldExportGroup` declarations resolve handles to names
+where that schema is available. Unknown properties retain raw payloads, and
+unresolved RPCs can retain their whole payload; typed values are an additive
+overlay.
+
+This is a preservation strategy with explicit accounting. Framing failures,
+missing schema attribution and semantic coverage remain separate measurements.
+Successful movement decodes can be represented by their rows instead of a
+duplicate raw RPC. See the [current validation evidence](docs/OVERHAUL_RESULTS_2026_11_16.md)
+for the tested inputs, exact-output comparisons and remaining unknowns.
 
 ## Supported VALORANT builds
+
+The table below retains the historical, revision-specific audits linked in
+[build verification](docs/BUILD_VERIFICATION.md). This overhaul freshly checked
+six public inputs from 12.05, 12.08, 12.09, 12.10, 12.11 and 13.00; it did not
+rerun the private corpus. See the [current results](docs/OVERHAUL_RESULTS_2026_11_16.md)
+for the tested source, unchanged output and remaining interpretation limits.
 
 | 🎮 Build | 🌿 Branch | ✅ Clean/checked | 🔎 Verified by |
 |---|---|---:|---|
@@ -154,8 +205,9 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Bounded schema declarations** -- configurable group and field-slot budgets
   reject excess declarations before allocating dense slots; see
   [schema resource limits](docs/SCHEMA_LIMITS.md) for the scope and migration.
-- **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
-  Oodle, isolated in an external crate.
+- **Workspace unsafe-code policy** — `#![forbid(unsafe_code)]` in every crate.
+  Dependencies have separate policies; default Parquet compression includes
+  native Zstd. The core-only Reader excludes Arrow, Parquet and Zstd.
 - **775 Rust tests (Windows)** / **774 Rust tests (non-Windows)** plus
   a layered validation suite (framing / bytes / decode
   errors / semantics).
@@ -175,39 +227,6 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - [Design](#design)
 - [Generated files](#generated-files)
 - [License](#license)
-
-## Quick start
-
-```bash
-cargo +1.86.0 build --release -p vrfkit --features export --locked
-
-vrfkit inspect  <file.vrf>                          # header / branch / chunk summary
-vrfkit validate <file.vrf> [--diagnostics]          # grammar oracle, writes nothing
-vrfkit export   <file.vrf> --out <dir> [--checkpoints]
-```
-
-`inspect` prints replay info, header, branch, and a chunk summary; it does no
-parsing and returns immediately. `validate` walks every content block through
-the RepLayout grammar and reports a pass rate; it writes no files. `export`
-writes the Parquet tables and manifest described under [Output](#output) into
-`--out`, which must be new, empty or a previous export: anything else in it
-is refused, never deleted.
-
-> Column schemas, the `tools/` scripts, the full validation suite, and
-> per-crate usage live in [`docs/USAGE.md`](docs/USAGE.md).
-> This document is about *why it is built this way*.
-
-### Rust applications
-
-Use `ReplayReader` for main-stream records and native Event payloads without
-writing Parquet. It borrows callback batches, preserves raw windows and returns
-quality counters. `read_path` buffers the input file; checkpoint snapshots are
-reported as skipped. The [Rust API guide](docs/RUST_API.md) covers ownership,
-errors, source dependencies and quality checks. Run its aggregate-only example:
-
-```bash
-cargo +1.86.0 run --release -p vrfkit --no-default-features --example stream_replay -- match.vrf
-```
 
 ## Output
 

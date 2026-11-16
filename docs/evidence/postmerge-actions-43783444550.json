@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "verified_utc": "2026-11-16T01:05:52.642592+00:00",
+  "repository": "yakisoba0728/vrfkit",
+  "workflow_run": {
+    "id": 43783444550,
+    "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550",
+    "event": "push",
+    "branch": "integration/vrfkit-overhaul",
+    "head_sha": "ed7dc30978261f27d3999b194344bcf55287860d",
+    "attempt": 1,
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-16T00:57:54Z",
+    "completed_by": "2026-11-16T01:04:22Z"
+  },
+  "observed_job_count": 11,
+  "successful_job_count": 11,
+  "jobs": [
+    {
+      "id": 133025683926,
+      "name": "Reusable CI / Python 3.13 / windows-latest",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133025683926"
+    },
+    {
+      "id": 133025684070,
+      "name": "Reusable CI / Python 3.12 / ubuntu-latest",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133025684070"
+    },
+    {
+      "id": 133025684110,
+      "name": "Reusable CI / Rust 1.86 / Linux",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133025684110"
+    },
+    {
+      "id": 133025684126,
+      "name": "Reusable CI / rust",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133025684126"
+    },
+    {
+      "id": 133025684156,
+      "name": "Reusable CI / Python 3.12 / windows-latest",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133025684156"
+    },
+    {
+      "id": 133025684170,
+      "name": "Reusable CI / workflow-lint",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133025684170"
+    },
+    {
+      "id": 133025684172,
+      "name": "Reusable CI / Rust stable / all features",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133025684172"
+    },
+    {
+      "id": 133025684201,
+      "name": "Reusable CI / Python 3.13 / ubuntu-latest",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133025684201"
+    },
+    {
+      "id": 133025684204,
+      "name": "Reusable CI / Windows release package",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133025684204"
+    },
+    {
+      "id": 133027532954,
+      "name": "Reusable CI / CI complete",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133027532954"
+    },
+    {
+      "id": 133027574578,
+      "name": "Overhaul complete",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133027574578"
+    }
+  ],
+  "checkout_evidence": {
+    "job_id": 133025684110,
+    "job_url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43783444550/job/133025684110",
+    "method": "Exact output following checkout git log -1 --format=%H in the Linux Rust job log.",
+    "checkout_commit": "ed7dc30978261f27d3999b194344bcf55287860d",
+    "matches_actual_integration_merge": true,
+    "decoded_log_utf8_bytes": 189163,
+    "decoded_log_sha256": "c548ccfa5fc8c1a88808664b0948dbfffe0048bc35a373206cf9f34e8d254d22",
+    "hash_definition": "Exact decoded GitHub job-log string encoded as UTF-8, retaining BOM and original line endings."
+  },
+  "scope": "Automatically triggered post-merge push CI for the actual integration merge; all 11 jobs succeeded. This supplies after-integration regression evidence.",
+  "suite_counts_reextracted": false,
+  "separate_count_evidence": {
+    "file": "pr56-actions-observed-test-counts.json",
+    "sha256": "1ef704d75f7aeb8df46136772da4dfe725871a1ba35db2a1f3c54dd62c7f502a",
+    "note": "PR56 test totals retain their original run43782959411 and synthetic-checkout provenance. They are not relabeled as counts extracted from this post-merge run."
+  },
+  "manual_ci_dispatched": false,
+  "local_suites_rerun": false,
+  "full_logs_embedded": false,
+  "private_replays_read": 0
+}

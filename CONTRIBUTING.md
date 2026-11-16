@@ -170,9 +170,13 @@ checks succeed for that exact tagged commit. Only that publishing job receives
 Version numbers follow the CLI, which is what a release ships. A release bumps
 the patch version unless it breaks how `vrfkit` is invoked or what it writes;
 such a break bumps the minor version. New manifest keys and new summary lines
-do not count as breaks. The library crates are not published, so their Rust
-API is internal and may change in any release. Every crate carries the
-workspace version.
+do not count as breaks. The workspace crates are not yet published to crates.io. The `vrfkit` crate
+provides a public source API; consumers should pin an exact source revision.
+Source API compatibility is not currently promised across revisions, so
+document Rust API changes and migration steps even when CLI arguments and
+output schemas are unchanged. Every crate carries the workspace version.
+Define the registry package compatibility policy before the first crates.io
+release.
 
 The Windows package job is also required on every PR and manual CI run. It
 builds and tests the optimized CLI for `x86_64-pc-windows-msvc` (and
