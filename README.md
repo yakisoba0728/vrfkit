@@ -45,8 +45,9 @@ checks and remaining limits.
 - Pinned comparison with ValorantReplayParser: [`docs/REFERENCE_COMPARISON.md`](docs/REFERENCE_COMPARISON.md)
 - Phase C contracts and acceptance: [`docs/PHASE_C_RESULTS.md`](docs/PHASE_C_RESULTS.md)
 - API/counter migration and 0.6.0+ release checklist: [`docs/PHASE_C_MIGRATION.md`](docs/PHASE_C_MIGRATION.md)
+- Phase D 0.6.0 candidate and package gates: [`docs/PHASE_D_RELEASE_CHECKLIST.md`](docs/PHASE_D_RELEASE_CHECKLIST.md)
 - Phase B work and acceptance status: [`docs/PHASE_B_STATUS.md`](docs/PHASE_B_STATUS.md)
-- User-run performance comparison: [`docs/PHASE_B_BENCHMARK_HANDOFF.md`](docs/PHASE_B_BENCHMARK_HANDOFF.md)
+- Reproducible performance comparison: [`docs/PHASE_B_BENCHMARK_HANDOFF.md`](docs/PHASE_B_BENCHMARK_HANDOFF.md)
 - Current engineering evidence and limitations: [`docs/OVERHAUL_RESULTS_2026_11_16.md`](docs/OVERHAUL_RESULTS_2026_11_16.md)
 - Run it, every tool and every output column: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable, and whether it is typed: [`docs/DATA.md`](docs/DATA.md)
@@ -58,6 +59,12 @@ These examples describe the `integration/vrfkit-overhaul` source branch.
 Select it explicitly; `main` and an older release package may expose different
 APIs. Record the full source revision when reproducing a result or embedding
 the library.
+
+The workspace version is **0.6.0**, an unpublished candidate for the native
+counter and Phase C API/output migration. That number does not establish
+release acceptance or a measured performance improvement. PR #58 remains a
+Draft; see the [candidate gates](docs/PHASE_D_RELEASE_CHECKLIST.md) and
+[migration guide](docs/PHASE_C_MIGRATION.md) before adopting it.
 
 ```bash
 git clone --branch integration/vrfkit-overhaul --single-branch https://github.com/yakisoba0728/vrfkit.git
@@ -141,10 +148,13 @@ for the tested inputs, exact-output comparisons and remaining unknowns.
 ## Supported VALORANT builds
 
 The table below retains the historical, revision-specific audits linked in
-[build verification](docs/BUILD_VERIFICATION.md). This overhaul freshly checked
-six public inputs from 12.05, 12.08, 12.09, 12.10, 12.11 and 13.00; it did not
-rerun the private corpus. See the [current results](docs/OVERHAUL_RESULTS_2026_11_16.md)
-for the tested source, unchanged output and remaining interpretation limits.
+[build verification](docs/BUILD_VERIFICATION.md). The initial overhaul checked
+six public inputs; later [Phase C acceptance](docs/PHASE_C_RESULTS.md) covered
+ten public inputs across seven builds, including 99 checkpoints. Those are
+historical executions at the recorded source revisions, not a new Phase D
+corpus run. Phase C did not rerun the private corpus. The
+[candidate checklist](docs/PHASE_D_RELEASE_CHECKLIST.md) requires current
+qualification to identify its own inputs, source and limits separately.
 
 | 🎮 Build | 🌿 Branch | ✅ Clean/checked | 🔎 Verified by |
 |---|---|---:|---|

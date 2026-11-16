@@ -1,6 +1,32 @@
 # Changelog
 
-## Unreleased: Phase C, intended for 0.6.0 or later
+## Unreleased: 0.6.0 candidate
+
+The integration branch uses version 0.6.0 to prepare the breaking output and
+source API migration. This is an engineering candidate, not a published
+release. PR #58 remains draft, open and unmerged. The
+[Phase D release checklist](docs/PHASE_D_RELEASE_CHECKLIST.md) records the
+required final-source, package and approval gates.
+
+- All ten production workspace crates and their lockfile entries use 0.6.0;
+  the two unpublished development tools retain their independent metadata.
+- The native movement migration replaces eight obsolete tail/trailer counters
+  with nine component counters. Both main and checkpoint consumers must use
+  the new names; historical values cannot be converted into the new counts.
+- Reader and CLI file input, optional gameplay projections, dictionary-run
+  construction and JSONL tooling from the earlier phases are included. Their
+  scope and existing evidence remain in [Phase A](docs/PHASE_A_RESULTS.md) and
+  [Phase B](docs/PHASE_B_RESULTS.md).
+- The Phase C additions and migration below are included. Review
+  [the API and counter migration](docs/PHASE_C_MIGRATION.md) before updating
+  callers or strict export validators.
+- Quantitative Phase D performance qualification is pending its own final
+  receipt. The version change establishes no speed, CPU or RSS improvement.
+- The Windows CLI remains the packaged distribution target. Rust consumers
+  use a pinned source revision; Python tools remain source-only. No crates.io
+  or PyPI package is prepared or published by this version change.
+
+## Phase C engineering history (not separately released)
 
 These entries describe integration-branch engineering. Final functional
 acceptance is tracked in [Phase C results](docs/PHASE_C_RESULTS.md); no tag,

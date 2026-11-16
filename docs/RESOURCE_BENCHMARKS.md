@@ -10,10 +10,12 @@ This complements `tools/bench_export.py`, the existing wall-time regression
 guard. It does not update that guard's committed baseline, publish artifacts,
 download a corpus, or run a competitor with a different work contract.
 
-For the current Phase B baseline, exact build provenance and commands reserved
-for the user to run, see [Phase B benchmark handoff](PHASE_B_BENCHMARK_HANDOFF.md).
-The user has taken ownership of final performance comparisons; functional
-validation continues separately.
+For the same-output Phase C baseline and exact build provenance, see the
+[benchmark handoff](PHASE_B_BENCHMARK_HANDOFF.md). The user explicitly delegated
+quantitative measurements to the agents in Phase D; the earlier user-only
+restriction is historical. The [Phase D ledger](PHASE_D_STATUS.md) identifies
+current work. Functional validation and measured performance remain separate
+acceptance gates.
 
 ## Run a paired comparison
 
