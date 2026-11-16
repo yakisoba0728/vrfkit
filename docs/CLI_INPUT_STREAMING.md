@@ -61,3 +61,59 @@ Resource measurements and public replay comparisons must use the exact
 candidate executable and Phase A baseline, with identical export options.
 Sparse skip tests establish the skipped-payload behavior; they do not
 establish a memory bound for decoded chunks or a throughput improvement.
+
+### Public input equivalence
+
+The candidate implementation was measured locally at
+`5b67cf29c2b14b887972548a7d5571b4118c724e`; its tree equals the published
+code checkpoint `47978d8635a7b7b301928df9ca811a8ea79a141d`.
+It was compared with Phase A integration
+`9c133fb423c521d7df25b6ef19cb546fa489de4e`. Fresh exports from both
+executables covered the six public 12.05, 12.08, 12.09, 12.10, 12.11 and
+13.00 inputs and their 76 checkpoints. All 78 Parquet tables were
+byte-identical, and all nonvolatile manifest values and required summary
+counters matched. `validate` output matched after removing only its elapsed
+time line. Input hashes remained unchanged.
+
+The [sanitized comparison](evidence/phase-b-cli-public-parity.json) records
+the input, binary, table and normalized-manifest hashes. This tests input
+path equivalence using the shared decoder; it is not a new independent
+reinterpretation of gameplay or the wire format. Timings captured during
+these functional runs are not used as performance evidence.
+
+The implementation adds four CLI input regressions. Full debug,
+cross-platform CI and independent acceptance are recorded separately.
+
+### Build identity and bounded-input proof
+
+An initial shared Cargo target reused the profiling worktree's old
+instrumented CLI even after `cargo build` reported `Fresh`. Its binary hash
+matched the profiling executable exactly. The initial focused tests, public
+comparisons and resource runs were therefore rejected as evidence for this
+implementation. They are retained as invalid diagnostic records, with the
+reason in the [build receipt](evidence/phase-b-cli-build.json). An earlier
+broad release-test build also had two concurrent fat-LTO compiler processes
+killed by SIGKILL; neither attempt is claimed as a full test-suite pass.
+
+All workspace packages were then cleaned from the current release target;
+external dependency caches were retained. A one-job Rust 1.86 release build
+freshly compiled every runtime workspace crate. The frozen CLI's SHA-256 is
+`c64d63107f79f843a58ab5b1b2db8682553f072c7ece4269bfffe044c776e219`.
+The 180 tracked runtime input files matched their recorded hashes after
+the build. The public comparisons above were rerun with this executable.
+
+A synthetic file with two 1 GiB sparse unknown chunks was then run under a
+512 MiB address-space limit. The Phase A `validate` executable failed with
+an allocation error. The new `validate` counted both chunks and returned its
+expected `NoContentBlocks` status; `export --checkpoints` succeeded and
+published its empty tables. The [proof receipt](evidence/phase-b-cli-sparse-proof.json)
+records the exact size, limit, binary identities and exit codes. This is a
+skipped-input memory proof, not a bound on decoded chunks or a claim of
+real-replay throughput or peak-RSS improvement. Such measurements require
+separate, correctly attributed repeated runs.
+
+On Linux, reproduce the skipped-input proof with a new work directory:
+
+```bash
+python docs/evidence/cli_input_sparse_reproduce.py /path/to/phase-a-vrfkit /path/to/candidate-vrfkit /private/new-sparse-check
+```

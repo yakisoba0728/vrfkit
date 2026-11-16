@@ -1130,7 +1130,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-809 Rust tests (Windows), 808 Rust tests (non-Windows), and 1178 Python tests.
+813 Rust tests (Windows), 812 Rust tests (non-Windows), and 1178 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
