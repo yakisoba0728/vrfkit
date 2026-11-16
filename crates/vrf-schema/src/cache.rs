@@ -161,6 +161,20 @@ impl NetGuidCache {
         declared_slots: u32,
     ) -> Result<usize> {
         let admission = self.admit_group(&path, path_name_index, declared_slots as usize)?;
+        if let Some(idx) = admission.existing_by_path {
+            let group = &mut self.groups[idx];
+            if group.path == path && group.path_name_index == path_name_index {
+                // A declaration contains no populated fields to merge. Keep
+                // the existing slots and grow only when the declaration does.
+                // Identical identity leaves every lookup key unchanged.
+                if declared_slots as usize > group.fields.len() {
+                    group.fields.resize(declared_slots as usize, None);
+                }
+                self.field_slots = admission.field_slots;
+                self.schema_generation = self.schema_generation.wrapping_add(1);
+                return Ok(idx);
+            }
+        }
         let group = NetFieldExportGroup::new(path, path_name_index, declared_slots);
         Ok(self.register_group(group, admission))
     }
@@ -237,12 +251,16 @@ impl NetGuidCache {
         let idx = if let Some(idx) = existing_by_path {
             // The same class re-declaring or extending its group: its handle
             // slots stay valid and are kept.
+            let identity_changed = self.groups[idx].path != group.path
+                || self.groups[idx].path_name_index != group.path_name_index;
             self.groups[idx].merge_from(&group);
             self.groups[idx].path = group.path;
             self.groups[idx].path_name_index = group.path_name_index;
-            // The path can have arrived as another spelling and the index can
-            // be new; either retires keys, so every lookup is rebuilt.
-            self.rebuild_group_indexes();
+            // Only a changed spelling or index retires lookup keys. Field
+            // updates leave the path, index and leaf indexes exactly intact.
+            if identity_changed {
+                self.rebuild_group_indexes();
+            }
             idx
         } else if let Some(idx) = existing_by_index {
             // The index was reused for a path never seen: replace the group,
@@ -798,7 +816,7 @@ mod tests {
         leaves_disambiguated: usize,
     }
 
-    /// Apply one `add_export_group` to the cache and the model, and hold the
+    /// Apply one registration to the cache and the model, and hold the
     /// cache to the model on all a caller can observe: the index or exact
     /// error, the groups, one generation bump per success, and lookups equal
     /// to the model's and to a rebuild of the cache's own groups. An error
@@ -810,6 +828,7 @@ mod tests {
         index: u32,
         slots: u32,
         what: &str,
+        declare: bool,
     ) -> Step {
         let by_spelling = model.owner_of_spelling(path);
         let by_index = model.owner_of_index(index);
@@ -850,7 +869,11 @@ mod tests {
             _ => unreachable!("{what}: every arm names the group it acts on"),
         };
 
-        let result = cache.add_export_group(NetFieldExportGroup::new(path.into(), index, slots));
+        let result = if declare {
+            cache.declare_export_group(path.into(), index, slots)
+        } else {
+            cache.add_export_group(NetFieldExportGroup::new(path.into(), index, slots))
+        };
         assert_eq!(result, expected, "{what}: wrong outcome");
         let bumps = u64::from(expected.is_ok());
         assert_eq!(
@@ -957,29 +980,32 @@ mod tests {
             ("/Game/Empty.", 10, 1, Fresh, false, 0, 0),
         ];
 
-        let mut cache = NetGuidCache::new();
-        let mut model = Model::default();
-        for (n, &(path, index, slots, arm, older, turned, cleared)) in script.iter().enumerate() {
-            let what = format!("step {n}: {path:?} at index {index}");
-            let step = apply(&mut cache, &mut model, path, index, slots, &what);
-            let effect = (
-                step.arm,
-                step.took_older_spelling,
-                step.leaves_turned_ambiguous,
-                step.leaves_disambiguated,
-            );
-            assert_eq!(
-                effect,
-                (arm, older, turned, cleared),
-                "{what}: the script no longer reaches its case"
-            );
-        }
+        for declare in [false, true] {
+            let mut cache = NetGuidCache::new();
+            let mut model = Model::default();
+            for (n, &(path, index, slots, arm, older, turned, cleared)) in script.iter().enumerate()
+            {
+                let what = format!("declare={declare}, step {n}: {path:?} at index {index}");
+                let step = apply(&mut cache, &mut model, path, index, slots, &what, declare);
+                let effect = (
+                    step.arm,
+                    step.took_older_spelling,
+                    step.leaves_turned_ambiguous,
+                    step.leaves_disambiguated,
+                );
+                assert_eq!(
+                    effect,
+                    (arm, older, turned, cleared),
+                    "{what}: the script no longer reaches its case"
+                );
+            }
 
-        cache.clear();
-        let mut model = Model::default();
-        assert_eq!(lookups(&cache), model.lookups(), "clear left a lookup");
-        let step = apply(&mut cache, &mut model, "Foo", 1, 1, "after clear");
-        assert_eq!(step.arm, Fresh);
+            cache.clear();
+            let mut model = Model::default();
+            assert_eq!(lookups(&cache), model.lookups(), "clear left a lookup");
+            let step = apply(&mut cache, &mut model, "Foo", 1, 1, "after clear", declare);
+            assert_eq!(step.arm, Fresh);
+        }
     }
 
     /// SplitMix64. A fixed seed walks the same sequences on every run.
@@ -1024,59 +1050,63 @@ mod tests {
         const CALLS: usize = 40;
         const INDEXES: usize = 8;
 
-        let mut rng = SplitMix64(0x7672_666b_6974_0001);
-        let mut arms: BTreeMap<Arm, usize> = BTreeMap::new();
-        let (mut fresh_alias, mut took_older, mut turned, mut cleared, mut clears) =
-            (0, 0, 0, 0, 0);
-        for sequence in 0..SEQUENCES {
-            let mut cache = NetGuidCache::new();
-            let mut model = Model::default();
-            for call in 0..CALLS {
-                if rng.below(50) == 0 {
-                    cache.clear();
-                    model = Model::default();
-                    assert_eq!(lookups(&cache), model.lookups(), "clear left a lookup");
-                    clears += 1;
-                    continue;
+        for declare in [false, true] {
+            let mut rng = SplitMix64(0x7672_666b_6974_0001);
+            let mut arms: BTreeMap<Arm, usize> = BTreeMap::new();
+            let (mut fresh_alias, mut took_older, mut turned, mut cleared, mut clears) =
+                (0, 0, 0, 0, 0);
+            for sequence in 0..SEQUENCES {
+                let mut cache = NetGuidCache::new();
+                let mut model = Model::default();
+                for call in 0..CALLS {
+                    if rng.below(50) == 0 {
+                        cache.clear();
+                        model = Model::default();
+                        assert_eq!(lookups(&cache), model.lookups(), "clear left a lookup");
+                        clears += 1;
+                        continue;
+                    }
+                    let path = PATHS[rng.below(PATHS.len())];
+                    let index = rng.below(INDEXES) as u32;
+                    let slots = rng.below(4) as u32;
+                    let what = format!(
+                        "declare={declare}, sequence {sequence}, call {call}: {path:?} at {index}"
+                    );
+                    let step = apply(&mut cache, &mut model, path, index, slots, &what, declare);
+                    *arms.entry(step.arm).or_default() += 1;
+                    fresh_alias += usize::from(step.fresh_alias);
+                    took_older += usize::from(step.took_older_spelling);
+                    turned += step.leaves_turned_ambiguous;
+                    cleared += step.leaves_disambiguated;
                 }
-                let path = PATHS[rng.below(PATHS.len())];
-                let index = rng.below(INDEXES) as u32;
-                let slots = rng.below(4) as u32;
-                let what = format!("sequence {sequence}, call {call}: {path:?} at {index}");
-                let step = apply(&mut cache, &mut model, path, index, slots, &what);
-                *arms.entry(step.arm).or_default() += 1;
-                fresh_alias += usize::from(step.fresh_alias);
-                took_older += usize::from(step.took_older_spelling);
-                turned += step.leaves_turned_ambiguous;
-                cleared += step.leaves_disambiguated;
             }
-        }
 
-        let tallies = format!(
-            "arms {arms:?}, fresh with alias {fresh_alias}, took an older spelling \
+            let tallies = format!(
+                "arms {arms:?}, fresh with alias {fresh_alias}, took an older spelling \
              {took_older}, leaves turned ambiguous {turned}, disambiguated {cleared}, \
              clears {clears}"
-        );
-        for arm in [
-            Arm::Fresh,
-            Arm::Redeclared,
-            Arm::NewIndex,
-            Arm::NewSpelling,
-            Arm::Replaced,
-            Arm::Crossed,
-        ] {
-            assert!(
-                arms.get(&arm).is_some_and(|&n| n > 0),
-                "{arm:?} never taken: {tallies}"
             );
+            for arm in [
+                Arm::Fresh,
+                Arm::Redeclared,
+                Arm::NewIndex,
+                Arm::NewSpelling,
+                Arm::Replaced,
+                Arm::Crossed,
+            ] {
+                assert!(
+                    arms.get(&arm).is_some_and(|&n| n > 0),
+                    "{arm:?} never taken: {tallies}"
+                );
+            }
+            assert!(fresh_alias > 0, "no new group had an alias: {tallies}");
+            assert!(
+                took_older > 0,
+                "no new group took an older spelling: {tallies}"
+            );
+            assert!(turned > 0, "no leaf turned ambiguous: {tallies}");
+            assert!(cleared > 0, "no ambiguous leaf became unique: {tallies}");
+            assert!(clears > 0, "clear was never exercised: {tallies}");
         }
-        assert!(fresh_alias > 0, "no new group had an alias: {tallies}");
-        assert!(
-            took_older > 0,
-            "no new group took an older spelling: {tallies}"
-        );
-        assert!(turned > 0, "no leaf turned ambiguous: {tallies}");
-        assert!(cleared > 0, "no ambiguous leaf became unique: {tallies}");
-        assert!(clears > 0, "clear was never exercised: {tallies}");
     }
 }

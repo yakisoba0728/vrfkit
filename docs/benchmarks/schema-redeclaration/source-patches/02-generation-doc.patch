@@ -1,0 +1,14 @@
+diff --git a/crates/vrf-schema/src/cache.rs b/crates/vrf-schema/src/cache.rs
+index 8bba648e8911797052030aaec6498a1f9d23867b..0665af69a4c366694b453a87662b4b22fe373de3 100644
+--- a/crates/vrf-schema/src/cache.rs
++++ b/crates/vrf-schema/src/cache.rs
+@@ -133,7 +133,8 @@ impl NetGuidCache {
+     }
+
+     /// Changes whenever the set of group paths may have: on every successful
+-    /// [`Self::add_export_group`] and [`Self::clear`]. It never tracks field
++    /// [`Self::add_export_group`], [`Self::declare_export_group`] and
++    /// [`Self::clear`]. It never tracks field
+     /// mutations, so a memo of field contents must not key on it.
+     #[must_use]
+     pub fn schema_generation(&self) -> u64 {
