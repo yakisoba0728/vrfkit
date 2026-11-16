@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "status": "pass",
+  "reference": {
+    "logical_content_sha256": "0ef1c235319635adc6711665fa85da4416a9348c3685c8fe2e0c8bcb01f434e7",
+    "lines": 2949,
+    "compressed": false,
+    "file_bytes": 2307599,
+    "rows": 2949,
+    "represented_moves": 3001,
+    "duplicate_identities": {
+      "groups": 0,
+      "extra_rows": 0
+    }
+  },
+  "rust": {
+    "logical_content_sha256": "431c69dce825574ca802673c598f5e404a7f5f352395868013fa8d319b7a5c67",
+    "lines": 3003,
+    "compressed": true,
+    "file_bytes": 65954,
+    "rows": 3001,
+    "component_groups": 2949,
+    "fragmented_move_rows": 0,
+    "skipped_checkpoint_chunks": 6,
+    "duplicate_identities": {
+      "groups": 0,
+      "extra_rows": 0
+    }
+  },
+  "contract": "unique wire-update identity and f32-quantized latest-move parity",
+  "join_fields": [
+    "packet",
+    "actor",
+    "object",
+    "channel",
+    "update_index"
+  ],
+  "numeric_values_used_for_join": false,
+  "resource_limits": {
+    "max_rows_per_input": 10000000,
+    "max_line_bytes": 1048576,
+    "max_database_bytes": 2147483648,
+    "sqlite_cache_kib": 16384
+  },
+  "limits": [
+    "Main stream only; checkpoints are counted as skipped.",
+    "Only variant-1 successful movement components are supported.",
+    "Earlier moves are counted and indexed, but the reference does not emit their values.",
+    "Float parity is after f32 quantization; original reference deltas remain reported.",
+    "This does not validate fields absent from the vrfkit movement record."
+  ],
+  "missing_reference_updates": 0,
+  "extra_rust_components": 0,
+  "value_comparison": {
+    "status": "complete",
+    "matched_updates": 2949,
+    "mismatch_counts": {
+      "character": 0,
+      "timestamp": 0,
+      "movement_state": 0,
+      "move_type": 0,
+      "move_index": 0,
+      "move_count": 0,
+      "pos_x_bits": 0,
+      "pos_y_bits": 0,
+      "pos_z_bits": 0,
+      "yaw_bits": 0,
+      "pitch_bits": 0,
+      "vel_x_bits": 0,
+      "vel_y_bits": 0,
+      "vel_z_bits": 0
+    },
+    "maximum_absolute_reference_delta": {
+      "pos_x": 0.00011718750010913936,
+      "pos_y": 0.00046875000043655746,
+      "pos_z": 1.2207031261368684e-05,
+      "yaw": 0.0,
+      "pitch": 0.0,
+      "vel_x": 2.4414062522737368e-05,
+      "vel_y": 1.2207031261368684e-05,
+      "vel_z": 0.0
+    }
+  },
+  "database_bytes": 765952,
+  "tool_sha256": "a129232f27ae46cb2dd491255807140ca91950793a63bd3ddaba8eac5fe3c9eb"
+}
