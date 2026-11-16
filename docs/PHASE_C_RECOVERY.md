@@ -1,5 +1,14 @@
 # Phase C recovery checkpoint
 
+## Reconnection supersedes the interruption status
+
+The original environment reconnected later in the same session. Original
+Reader, Gameplay and QA source files were recovered. The interruption
+record below remains a historical receipt; its unavailable-source and
+blocked-execution statements describe that earlier checkpoint. Current
+progress and exact recovered source refs are in [the status ledger](PHASE_C_STATUS.md).
+Functional acceptance is still required; recovery alone does not satisfy it.
+
 ## Status and accepted source
 
 **Phase C is blocked by the unavailable execution environment. Functional

@@ -34,7 +34,8 @@
       "tree": "0878868ec49dab4c77517ebe6ab9593863b3c3d8",
       "metadata_only": true,
       "source_files_preserved": false,
-      "receipt_path": "docs/evidence/phase_c/independent_qa/RECOVERY_UNVERIFIED.md"
+      "receipt_commit_url": "https://github.com/yakisoba0728/vrfkit/commit/ad64e9ee92697a3cf0f288641f154997878ef788",
+      "receipt_file_name": "RECOVERY_UNVERIFIED.md"
     }
   },
   "agents": {
@@ -156,5 +157,7 @@
   "performance_claim": null,
   "main_mutated": false,
   "releases_or_tags_created": false,
-  "registry_publication": false
+  "registry_publication": false,
+  "checkpoint_kind": "historical_interruption",
+  "superseded_by": "docs/PHASE_C_STATUS.md#resumed-after-environment-reconnection"
 }

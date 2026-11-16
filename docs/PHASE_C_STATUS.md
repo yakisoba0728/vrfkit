@@ -87,3 +87,23 @@ performance comparison or publication is claimed.
 The [recovery checkpoint](PHASE_C_RECOVERY.md) and
 [structured receipt](evidence/phase-c-recovery.json) record exact source
 boundaries, observed checks, unobserved operations and restart order.
+
+## Resumed after environment reconnection
+
+The interruption checkpoint above is historical. The original environment
+reconnected during the same session. Fresh filesystem inspection recovered
+A's exact local commit, B's original staged source and all four E QA sources.
+The original A source is now published on `phase-c/reader-checkpoints` at
+`9c4e698b829c1ea4c056512b2fa01060fdd7a516`, with tree
+`970f489ec0bcdd6cd6c36523a7705a7ea1746e76` exactly matching the local candidate.
+The recovered QA source draft is published on `phase-c/independent-qa` at
+`57f7f9da19bd267917378526e96cec67e5b7ea66`, tree
+`623192b3844b33a7d34e80962a7470e3fe91b213`.
+
+Runtime implementation and required acceptance have resumed. B confirmed all
+15 new tests passed after reconnection; E successfully reran the expanded
+historical FocusProjectiles evidence receipt. These are intermediate results,
+not final acceptance. C is now implementing the narrow evidence-qualified
+array route. Historical unverified recovery branches remain unchanged.
+Main/integration and PR #58 retain their accepted starting states until the
+task PR gates pass. The performance prohibition remains in force.
