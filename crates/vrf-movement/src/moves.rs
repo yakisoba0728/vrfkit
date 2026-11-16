@@ -57,6 +57,7 @@ pub(crate) fn next_marker(marker: u8) -> u8 {
 
 /// Parse one MovementMove. The fields it drops all vary on real data; their
 /// meaning is unknown.
+#[inline(always)]
 fn parse_single_move(
     reader: &mut BitReader<'_>,
     shooter_guid: u32,
