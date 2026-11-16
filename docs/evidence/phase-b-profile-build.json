@@ -1,0 +1,303 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "9c133fb423c521d7df25b6ef19cb546fa489de4e",
+  "toolchain": "rustc 1.86.0 (05f9846f8 2025-03-31)",
+  "build_command": "cargo +1.86.0 build --release -p vrfkit --locked",
+  "features": "default",
+  "release_profile": {
+    "opt_level": 3,
+    "lto": "fat",
+    "codegen_units": 1,
+    "debug": 1
+  },
+  "same_checkout_directory_for_both_builds": true,
+  "baseline_sha256": "33f4a2e286055e487ac677a9713e626f7b4a340932630a15679a1d84f2d2af87",
+  "diagnostic_sha256": "71b7183063c066c7e60a3695484b2b7644074e83d2d9782bbab854468bce3d6b",
+  "instrumentation_patch_sha256": "c3c9499b6e60877e3969390629278c84d87b19525a30202d8acec82aa108cfd5",
+  "architecture": "x86_64",
+  "system": "Linux",
+  "kernel": "6.18.57",
+  "columns_by_pass": {
+    "main": {
+      "actor_net_guid": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 1420540,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "bit_count": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 1702424,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "channel_index": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 1339499,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "compatible_checksum": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 7989583,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "field_name": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 40497879,
+        "dict_values": 1654734,
+        "dict_runs": 1521740,
+        "hash_bytes": 65627501,
+        "run_hash_bytes": 57967287
+      },
+      "group_path": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 37659861,
+        "dict_values": 1657000,
+        "dict_runs": 542085,
+        "hash_bytes": 102421139,
+        "run_hash_bytes": 32982186
+      },
+      "handle": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 2012961,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "object_net_guid": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 6694906,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "packet_id": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 1390769,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "raw_bits": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 28485750,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "time_ms": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 2363838,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "value_bool": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 3291149,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "value_f64": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 7477047,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "value_i64": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 6924761,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "value_str": {
+        "batches": 203,
+        "rows": 1657000,
+        "build_ns": 22912562,
+        "dict_values": 208273,
+        "dict_runs": 208273,
+        "hash_bytes": 8667856,
+        "run_hash_bytes": 8667856
+      }
+    },
+    "checkpoints": {
+      "actor_net_guid": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 439830,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "bit_count": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 518310,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "channel_index": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 423919,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "compatible_checksum": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 1563995,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "field_name": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 19752989,
+        "dict_values": 436373,
+        "dict_runs": 425891,
+        "hash_bytes": 17340731,
+        "run_hash_bytes": 17160975
+      },
+      "group_path": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 10726832,
+        "dict_values": 439892,
+        "dict_runs": 16641,
+        "hash_bytes": 26703544,
+        "run_hash_bytes": 845321
+      },
+      "handle": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 523185,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "object_net_guid": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 1990833,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "packet_id": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 399042,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "raw_bits": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 7255255,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "time_ms": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 929234,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "value_bool": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 1165361,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "value_f64": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 1887567,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "value_i64": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 1880880,
+        "dict_values": 0,
+        "dict_runs": 0,
+        "hash_bytes": 0,
+        "run_hash_bytes": 0
+      },
+      "value_str": {
+        "batches": 54,
+        "rows": 439892,
+        "build_ns": 4325669,
+        "dict_values": 18355,
+        "dict_runs": 18355,
+        "hash_bytes": 587001,
+        "run_hash_bytes": 587001
+      }
+    }
+  },
+  "unmeasured": [
+    "allocation call stacks",
+    "complete allocation bytes including aligned allocations",
+    "physical disk time",
+    "CPU user call stacks",
+    "competitor equal-work performance"
+  ]
+}

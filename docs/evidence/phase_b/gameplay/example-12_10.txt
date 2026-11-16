@@ -1,0 +1,10 @@
+derived_phase_observations: 26
+derived_unknown_phase: 0
+native_character_death: 0
+native_round_started: 7
+native_spike_defused: 0
+native_spike_exploded: 0
+native_spike_planted: 0
+native_unprojected: 0
+skipped_checkpoints: 7
+block_verdict: Passed

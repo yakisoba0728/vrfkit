@@ -1,4 +1,4 @@
-//! File-backed chunk source for the Reader. The decoder is shared with slices.
+//! File-backed chunk sources shared by the Reader and CLI decode passes.
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -18,6 +18,11 @@ pub(crate) struct FileInput {
     main: FileChunks,
     ahead: FileChunks,
 }
+
+/// An independent cursor for the optional CLI checkpoint pass. It never
+/// reads ReplayData or Event bodies and buffers one checkpoint at a time.
+#[cfg(feature = "export")]
+pub(crate) struct CheckpointInput(FileChunks);
 
 struct FileChunks {
     file: File,
@@ -57,6 +62,27 @@ impl FileInput {
                 },
             },
         ))
+    }
+
+    #[cfg(feature = "export")]
+    pub fn len(&self) -> u64 {
+        self.main.len
+    }
+
+    /// Open before the main pass begins, using the same validated extent.
+    /// Independent handles keep checkpoint parsing and main prefetch parallel.
+    #[cfg(feature = "export")]
+    pub fn checkpoints(&self, path: &Path) -> Result<CheckpointInput, CliError> {
+        let mut file = File::open(path)?;
+        if file.metadata()?.len() != self.main.len {
+            return Err(std::io::Error::other("replay length changed while opening").into());
+        }
+        file.seek(SeekFrom::Start(self.main.position))?;
+        Ok(CheckpointInput(FileChunks {
+            file,
+            len: self.main.len,
+            position: self.main.position,
+        }))
     }
 
     pub fn for_each_chunk(
@@ -132,6 +158,27 @@ impl FileInput {
             }
             Ok(unknown)
         })
+    }
+}
+
+#[cfg(feature = "export")]
+impl CheckpointInput {
+    pub fn for_each_chunk(
+        self,
+        on_checkpoint: &mut dyn FnMut(&[u8]) -> Result<(), CliError>,
+    ) -> Result<(), CliError> {
+        let Self(mut chunks) = self;
+        let mut payload = Vec::new();
+        while let Some((kind, size)) = chunks.next_header()? {
+            if kind == ChunkType::Checkpoint {
+                payload.resize(size, 0);
+                chunks.file.read_exact(&mut payload)?;
+                on_checkpoint(&payload)?;
+            } else {
+                chunks.skip_payload()?;
+            }
+        }
+        Ok(())
     }
 }
 

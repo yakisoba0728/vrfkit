@@ -9,7 +9,7 @@
 
 use std::io::Write;
 
-use vrf_container::{ChunkType, decompress_checkpoint_with_trailing, parse_checkpoint_chunk};
+use vrf_container::{decompress_checkpoint_with_trailing, parse_checkpoint_chunk};
 use vrf_export::{
     CheckpointActorRecord, CheckpointActorWriter, CheckpointBlockWriter,
     CheckpointExportFieldRecord, CheckpointExportFieldWriter, CheckpointExportGroupRecord,
@@ -223,16 +223,12 @@ pub(super) struct CheckpointPass {
 /// Decode every Checkpoint chunk in file order into `writers`, then close
 /// them.
 pub(super) fn run<W: Write + Send + 'static>(
-    data: &[u8],
     replay: &Replay<'_>,
     mut writers: CheckpointWriters<W>,
+    chunks: impl FnOnce(&mut dyn FnMut(&[u8]) -> Result<(), CliError>) -> Result<(), CliError>,
 ) -> Result<CheckpointPass, CliError> {
     let mut out = CheckpointPass::default();
-    for chunk in replay.chunks(data) {
-        if let (ChunkType::Checkpoint, payload) = chunk? {
-            process_chunk(payload, replay, &mut writers, &mut out)?;
-        }
-    }
+    chunks(&mut |payload| process_chunk(payload, replay, &mut writers, &mut out))?;
     writers.finish()?;
     Ok(out)
 }
@@ -350,7 +346,7 @@ fn process_chunk<W: Write + Send>(
 
 #[cfg(test)]
 mod tests {
-    use vrf_container::parse_preamble;
+    use vrf_container::{ChunkType, parse_preamble};
     use vrf_testkit::{Info, chunk, header_payload, replay_info};
 
     use super::*;
@@ -369,7 +365,16 @@ mod tests {
         }
         let preamble = parse_preamble(&data).unwrap();
         let writers = CheckpointWriters::new(|_| Ok(Vec::new())).unwrap();
-        let out = run(&data, &Replay::new(&preamble), writers).unwrap();
+        let replay = Replay::new(&preamble);
+        let out = run(&replay, writers, |on_checkpoint| {
+            for chunk in replay.chunks(&data) {
+                if let (ChunkType::Checkpoint, payload) = chunk? {
+                    on_checkpoint(payload)?;
+                }
+            }
+            Ok(())
+        })
+        .unwrap();
         let labels: Vec<_> = (out.partials.iter())
             .map(|row| (row.source, row.checkpoint_id.as_deref()))
             .collect();

@@ -1,7 +1,10 @@
 # Overhaul execution ledger
 
-The bounded continuation is tracked in [Phase A status](PHASE_A_STATUS.md).
-The historical checkpoint below retains its original measurements and scope.
+The current continuation is tracked in [Phase B status](PHASE_B_STATUS.md)
+and [Phase B results](PHASE_B_RESULTS.md). The user has assigned final
+quantitative performance comparison to themselves; functional verification
+and integration gates remain required. [Phase A status](PHASE_A_STATUS.md)
+and the historical checkpoint below retain their original evidence and scope.
 
 Updated for the 2026-11-16 session. The detailed
 [verified results](OVERHAUL_RESULTS_2026_11_16.md) and

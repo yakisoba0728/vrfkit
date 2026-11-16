@@ -1,0 +1,72 @@
+{
+  "scope": "Phase B developer-experience example smoke; synthetic input only",
+  "base_revision": "0c2364339588a9bc9b6bcccde9911d4685fdec1b",
+  "example": "docs/examples/summarize_fields.py",
+  "example_sha256": "a58cf7f82a5bf2a27e931b47e52e6a770f7a97d9f2e4f4bf938820f18b236644",
+  "python": "3.12.14",
+  "pyarrow": "26.0.1",
+  "command_policy": "Python warnings treated as errors for the successful example and JSONL runs",
+  "synthetic_input": {
+    "rows": 7,
+    "parquet_row_group_size": 2,
+    "cases": [
+      "raw null",
+      "raw empty bytes",
+      "untyped raw bytes",
+      "integer zero",
+      "boolean false",
+      "empty typed string",
+      "maximum signed 64-bit integer",
+      "negative floating zero"
+    ]
+  },
+  "parquet_example": {
+    "batch_sizes": [
+      1,
+      2,
+      2048
+    ],
+    "all_expected_aggregates_matched": true,
+    "stderr_empty": true,
+    "expected": {
+      "field_rows": 7,
+      "rows_with_overlay": 5,
+      "rows_without_overlay": 2,
+      "rows_with_raw_window": 6,
+      "stored_raw_bytes": 20
+    },
+    "zero_batch_size_exit_code": 2,
+    "zero_batch_size_stdout_empty": true
+  },
+  "projected_jsonl": {
+    "batch_size": 2,
+    "columns": [
+      "bit_count",
+      "raw_bits",
+      "value_i64",
+      "value_f64",
+      "value_bool",
+      "value_str"
+    ],
+    "all_rows_equal_after_hex_decode": true,
+    "signed_64_bit_integer_exact": true,
+    "negative_zero_sign_retained": true
+  },
+  "docs_guard": {
+    "command": "python -W error tools/check_docs.py --fast",
+    "exit_code": 1,
+    "missing_link_occurrences": 9,
+    "missing_dependency_paths": [
+      "docs/CLI_INPUT_STREAMING.md",
+      "docs/GAMEPLAY_API.md",
+      "crates/vrfkit/examples/gameplay_events.rs"
+    ],
+    "other_reported_problems": [],
+    "acceptance": "Combined branch must rerun the guard after C and D dependencies are present"
+  },
+  "limits": [
+    "No replay input was used by this smoke check",
+    "No throughput or peak-memory result is claimed",
+    "No workspace or Python-suite count is changed or measured here"
+  ]
+}

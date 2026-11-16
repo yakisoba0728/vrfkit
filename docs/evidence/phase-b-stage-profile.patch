@@ -1,0 +1,192 @@
+diff --git a/crates/vrf-export/src/schema.rs b/crates/vrf-export/src/schema.rs
+index 8b8ea8e..715345c 100644
+--- a/crates/vrf-export/src/schema.rs
++++ b/crates/vrf-export/src/schema.rs
+@@ -31,7 +31,7 @@ macro_rules! columns {
+             pub(crate) fn columns<'a>(
+                 rows: impl ExactSizeIterator<Item = &'a Self> + Clone,
+             ) -> Vec<arrow_array::ArrayRef> {
+-                vec![$(column!(rows $name $(@opt $opt)? $(@kind $kind)? $(($($size),*))?)),+]
++                vec![$(profile_column(stringify!($row), stringify!($name), || column!(rows $name $(@opt $opt)? $(@kind $kind)? $(($($size),*))?))),+]
+             }
+         }
+     };
+@@ -408,3 +408,59 @@ columns! {
+         raw_bits: bytes,
+     }
+ }
++
++
++#[derive(Default)]
++struct ColumnProfile {
++    batches: u64,
++    rows: u64,
++    build_ns: u128,
++    dict_values: u64,
++    dict_runs: u64,
++    hash_bytes: u64,
++    run_hash_bytes: u64,
++}
++
++thread_local! {
++    static COLUMN_PROFILE: std::cell::RefCell<std::collections::BTreeMap<(&'static str, &'static str), ColumnProfile>> = std::cell::RefCell::new(std::collections::BTreeMap::new());
++}
++
++fn profile_column(row: &'static str, name: &'static str, make: impl FnOnce() -> arrow_array::ArrayRef) -> arrow_array::ArrayRef {
++    use arrow_array::{Array, DictionaryArray, StringArray, types::Int32Type};
++    let started = std::time::Instant::now();
++    let array = make();
++    let elapsed = started.elapsed().as_nanos();
++    COLUMN_PROFILE.with(|profiles| {
++        let mut profiles = profiles.borrow_mut();
++        let profile = profiles.entry((row, name)).or_default();
++        profile.batches += 1;
++        profile.rows += array.len() as u64;
++        profile.build_ns += elapsed;
++        if let Some(dict) = array.as_any().downcast_ref::<DictionaryArray<Int32Type>>() {
++            let strings = dict.values().as_any().downcast_ref::<StringArray>().unwrap();
++            let mut previous = None;
++            for key in dict.keys() {
++                if let Some(key) = key {
++                    let bytes = strings.value(key as usize).len() as u64;
++                    profile.dict_values += 1;
++                    profile.hash_bytes += bytes;
++                    if Some(key) != previous {
++                        profile.dict_runs += 1;
++                        profile.run_hash_bytes += bytes;
++                    }
++                }
++                previous = key;
++            }
++        }
++    });
++    array
++}
++
++pub(crate) fn profile_flush_columns() {
++    COLUMN_PROFILE.with(|profiles| {
++        let profiles = std::mem::take(&mut *profiles.borrow_mut());
++        for ((row, column), p) in profiles {
++            eprintln!("PHASE_PROFILE column {row}.{column} batches={} rows={} build_ns={} dict_values={} dict_runs={} hash_bytes={} run_hash_bytes={}", p.batches, p.rows, p.build_ns, p.dict_values, p.dict_runs, p.hash_bytes, p.run_hash_bytes);
++        }
++    });
++}
+diff --git a/crates/vrf-export/src/writer.rs b/crates/vrf-export/src/writer.rs
+index 38843d0..950f5a5 100644
+--- a/crates/vrf-export/src/writer.rs
++++ b/crates/vrf-export/src/writer.rs
+@@ -119,6 +119,10 @@ pub struct TableWriter<T: Table, W: Write + Send> {
+     /// in `buffer` or in `writer`; zeroed only when that group closes. Used
+     /// only with a byte budget ([`Table::MAX_BUFFERED_BYTES`]).
+     pending_bytes: usize,
++    profile_build_ns: u128,
++    profile_drop_ns: u128,
++    profile_encode_ns: u128,
++    profile_rows: usize,
+     _table: PhantomData<fn() -> T>,
+ }
+ 
+@@ -147,6 +151,10 @@ impl<T: Table, W: Write + Send> TableWriter<T, W> {
+             buffer: Vec::with_capacity(T::initial_capacity(batch_rows)),
+             batch_rows,
+             pending_bytes: 0,
++            profile_build_ns: 0,
++            profile_drop_ns: 0,
++            profile_encode_ns: 0,
++            profile_rows: 0,
+             _table: PhantomData,
+         })
+     }
+@@ -181,7 +189,10 @@ impl<T: Table, W: Write + Send> TableWriter<T, W> {
+         if !self.buffer.is_empty() {
+             self.flush_buffer()?;
+         }
++        let close_start = std::time::Instant::now();
+         self.writer.close()?;
++        crate::schema::profile_flush_columns();
++        eprintln!("PHASE_PROFILE table {} rows={} build_ns={} drop_ns={} encode_ns={} close_ns={}", std::any::type_name::<T>(), self.profile_rows, self.profile_build_ns, self.profile_drop_ns, self.profile_encode_ns, close_start.elapsed().as_nanos());
+         Ok(())
+     }
+ 
+@@ -246,11 +257,18 @@ impl<T: Table, W: Write + Send> TableWriter<T, W> {
+     }
+ 
+     fn flush_buffer(&mut self) -> Result<(), ExportError> {
++        self.profile_rows += self.buffer.len();
++        let build_start = std::time::Instant::now();
+         let batch = T::build_batch(&self.buffer)?;
++        self.profile_build_ns += build_start.elapsed().as_nanos();
++        let drop_start = std::time::Instant::now();
+         // Cleared (one allocation for the run) before `write`, so the rows are
+         // freed before the encoder runs.
+         self.buffer.clear();
++        self.profile_drop_ns += drop_start.elapsed().as_nanos();
++        let encode_start = std::time::Instant::now();
+         self.writer.write(&batch)?;
++        self.profile_encode_ns += encode_start.elapsed().as_nanos();
+         // A group closed at its row limit is on the sink; 131,072 is 16 whole
+         // batches, so every such close lands here. A custom size that splits a
+         // batch over-counts the flushed head, which can only close a group early.
+diff --git a/crates/vrfkit/src/driver/mod.rs b/crates/vrfkit/src/driver/mod.rs
+index d236131..9c959f2 100644
+--- a/crates/vrfkit/src/driver/mod.rs
++++ b/crates/vrfkit/src/driver/mod.rs
+@@ -65,7 +65,9 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(),
+     let start = Instant::now();
+ 
+     eprintln!("reading {vrf_path}...");
++    let input_start = Instant::now();
+     let data = fs::read(vrf_path)?;
++    eprintln!("PHASE_PROFILE input_read wall_ns={}", input_start.elapsed().as_nanos());
+     let file_size = data.len();
+ 
+     let preamble = parse_preamble(&data)?;
+@@ -107,6 +109,8 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(),
+     let (main, checkpoints) = thread::scope(|scope| {
+         let worker = checkpoint_writers
+             .map(|writers| scope.spawn(|| checkpoints::run(&data, &replay, writers)));
++        let profile_main_start = Instant::now();
++        let profile_main_cpu = writers::profile_cpu_ns();
+         let main = for_each_chunk(&data, &replay, |chunk| {
+             match chunk {
+                 Chunk::Event(payload) => write_event(payload, &mut event_writer, &mut totals)?,
+@@ -130,6 +134,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(),
+             }
+             Ok(())
+         });
++        eprintln!("PHASE_PROFILE thread main wall_ns={} cpu_ns={}", profile_main_start.elapsed().as_nanos(), writers::profile_cpu_ns().saturating_sub(profile_main_cpu));
+         let checkpoints = worker.map(|worker| {
+             (worker.join())
+                 .unwrap_or_else(|_| Err(CliError::Usage("checkpoint pass panicked".to_owned())))
+diff --git a/crates/vrfkit/src/driver/writers.rs b/crates/vrfkit/src/driver/writers.rs
+index ef7e386..1333709 100644
+--- a/crates/vrfkit/src/driver/writers.rs
++++ b/crates/vrfkit/src/driver/writers.rs
+@@ -19,6 +19,12 @@ use vrf_export::{ExportError, Table, TableWriter};
+ 
+ use crate::error::CliError;
+ 
++pub(super) fn profile_cpu_ns() -> u128 {
++    std::fs::read_to_string("/proc/thread-self/schedstat")
++        .ok().and_then(|s| s.split_whitespace().next()?.parse().ok()).unwrap_or(0)
++}
++
++
+ /// Rows per message to a writer: one message per packet would cost more in
+ /// channel traffic than the encoding it hides (02d4d478: 2.44 `fields` and
+ /// 3.48 `movement` rows per packet, about 80 and 113 batches).
+@@ -54,7 +60,13 @@ impl<T: Send + 'static> WriterThread<T> {
+         // fresh multi-MB Vec the OS must zero (02d4d478: 255k -> 147k page
+         // faults); a deeper pool only kept more idle pages resident.
+         let (give_back, recycled) = sync_channel(1);
+-        let handle = thread::spawn(move || run(rx, give_back));
++        let handle = thread::spawn(move || {
++            let start = std::time::Instant::now();
++            let cpu = profile_cpu_ns();
++            let result = run(rx, give_back);
++            eprintln!("PHASE_PROFILE thread {table} wall_ns={} cpu_ns={}", start.elapsed().as_nanos(), profile_cpu_ns().saturating_sub(cpu));
++            result
++        });
+         Self {
+             tx: Some(tx),
+             recycled,
