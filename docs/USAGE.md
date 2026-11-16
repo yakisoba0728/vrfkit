@@ -1053,6 +1053,7 @@ This measures value presence, not semantic understanding or block preservation.
 
 | Script | What it does |
 |---|---|
+| `export_jsonl.py` | Streams a selected main/checkpoint Parquet table to atomic, schema-described JSONL; exact integers, raw bytes as hex, explicit nulls, projected columns and bounded row batches. See [JSONL](JSONL.md) for encodings, unsupported types, source protection and memory scope. |
 | `extract_kill_observations.py` | Exports main and checkpoint KillData element snapshots with physical parent-row identity, independently checked raw values, nullable missing members and scoped reference status. Keeps all clocks separately; updates are not deduplicated kills. Accepts 11.06-12.09, 13.01-13.06, 13.08 and 13.09 (`MEASURED_BUILDS`) and refuses 12.10, 12.11, 13.00 and any other build before reading a row. See [KILL_OBSERVATIONS.md](KILL_OBSERVATIONS.md#measured-builds). |
 | `extract_kill_ledger.py` | Retains character-death events, projects component-local KillData state and links mutually unique same-round PlayerState identities. Preserves unmatched events and observations. Reads the same measured builds as the observation extractor. See [KILL_OBSERVATIONS.md](KILL_OBSERVATIONS.md#ledger). |
 | `extract_healing_observations.py` | Retains serialized heal amounts, section state, raw source rows and separate identity corroboration. Amount sums do not establish effective HP restored or player healing credit. See [SECTION_OBSERVATIONS.md](SECTION_OBSERVATIONS.md#healing). |
@@ -1126,7 +1127,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-775 Rust tests (Windows), 774 Rust tests (non-Windows), and 1108 Python tests.
+775 Rust tests (Windows), 774 Rust tests (non-Windows), and 1127 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
