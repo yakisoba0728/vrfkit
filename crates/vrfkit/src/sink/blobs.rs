@@ -314,6 +314,45 @@ fn active_blind_array_bits(raw: &[u8], bit_count: u32) -> u32 {
     without_empty_trailer.unwrap_or(bit_count)
 }
 
+/// The exact FocusProjectiles grammar: one packed NetGUID member per changed
+/// index, explicit element/root terminators, and one final zero byte only on
+/// an empty delta. The ordinary array walker remains unchanged.
+fn focus_projectile_array_bits(raw: &[u8], bit_count: u32) -> Option<u32> {
+    if raw.len() != (bit_count as usize).div_ceil(8) {
+        return None;
+    }
+    let mut reader = BitReader::with_bit_len(raw, u64::from(bit_count)).ok()?;
+    let capacity = reader.read_int_packed().ok()?;
+    if capacity > vrf_decode::MAX_ELEMENTS {
+        return None;
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    loop {
+        let encoded_index = reader.read_int_packed().ok()?;
+        if encoded_index == 0 {
+            if seen.is_empty() && reader.bits_remaining() == 8 {
+                return (reader.read_int_packed().ok()? == 0).then_some(bit_count - 8);
+            }
+            return reader.at_end().then_some(bit_count);
+        }
+        if encoded_index > capacity || !seen.insert(encoded_index) {
+            return None;
+        }
+        if reader.read_int_packed().ok()? != 47 {
+            return None;
+        }
+        let width = reader.read_int_packed().ok()?;
+        if ![8, 16, 24, 32, 40].contains(&width) {
+            return None;
+        }
+        let mut member = reader.sub_reader(u64::from(width)).ok()?;
+        member.read_int_packed().ok()?;
+        if !member.at_end() || reader.read_int_packed().ok()? != 0 {
+            return None;
+        }
+    }
+}
+
 /// Decode a leaf a rule typed; a failure counts in `failures` and leaves the
 /// columns null.
 fn decode_leaf(leaf: Leaf, raw: &[u8], bit_count: u32, failures: &mut u64) -> DecodedColumns {
@@ -395,6 +434,9 @@ fn measured_array_route(
         ("/Script/ShooterGame.BlindManagerComponent", "ActiveBlinds", Some(3_853_965_310)) => {
             MeasuredArrayRoute::ActiveBlinds
         }
+        ("/Game/Characters/Clay/Clay_PC.Clay_PC_C", "FocusProjectiles", Some(957_945_936)) => {
+            MeasuredArrayRoute::FocusProjectiles
+        }
         _ => return None,
     };
     Some(route)
@@ -463,6 +505,7 @@ impl ExportSink<'_> {
     /// after its raw container.
     pub(super) fn emit_flattened_array(
         &mut self,
+        parent_handle: u32,
         field_name: Option<&str>,
         checksum: Option<u32>,
         raw: &[u8],
@@ -474,6 +517,10 @@ impl ExportSink<'_> {
         let Some(kind) = self.array_kind(parent, checksum) else {
             return;
         };
+        if kind == ArrayKind::Measured(MeasuredArrayRoute::FocusProjectiles) {
+            self.emit_focus_projectiles(parent_handle, raw, bit_count);
+            return;
+        }
         let (names, checksums) = Self::declared_handles(self.cache, &self.current_group_path);
         let route = match kind {
             ArrayKind::Measured(route) => Some(route),
@@ -607,6 +654,54 @@ impl ExportSink<'_> {
         }
         if let Some(route) = route {
             *self.stats.route_children(route) += self.stats.fields_emitted - rows_before;
+        }
+    }
+
+    /// Expand only the measured parent and member declarations, before the
+    /// unchanged raw parent. A malformed array emits no partial child list.
+    fn emit_focus_projectiles(&mut self, parent_handle: u32, raw: &[u8], bit_count: u32) {
+        let (names, checksums) = Self::declared_handles(self.cache, &self.current_group_path);
+        if parent_handle != 45
+            || declared_at(&names, 45) != Some("FocusProjectiles")
+            || declared_at(&checksums, 45) != Some(957_945_936)
+            || declared_at(&names, 46) != Some("FocusProjectiles")
+            || declared_at(&checksums, 46) != Some(831_657_485)
+        {
+            return;
+        }
+        let Some(array_bits) = focus_projectile_array_bits(raw, bit_count) else {
+            self.stats.array.errors += 1;
+            return;
+        };
+        let mut walk = ArrayDecodeStats::default();
+        let flattened = vrf_decode::decode_struct_array_exact(raw, array_bits, &names, &mut walk);
+        self.stats.array.merge_from(&walk);
+        if !walk.is_clean() {
+            return;
+        }
+        let mut decoded = Vec::with_capacity(flattened.len());
+        for field in &flattened {
+            let columns = decode_leaf_with_stats(
+                FieldType::ObjectNetGuid,
+                &field.raw_bits,
+                field.bit_count,
+                &mut self.stats.array_leaf_decode_errors,
+            );
+            if columns.0.is_none() {
+                return;
+            }
+            decoded.push(columns);
+        }
+        self.stats.focus_projectiles_empty_trailers += u64::from(array_bits != bit_count);
+        self.stats.route_children_focus_projectiles += flattened.len() as u64;
+        for (field, columns) in flattened.iter().zip(decoded) {
+            self.push_child(
+                field.handle,
+                &["FocusProjectiles", &field.path],
+                field.bit_count,
+                &field.raw_bits,
+                columns,
+            );
         }
     }
 
@@ -952,6 +1047,10 @@ mod tests {
     const KILL_PARENT: &str = "KillData";
     const KILL_CHECKSUM: u32 = 1_493_759_848;
     const MEASURED_BUILD: &str = "++Ares-Core+release-13.05";
+    const FOCUS_BUILD: &str = "++Ares-Core+release-12.05";
+    const FOCUS_GROUP: &str = "/Game/Characters/Clay/Clay_PC.Clay_PC_C";
+    const FOCUS_PARENT: (&str, &str, u32) = (FOCUS_GROUP, "FocusProjectiles", 957_945_936);
+    const FOCUS_MEMBER: (u32, &str, u32) = (46, "FocusProjectiles", 831_657_485);
     const EFFECTS_GROUP: &str = "/Script/ShooterGame.EffectManagerComponent";
     const IGNORE_GROUP: &str = "/Script/ShooterGame.FiniteSpeedMovementComponent";
     const BLINDS: (&str, &str, u32) = (
@@ -1074,13 +1173,28 @@ mod tests {
         bits: &[bool],
         branch: Option<&str>,
     ) -> (RecordBuffers, ExportStats) {
+        let parent_handle = if identity.1 == "FocusProjectiles" {
+            45
+        } else {
+            0
+        };
+        export_array_at(parent_handle, identity, leaves, bits, branch)
+    }
+
+    fn export_array_at(
+        parent_handle: u32,
+        identity: (&str, &str, u32),
+        leaves: &[(u32, &str, u32)],
+        bits: &[bool],
+        branch: Option<&str>,
+    ) -> (RecordBuffers, ExportStats) {
         let (group, parent, checksum) = identity;
         let mut rig = Rig::default();
         rig.cache
             .add_export_group(vrf_schema::NetFieldExportGroup::new(group.into(), 7, 128))
             .unwrap();
         for (handle, name, compatible_checksum) in
-            std::iter::once((0, parent, checksum)).chain(leaves.iter().copied())
+            std::iter::once((parent_handle, parent, checksum)).chain(leaves.iter().copied())
         {
             assert!(rig.cache.set_field_on_group(
                 7,
@@ -1098,12 +1212,187 @@ mod tests {
         }
         let raw = pack(bits);
         sink.on_field(
-            0,
+            parent_handle,
             bits.len() as u32,
             BitReader::with_bit_len(&raw, bits.len() as u64).unwrap(),
         );
         let stats = sink.stats;
         (rig.records, stats)
+    }
+
+    #[test]
+    fn focus_projectiles_emits_exact_guids_in_wire_order_before_the_raw_parent() {
+        let mut bits = Vec::new();
+        bits.int_packed(3);
+        let mut expected = Vec::new();
+        for (index, guid) in [(2, 700), (0, 40_000)] {
+            let mut payload = Vec::new();
+            payload.int_packed(guid);
+            bits.int_packed(index + 1);
+            bits.int_packed(47);
+            bits.int_packed(payload.len() as u32);
+            bits.extend(&payload);
+            bits.int_packed(0);
+            expected.push((index, guid, payload));
+        }
+        bits.int_packed(0);
+        let (records, stats) =
+            export_array(FOCUS_PARENT, &[FOCUS_MEMBER], &bits, Some(FOCUS_BUILD));
+        assert_eq!(records.fields.len(), 3);
+        for (child, (index, guid, payload)) in records.fields.iter().zip(expected) {
+            assert_eq!(child.handle, 46);
+            assert_eq!(
+                child.field_name.as_deref(),
+                Some(format!("FocusProjectiles[{index}].FocusProjectiles").as_str())
+            );
+            assert_eq!(child.compatible_checksum, None);
+            assert_eq!(child.bit_count, payload.len() as u32);
+            assert_eq!(child.raw_bits.as_deref(), Some(pack(&payload).as_slice()));
+            assert_eq!(values(child), (Some(i64::from(guid)), None, None, None));
+        }
+        let parent = &records.fields[2];
+        assert_eq!(parent.field_name.as_deref(), Some("FocusProjectiles"));
+        assert_eq!(parent.handle, 45);
+        assert_eq!(parent.compatible_checksum, Some(957_945_936));
+        assert_eq!(parent.bit_count, bits.len() as u32);
+        assert_eq!(parent.raw_bits.as_deref(), Some(pack(&bits).as_slice()));
+        assert_eq!(values(parent), (None, None, None, None));
+        assert_eq!(stats.fields_emitted, 3);
+        assert_eq!(stats.array.elements_decoded, 2);
+        assert_eq!(stats.array.fields_emitted, 2);
+        assert!(stats.array.is_clean());
+        assert_eq!(stats.array_leaf_decode_errors, 0);
+        assert_eq!(stats.route_children_focus_projectiles, 2);
+        assert_eq!(stats.focus_projectiles_empty_trailers, 0);
+    }
+
+    #[test]
+    fn focus_projectiles_empty_deltas_preserve_and_count_only_the_zero_trailer() {
+        for (raw, trailers) in [(&[0, 0][..], 0), (&[2, 0, 0][..], 1), (&[4, 0, 0][..], 1)] {
+            let (records, stats) = export_array(
+                FOCUS_PARENT,
+                &[FOCUS_MEMBER],
+                &unpack(raw),
+                Some(FOCUS_BUILD),
+            );
+            assert_eq!(records.fields.len(), 1);
+            assert_eq!(records.fields[0].raw_bits.as_deref(), Some(raw));
+            assert!(stats.array.is_clean());
+            assert_eq!(stats.route_children_focus_projectiles, 0);
+            assert_eq!(stats.focus_projectiles_empty_trailers, trailers);
+            assert_eq!(stats.active_blinds_empty_trailers, 0);
+        }
+        for byte in 1..=255 {
+            let raw = [2, 0, byte];
+            let (records, stats) = export_array(
+                FOCUS_PARENT,
+                &[FOCUS_MEMBER],
+                &unpack(&raw),
+                Some(FOCUS_BUILD),
+            );
+            assert_eq!(records.fields.len(), 1, "trailer {byte}");
+            assert_eq!(records.fields[0].raw_bits.as_deref(), Some(raw.as_slice()));
+            assert_eq!(stats.array.errors, 1, "trailer {byte}");
+            assert_eq!(stats.focus_projectiles_empty_trailers, 0, "trailer {byte}");
+        }
+    }
+
+    #[test]
+    fn focus_projectiles_requires_both_exact_declarations_and_the_observed_build() {
+        let raw = [2, 2, 94, 16, 14, 0, 0];
+        let bits = unpack(&raw);
+        let wrong_name = [(46, "Other", 831_657_485)];
+        let wrong_checksum = [(46, "FocusProjectiles", 831_657_484)];
+        let wrong_handle = [(47, "FocusProjectiles", 831_657_485)];
+        let right = [FOCUS_MEMBER];
+        for (parent_handle, identity, members, branch) in [
+            (44, FOCUS_PARENT, &right[..], Some(FOCUS_BUILD)),
+            (
+                45,
+                (FOCUS_GROUP, "FocusProjectiles", 957_945_937),
+                &right,
+                Some(FOCUS_BUILD),
+            ),
+            (
+                45,
+                ("/Other/Clay_PC.Clay_PC_C", "FocusProjectiles", 957_945_936),
+                &right,
+                Some(FOCUS_BUILD),
+            ),
+            (45, FOCUS_PARENT, &wrong_name, Some(FOCUS_BUILD)),
+            (45, FOCUS_PARENT, &wrong_checksum, Some(FOCUS_BUILD)),
+            (45, FOCUS_PARENT, &wrong_handle, Some(FOCUS_BUILD)),
+            (45, FOCUS_PARENT, &[], Some(FOCUS_BUILD)),
+            (45, FOCUS_PARENT, &right, Some("++Ares-Core+release-12.04")),
+            (45, FOCUS_PARENT, &right, Some(MEASURED_BUILD)),
+            (45, FOCUS_PARENT, &right, None),
+        ] {
+            let (records, stats) = export_array_at(parent_handle, identity, members, &bits, branch);
+            assert_eq!(
+                records.fields.len(),
+                1,
+                "{parent_handle} {identity:?} {members:?} {branch:?}"
+            );
+            assert_eq!(records.fields[0].raw_bits.as_deref(), Some(raw.as_slice()));
+            assert_eq!(stats.route_children_focus_projectiles, 0);
+            assert_eq!(stats.focus_projectiles_empty_trailers, 0);
+            assert!(stats.array.is_clean());
+        }
+    }
+
+    #[test]
+    fn focus_projectiles_malformed_windows_never_emit_partial_children() {
+        let good = [2, 2, 94, 16, 14, 0, 0];
+        let duplicate_index = [4, 2, 94, 16, 14, 0, 2, 94, 16, 16, 0, 0];
+        let cases: &[&[u8]] = &[
+            &good[..6],
+            &[2, 2, 92, 16, 14, 0, 0],
+            &[2, 2, 94, 80, 14, 0, 0],
+            &[2, 4, 94, 16, 14, 0, 0],
+            &[2, 2, 94, 16, 14, 0, 0, 0],
+            &[2, 2, 94, 16, 14, 2, 0],
+            &[2, 2, 94, 80, 255, 255, 255, 255, 255, 0, 0],
+            &[2, 2, 94, 80, 255, 255, 255, 255, 32, 0, 0],
+            &[2, 2, 94, 0, 0, 0],
+            &[2, 2, 94, 32, 14, 0, 0, 0],
+            &[2, 2, 94, 16, 14, 94, 16, 16, 0, 0],
+            &duplicate_index,
+        ];
+        for raw in cases {
+            let (records, stats) = export_array(
+                FOCUS_PARENT,
+                &[FOCUS_MEMBER],
+                &unpack(raw),
+                Some(FOCUS_BUILD),
+            );
+            assert_eq!(records.fields.len(), 1, "{raw:?}");
+            assert_eq!(records.fields[0].raw_bits.as_deref(), Some(*raw));
+            assert_eq!(stats.array.errors, 1, "{raw:?}");
+            assert_eq!(stats.route_children_focus_projectiles, 0);
+            assert_eq!(stats.focus_projectiles_empty_trailers, 0);
+        }
+        // Every nonempty bit truncation of a populated window is rejected.
+        // A zero-width parent retains the existing absent-raw contract.
+        let bits = unpack(&good);
+        for width in 0..bits.len() {
+            let (records, stats) = export_array(
+                FOCUS_PARENT,
+                &[FOCUS_MEMBER],
+                &bits[..width],
+                Some(FOCUS_BUILD),
+            );
+            assert_eq!(records.fields.len(), 1, "width {width}");
+            assert_eq!(records.fields[0].bit_count, width as u32);
+            if width == 0 {
+                assert_eq!(records.fields[0].raw_bits, None);
+            } else {
+                assert_eq!(
+                    records.fields[0].raw_bits.as_deref(),
+                    Some(pack(&bits[..width]).as_slice())
+                );
+            }
+            assert_eq!(stats.array.errors, u64::from(width != 0), "width {width}");
+        }
     }
 
     #[test]
@@ -2180,6 +2469,9 @@ mod tests {
                 (49, "bIsAfk", 0),
                 one_leaf(49, &[true]),
             ),
+            MeasuredArrayRoute::FocusProjectiles => {
+                (FOCUS_PARENT, FOCUS_MEMBER, one_leaf(46, &reference))
+            }
             // An RPC parameter, not a flattened property; its gate is
             // `projectile_path_rpc_expands_only_on_admitting_branches`.
             MeasuredArrayRoute::NetworkedProjectilePath => return None,
@@ -2233,6 +2525,7 @@ mod tests {
                     stats.route_children_requested_ignore_actors,
                     stats.route_children_active_blinds,
                     stats.route_children_projectile_path,
+                    stats.route_children_focus_projectiles,
                 ];
                 let want = MeasuredArrayRoute::ALL
                     .map(|r| u64::from(r == route && admitted.admits(route)));
@@ -2259,9 +2552,9 @@ mod tests {
                 }
             }
         }
-        // Not vacuous: each of the seven flattened routes expanded on some
+        // Not vacuous: each of the eight flattened routes expanded on some
         // branch, and the run with no branch kept every one of them raw.
-        assert_eq!(expanded.len(), 7, "{expanded:?}");
+        assert_eq!(expanded.len(), 8, "{expanded:?}");
     }
 
     /// Every flattened route keeps only its raw parent when the group, parent
@@ -2284,7 +2577,12 @@ mod tests {
                 ((group, parent, checksum), &extra, true),
                 ((group, parent, checksum), &cut, true),
             ] {
-                let (records, stats) = export_array(identity, &[leaf], bits, Some(MEASURED_BUILD));
+                let branch = if route == MeasuredArrayRoute::FocusProjectiles {
+                    FOCUS_BUILD
+                } else {
+                    MEASURED_BUILD
+                };
+                let (records, stats) = export_array(identity, &[leaf], bits, Some(branch));
                 let at = format!("{route:?} {identity:?} {} bits", bits.len());
                 assert_eq!(records.fields.len(), 1, "{at}");
                 assert_eq!(
@@ -2316,7 +2614,10 @@ mod tests {
             let Some((identity, _, _)) = case_for(route) else {
                 continue;
             };
-            if route == MeasuredArrayRoute::ActiveBlinds {
+            if matches!(
+                route,
+                MeasuredArrayRoute::ActiveBlinds | MeasuredArrayRoute::FocusProjectiles
+            ) {
                 continue;
             }
             let bits = one_leaf(19, &[true, false, true]);

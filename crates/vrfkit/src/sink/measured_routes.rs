@@ -27,11 +27,14 @@ pub(super) enum MeasuredArrayRoute {
     ActiveBlinds,
     /// `MulticastSetPath.NetworkedProjectilePath` (an RPC parameter array).
     NetworkedProjectilePath,
+    /// `Clay_PC_C.FocusProjectiles`, measured only on the public 12.05 fixture.
+    FocusProjectiles,
 }
 
 impl MeasuredArrayRoute {
     /// Every route, in declaration order.
-    pub(super) const ALL: [Self; 8] = [
+    #[cfg(test)]
+    pub(super) const ALL: [Self; 9] = [
         Self::AllPlayersObfuscatedPlayerInformation,
         Self::TrackedRewards,
         Self::SelectedV2,
@@ -40,23 +43,21 @@ impl MeasuredArrayRoute {
         Self::RequestedIgnoreActors,
         Self::ActiveBlinds,
         Self::NetworkedProjectilePath,
+        Self::FocusProjectiles,
     ];
 
-    const fn bit(self) -> u8 {
+    const fn bit(self) -> u16 {
         1 << (self as u8)
     }
 }
 
 /// The set of routes admitted for one replay branch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(super) struct MeasuredArrayRoutes(u8);
+pub(super) struct MeasuredArrayRoutes(u16);
 
 impl MeasuredArrayRoutes {
     /// No route: every parent stays one raw row, and no child is emitted.
     pub(super) const NONE: Self = Self(0);
-
-    /// Every route.
-    pub(super) const ALL: Self = Self::of(&MeasuredArrayRoute::ALL);
 
     const fn of(routes: &[MeasuredArrayRoute]) -> Self {
         let mut bits = 0;
@@ -83,8 +84,8 @@ impl MeasuredArrayRoutes {
     /// 13.08 rests on one replay and 13.09 on two, main stream and checkpoints.
     pub(super) fn for_branch(branch: &str) -> Self {
         use MeasuredArrayRoute::{
-            ActiveBlinds, AllPlayersObfuscatedPlayerInformation as PlayerInfo, KillData,
-            NetworkedProjectilePath as ProjectilePath, RequestedIgnoreActors, SelectedV2,
+            ActiveBlinds, AllPlayersObfuscatedPlayerInformation as PlayerInfo, FocusProjectiles,
+            KillData, NetworkedProjectilePath as ProjectilePath, RequestedIgnoreActors, SelectedV2,
             ServerActiveEffects, TrackedRewards,
         };
         match branch {
@@ -111,7 +112,6 @@ impl MeasuredArrayRoutes {
                 ProjectilePath,
             ]),
             "++Ares-Core+release-12.04"
-            | "++Ares-Core+release-12.05"
             | "++Ares-Core+release-12.08"
             | "++Ares-Core+release-12.09" => Self::of(&[
                 PlayerInfo,
@@ -121,6 +121,16 @@ impl MeasuredArrayRoutes {
                 ServerActiveEffects,
                 RequestedIgnoreActors,
                 ProjectilePath,
+            ]),
+            "++Ares-Core+release-12.05" => Self::of(&[
+                PlayerInfo,
+                TrackedRewards,
+                SelectedV2,
+                KillData,
+                ServerActiveEffects,
+                RequestedIgnoreActors,
+                ProjectilePath,
+                FocusProjectiles,
             ]),
             "++Ares-Core+release-12.06" | "++Ares-Core+release-12.07" => Self::of(&[
                 PlayerInfo,
@@ -141,7 +151,16 @@ impl MeasuredArrayRoutes {
             | "++Ares-Core+release-13.04"
             | "++Ares-Core+release-13.05"
             | "++Ares-Core+release-13.06"
-            | "++Ares-Core+release-13.09" => Self::ALL,
+            | "++Ares-Core+release-13.09" => Self::of(&[
+                PlayerInfo,
+                TrackedRewards,
+                SelectedV2,
+                KillData,
+                ServerActiveEffects,
+                RequestedIgnoreActors,
+                ActiveBlinds,
+                ProjectilePath,
+            ]),
             // The one sample declares no MulticastSetPath group: the path is unobserved.
             "++Ares-Core+release-13.08" => Self::of(&[
                 PlayerInfo,
@@ -167,8 +186,8 @@ mod tests {
     use super::MeasuredArrayRoute as Route;
     use super::MeasuredArrayRoutes;
     use Route::{
-        ActiveBlinds, AllPlayersObfuscatedPlayerInformation as PlayerInfo, KillData,
-        NetworkedProjectilePath as ProjectilePath, RequestedIgnoreActors, SelectedV2,
+        ActiveBlinds, AllPlayersObfuscatedPlayerInformation as PlayerInfo, FocusProjectiles,
+        KillData, NetworkedProjectilePath as ProjectilePath, RequestedIgnoreActors, SelectedV2,
         ServerActiveEffects, TrackedRewards,
     };
 
@@ -209,6 +228,17 @@ mod tests {
         RequestedIgnoreActors,
         ProjectilePath,
     ];
+    /// 12.05: the public fixture also qualifies the FocusProjectiles route.
+    const B1205: &[Route] = &[
+        PlayerInfo,
+        TrackedRewards,
+        SelectedV2,
+        KillData,
+        ServerActiveEffects,
+        RequestedIgnoreActors,
+        ProjectilePath,
+        FocusProjectiles,
+    ];
     /// 12.06-12.07: no projectile path in any sample.
     const B1206: &[Route] = &[
         PlayerInfo,
@@ -246,7 +276,7 @@ mod tests {
         ("++Ares-Core+release-12.02", B1109),
         ("++Ares-Core+release-12.03", B1109),
         ("++Ares-Core+release-12.04", B1204),
-        ("++Ares-Core+release-12.05", B1204),
+        ("++Ares-Core+release-12.05", B1205),
         ("++Ares-Core+release-12.06", B1206),
         ("++Ares-Core+release-12.07", B1206),
         ("++Ares-Core+release-12.08", B1204),

@@ -247,6 +247,10 @@ pub(super) fn print(
         "  ActiveBlinds trailers: {} empty deltas",
         totals.sink.active_blinds_empty_trailers
     );
+    eprintln!(
+        "  FocusProjectiles trailers: {} empty deltas",
+        totals.sink.focus_projectiles_empty_trailers
+    );
     eprintln!("  Truncated RPCs:   {}", totals.sink.truncated_rpcs);
     eprintln!("  RPC param walks:  {}", totals.sink.rpc_param_walks);
     eprintln!(
@@ -461,6 +465,10 @@ fn print_checkpoints(cp: &CheckpointStats) {
     eprintln!(
         "  Checkpoint ActiveBlinds trailers: {} empty deltas",
         cp.sink.active_blinds_empty_trailers
+    );
+    eprintln!(
+        "  Checkpoint FocusProjectiles trailers: {} empty deltas",
+        cp.sink.focus_projectiles_empty_trailers
     );
     eprintln!(
         "  Checkpoint movement: {} failures",
