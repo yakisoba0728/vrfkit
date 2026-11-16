@@ -16,6 +16,8 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from candidate_inventory import inventory as candidate_inventory
+from identity_oracle import compare as compare_identity
+import decoder_delta
 
 if not __debug__:
     raise RuntimeError("QA requires assertions; remove Python optimization flags")
@@ -130,8 +132,10 @@ def compare_gameplay(log, export, validate_event_payload):
 
 def main():
     parser = argparse.ArgumentParser()
-    for name in ("source", "exe", "checkpoint-probe", "gameplay-probe", "corpus", "output"):
+    for name in ("source", "exe", "checkpoint-probe", "gameplay-probe", "identity-probe", "corpus", "output",
+                 "extra-corpus", "extra-baseline", "historical-exports"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--focus-route", action="store_true")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     sys.path.insert(0, str(args.source / "tools"))
@@ -155,17 +159,25 @@ def main():
 
     baseline = json.loads((args.source / "docs/evidence/phase-b-cli-public-parity.json").read_text())
     expected = {row["input"]["sha256"]: row for row in baseline["runs"]}
+    historical = set(expected)
+    extra = json.loads((args.extra_baseline / "baseline.json").read_text())
+    assert extra["complete"] and len(extra["runs"]) == 4
+    assert extra["executable_sha256"] == "29fa495b19b7dbce2bfe7bbedc1dc9be2492a4c6a5aca2a9d1468d3d74c657d4"
+    for row in extra["runs"]:
+        assert row["input"]["sha256"] not in expected
+        expected[row["input"]["sha256"]] = row
     inputs = {}
-    for path in args.corpus.rglob("*"):
-        if path.is_file() and path.suffix.casefold() in (".vrf", ".replay"):
-            digest = sha(path)
-            assert digest not in inputs, "duplicate input"
-            inputs[digest] = path.resolve()
-    assert len(inputs) == 6 and set(inputs) == set(expected), "six-input scope mismatch"
+    for root in (args.corpus, args.extra_corpus):
+        for path in root.rglob("*"):
+            if path.is_file() and path.suffix.casefold() in (".vrf", ".replay"):
+                digest = sha(path)
+                assert digest not in inputs, "duplicate input"
+                inputs[digest] = path.resolve()
+    assert len(inputs) == 10 and set(inputs) == set(expected), "ten-input scope mismatch"
     source_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=args.source, text=True).strip()
     source_tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=args.source, text=True).strip()
     binaries = {name: sha(path) for name, path in (("cli", args.exe),
-        ("checkpoint_probe", args.checkpoint_probe), ("gameplay_probe", args.gameplay_probe))}
+        ("checkpoint_probe", args.checkpoint_probe), ("gameplay_probe", args.gameplay_probe), ("identity_probe", args.identity_probe))}
     aliases = args.output / "corpus-aliases"
     aliases.mkdir()
     for digest, path in inputs.items():
@@ -178,19 +190,35 @@ def main():
         str(audit), str(args.source / "tools/fixtures/public_fixture_type_evidence.json"),
         "--compare-typed", "--output", str(args.output / "typed-evidence.json")])
     assert set(json.loads((audit / "inputs.json").read_text())) == set(inputs)
-    parity, checkpoint, gameplay, candidates = [], [], [], []
+    parity, checkpoint, gameplay, candidates, identity = [], [], [], [], []
     for digest, replay in inputs.items():
         export = audit / digest / "export"
         manifest = json.loads((export / "manifest.json").read_text())
         previous = expected[digest]["output"]
-        tables = compare_tables(export, previous["tables"])
-        stable = canonical({key: value for key, value in manifest.items() if key not in ("source_file", "elapsed_ms")})
+        delta = {"parents": 0, "children": 0, "empty_trailers": 0, "unchanged_rows": 0}
+        if args.focus_route and manifest["replay_build"] == "++Ares-Core+release-12.05":
+            before = args.historical_exports / digest / "export"
+            compare_tables(before, previous["tables"])
+            delta = decoder_delta.compare_fields(before / "fields.parquet", export / "fields.parquet")
+            tables = {path.name: {"bytes": path.stat().st_size, "sha256": sha(path)}
+                      for path in sorted(export.glob("*.parquet"))}
+            assert {key: value for key, value in tables.items() if key != "fields.parquet"} == {
+                key: value for key, value in previous["tables"].items() if key != "fields.parquet"}
+            exact_tables = 12
+        else:
+            tables = compare_tables(export, previous["tables"])
+            exact_tables = len(tables)
+        normalized = decoder_delta.normalize_manifest(manifest, delta) if args.focus_route else manifest
+        stable = canonical({key: value for key, value in normalized.items() if key not in ("source_file", "elapsed_ms")})
         assert stable == previous["manifest_sha256"], "nonvolatile manifest changed"
         counters = summary_counters.read((audit / digest / "export.log").read_text(), summary_counters.WHERE)
-        assert counters == previous["counters"], "summary counters changed"
+        normalized_counters = decoder_delta.normalize_counters(counters, delta) if args.focus_route else counters
+        assert normalized_counters == previous["counters"], "summary counters changed"
         parity.append({"build": expected[digest]["build"], "input_sha256": digest,
-            "exact_parquet_tables": len(tables), "all_nonvolatile_manifest_values_equal": True,
-            "all_summary_counters_equal": True, "tables": tables, "manifest_sha256": stable})
+            "baseline": "historical accepted Phase B" if digest in historical else "fresh frozen Phase B CLI",
+            "exact_parquet_tables": exact_tables, "unexplained_manifest_differences": 0,
+            "unexplained_summary_counter_differences": 0, "intentional_focus_delta": delta,
+            "tables": tables, "normalized_manifest_sha256": stable})
         callback_export = args.output / (digest + "-callback")
         log = run(digest + "-checkpoint", [str(args.checkpoint_probe), str(replay), str(callback_export)])
         report = compare_checkpoints(log, export, callback_export, manifest["quality"])
@@ -199,22 +227,28 @@ def main():
         report = compare_gameplay(log, export, validate_event_payload)
         assert report["skipped_checkpoints"] == manifest["quality"]["checkpoints"]["checkpoint_chunks"]
         gameplay.append({"build": expected[digest]["build"], "input_sha256": digest, **report})
+        report = compare_identity(args.identity_probe, replay, export, args.output / (digest + "-identity.stderr"))
+        identity.append({"build": expected[digest]["build"], "input_sha256": digest, **report})
+        print(digest[:12] + ": identity exact joins passed", flush=True)
         candidates.append({"build": expected[digest]["build"], "input_sha256": digest,
                            "tables": candidate_inventory(export)})
         assert sha(replay) == digest
         save("export-equivalence.json", parity)
         save("checkpoint-callbacks.json", checkpoint)
         save("gameplay.json", gameplay)
+        save("identity.json", identity)
         save("decoder-candidates.json", candidates)
     assert binaries == {name: sha(path) for name, path in (("cli", args.exe),
-        ("checkpoint_probe", args.checkpoint_probe), ("gameplay_probe", args.gameplay_probe))}
+        ("checkpoint_probe", args.checkpoint_probe), ("gameplay_probe", args.gameplay_probe), ("identity_probe", args.identity_probe))}
     receipt = {"complete": True, "source_commit": source_commit, "source_tree": source_tree,
-        "binaries_sha256": binaries, "public_replays": 6, "private_replays": 0,
+        "binaries_sha256": binaries, "public_replays": 10, "private_replays": 0,
         "checkpoint_chunks": sum(row["snapshot_chunks"] for row in checkpoint),
         "parquet_tables_byte_equal": sum(row["exact_parquet_tables"] for row in parity),
         "callback_tables_byte_equal": sum(row["callback_tables_byte_equal"] for row in checkpoint),
         "native_observations": sum(row["native_compared"] for row in gameplay),
         "phase_observations": sum(row["phase_compared"] for row in gameplay),
+        "identity_movement_rows": sum(row["movement_rows_compared"] for row in identity),
+        "spawned_character_raw_values": sum(row["spawned_character_raw_values_compared"] for row in identity),
         "mismatches": 0, "performance_claim": None, "steps": steps}
     save("receipt.json", receipt)
     print(json.dumps({key: value for key, value in receipt.items() if key not in ("steps", "binaries_sha256")}), flush=True)
