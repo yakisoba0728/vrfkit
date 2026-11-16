@@ -229,3 +229,30 @@ correction. These fresh post-fix exports establish exact Parquet parity with
 the accepted output, rather than claiming that the reference parser was rerun.
 No private replay, performance improvement or whole-format reconstruction
 claim follows from these results.
+
+## Phase A recovery and new verification
+
+The interrupted local candidate `97e6c59` was recovered onto verified GitHub
+integration `d44bcd2`, then committed locally as `603aa714`. The
+[recovery receipt](evidence/phase-a-native-recovery.json) records a fresh
+Rust 1.86 failure of the generated A3-body preservation regression before the
+fix and its successful execution afterward. The focused core/movement suites
+passed 171 tests, the complete Python suite passed 1,178 tests, and core Clippy,
+rustfmt, baseline-schema validation and the fast documentation guard passed.
+These checks do not substitute for independent Phase A QA or hosted Windows CI.
+
+A [new six-public execution](evidence/phase-a-native-public-validation.json)
+again validates all 76 checkpoints, 1,958,155 scored main blocks and 60,169
+independent typed/raw comparisons. It freshly compares all 78 Parquet files
+byte for byte with the previously accepted output and finds no unexplained
+manifest differences. All 22,561 unresolved main RPCs remain preserved, with
+zero RPC loss or movement errors. The real fixtures contain header-only A3/A4
+components; unsupported bodies are tested using generated inputs.
+
+This new execution reuses the frozen `2e3526f` executable after comparing all
+151 recorded parser-source files to the recovered tree. It is not a new binary
+build. The pre-native baseline exports and original receipts are also reused
+without rewriting their commit attribution. The receipt names both histories,
+records the new execution's time and source fingerprint, and publishes each
+new before/after table hash. Performance, private-corpus validation and a new
+full-match reference-parser execution are outside this correctness receipt.

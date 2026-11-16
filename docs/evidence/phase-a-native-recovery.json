@@ -41,7 +41,7 @@
     "cargo +1.86.0 clippy -p vrf-movement -p vrfkit --all-targets --no-default-features --locked -- -D warnings"
   ],
   "historical_evidence_limit": "The native-movement-public-* receipts describe the original pre-interruption six-public audit, not a second execution. Current independent QA and hosted CI are separate integration gates.",
-  "fresh_public_audit": "pending",
+  "fresh_public_audit": "passed; see phase-a-native-public-validation.json, distinct from historical native-movement-public-* receipts",
   "fresh_windows_ci": "pending",
   "private_replays_decoded": 0
 }
