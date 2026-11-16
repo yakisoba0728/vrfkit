@@ -239,6 +239,89 @@ fn field_binary_preservation() {
 }
 
 #[test]
+fn raw_bits_capacity_keeps_exact_parquet_bytes_across_batches() {
+    use std::sync::Arc;
+
+    use arrow_array::BinaryArray;
+    use arrow_schema::Schema;
+    use vrf_export::ExportError;
+    use vrf_export::writer::MAX_BUFFERED_ROWS;
+
+    struct DefaultCapacityFields;
+    impl Table for DefaultCapacityFields {
+        type Row = FieldRecord;
+        const DEFAULT_ROW_GROUP_SIZE: usize = FieldsTable::DEFAULT_ROW_GROUP_SIZE;
+        const DICTIONARY_COLUMNS: &'static [&'static str] = FieldsTable::DICTIONARY_COLUMNS;
+
+        fn schema() -> Arc<Schema> {
+            FieldsTable::schema()
+        }
+
+        fn build_batch(rows: &[FieldRecord]) -> Result<RecordBatch, ExportError> {
+            let batch = FieldsTable::build_batch(rows)?;
+            let mut columns = batch.columns().to_vec();
+            let reference = BinaryArray::from_iter(rows.iter().map(|row| row.raw_bits.as_deref()));
+            columns[batch.schema().index_of("raw_bits").unwrap()] = Arc::new(reference);
+            RecordBatch::try_new(batch.schema(), columns)
+                .map_err(|error| ExportError::Parquet(error.into()))
+        }
+    }
+
+    fn encode<T: Table<Row = FieldRecord>>(rows: &[FieldRecord], group_size: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut writer = TableWriter::<T, _>::with_row_group_size(&mut bytes, group_size).unwrap();
+        writer.push_batch(rows.iter().cloned()).unwrap();
+        writer.finish().unwrap();
+        bytes
+    }
+
+    let rows: Vec<_> = (0..2 * MAX_BUFFERED_ROWS + 19)
+        .map(|i| {
+            let raw_bits = if i == MAX_BUFFERED_ROWS + 1 {
+                // One payload exceeds even a whole default batch's reserve.
+                Some(
+                    (0..MAX_BUFFERED_ROWS * 16 + 31)
+                        .map(|j| j as u8)
+                        .collect::<Vec<_>>()
+                        .into(),
+                )
+            } else {
+                match i % 7 {
+                    0 => None,
+                    1 => Some(Vec::new().into()),
+                    2 => Some(vec![i as u8].into()),
+                    3 => Some(vec![i as u8; 16].into()),
+                    4 => Some(vec![i as u8; 17].into()),
+                    _ => Some((0..=255).collect::<Vec<_>>().into()),
+                }
+            };
+            FieldRecord {
+                bit_count: raw_bits
+                    .as_ref()
+                    .map_or(0, |raw: &smallvec::SmallVec<[u8; 16]>| {
+                        (raw.len() * 8) as u32
+                    }),
+                raw_bits,
+                ..make_field_record(i as u32)
+            }
+        })
+        .collect();
+    for group_size in [
+        1_024,
+        MAX_BUFFERED_ROWS + 7,
+        FieldsTable::DEFAULT_ROW_GROUP_SIZE,
+    ] {
+        let actual = encode::<FieldsTable>(&rows, group_size);
+        let expected = encode::<DefaultCapacityFields>(&rows, group_size);
+        assert_eq!(actual.len(), expected.len());
+        assert!(
+            actual == expected,
+            "raw payload Parquet bytes differ at row-group size {group_size}"
+        );
+    }
+}
+
+#[test]
 fn group_path_runs_keep_exact_parquet_bytes_across_batches() {
     use std::sync::Arc;
 

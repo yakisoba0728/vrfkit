@@ -87,9 +87,17 @@ macro_rules! column {
     ($rows:ident $name:ident @kind bytes) => {
         column!(@array arrow_array::BinaryArray::from_iter_values($rows.clone().map(|r| &*r.$name)))
     };
-    ($rows:ident $name:ident @opt bytes) => {
-        column!(@array arrow_array::BinaryArray::from_iter($rows.clone().map(|r| r.$name.as_deref())))
-    };
+    ($rows:ident $name:ident @opt bytes) => {{
+        // Start with one inline raw payload per buffered row. The reservation
+        // is bounded; larger payloads still grow without truncation.
+        let byte_capacity = $rows.len().min(crate::writer::MAX_BUFFERED_ROWS) * 16;
+        let mut builder = arrow_array::builder::BinaryBuilder::with_capacity(
+            $rows.len(),
+            byte_capacity,
+        );
+        builder.extend($rows.clone().map(|r| r.$name.as_deref()));
+        column!(@array builder.finish())
+    }};
     ($rows:ident $name:ident @kind dict($distinct:literal, $bytes:literal)) => {
         column!(@dict $rows, $distinct, $bytes, $rows.clone().map(|r| Some(&*r.$name)))
     };
