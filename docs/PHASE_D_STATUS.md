@@ -1,48 +1,59 @@
 # Phase D execution ledger
 
-## Active: recovery and qualification
+## Engineering scope complete; final source gates use the fixed receipt
 
-The user explicitly authorized quantitative performance measurement and bounded
-optimization in Phase D. Earlier Phase B/C user-only performance restrictions
-remain historical. Main merge, PR #58 draft removal, tags, releases and registry
-publication are not authorized.
+The scoped verdict is **FUNCTIONALLY_READY_PERFORMANCE_INCONCLUSIVE**.
+The [results](PHASE_D_RESULTS.md) retain the complete resource comparison,
+controls, fresh profiles, rejected optimization, public QA and private-access
+limits. The [fixed final receipt](https://github.com/yakisoba0728/vrfkit/pull/58#issuecomment-6918909298)
+records actual final task/integration/PR CI, checkout and artifact identities.
+An incomplete receipt is not final acceptance. This documentation checkpoint
+precedes its own merge, so the final SHA is deliberately recorded outside it.
 
-## Verified starting state
+## Source and publication boundaries
 
-- Integration: `ff8596b546736ea4300e013248609c7c3987e231`.
-- Main: `9ece4ab84dee62cbf8bf34b7996d2efb0593f9c9`.
-- PR #58 is open, draft and unmerged.
-- Latest public release is `v0.5.0`; workspace version is `0.5.0`.
-- Prior Phase C integration CI 43861110187 has 11 successful jobs and PR CI
-  43861119792 has 10. These are historical results, not Phase D reruns.
-- Proposed same-output baseline: `1b9bbf222f003e35c882e640c1b19e0bbcc88472`.
+- Starting accepted integration/runtime: `ff8596b546736ea4300e013248609c7c3987e231`.
+- Unchanged main: `9ece4ab84dee62cbf8bf34b7996d2efb0593f9c9`.
+- C-only same-output baseline: `1b9bbf222f003e35c882e640c1b19e0bbcc88472`.
+- The user authorized actual quantitative measurements and bounded optimization
+  for Phase D; earlier Phase B/C user-only measurement policies are historical.
+- [Task PR #74](https://github.com/yakisoba0728/vrfkit/pull/74) carries unpublished
+  0.6.0 metadata, current-contract corrections and the evidence. Runtime,
+  dependency resolutions, build flags and workflows remain unchanged.
+- [The one experiment](https://github.com/yakisoba0728/vrfkit/commit/1848dc9910662d0247b3f1cebaedd939b01fc33b)
+  is **WITHDRAWN_DO_NOT_INTEGRATE**. Zero Phase D runtime optimizations are accepted.
+- PR #58 remains Open/Draft/Unmerged with auto-merge disabled. No main push/merge,
+  Draft removal, tag, public Release, registry upload or private-source mutation.
 
-## Environment recovery and current work
+## Completed bounded work
 
-The initial executor had only about 119 MiB free. Four reproducible Cargo target
-caches from completed vrfkit work were removed after verifying their Cargo cache
-tags; source, frozen binaries, replay originals and evidence were preserved.
-Available space recovered to about 6.7 GiB. Rust 1.86 and offline dependencies
-were found. Fresh isolated release builds are in progress; the old test-profile
-QA executable is not eligible for official release timing.
+| Track | Outcome |
+| --- | --- |
+| Recovery/build | Recovered about 6.7 GiB by removing verified old Cargo caches; retained source, originals and evidence. Fresh isolated Rust 1.86 default release binaries passed compiler-artifact and hash checks. |
+| Primary performance | Six input/mode cases; 12 series, 168 exports plus 12 untimed preflight. Every output/provenance gate passed; all six performance conclusions INCONCLUSIVE. |
+| Diagnosis | Three normal and three instrumented 12.09 checkpoint exports; measured parser, writer, Arrow, encoding, decompression and cached-read costs with explicit overlap/overhead limits. |
+| Optimization | One bounded raw-byte reservation candidate; author and independent mutation checks passed. Eight controlled series/112 exports plus 12 preflight passed output gates, but no robust gain and higher observed RSS led to withdrawal. |
+| Independent QA | Recomputed all primary and experimental samples. Fresh accepted outputs: 57 Parquet files, 46 checkpoints, 43,443 typed/raw values, exact 53 Focus children/three trailers, zero loss/mismatch, 22 counter-deletion controls detected. Two compiled experiment mutants detected and exact restoration passed. |
+| Private corpus | Metadata-only: 1,011 assets, 24 builds, 50,938,107,071 bytes reconciled; zero private downloads, payload hashes or executions. |
+| C# comparison | Current source rechecked, .NET 10 runnable; default exports NOT_COMPARABLE because their work/preservation/output contracts differ. No speed ratio or new C# replay execution. |
+| Release/DX | Ten production package versions use unpublished 0.6.0. Migration, packaging and registry limits documented. Final actual Windows package and source verification belongs to the fixed receipt. |
 
-Three unique workers were successfully created: A benchmark/profiling, C private
-corpus/evidence, E release/DX. Maximum observed concurrency is three workers plus
-the coordinator. None has completed at this initial checkpoint. Additional
-roles will use freed slots; role names alone are not creation counts.
+A executed 310 full CLI exports and B's allocator diagnostic added two, for
+312 local full exports. There were zero export failures and no removed samples.
+Repeated runs and rejected-source rescans add no unique corpus coverage.
+The private corpus and old Phase A-C counts are not relabeled as fresh runs.
+Two evidence-parser issues were repaired and retained as harness recoveries.
 
-## Gates
+## Worker accounting
 
-- Strict output contract equality before and during every timed sample.
-- Same-session A/A controls, then balanced C-only/candidate comparisons on public
-  12.05, 12.09 and 13.00 samples, separately main-only and checkpoints.
-- Minimal evidence-backed optimization, independent QA, meaningful negative
-  controls and exact-head required CI before integration.
-- Private metadata and binary access reported separately; no private bytes,
-  names, player identifiers or raw logs in public evidence.
-- Release candidate version/migration/packaging and final source/CI checks.
+Six unique specialists were created: A benchmark/profiling, B optimization,
+C private corpus, D independent QA, E release/DX and F cross-parser/runtime
+review. Maximum observed concurrency was three non-root workers, four including
+the coordinator. One capacity-refused spawn created no worker. No worker crash
+or task resumption was recorded. The fixed receipt records the final completion
+count after D's final-source/CI/artifact check.
 
-No Phase D performance result, private binary validation or final acceptance is
-claimed at this checkpoint. Final results will be recorded in PHASE_D_RESULTS.md
-and PR #58. Only the coordinator may merge reviewed task PRs into integration.
-
+Only the coordinator integrates reviewed changes. Required CI on the final
+source must pass before task merge, followed by actual integration-push and
+PR #58 CI/source readback. Stop after this qualification. Do not begin another
+phase, main merge or publication without a new user instruction.

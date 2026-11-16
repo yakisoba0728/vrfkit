@@ -3,8 +3,11 @@
 This prepares an unpublished **0.6.0** source candidate on
 `integration/vrfkit-overhaul`. It does not authorize a main merge, removal of
 PR #58's Draft status, tag creation, GitHub Release or registry upload.
-The coordinator's final Phase D result and immutable PR #58 receipt determine
-acceptance; this checklist alone is not a passing test report.
+The [Phase D result](PHASE_D_RESULTS.md) and
+[fixed PR #58 final receipt](https://github.com/yakisoba0728/vrfkit/pull/58#issuecomment-6918909298)
+determine acceptance; this checklist alone is not a passing test report.
+The measured runtime remains the accepted Phase C source: the one new
+optimization experiment was withdrawn after controlled evaluation.
 
 The Phase D user instruction permits actual performance qualification and a
 candidate version change. The earlier Phase B/C restrictions on running

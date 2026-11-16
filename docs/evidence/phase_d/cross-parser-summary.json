@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "phase": "D",
+  "role": "F: cross-parser / runtime evidence review",
+  "observed_at_utc": "2026-11-16T13:51:01.540415+00:00",
+  "classification": "NOT_COMPARABLE",
+  "classification_scope": "Existing default complete exports, main-only and checkpoint-inclusive. No matched-work subbenchmark was established in this bounded review.",
+  "rust_source": {
+    "repository": "yakisoba0728/vrfkit",
+    "commit": "ff8596b546736ea4300e013248609c7c3987e231",
+    "paths_sha256": {
+      "docs/REFERENCE_COMPARISON.md": "d601d2bdc8f89e77ced1ac5d3719aa557fd46676baf1debaeacf0adcd25d1868",
+      "docs/ADOPTION.md": "3974c43681676e32ed4ab88b2df6c4006d62dddce36a4987a861a0b4242de648",
+      "docs/FOLLOWUP.md": "946b4edf35e94f67abb9d8161c32051e99a733ff090f0bd2f0e6f8c652aeed82",
+      "docs/PHASE_C_DECODER_EVIDENCE.md": "399fc8f96c1d0c64211188bfee133be7fd587ccba0d0171ab9d6f2ab5c49dec8",
+      "docs/UPSTREAM_AUDIT_2026_11_16.md": "99ef9157f2c34f6796fcbafba8c502dadbe4d0476ab51948436a4af374c504ae",
+      "crates/vrfkit/src/reader.rs": "74c015f5aa04dd27885fcd960480574e17e05b3b7ca5530d423b75078702e82c",
+      "crates/vrfkit/src/gameplay/identity.rs": "f169597598444d40315cb42663576a38d38fc66c2913b1583331b71cf6528fe6",
+      "crates/vrfkit/src/sink/stream.rs": "2389535aeb53a928b8a65d8842d5ccc938727ff5f5fa3961c5f6342c2a1f4173"
+    },
+    "source_note": "Coordinator HEAD advanced during review; all three reviewed runtime files still exactly match this pinned source. Fingerprints are read from immutable git objects."
+  },
+  "reference_source": {
+    "repository": "michel-giehl/ValorantReplayParser",
+    "default_branch": "main",
+    "commit": "fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8",
+    "current_default_head_rechecked": true,
+    "commit_date": "2026-11-11T11:28:21Z",
+    "commit_url": "https://github.com/michel-giehl/ValorantReplayParser/commit/fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8",
+    "local_checkout_matches": true,
+    "local_checkout_clean": true,
+    "latest_published_release": "v0.1.0-alpha.2",
+    "release_date": "2026-10-08T22:11:38Z",
+    "release_url": "https://github.com/michel-giehl/ValorantReplayParser/releases/tag/v0.1.0-alpha.2",
+    "paths_sha256": {
+      "global.json": "1497bda77ac26a91600f9eaa9d733be95a970961816c63738a4aafe1dc9c14e3",
+      "src/CliReader/CliReader.csproj": "001bf897fee5173ce36e7a6acc8a6bfec48982dba8c64f083aeaa7c3c80f6a6b",
+      "src/Replay.Encoding/Archives/ByteArchiveReader.cs": "b32817abf6f5b0f12483e4e33c6251f4b202d0bbe2e1e4abcd07c61bbde3550d",
+      "src/Replay.Unreal/Chunks/ReplayChunkDispatcher.cs": "a5f1eef8ed13aff72ec4585dec996ea0eb137d6e472169d6d24f4b43f91e95dc",
+      "src/CliReader/JsonExport/ReplayExportRunner.cs": "5094ebd98c7382c2a9c69fa7d88698250c267292a98a689c7ba540caa2826203",
+      "src/CliReader/JsonExport/ReplayExportSink.cs": "0da4204ee8a2042bcc92f9cc6cd0a0e44f11ced653b0b4d5d31b8c2f4124009f",
+      "src/CliReader/JsonExport/ReplayExportManifestWriter.cs": "6c14a39a633351dc5cbffc1ce050af346ab25f65370167c960abe42a01d0323b",
+      "src/Replay.Valorant/Movement/ComponentDataStream.cs": "10104508dc63011b6e29b5cc727b66fe308a1710d1fe82fcfc779192633f41eb",
+      "src/Replay.Valorant.Events/Movement/ValorantMovementEventEnricher.cs": "ec8f2f6885332659e6f897c16bc1b8a7b8803f769d5b76b16bf62e1ccfbd0f72"
+    }
+  },
+  "dotnet": {
+    "available": true,
+    "sdk_selected_from_reference_checkout": "10.0.301",
+    "installed_sdks": [
+      "10.0.301",
+      "10.0.404"
+    ],
+    "installed_netcore_runtimes": [
+      "10.0.9",
+      "10.0.15"
+    ],
+    "target_framework": "net10.0",
+    "global_json_roll_forward": "latestPatch",
+    "verification": "Successfully executed --version, --list-sdks and --list-runtimes; no compilation or replay execution."
+  },
+  "contract_differences": [
+    {
+      "surface": "Container Events and checkpoints",
+      "rust": "Native Events exported; optional checkpoint tables and opt-in independent Reader snapshot callbacks.",
+      "reference": "ReplayChunkDispatcher reads then skips Checkpoint and Event chunks.",
+      "reference_path": "src/Replay.Unreal/Chunks/ReplayChunkDispatcher.cs",
+      "effect": "Checkpoint-inclusive work differs; main-only work still differs in native Event handling."
+    },
+    {
+      "surface": "Encoding and enrichment",
+      "rust": "Typed/raw Parquet tables plus manifest; gameplay projections and analysis are separate optional products.",
+      "reference": "CLI writes events.ndjson and movement.ndjson plus manifest and wraps its sink in ValorantEventEnricher.",
+      "reference_path": "src/CliReader/JsonExport/ReplayExportRunner.cs",
+      "effect": "Different encoding, rows and enriched semantics; default elapsed export ratios measure different products."
+    },
+    {
+      "surface": "Raw/undecoded coverage",
+      "rust": "Available raw field windows accompany typed overlay and explicit preservation/loss accounting; not whole-original reconstruction.",
+      "reference": "Export groups with WasDecoded false or Payload null are filtered; manifest states undecoded groups and empty decoded shells are omitted.",
+      "reference_path": "src/CliReader/JsonExport/ReplayExportSink.cs",
+      "effect": "Selected reference RPC raw fallbacks do not establish the same preservation contract."
+    },
+    {
+      "surface": "Movement multiplicity",
+      "rust": "Emits every decoded movement sample and optional transport provenance.",
+      "reference": "ComponentDataStream retains LatestMove/MoveCount; enricher emits one latest move per update with index MoveCount - 1.",
+      "reference_path": "src/Replay.Valorant.Events/Movement/ValorantMovementEventEnricher.cs",
+      "effect": "Latest-move value agreement covers a subset, not all emitted records or equal export work."
+    },
+    {
+      "surface": "Input ownership",
+      "rust": "File-backed validate/export and read_path use bounded chunks; read_bounded explicitly buffers finite encoded input.",
+      "reference": "ByteArchiveReader(Stream) copies remaining input to MemoryStream, then ToArray.",
+      "reference_path": "src/Replay.Encoding/Archives/ByteArchiveReader.cs",
+      "effect": "Source difference does not itself prove any process RSS advantage."
+    }
+  ],
+  "benchmarks": {
+    "csharp_builds": 0,
+    "csharp_replays_executed": 0,
+    "matched_work_performance_series": 0,
+    "ratio": null,
+    "reason": "Equal-work qualification fails for existing complete exports; no competitor speed superiority claimed."
+  },
+  "historical_movement_receipts": {
+    "freshly_rerun": false,
+    "scope": "Previously accepted latest-move comparisons retain original source/input/identity limits and are not counted as current executions."
+  },
+  "unresolved_dispositions": [
+    {
+      "area": "Six raw ReplicatedMovement classes",
+      "status": "blocked_by_evidence",
+      "required": "Class/checksum-specific rotator width and quantization evidence, independent components and malformed/raw-preservation controls."
+    },
+    {
+      "area": "InputEventData",
+      "status": "blocked_by_evidence",
+      "required": "Independent tag meanings and exact route/build full-consumption and width proof; historical sample counts are not new validation."
+    },
+    {
+      "area": "Ability/GAS FastArray and StopEffectType",
+      "status": "blocked_by_evidence",
+      "required": "Exact item/property schema or native/reflection evidence and payload comparisons; item IDs do not imply actor identity."
+    },
+    {
+      "area": "Section arithmetic, scalar warnings, healing and OwnerActor lifecycle",
+      "status": "blocked_by_evidence",
+      "required": "Reproduce the historical 15 arithmetic disagreements and 46 scalar warnings with order/role/lifecycle context; preserve conflicts without invented player credit."
+    },
+    {
+      "area": "Broader FocusProjectiles builds",
+      "status": "blocked_by_evidence",
+      "required": "Exact declarations, checksums, complete payload, independently expected children and preserved parents per route; only accepted 12.05 route qualified."
+    },
+    {
+      "area": "Unknown RPC and post-RepLayout tails",
+      "status": "preserve_raw / blocked_by_evidence",
+      "required": "Exact route and independently established complete grammar before added interpretation."
+    },
+    {
+      "area": "Accounts, kill credit, complete rounds and final Movement-to-gameplay semantics",
+      "status": "outside_qualified_identity_contract",
+      "required": "Independent identity/outcome evidence beyond body-reference and provenance association."
+    },
+    {
+      "area": "China region build mapping",
+      "status": "blocked_by_evidence",
+      "required": "Exact branch/native-vector and accessible replay evidence; upstream support alone does not qualify a mapping."
+    }
+  ],
+  "documentation_corrections": [
+    {
+      "path": "docs/REFERENCE_COMPARISON.md",
+      "row": "Container Event chunks and checkpoints",
+      "replacement_rust_cell": "Native Event chunks are exposed and exported; checkpoint tables require `export --checkpoints`. Reader methods skip snapshots by default; `ReadOptions` enables independent checkpoint callbacks."
+    },
+    {
+      "path": "docs/REFERENCE_COMPARISON.md",
+      "row": "Gameplay layer",
+      "replacement_rust_cell": "Optional helpers expose validated native round/death/spike declarations and phase observations. Opt-in `MainIdentityTimeline` associates main-stream actor/character identities and movement provenance with explicit null, unresolved and ambiguous states. Separate Python tools provide richer joins; this does not establish account identity, kill credit or complete round outcomes."
+    }
+  ],
+  "verification_scope": {
+    "remote_reads": [
+      "Upstream default branch",
+      "Latest default-branch commit",
+      "Latest published Release"
+    ],
+    "local_checks": [
+      "Pinned source identities and hashes",
+      "Clean reference working tree",
+      "Current Rust runtime files equal pin",
+      "Runnable .NET SDK/runtime inventory"
+    ],
+    "runtime_tests": 0,
+    "new_corpus_runs": 0,
+    "production_changes": 0,
+    "remote_writes": 0,
+    "limits": "Bounded static contract review; not absence-of-defects proof or a fresh security/repository audit."
+  },
+  "privacy": "Public source metadata, paths, aggregate dispositions and hashes only; no replay bytes, private input names, player identifiers or raw replay logs."
+}

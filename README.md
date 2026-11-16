@@ -48,7 +48,7 @@ checks and remaining limits.
 - Phase D 0.6.0 candidate and package gates: [`docs/PHASE_D_RELEASE_CHECKLIST.md`](docs/PHASE_D_RELEASE_CHECKLIST.md)
 - Phase B work and acceptance status: [`docs/PHASE_B_STATUS.md`](docs/PHASE_B_STATUS.md)
 - Reproducible performance comparison: [`docs/PHASE_B_BENCHMARK_HANDOFF.md`](docs/PHASE_B_BENCHMARK_HANDOFF.md)
-- Current engineering evidence and limitations: [`docs/OVERHAUL_RESULTS_2026_11_16.md`](docs/OVERHAUL_RESULTS_2026_11_16.md)
+- Current measured qualification and limits: [`docs/PHASE_D_RESULTS.md`](docs/PHASE_D_RESULTS.md)
 - Run it, every tool and every output column: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable, and whether it is typed: [`docs/DATA.md`](docs/DATA.md)
 - Build it, test it, open a PR: [`CONTRIBUTING.md`](CONTRIBUTING.md) (agents: [`CLAUDE.md`](CLAUDE.md))
@@ -301,10 +301,14 @@ row order; it does not infer gameplay events or retain Parquet physical encoding
 
 ## Status
 
-Current Phase C implementation and acceptance are recorded in
-[Phase C results](docs/PHASE_C_RESULTS.md). The
-[changelog](CHANGELOG.md) and [migration checklist](docs/PHASE_C_MIGRATION.md)
-separate source compatibility from a future 0.6.0-or-later release.
+Current measured qualification is recorded in
+[Phase D results](docs/PHASE_D_RESULTS.md) and its fixed final source/CI receipt.
+Output-preserving controlled comparisons completed, but performance superiority
+remains inconclusive; the single optimization experiment was withdrawn.
+The unpublished 0.6.0 candidate retains the accepted runtime.
+[Phase C results](docs/PHASE_C_RESULTS.md), the [changelog](CHANGELOG.md) and
+[migration guide](docs/PHASE_C_MIGRATION.md) describe the included API/output
+changes. Main merge and publication remain separate user decisions.
 
 Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
 **871 passing (non-Windows)**; the Windows suite contains **872 tests (Windows)**.

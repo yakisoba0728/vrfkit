@@ -1,0 +1,86 @@
+{
+  "status": "completed",
+  "purpose": "One bounded glibc allocation-interposition diagnostic pair; not normal runtime performance",
+  "started_utc": "2026-11-16T14:05:18.844589+00:00",
+  "source_revisions": {
+    "accepted": "ff8596b546736ea4300e013248609c7c3987e231",
+    "experiment": "df93e66f48d196ed3a1e4fada5da1ec97e61617e"
+  },
+  "provenance_sha256": {
+    "input": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+    "interposer": "2ca7f9e467e94976217bee7805578a448f35c9d18dd7ddc74ca2f9eb5938f4cd",
+    "accepted": "182bf7c98de925f374b26bccf279507fe89f91c22ef2de9ff5f151cfe3b77f38",
+    "experiment": "e3a93d678ff9d262eed181c70f930b8d8275b24d514e7e5c9c5c06677c3d9eb3"
+  },
+  "samples": [
+    {
+      "variant": "accepted",
+      "order": 0,
+      "functions": {
+        "malloc": {
+          "calls": 2559365,
+          "bytes_reported": 2343240450
+        },
+        "realloc": {
+          "calls": 932129,
+          "bytes_reported": 504219854
+        },
+        "calloc": {
+          "calls": 730499,
+          "bytes_reported": 247384400
+        },
+        "free": {
+          "calls": 3289873,
+          "bytes_reported": 2962430604
+        }
+      },
+      "heap_total_reported": 3094844704,
+      "heap_peak_reported": 122694522,
+      "stack_peak_reported": 69248,
+      "output_fingerprint_sha256": "f277ba4296d08872115cea99af8510ab38e6ddf521daf2583b79b3abe0b6688d",
+      "output_equivalent": true
+    },
+    {
+      "variant": "experiment",
+      "order": 1,
+      "functions": {
+        "malloc": {
+          "calls": 2559369,
+          "bytes_reported": 2384129736
+        },
+        "realloc": {
+          "calls": 930558,
+          "bytes_reported": 490532542
+        },
+        "calloc": {
+          "calls": 730499,
+          "bytes_reported": 247384400
+        },
+        "free": {
+          "calls": 3289877,
+          "bytes_reported": 2989632578
+        }
+      },
+      "heap_total_reported": 3122046678,
+      "heap_peak_reported": 126158622,
+      "stack_peak_reported": 69248,
+      "output_fingerprint_sha256": "f277ba4296d08872115cea99af8510ab38e6ddf521daf2583b79b3abe0b6688d",
+      "output_equivalent": true
+    }
+  ],
+  "limitations": [
+    "Interposes malloc/calloc/realloc/free only; aligned allocation paths may bypass it.",
+    "Library-reported requested bytes and heap accounting are not complete Rust allocation totals or process RSS.",
+    "One observation per binary; thread scheduling and buffer recycling can affect allocator totals.",
+    "No instrumented elapsed time is used as normal performance evidence or acceptance."
+  ],
+  "diagnostic_recovery": "Initial report parser did not allow the glibc function-name pipe separator; the successful, output-verified accepted-binary export is reused from disk, not rerun. Experiment is still executed once.",
+  "equivalent": true,
+  "finished_utc": "2026-11-16T14:05:49.186938+00:00",
+  "function_call_deltas_experiment_minus_accepted": {
+    "malloc": 4,
+    "realloc": -1571,
+    "calloc": 0,
+    "free": 4
+  }
+}

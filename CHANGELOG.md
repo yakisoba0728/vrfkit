@@ -20,8 +20,10 @@ required final-source, package and approval gates.
 - The Phase C additions and migration below are included. Review
   [the API and counter migration](docs/PHASE_C_MIGRATION.md) before updating
   callers or strict export validators.
-- Quantitative Phase D performance qualification is pending its own final
-  receipt. The version change establishes no speed, CPU or RSS improvement.
+- [Phase D measurements](docs/PHASE_D_RESULTS.md) completed with strict output
+  equality, but performance superiority remains inconclusive. The one bounded
+  raw-byte reservation experiment was withdrawn; no Phase D runtime optimization
+  is included. Exact final CI/source/package completion is in the linked receipt.
 - The Windows CLI remains the packaged distribution target. Rust consumers
   use a pinned source revision; Python tools remain source-only. No crates.io
   or PyPI package is prepared or published by this version change.
