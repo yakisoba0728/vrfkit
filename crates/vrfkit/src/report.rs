@@ -18,7 +18,7 @@ pub fn frame_skips(skips: &FrameSkips) -> String {
 #[cfg(feature = "export")]
 pub fn route_children(sink: &crate::sink::ExportStats) -> String {
     format!(
-        "{} player info / {} rewards / {} selected / {} kills / {} active effects / {} ignore actors / {} blinds / {} projectile path",
+        "{} player info / {} rewards / {} selected / {} kills / {} active effects / {} ignore actors / {} blinds / {} projectile path / {} focus projectiles",
         sink.route_children_player_information,
         sink.route_children_tracked_rewards,
         sink.route_children_selected_v2,
@@ -26,7 +26,8 @@ pub fn route_children(sink: &crate::sink::ExportStats) -> String {
         sink.route_children_server_active_effects,
         sink.route_children_requested_ignore_actors,
         sink.route_children_active_blinds,
-        sink.route_children_projectile_path
+        sink.route_children_projectile_path,
+        sink.route_children_focus_projectiles
     )
 }
 

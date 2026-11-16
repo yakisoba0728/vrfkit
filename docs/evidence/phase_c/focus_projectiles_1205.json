@@ -1,0 +1,125 @@
+{
+  "build": "++Ares-Core+release-12.05",
+  "group": "/Game/Characters/Clay/Clay_PC.Clay_PC_C",
+  "parent": [
+    45,
+    "FocusProjectiles",
+    957945936
+  ],
+  "member": [
+    46,
+    "FocusProjectiles",
+    831657485
+  ],
+  "scope": "Public 12.05 historical Phase B export; independently re-read in Phase C",
+  "source_manifest_sha256": "57390dc137ac4861831c3e76949a98fb2d74fff7558eb328d253658a20c41891",
+  "checkpoint_declaration_sets": 18,
+  "reports": [
+    {
+      "table": "fields",
+      "source_table_sha256": "ef5b49828483b0e61976959082e33900598d40984b2903021a204cad649b5ee8",
+      "parent_raw_sequence_sha256": "f2115e9338086b2dade31424af594a813ffb37a01273c15b9860f1057283cafc",
+      "counts": {
+        "parents": 102,
+        "populated": 53,
+        "empty_zero_trailer": 3,
+        "member_values": 53,
+        "empty": 49
+      },
+      "widths": [
+        [
+          16,
+          46
+        ],
+        [
+          24,
+          3
+        ],
+        [
+          64,
+          18
+        ],
+        [
+          72,
+          35
+        ]
+      ],
+      "capacities": [
+        [
+          0,
+          46
+        ],
+        [
+          1,
+          51
+        ],
+        [
+          2,
+          5
+        ]
+      ],
+      "member_widths": [
+        [
+          16,
+          18
+        ],
+        [
+          24,
+          35
+        ]
+      ],
+      "reference_resolution": {
+        "unresolved": 53,
+        "actor_open_match": 53
+      },
+      "matched_actor_archetypes": {
+        "Default__Pawn_Clay_E_Boomba_C": 12,
+        "Default__Projectile_Clay_4_ProjectilePrimary_C": 17,
+        "Default__Projectile_Clay_Q_Satchel_Arming_C": 21,
+        "Default__Projectile_Clay_X_Rocket_C": 3
+      }
+    },
+    {
+      "table": "checkpoint_fields",
+      "source_table_sha256": "d5254668bc1766bc59fee43b21537f8b30e739ea45e92e36e8b7e506d7a4afcd",
+      "parent_raw_sequence_sha256": "9b3b43931c48936a6529175ecd1531af306b058e34a5bd60ec58a7637b3bcbf2",
+      "counts": {
+        "parents": 18,
+        "empty": 18,
+        "empty_zero_trailer": 0,
+        "member_values": 0
+      },
+      "widths": [
+        [
+          16,
+          18
+        ]
+      ],
+      "capacities": [
+        [
+          0,
+          18
+        ]
+      ],
+      "member_widths": [],
+      "reference_resolution": {},
+      "matched_actor_archetypes": {}
+    }
+  ],
+  "controls": {
+    "positive_shapes": 3,
+    "malformed_rejected": [
+      "nonzero_empty_trailer",
+      "truncated_empty_trailer",
+      "truncated_root_terminator",
+      "wrong_member_handle",
+      "member_width_overrun",
+      "index_out_of_capacity",
+      "populated_array_suffix",
+      "missing_nested_terminator",
+      "runaway_guid",
+      "overflow_guid"
+    ]
+  },
+  "performance_claim": null
+}
