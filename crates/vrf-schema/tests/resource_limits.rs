@@ -2,7 +2,8 @@
 
 use vrf_bitio::BitReader;
 use vrf_schema::{
-    NetFieldExportGroup, NetGuidCache, SchemaError, SchemaLimits, read_net_field_exports,
+    NetFieldExport, NetFieldExportGroup, NetGuidCache, SchemaError, SchemaLimits,
+    read_net_field_exports,
 };
 use vrf_testkit::{BitWrite, BitWriter, pack};
 
@@ -111,6 +112,12 @@ fn a_single_declaration_is_bounded_before_any_slot_is_stored() {
 fn redeclarations_charge_only_growth_and_cannot_shrink_existing_slots() {
     let mut cache = cache(1, 7);
     cache.declare_export_group("Same".into(), 1, 4).unwrap();
+    let descriptor = NetFieldExport {
+        handle: 3,
+        compatible_checksum: 42,
+        name: "Preserved".into(),
+    };
+    assert!(cache.set_field_on_group(1, descriptor.clone()));
     cache.declare_export_group("Same".into(), 1, 4).unwrap();
     cache.declare_export_group("Same".into(), 1, 2).unwrap();
     assert_eq!(cache.field_slot_count(), 4);
@@ -122,6 +129,10 @@ fn redeclarations_charge_only_growth_and_cannot_shrink_existing_slots() {
     );
     assert_eq!(cache.field_slot_count(), 7);
     assert_eq!(cache.get_group_by_index(1).unwrap().len(), 7);
+    assert_eq!(
+        cache.get_group_by_index(1).unwrap().get_field(3),
+        Some(&descriptor)
+    );
     assert_eq!(cache.schema_generation(), generation);
 }
 
