@@ -197,6 +197,21 @@ Lower-level integrations can continue using
 `vrf_schema::NetGuidCache::with_limits` directly. Creating a separate cache
 does not configure a `ReplayReader` call.
 
+## Movement source identities
+
+Each `ReplayEvent::Records` batch supplies `movement_provenance` in the same
+order and with the same length as `movement`. It identifies the actual initial
+and completing packets, actor/object/channel, content block, RPC callback,
+sparse update index, property occurrences and move ordinal. Every Reader call
+captures this companion slice; consumers can borrow it or clone selected rows.
+The CLI's existing Parquet schema and collection path remain unchanged.
+
+See [Movement provenance](MOVEMENT_PROVENANCE.md) for field definitions,
+repeated-property limits and the streaming diagnostic example. Numeric values
+and timestamps are not used to guess transport identities. A context describes
+the emission observed by this decoder; later empty replacement properties or
+failed streams must not be treated as proof of a final gameplay state.
+
 ## Compatibility
 
 Introducing the reader leaves existing CLI arguments and Parquet column

@@ -8,7 +8,41 @@ use crate::rpc::{
     COMPONENT_DATA_STREAM_HANDLE, REMOTE_CHARACTER_UPDATES_HANDLE,
     SHOOTER_CHARACTER_NET_GUID_HANDLE, decode_movement_rpc,
 };
-use crate::types::{MovementMove, RpcDecodeResult};
+use crate::types::{MovementContext, MovementMove, RpcDecodeResult};
+
+fn decode_with_context(rpc: &[bool]) -> (RpcDecodeResult, Vec<(MovementMove, MovementContext)>) {
+    let bytes = pack(rpc);
+    let mut reader = BitReader::with_bit_len(&bytes, rpc.len() as u64).unwrap();
+    let mut moves = Vec::new();
+    let result = crate::decode_movement_rpc_with_context(&mut reader, |movement, context| {
+        moves.push((movement, context));
+    })
+    .unwrap();
+    (result, moves)
+}
+
+fn movement_values(movement: MovementMove) -> (u32, [u64; 8], u32, [u8; 3]) {
+    (
+        movement.shooter_character_net_guid,
+        [
+            movement.pos_x,
+            movement.pos_y,
+            movement.pos_z,
+            movement.yaw,
+            movement.pitch,
+            movement.vel_x,
+            movement.vel_y,
+            movement.vel_z,
+        ]
+        .map(f64::to_bits),
+        movement.timestamp,
+        [
+            movement.movement_state,
+            movement.mode_flags,
+            movement.move_type,
+        ],
+    )
+}
 
 /// One move record: movementState 3, position `(x, y, z)` as 3 x f32, and for
 /// variant 1 the velocity (4, 5, 6) at scale 10.
@@ -389,4 +423,143 @@ fn every_envelope_and_the_bits_after_it_are_tallied_per_stream() {
         assert_eq!(result.error_count, errors, "{name}");
         assert_eq!(trailers(&result), expected, "{name}");
     }
+}
+
+#[test]
+fn movement_context_distinguishes_repeated_arrays_and_sparse_update_indices() {
+    let stream = real_stream(
+        &[build_move(true, 17, 1.0, -2.0, 3.0)],
+        ENVELOPE_TRAILER_BITS,
+    );
+    let update = update_with_stream(53, &stream);
+    let mut array = BitWriter::new();
+    array
+        .int_packed(8)
+        .int_packed(5)
+        .extend_bits(&update)
+        .int_packed(5)
+        .extend_bits(&update)
+        .int_packed(2)
+        .extend_bits(&update)
+        .int_packed(0);
+    let mut rpc = BitWriter::new();
+    rpc.bit(false);
+    for _ in 0..2 {
+        rpc.int_packed(REMOTE_CHARACTER_UPDATES_HANDLE + 1)
+            .int_packed(array.bit_len())
+            .extend_bits(&array);
+    }
+    rpc.int_packed(0);
+
+    let (result, moves) = decode_with_context(&rpc);
+    let actual: Vec<_> = moves.iter().map(|(_, context)| *context).collect();
+    let expected: Vec<_> = (0..2)
+        .flat_map(|array_ordinal| {
+            [4, 4, 1]
+                .into_iter()
+                .enumerate()
+                .map(move |(ordinal, index)| MovementContext {
+                    array_ordinal,
+                    update_ordinal: ordinal as u32,
+                    update_index: index,
+                    component_ordinal: 0,
+                    move_index: 0,
+                })
+        })
+        .collect();
+    assert_eq!(actual, expected);
+    assert_eq!(result.total_moves, 6);
+    assert_eq!(result.error_count, 0);
+
+    let (legacy_result, legacy_moves) = decode(&rpc);
+    assert_eq!(format!("{result:?}"), format!("{legacy_result:?}"));
+    assert_eq!(
+        moves
+            .into_iter()
+            .map(|(movement, _)| movement_values(movement))
+            .collect::<Vec<_>>(),
+        legacy_moves
+            .into_iter()
+            .map(movement_values)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn movement_context_counts_empty_failed_and_orphaned_components() {
+    let good = real_stream(
+        &[build_move(true, 17, 1.0, 2.0, 3.0)],
+        ENVELOPE_TRAILER_BITS,
+    );
+    let empty = real_stream(&[], ENVELOPE_TRAILER_BITS);
+    let bad = bad_magic_stream();
+    let mut update = BitWriter::new();
+    update
+        .int_packed(COMPONENT_DATA_STREAM_HANDLE + 1)
+        .int_packed(good.bit_len())
+        .extend_bits(&good);
+    update
+        .int_packed(SHOOTER_CHARACTER_NET_GUID_HANDLE + 1)
+        .int_packed(32)
+        .u32(53);
+    for stream in [&bad, &empty, &good, &good] {
+        update
+            .int_packed(COMPONENT_DATA_STREAM_HANDLE + 1)
+            .int_packed(stream.bit_len())
+            .extend_bits(stream);
+    }
+    update.int_packed(0);
+    let (result, moves) = decode_with_context(&wrap_updates_array(&updates_array(&[update])));
+    assert_eq!(
+        result.error_count, 2,
+        "orphaned and malformed components remain counted"
+    );
+    assert_eq!(moves.len(), 2);
+    assert_eq!(moves[0].1.component_ordinal, 3);
+    assert_eq!(moves[1].1.component_ordinal, 4);
+    assert_eq!(moves[0].1.move_index, 0);
+    assert_eq!(moves[1].1.move_index, 0);
+}
+
+#[test]
+fn movement_context_move_index_does_not_wrap_with_markers() {
+    let samples: Vec<_> = (0..20)
+        .map(|index| build_move(true, index, 1.0, 2.0, 3.0))
+        .collect();
+    let stream = real_stream(&samples, ENVELOPE_TRAILER_BITS);
+    let (result, moves) = decode_with_context(&build_rpc_payload(53, &stream));
+    assert_eq!(result.total_moves, 20);
+    assert_eq!(result.error_count, 0);
+    for (expected, (movement, context)) in moves.iter().enumerate() {
+        assert_eq!(context.move_index, expected as u32);
+        assert_eq!(movement.timestamp, expected as u32);
+    }
+}
+
+#[test]
+fn movement_context_retains_a_decoded_prefix_before_a_component_error() {
+    let good_move = build_move(true, 17, 1.0, 2.0, 3.0);
+    let mut bad_move = build_move(true, 18, 4.0, 5.0, 6.0);
+    *bad_move.last_mut().unwrap() = true; // errorSentinel
+    let failed = real_stream(&[good_move.clone(), bad_move], ENVELOPE_TRAILER_BITS);
+    let good = real_stream(&[good_move], ENVELOPE_TRAILER_BITS);
+    let mut update = BitWriter::new();
+    update
+        .int_packed(SHOOTER_CHARACTER_NET_GUID_HANDLE + 1)
+        .int_packed(32)
+        .u32(53);
+    for stream in [&failed, &good] {
+        update
+            .int_packed(COMPONENT_DATA_STREAM_HANDLE + 1)
+            .int_packed(stream.bit_len())
+            .extend_bits(stream);
+    }
+    update.int_packed(0);
+    let (result, moves) = decode_with_context(&wrap_updates_array(&updates_array(&[update])));
+    assert_eq!(result.error_count, 1);
+    assert_eq!(result.total_moves, 2);
+    assert_eq!(moves.len(), 2);
+    assert_eq!(moves[0].1.component_ordinal, 0);
+    assert_eq!(moves[1].1.component_ordinal, 1);
+    assert!(moves.iter().all(|(_, context)| context.move_index == 0));
 }

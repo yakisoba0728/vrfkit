@@ -80,6 +80,54 @@ pub struct MovementRecord {
     pub move_type: u8,
 }
 
+/// Transport and RPC identity for a movement sample delivered by a reader.
+///
+/// These values describe the actual decode path, not a guessed association
+/// based on movement values or timestamp proximity. Packet IDs are local to
+/// one replication pass; a checkpoint is a separate pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MovementSource {
+    /// Initial fragment's packet, or this packet for a non-partial bunch.
+    pub initial_packet_id: u32,
+    /// Packet that completed the bunch; equals [`MovementRecord::packet_id`].
+    pub completion_packet_id: u32,
+    pub channel_index: u32,
+    pub actor_net_guid: u32,
+    /// `None` for an actor block. `Some(0)` remains a distinct subobject GUID.
+    pub object_net_guid: Option<u32>,
+    /// Zero-based global index of the completing bunch, including fragments.
+    pub bunch_index: u64,
+    /// Zero-based index within the whole, possibly reassembled bunch.
+    pub block_index: u32,
+    /// Zero-based RPC callback ordinal in the completion packet, across all
+    /// channels and RPC names; it is not an index into the movement rows.
+    pub rpc_index: u32,
+    pub rpc_handle: u32,
+}
+
+/// Companion identity for one [`MovementRecord`], in the same row order.
+///
+/// The ordinary movement Parquet table does not serialize these extra fields.
+/// Reader callbacks can retain them without changing that table's contract.
+/// Occurrence ordinals distinguish repeated arrays, sparse indices and
+/// component properties. They do not assert that an emitted prefix is the
+/// final value after later empty, failed or replacing properties.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MovementProvenance {
+    /// Absent only if a consumer decodes without framed transport context.
+    pub source: Option<MovementSource>,
+    /// Zero-based RemoteCharacterUpdates property occurrence in this RPC.
+    pub array_ordinal: u32,
+    /// Zero-based arrival ordinal within this array, not its sparse index.
+    pub update_ordinal: u32,
+    /// Sparse array index decoded from the wire.
+    pub update_index: u32,
+    /// Zero-based ComponentDataStream property occurrence in this update.
+    pub component_ordinal: u32,
+    /// Zero-based decoded move ordinal in this component, without marker wrap.
+    pub move_index: u32,
+}
+
 /// A single actor lifecycle record ready for export. The paths are not
 /// interned: ~3,800 rows a match, under 0.1 MB to save.
 #[derive(Debug, Clone, Default)]

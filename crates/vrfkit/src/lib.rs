@@ -47,8 +47,8 @@ pub use reader::{ReadError, ReplayEvent, ReplayReader, ReplayRecords, ReplaySumm
 pub use vrf_container::{EventChunk, Preamble};
 pub use vrf_decode::OverlayErrorRow;
 pub use vrf_export::{
-    ActorRecord, FieldRecord, MovementRecord, NetGuidRecord, PartialRecord,
-    UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME,
+    ActorRecord, FieldRecord, MovementProvenance, MovementRecord, MovementSource, NetGuidRecord,
+    PartialRecord, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME,
 };
 pub use vrf_frame::FrameSkips;
 pub use vrf_net::stats::NetStats;

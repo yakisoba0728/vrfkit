@@ -6,7 +6,7 @@ use vrf_bitio::BitReader;
 
 use crate::error::MovementError;
 use crate::moves::parse_movement_section;
-use crate::types::{MovementMove, RpcDecodeResult};
+use crate::types::{MovementContext, MovementMove, RpcDecodeResult};
 
 /// Maximum number of character updates in a single RPC batch.
 const MAX_REMOTE_CHARACTER_UPDATES: u32 = 256;
@@ -23,6 +23,20 @@ pub fn decode_movement_rpc(
     reader: &mut BitReader<'_>,
     mut emit: impl FnMut(MovementMove),
 ) -> Result<RpcDecodeResult, MovementError> {
+    decode_movement_rpc_with_context(reader, |movement, _| emit(movement))
+}
+
+/// Decode the same moves as [`decode_movement_rpc`], retaining their exact
+/// array, update and component occurrence context. No move is merged or
+/// reordered. Repeated indices remain separate arrivals; callers must not
+/// infer final replacement semantics from emitted moves alone, since a later
+/// empty or failed component need not emit a row.
+///
+/// `reader` must be bounded to the RPC payload's exact declared bit length.
+pub fn decode_movement_rpc_with_context(
+    reader: &mut BitReader<'_>,
+    mut emit: impl FnMut(MovementMove, MovementContext),
+) -> Result<RpcDecodeResult, MovementError> {
     let mut result = RpcDecodeResult::default();
     // The discarded first bit; without it the payload is empty.
     if reader.at_end() {
@@ -30,6 +44,7 @@ pub fn decode_movement_rpc(
     }
     let _ = reader.read_bit()?;
 
+    let mut array_ordinal = 0;
     while !reader.at_end() {
         let encoded_handle = reader.read_int_packed()?;
         if encoded_handle == 0 {
@@ -44,7 +59,8 @@ pub fn decode_movement_rpc(
         }
 
         let mut sub = reader.sub_reader(u64::from(payload_bits))?;
-        decode_updates_array(&mut sub, &mut result, &mut emit)?;
+        decode_updates_array(&mut sub, array_ordinal, &mut result, &mut emit)?;
+        array_ordinal += 1;
     }
 
     // A 0 handle before the end leaves the rest unread. A drift can make the
@@ -58,8 +74,9 @@ pub fn decode_movement_rpc(
 
 fn decode_updates_array(
     reader: &mut BitReader<'_>,
+    array_ordinal: u32,
     result: &mut RpcDecodeResult,
-    emit: &mut impl FnMut(MovementMove),
+    emit: &mut impl FnMut(MovementMove, MovementContext),
 ) -> Result<(), MovementError> {
     let update_count = reader.read_int_packed()?;
     if update_count > MAX_REMOTE_CHARACTER_UPDATES {
@@ -67,6 +84,7 @@ fn decode_updates_array(
     }
     result.update_count = update_count;
 
+    let mut update_ordinal = 0;
     loop {
         // Capacity is not the number of changed elements: only a zero index
         // ends a sparse array cleanly, even when no elements changed.
@@ -89,10 +107,20 @@ fn decode_updates_array(
         // An index (`encoded_index - 1`) past the declared count, or a failed
         // framing read (a handle, a length, or a field longer than the window),
         // after which the next index cannot be located: the rest is lost, counted.
-        if encoded_index > update_count || decode_single_update(reader, result, emit).is_err() {
+        let context = MovementContext {
+            array_ordinal,
+            update_ordinal,
+            update_index: encoded_index - 1,
+            component_ordinal: 0,
+            move_index: 0,
+        };
+        if encoded_index > update_count
+            || decode_single_update(reader, context, result, emit).is_err()
+        {
             result.error_count += 1;
             break;
         }
+        update_ordinal += 1;
     }
 
     Ok(())
@@ -100,8 +128,9 @@ fn decode_updates_array(
 
 fn decode_single_update(
     reader: &mut BitReader<'_>,
+    mut context: MovementContext,
     result: &mut RpcDecodeResult,
-    emit: &mut impl FnMut(MovementMove),
+    emit: &mut impl FnMut(MovementMove, MovementContext),
 ) -> Result<(), MovementError> {
     let mut shooter_guid: Option<u32> = None;
     while !reader.at_end() {
@@ -130,7 +159,14 @@ fn decode_single_update(
                     // `sub_reader` has already moved `reader` past the whole
                     // stream, so a failure inside it cannot misplace the next
                     // handle: count it and go on.
-                    if decode_component_data_stream(&mut sub, guid, result, emit).is_err() {
+                    context.move_index = 0;
+                    let mut component_emit = |movement| {
+                        emit(movement, context);
+                        context.move_index += 1;
+                    };
+                    if decode_component_data_stream(&mut sub, guid, result, &mut component_emit)
+                        .is_err()
+                    {
                         result.error_count += 1;
                     }
                 } else {
@@ -139,6 +175,7 @@ fn decode_single_update(
                     // the moves are dropped. An update hitting both adds two.
                     result.error_count += 1;
                 }
+                context.component_ordinal += 1;
             }
             _ => {
                 reader.skip_bits(u64::from(payload_bits))?;

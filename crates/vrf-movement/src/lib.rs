@@ -99,8 +99,8 @@ mod rpc;
 mod types;
 
 pub use error::MovementError;
-pub use rpc::decode_movement_rpc;
-pub use types::{MovementMove, MovementUpdate, RpcDecodeResult};
+pub use rpc::{decode_movement_rpc, decode_movement_rpc_with_context};
+pub use types::{MovementContext, MovementMove, MovementUpdate, RpcDecodeResult};
 
 #[cfg(test)]
 mod tests;

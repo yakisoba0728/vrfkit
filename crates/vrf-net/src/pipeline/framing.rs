@@ -25,7 +25,8 @@ use crate::types::NetworkGuid;
 use crate::stats::{BunchFlagSnapshot, ContentBlockHeaderSnapshot, DiagnosticEvent, SkipReason};
 
 use super::{
-    RepLayoutTailOutcome, ReplicationSink, Stage, StreamFailure, StreamFailureCause, StreamKind,
+    ContentBlockContext, RepLayoutTailOutcome, ReplicationSink, Stage, StreamFailure,
+    StreamFailureCause, StreamKind,
 };
 
 /// Per-bunch context. Only the channel (`header.ch_index`) and the actor are
@@ -91,7 +92,14 @@ pub(super) fn frame_content_blocks(
             return abort_at(payload, stage.stats, sink, consumed, failure);
         }
 
-        let function_count = sink.on_content_block(ch_index, actor_net_guid, &header);
+        let context = ContentBlockContext {
+            initial_packet_id: ctx.header.packet_id,
+            completion_packet_id: ctx.ids.packet_id,
+            bunch_index: ctx.ids.global_bunch_index,
+            block_index,
+        };
+        let function_count =
+            sink.on_content_block_with_context(ch_index, actor_net_guid, &header, &context);
         stage.stats.content_blocks += 1;
         if header.has_rep_layout {
             stage.stats.rep_layout_blocks += 1;
@@ -409,6 +417,7 @@ mod tests {
         let ctx = BunchContext {
             header: &bunch,
             ids: super::super::BunchIds {
+                packet_id: 7,
                 bunch_index_in_packet: 1,
                 global_bunch_index: 11,
                 channel_bunch_index: 4,

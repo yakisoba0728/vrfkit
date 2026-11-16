@@ -6,7 +6,9 @@ use std::path::Path;
 use thiserror::Error;
 use vrf_container::{EventChunk, Preamble, parse_event_chunk, parse_preamble};
 use vrf_decode::OverlayErrorRow;
-use vrf_export::{ActorRecord, FieldRecord, MovementRecord, NetGuidRecord, PartialRecord};
+use vrf_export::{
+    ActorRecord, FieldRecord, MovementProvenance, MovementRecord, NetGuidRecord, PartialRecord,
+};
 use vrf_frame::FrameSkips;
 use vrf_net::stats::NetStats;
 use vrf_schema::SchemaLimits;
@@ -39,6 +41,10 @@ pub enum ReadError<E> {
 pub struct ReplayRecords<'a> {
     pub fields: &'a [FieldRecord],
     pub movement: &'a [MovementRecord],
+    /// One source context for each movement row, in exactly the same order.
+    /// Captured by every Reader call; ordinary CLI Parquet output is unchanged.
+    /// Like the rows, these identities remain provisional until success.
+    pub movement_provenance: &'a [MovementProvenance],
     pub actors: &'a [ActorRecord],
     pub partials: &'a [PartialRecord],
 }
@@ -244,6 +250,7 @@ impl RowCounts {
         let batch = ReplayRecords {
             fields: &buffers.fields,
             movement: &buffers.movement,
+            movement_provenance: &buffers.movement_provenance,
             actors: &buffers.actors,
             partials: &buffers.partials,
         };
@@ -266,6 +273,7 @@ fn read_main_stream(
     let metadata = parse_preamble(data)?;
     let replay = Replay::new(&metadata);
     let mut pass = Pass::with_schema_limits(&replay, schema_limits)?;
+    pass.buffers.capture_movement_provenance = true;
     consumer(ReplayEvent::Metadata(&metadata))?;
 
     let mut stats = ExportStats::default();
