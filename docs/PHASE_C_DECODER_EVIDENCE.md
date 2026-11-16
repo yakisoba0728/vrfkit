@@ -16,7 +16,7 @@ measurements. Existing raw payloads and typed values remain unchanged.
 | --- | --- | --- |
 | Four rotation-free `ReplicatedMovement` classes | `GameObject_Iris_E_Smoke_C`, `GameObject_Cashew_E_AirStrikeMortar_C`, `Zone_Gumshoe_4_Cage_C`, and `Projectile_NetToss_Underhand_C` have a historical whole-unit location observation but no observed rotation component. Byte and short rotator hypotheses are indistinguishable on those windows. | `blocked_by_evidence`: obtain native-class quantization metadata or a nonzero rotation window for each exact group/checksum, then compare all components with an independent reader, malformed controls, and unchanged raw bytes. Do not copy another class's width. |
 | Cypher cage projectile and its successor | `Projectile_Gumshoe_4_CageTrap_C.ReplicatedMovement` remains `Skip`; the 13.01 successor `Projectile_Gumshoe_Q_CageTrap_C` remains raw. The historical entry-survival record establishes a paired rename, not a fresh payload comparison on both sides. | `blocked_by_evidence`: validate both exact class identities, the rotator and location levels, and the entry-survival relation on accessible old/new replay inputs before changing either side. |
-| `Clay_PC_C.FocusProjectiles` | No sink route, scoped identity, or checked-in checksum/handle declaration identifies this parent. FOLLOWUP records 24,409 exact main arrays and 788 empty zero-trailer arrays, with 12,837 resolved elements, from a prior audit. | `blocked_by_evidence`: capture exact parent and member identities and build/stream coverage, reproduce populated and empty shapes, independently compare every child, and preserve the parent. The generic object-array walker already accepts exactly one trailing zero byte; loosening the generic grammar is unnecessary. |
+| `Clay_PC_C.FocusProjectiles` | The initial source-only review lacked an exact checked-in route. A later independent check of accepted historical public 12.05 output identified `/Game/Characters/Clay/Clay_PC.Clay_PC_C`, parent handle 45/checksum 957945936 and member handle 46/checksum 831657485. It fully consumed 102 main and 18 checkpoint parent payloads and observed 53 main member values. | Narrow historical evidence is now available; implementation and fresh acceptance are `blocked_by_execution_environment`. Qualify any future additive child route by both exact declarations, preserve the raw parent, and independently account for the expected 53 added main child rows on this input. Do not broaden generic array framing. See the superseding observation below. |
 | `InputEventData` | The documented seven-tag/53,605-row sample has numeric structure but no established tag meaning, and is not a verification of the larger historical population. | `blocked_by_evidence`: establish tag meanings independently, revalidate widths and full consumption by exact route/build, and keep unknown tags and all original bytes. A second anonymous payload representation alone does not justify a new semantic type. |
 | Abilities/GAS FastArray and `StopEffectType` | FastArray replication keys, item IDs and field windows have an existing explicit-checksum-mode structural decoder. The item/property schema remains unknown. `StopEffectType` has no admitted width/domain evidence in the checked-in correction ledger. | `blocked_by_evidence`: obtain exact declarations or independent native/reflection evidence and payload comparisons. Do not reinterpret FastArray IDs as actor IDs or infer an enum's domain from its name. |
 | Section arithmetic, scalar warnings, healing and owner references | The historical 15 packet-eligible disagreements and 46 scalar warnings remain observations with uncertainty, not an accepted formula to normalize away. Existing analytical tools retain raw/typed conflicts, ordering and lifecycle uncertainty. | `blocked_by_evidence`: reproduce the disagreeing windows with declaration, bit width, order and lifecycle context; identify the relation independently before changing arithmetic or assigning player credit. |
@@ -81,3 +81,27 @@ consumption and raw-byte preservation; show meaningful malformed negative
 controls; and compare previous typed values and proposed values with an
 independent reader. Unavailable inputs remain `blocked_by_evidence` rather
 than being filled with a synthetic assumption.
+
+## Superseding independent public observation
+
+After the initial Track C commit, E independently inspected the accepted
+historical Phase B public 12.05 export. The exact parent/member declarations
+above were present in the main schema and all 18 checkpoint schema sets.
+Main contained 53 populated parents and 49 empty parents; all 18 checkpoint
+parents were empty. Main widths were 16, 24, 64 and 72 bits. The bounded
+independent parser consumed every selected payload, accepted three positive
+synthetic shapes and rejected ten malformed shapes. These are input controls,
+not a completed Rust source mutation campaign.
+
+A separate actor-table check corroborated all 53 member references using
+actor-open records (12 Boomba, 17 primary projectiles, 21 arming satchels and
+3 rockets). The final combined receipt rerun after adding that corroboration
+was interrupted by execution-environment loss. The separate observation is
+recorded; completion of that updated receipt is not inferred.
+
+These are historical-output checks, not fresh Phase C replay executions.
+No FocusProjectiles Rust route was implemented or accepted. The initial
+lack of accessible exact identity evidence is superseded; the current
+blocker is implementation and fresh validation with execution access.
+Other candidate rows retain their evidence requirements. See
+[the recovery checkpoint](PHASE_C_RECOVERY.md) for source and restart limits.

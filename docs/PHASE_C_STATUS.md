@@ -54,3 +54,36 @@ No Phase C implementation, replay validation, final CI, or performance result
 is claimed by this initial checkpoint. Final receipts will identify accepted
 commits, exact runs and source correspondence, exclusions, and the user's
 benchmark candidate.
+
+## Execution interruption checkpoint
+
+**Current result: `BLOCKED_BY_EXECUTION_ENVIRONMENT`. Functional acceptance is
+not complete.** The allocation and zero-completion counts above describe the
+initial checkpoint only.
+
+Five unique subagents were created: A, B, C, E and F. All five returned a
+checkpoint or review; that is not five completed feature tracks. Maximum
+observed concurrency was three non-root agents plus the coordinator. D was
+not started. No worker crash was observed; compiler SIGKILLs and executor
+disconnection are recorded separately.
+
+The Reader reached last-observed local commit
+`0e92e629cb1062de7348a9ec775fe82062ac22c0` and partial core validation.
+Its exact source is not published remotely. B preserved an explicitly
+unverified gameplay reconstruction on `phase-c/gameplay-identity-unverified`
+at `0e40d8c86623b4d1f0a78be9395fa213e54cc244`. E preserved metadata only on
+`phase-c/qa-recovery` at `ad64e9ee92697a3cf0f288641f154997878ef788`;
+its prepared QA sources still require original filesystem recovery.
+
+The decoder record has been corrected with E's later narrow historical
+Clay FocusProjectiles evidence. No decoder route has been implemented.
+Ten public inputs are prepared for a later functional sweep; no fresh
+Phase C sweep completed.
+
+Main and accepted integration remain the exact starting SHAs above. PR #58
+remains open, draft and unmerged. No final Phase C candidate, feature CI,
+performance comparison or publication is claimed.
+
+The [recovery checkpoint](PHASE_C_RECOVERY.md) and
+[structured receipt](evidence/phase-c-recovery.json) record exact source
+boundaries, observed checks, unobserved operations and restart order.
