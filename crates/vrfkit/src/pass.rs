@@ -11,7 +11,7 @@ use vrf_container::{
 use vrf_export::CheckpointIdentity;
 use vrf_frame::{FrameSkips, walk_demo_frames};
 use vrf_net::pipeline::ReplicationReader;
-use vrf_schema::NetGuidCache;
+use vrf_schema::{NetGuidCache, SchemaLimits};
 
 use crate::error::{CliError, replication_reader};
 use crate::sink::{ChannelState, ExportSink, ExportStats, RecordBuffers};
@@ -140,10 +140,17 @@ pub(crate) struct Pass<'a> {
 
 impl<'a> Pass<'a> {
     pub fn new(replay: &Replay<'a>) -> Result<Self, CliError> {
+        Self::with_schema_limits(replay, SchemaLimits::default())
+    }
+
+    pub fn with_schema_limits(
+        replay: &Replay<'a>,
+        schema_limits: SchemaLimits,
+    ) -> Result<Self, CliError> {
         Ok(Self {
             branch: replay.branch,
             flags: replay.flags,
-            cache: NetGuidCache::new(),
+            cache: NetGuidCache::with_limits(schema_limits),
             reader: replication_reader(replay.branch)?,
             channels: ChannelState::default(),
             buffers: RecordBuffers::default(),

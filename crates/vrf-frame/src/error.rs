@@ -7,9 +7,10 @@ pub enum FrameError {
     #[error("bit-IO error during frame parsing: {0}")]
     Bit(String),
 
-    /// A net-field export or export-GUID read failed.
+    /// A net-field export or export-GUID read failed. The typed source
+    /// distinguishes a configured resource refusal from malformed input.
     #[error("schema error during frame parsing: {0}")]
-    Schema(String),
+    Schema(#[from] vrf_schema::SchemaError),
 
     #[error("negative packet size: {size}")]
     NegativePacketSize { size: i32 },
@@ -28,16 +29,9 @@ pub enum FrameError {
     },
 }
 
-// `Bit` and `Schema` hold the rendered string, not the source error, so a
-// vrf-bitio or vrf-schema error-shape change is not a breaking change here.
+// Ordinary frame bit failures retain the existing rendered-string contract.
 impl From<vrf_bitio::BitError> for FrameError {
     fn from(e: vrf_bitio::BitError) -> Self {
         Self::Bit(e.to_string())
-    }
-}
-
-impl From<vrf_schema::SchemaError> for FrameError {
-    fn from(e: vrf_schema::SchemaError) -> Self {
-        Self::Schema(e.to_string())
     }
 }

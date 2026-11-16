@@ -52,6 +52,7 @@ pub use vrf_export::{
 };
 pub use vrf_frame::FrameSkips;
 pub use vrf_net::stats::NetStats;
+pub use vrf_schema::{SchemaError, SchemaLimits};
 
 /// Run the existing command-line dispatcher, including its stdout/stderr output.
 ///
