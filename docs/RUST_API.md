@@ -65,8 +65,9 @@ bounded info prefix and the declared Header payload, then releases them.
 
 If you already have the bytes, `reader.read(&bytes, callback)` borrows them
 without another whole-file copy. Both input paths use the same decode pass,
-callback ordering and quality counters. The CLI's existing file-loading and
-Parquet paths are unchanged by this Reader input improvement.
+callback ordering and quality counters. The CLI's `validate` and `export`
+commands now reuse the same file input source; `export --checkpoints` adds an
+independent checkpoint cursor. See [CLI file input](CLI_INPUT_STREAMING.md).
 
 Input memory scales with the largest encoded chunk, current and prefetched
 decoded chunks, metadata and parser state, rather than total file size.
