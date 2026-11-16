@@ -37,11 +37,15 @@ file bytes and hashes were not captured before disconnection. Recovered new
 source therefore uses the original authored patch formatting and must run
 rustfmt again. No local source/tree hash is invented.
 
-A final two-line code/doc clarification was attempted during the disconnect,
-but its apply_patch result was not observed. That unobserved patch is deliberately
-not applied here. Its intended wording was that a movement association describes
-the observed transport window and is not backdated to the move's server tick
-or a native Event timestamp. Review and add that clarification after recovery.
+A final two-line code/doc clarification was attempted during the disconnect.
+Its result was initially unobserved; after this backup was created, draining the
+pending call returned a verification failure before reading identity.rs:
+`409 Conflict, environment_offline: Environment is not connected`.
+The patch therefore did not apply and the subsequent Cargo poll in that call
+was never reached. The clarification is not applied here. Its intended wording
+was that a movement association describes the observed transport window and is
+not backdated to the move's server tick or a native Event timestamp. Review and
+add that clarification after recovery.
 
 ## Observed checks and their limits
 
