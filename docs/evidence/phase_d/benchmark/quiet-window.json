@@ -1,0 +1,6 @@
+{
+  "coordinator_granted": true,
+  "start_utc": "2026-11-16T13:55:37.306317+00:00",
+  "end_utc": "2026-11-16T14:01:31.641061+00:00",
+  "scope": "Other Phase D agents agreed no local heavy builds, tests or large scans; remote CI and small metadata reads allowed. No exclusive host guarantee."
+}

@@ -1,0 +1,338 @@
+{
+  "schema_version": 1,
+  "decision": "ACCEPT_FRESH_BUILD_CORRESPONDENCE",
+  "builds": {
+    "baseline": {
+      "receipt_sha256": "41c800925e0a25e8b29413704d30ed827cd0bf1585de0b9b27740ac877c916db",
+      "source_commit": "1b9bbf222f003e35c882e640c1b19e0bbcc88472",
+      "source_tree": "1a31dca6a205134a16ad65f6d1d12d568cdf59f4",
+      "tracked_source_files_checked": 193,
+      "source_files_sha256": "dd6c0343d55e2d0f803b8ebbb455d14d73e29ef3ae11056accca7b985a0175b3",
+      "frozen_executable_sha256": "2e6d3852f608f6c4ef8311f0495383bbb6351df80aafb8f979dea93e6174e82a",
+      "runtime_artifact_count": 11,
+      "production_crate_count": 10,
+      "feature_profiles": {
+        "vrf_bitio/lib": {
+          "features": [
+            "alloc",
+            "default"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_schema/lib": {
+          "features": [
+            "checkpoint",
+            "default"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_transform/lib": {
+          "features": [],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_export/lib": {
+          "features": [
+            "actors",
+            "checkpoint-context",
+            "events",
+            "fields",
+            "movement",
+            "net-guids",
+            "parquet",
+            "partials"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_net/lib": {
+          "features": [
+            "default",
+            "diagnostics"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_container/lib": {
+          "features": [
+            "checkpoint",
+            "default",
+            "event",
+            "oodle"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_frame/lib": {
+          "features": [],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_decode/lib": {
+          "features": [
+            "array",
+            "default",
+            "effect",
+            "overlay",
+            "structs"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_movement/lib": {
+          "features": [],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrfkit/lib": {
+          "features": [
+            "default",
+            "export"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrfkit/bin": {
+          "features": [
+            "default",
+            "export"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        }
+      }
+    },
+    "candidate": {
+      "receipt_sha256": "4747f26f4ff24514f31ecca9d5f8e4f247a0efed527b1c1903f7ee4725832869",
+      "source_commit": "ff8596b546736ea4300e013248609c7c3987e231",
+      "source_tree": "431e6c35a1dc3092aa3879ac4cd8ac9d2a3aa890",
+      "tracked_source_files_checked": 202,
+      "source_files_sha256": "5471e471a6ff8caad761fc3d632a874e6a6d29534babcfe2cf8a512f5671a259",
+      "frozen_executable_sha256": "182bf7c98de925f374b26bccf279507fe89f91c22ef2de9ff5f151cfe3b77f38",
+      "runtime_artifact_count": 11,
+      "production_crate_count": 10,
+      "feature_profiles": {
+        "vrf_bitio/lib": {
+          "features": [
+            "alloc",
+            "default"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_schema/lib": {
+          "features": [
+            "checkpoint",
+            "default"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_transform/lib": {
+          "features": [],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_export/lib": {
+          "features": [
+            "actors",
+            "checkpoint-context",
+            "events",
+            "fields",
+            "movement",
+            "net-guids",
+            "parquet",
+            "partials"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_net/lib": {
+          "features": [
+            "default",
+            "diagnostics"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_container/lib": {
+          "features": [
+            "checkpoint",
+            "default",
+            "event",
+            "oodle"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_frame/lib": {
+          "features": [],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_movement/lib": {
+          "features": [],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrf_decode/lib": {
+          "features": [
+            "array",
+            "default",
+            "effect",
+            "overlay",
+            "structs"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrfkit/lib": {
+          "features": [
+            "default",
+            "export"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        },
+        "vrfkit/bin": {
+          "features": [
+            "default",
+            "export"
+          ],
+          "profile": {
+            "opt_level": "3",
+            "debuginfo": 1,
+            "debug_assertions": false,
+            "overflow_checks": false,
+            "test": false
+          }
+        }
+      }
+    }
+  },
+  "runner_sha256": "d9983c160146f764bbc54e90be8d215f99c5ee6ad1eb2be60f7fdebf1e7df18f",
+  "new_builds_by_this_audit": 0,
+  "reviewed_build_driver": "evidence/benchmark/build_benchmarks.py",
+  "build_driver_sha256": "784a32bcb69e570bb975820464ef0da768f33ed49e9f25f595dea4f27dc116c7",
+  "freeze_helper_sha256": "cfd83af7d10d477d3520edc9e57a9390b2950bec924ec00e116cef3ccaf31681",
+  "checked_conditions": [
+    "Both recorded source maps and tree IDs equal immutable Git objects.",
+    "All ten production crates plus the CLI artifact are newly compiled non-test Cargo artifacts.",
+    "Compiler identity, Cargo JSON hashes, feature vectors and effective artifact profiles agree.",
+    "Release fat LTO/codegen-units1 declaration is unchanged; build driver removes Cargo profile/Rust flag overrides and wrappers.",
+    "Each build driver target directory had to be absent; frozen binaries match receipt bytes and SHA256.",
+    "Freeze helper requires full revision, clean source, successful build-finished, checkout-owned source paths, isolated executable path and copy hash stability."
+  ],
+  "limits": [
+    "Compiler invocations are ordinary Cargo records, not externally signed build attestations.",
+    "The freeze helper validates artifact metadata and source declaration; effective LTO provenance also depends on the reviewed clean build environment.",
+    "No new release compilation or performance export is attributed to D by this audit."
+  ]
+}

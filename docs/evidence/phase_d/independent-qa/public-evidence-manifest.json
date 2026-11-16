@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "purpose": "Sanitized independent QA receipts and portable reproduction sources",
+  "receipts_are_original_bytes": true,
+  "sources": [
+    {
+      "published_path": "review_candidate_metadata.py",
+      "executed_original_sha256": "b3d9e06912c76226a901f84965e6e6b0bdb82175ee342a2b7825711035a532da",
+      "published_sha256": "b3d9e06912c76226a901f84965e6e6b0bdb82175ee342a2b7825711035a532da",
+      "identical_to_executed_source": true
+    },
+    {
+      "published_path": "check_fresh_outputs.py",
+      "executed_original_sha256": "055eb6c9a618185858018343e0c93a34ee96cf4fdee7196a26709ceb3f6caf37",
+      "published_sha256": "055eb6c9a618185858018343e0c93a34ee96cf4fdee7196a26709ceb3f6caf37",
+      "identical_to_executed_source": true
+    },
+    {
+      "published_path": "check_primary_arithmetic.py",
+      "executed_original_sha256": "4a7ce3f1d03c79347a38dbe135e1300a78e52ee22d78be5883b501501ea3a956",
+      "published_sha256": "e52212bb2b93251ef95f3858b6f64dfda9ec688bd30d466521ec54b35012f5c6",
+      "identical_to_executed_source": false,
+      "adaptation_executed": false,
+      "adaptation": "Replace session evidence path with required --evidence-root and --output; arithmetic assertions unchanged."
+    },
+    {
+      "published_path": "review_build_provenance.py",
+      "executed_original_sha256": "d9983c160146f764bbc54e90be8d215f99c5ee6ad1eb2be60f7fdebf1e7df18f",
+      "published_sha256": "4c683e921e018b06759ef417a553ff2d9ea5f0423ba9afd88806f24b04d21f71",
+      "identical_to_executed_source": false,
+      "adaptation_executed": false,
+      "adaptation": "Replace session repository/evidence/output locations with required CLI arguments; provenance assertions unchanged."
+    },
+    {
+      "published_path": "check_optimization_arithmetic.py",
+      "executed_original_sha256": "333b1d165d08ca5a08cf6b6a45ab940b80623acc027ec766c40e207163721ca9",
+      "published_sha256": "e750aa45245ed3e621f253e6a297fdd8c1af7539cbad97ba0ffb104bc29e2167",
+      "identical_to_executed_source": false,
+      "adaptation_executed": false,
+      "adaptation": "Replace session repository/evidence/output locations with required CLI arguments; numerical and source assertions unchanged."
+    },
+    {
+      "published_path": "raw_payload_contract.rs",
+      "executed_original_sha256": "fc3f9590edd745f7f48276881735e9eddf9d2380311a37f0faedd8f5768ce931",
+      "published_sha256": "fc3f9590edd745f7f48276881735e9eddf9d2380311a37f0faedd8f5768ce931",
+      "identical_to_executed_source": true
+    }
+  ],
+  "mutation_runner": {
+    "published": false,
+    "executed_original_sha256": "a1f1332613868d62a16158c374c6f581e6c1b3cfd63d06591428276e919315dd",
+    "reproduction": "README commands plus exact two mutation patches and executed test source"
+  },
+  "adaptation_validation": "All published Python sources AST parsed only; no heavy rerun for portability adaptation.",
+  "privacy_check": {
+    "unique_private_catalog_names_checked": 966,
+    "matches": 0
+  },
+  "files": {
+    "README.md": {
+      "bytes": 7496,
+      "sha256": "92602101c636452e68e400b59f136da70095d8bca6c9ba2d3a7ce5414b7a6e04"
+    },
+    "candidate-mutation-review.json": {
+      "bytes": 5533,
+      "sha256": "b6b90bc94af1765f28831895be5a25f806290260652f489e214894a74318b834"
+    },
+    "check_fresh_outputs.py": {
+      "bytes": 11439,
+      "sha256": "055eb6c9a618185858018343e0c93a34ee96cf4fdee7196a26709ceb3f6caf37"
+    },
+    "check_optimization_arithmetic.py": {
+      "bytes": 9828,
+      "sha256": "e750aa45245ed3e621f253e6a297fdd8c1af7539cbad97ba0ffb104bc29e2167"
+    },
+    "check_primary_arithmetic.py": {
+      "bytes": 9533,
+      "sha256": "e52212bb2b93251ef95f3858b6f64dfda9ec688bd30d466521ec54b35012f5c6"
+    },
+    "ci-strategy-review.json": {
+      "bytes": 3122,
+      "sha256": "5eb9d82e6eefd82cbd312e376a3a813a3ce330ae93326754b060a5ae1cd013c9"
+    },
+    "cross-parser-summary-review.json": {
+      "bytes": 711,
+      "sha256": "f27264809a93ce67695f313bd242d15c0dbb15e603fa8814b6029b8b42ada32c"
+    },
+    "fresh-build-provenance-review.json": {
+      "bytes": 9897,
+      "sha256": "a89e9d5132a5652c4d6d0b2d621d26eae742b50562825a203b79de4062ae1c13"
+    },
+    "fresh-output-review.json": {
+      "bytes": 12341,
+      "sha256": "6aac46f8dbadb9a855f8177a748211357ef728fc3d558e58009b5a68e950311d"
+    },
+    "initial-remote-correspondence.json": {
+      "bytes": 458,
+      "sha256": "8109733c2225dc32c98c2dc28deaaf4f1e33106746fc77762df46c5aea2ff0f4"
+    },
+    "metadata-review.json": {
+      "bytes": 40543,
+      "sha256": "d250f8af2161cd322479afff5c9d1a1096185d5875430c400a57922a798041f5"
+    },
+    "null_to_empty.patch": {
+      "bytes": 581,
+      "sha256": "0935cbf9168ed92d6b040ed42e08c29262215ac623c2e5ee35d1f0b049b163a9"
+    },
+    "optimization-arithmetic-review.json": {
+      "bytes": 8339,
+      "sha256": "ba9929817ccaa947505c32262bd6a7f0942ebcb1f60a15d3eb9ff9339a14d9ea"
+    },
+    "optimization-fresh-output-review.json": {
+      "bytes": 12341,
+      "sha256": "9c92de00d19a72c8c5fe14bfbe754b03eb269f5fd4dda43d0d693fc65c41c8b8"
+    },
+    "optimization-source-review.json": {
+      "bytes": 1168,
+      "sha256": "887ef6b5623279fbd0b152d5e140412231d623902bfc7c783e0acb9956732158"
+    },
+    "primary-arithmetic-review.final.json": {
+      "bytes": 14542,
+      "sha256": "2e3d8fdd02dbec5366948c7d0232db43d8722e5773e64db64655a470c5f4c948"
+    },
+    "private-summary-review.final.json": {
+      "bytes": 508,
+      "sha256": "0ff3ddf9a27ab9af47367ad9bac282ab97a6d70aa4002df183fdfde5bd8f4791"
+    },
+    "raw_payload_contract.rs": {
+      "bytes": 6163,
+      "sha256": "fc3f9590edd745f7f48276881735e9eddf9d2380311a37f0faedd8f5768ce931"
+    },
+    "review_build_provenance.py": {
+      "bytes": 6524,
+      "sha256": "4c683e921e018b06759ef417a553ff2d9ea5f0423ba9afd88806f24b04d21f71"
+    },
+    "review_candidate_metadata.py": {
+      "bytes": 5071,
+      "sha256": "b3d9e06912c76226a901f84965e6e6b0bdb82175ee342a2b7825711035a532da"
+    },
+    "truncate_payload.patch": {
+      "bytes": 591,
+      "sha256": "71180b69829ebfbbec953ea88c5da6402f622075b2b06ce50bcaa91f3b6e2774"
+    }
+  }
+}

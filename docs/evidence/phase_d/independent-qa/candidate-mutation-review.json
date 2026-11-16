@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "status": "completed",
+  "reviewer": "D independent QA",
+  "candidate_runtime_commit": "df93e66f48d196ed3a1e4fada5da1ec97e61617e",
+  "qa_test_commit": "69171dca4c6d0f83ff300c1802f4d7d12af47065",
+  "test_sha256": "fc3f9590edd745f7f48276881735e9eddf9d2380311a37f0faedd8f5768ce931",
+  "runner_sha256": "a1f1332613868d62a16158c374c6f581e6c1b3cfd63d06591428276e919315dd",
+  "candidate_schema_sha256": "9c70d60d775d70dcb01022f0c9fc69e20b35b23d022ed8e2bc51ca6d9c0d95dd",
+  "cases": [
+    {
+      "name": "candidate",
+      "source_sha256": "9c70d60d775d70dcb01022f0c9fc69e20b35b23d022ed8e2bc51ca6d9c0d95dd",
+      "expected_exit": 0,
+      "build_exit": 0,
+      "executable_sha256": "408b7224f450e25d272abc7006dfb8ac0bb98497ccb911ae68ff3790d6188ddd",
+      "test_profile": {
+        "opt_level": "2",
+        "debuginfo": 0,
+        "debug_assertions": true,
+        "overflow_checks": true,
+        "test": true
+      },
+      "features": [
+        "actors",
+        "checkpoint-context",
+        "default",
+        "events",
+        "fields",
+        "movement",
+        "net-guids",
+        "parquet",
+        "partials",
+        "snappy"
+      ],
+      "cargo_messages_sha256": "135450da8d378da8f70c71565bbbcf6c9762269df284e7aba9c2ed153f05249b",
+      "freshly_compiled": true,
+      "test_exit": 0,
+      "duration_seconds": 72.3294306490061,
+      "test_log_sha256": "c9f10d596d202276b0cf60b1b7f020c340572a925731a7d062f10c7a1b48e4f7",
+      "expected_assertion_observed": true,
+      "meaningful_tests_passed": 2
+    },
+    {
+      "name": "null_to_empty",
+      "source_sha256": "791fbc1e20b1de19ad1e0b5743b3e0b7045d9729c8dca432d6568a601556608f",
+      "expected_exit": 101,
+      "build_exit": 0,
+      "executable_sha256": "b4be161bac2f2fa1fe5b3964e1e0915bc485d237def9efb3f9bb9732a152dd54",
+      "test_profile": {
+        "opt_level": "2",
+        "debuginfo": 0,
+        "debug_assertions": true,
+        "overflow_checks": true,
+        "test": true
+      },
+      "features": [
+        "actors",
+        "checkpoint-context",
+        "default",
+        "events",
+        "fields",
+        "movement",
+        "net-guids",
+        "parquet",
+        "partials",
+        "snappy"
+      ],
+      "cargo_messages_sha256": "fb3d09b15fe3f41d1461f8bba282ec03ceffe19a24c1e0d8c83580c5f2ab7a5d",
+      "freshly_compiled": true,
+      "test_exit": 101,
+      "duration_seconds": 13.666669008998724,
+      "test_log_sha256": "3f45633148273c371fec7073ce78f68256b6a368bc9e6822c1c5c1d685e2ec5d",
+      "expected_assertion_observed": true,
+      "meaningful_test_failures": 2
+    },
+    {
+      "name": "truncate_payload",
+      "source_sha256": "39ce6623239c7dc5ca95cb3d61f578734a1c9823f297916faba7b510c05ef6e5",
+      "expected_exit": 101,
+      "build_exit": 0,
+      "executable_sha256": "03d9c7e501272e850122ceb1ecf4aef7617a8e6dfc3f4ae6578ce14875781722",
+      "test_profile": {
+        "opt_level": "2",
+        "debuginfo": 0,
+        "debug_assertions": true,
+        "overflow_checks": true,
+        "test": true
+      },
+      "features": [
+        "actors",
+        "checkpoint-context",
+        "default",
+        "events",
+        "fields",
+        "movement",
+        "net-guids",
+        "parquet",
+        "partials",
+        "snappy"
+      ],
+      "cargo_messages_sha256": "6af65e202b2c93b28c7ff61cd5136312d27d3d9ddc31a010419740857eba287a",
+      "freshly_compiled": true,
+      "test_exit": 101,
+      "duration_seconds": 13.261235325000598,
+      "test_log_sha256": "e46744cf0e4a430c14c3a911392e4c7d09681b949692d3d28106eff71a63bf82",
+      "expected_assertion_observed": true,
+      "meaningful_test_failures": 2
+    },
+    {
+      "name": "restored_candidate",
+      "source_sha256": "9c70d60d775d70dcb01022f0c9fc69e20b35b23d022ed8e2bc51ca6d9c0d95dd",
+      "expected_exit": 0,
+      "build_exit": 0,
+      "executable_sha256": "408b7224f450e25d272abc7006dfb8ac0bb98497ccb911ae68ff3790d6188ddd",
+      "test_profile": {
+        "opt_level": "2",
+        "debuginfo": 0,
+        "debug_assertions": true,
+        "overflow_checks": true,
+        "test": true
+      },
+      "features": [
+        "actors",
+        "checkpoint-context",
+        "default",
+        "events",
+        "fields",
+        "movement",
+        "net-guids",
+        "parquet",
+        "partials",
+        "snappy"
+      ],
+      "cargo_messages_sha256": "7ad9206e10c5180fb8352ae1aec59c4ef7c52ed0dd0cbdb39b7633f657083609",
+      "freshly_compiled": true,
+      "test_exit": 0,
+      "duration_seconds": 14.391704020999896,
+      "test_log_sha256": "c9f10d596d202276b0cf60b1b7f020c340572a925731a7d062f10c7a1b48e4f7",
+      "expected_assertion_observed": true,
+      "meaningful_tests_passed": 2
+    }
+  ],
+  "scope": "Two public-writer preservation tests, each main/checkpoint test covers two row-group sizes and batch boundaries.",
+  "fixture_rows_per_export": 16395,
+  "successful_export_roundtrips_per_positive_run": 4,
+  "limitations": [
+    "Synthetic writer fixtures exercise arbitrary raw-cell preservation; they do not assert payloads are valid game wire values.",
+    "Dependency artifacts are reused; vrf-export is explicitly cleaned and freshly compiled for each variant.",
+    "These mutations are local test evidence only, never production changes."
+  ],
+  "decision": "ACCEPT_RAW_CELL_PRESERVATION_ORACLE",
+  "semantic_mutants_detected": 2,
+  "meaningful_mutant_test_failures": 4,
+  "positive_test_executions": 4,
+  "restored_source_matches_candidate": true,
+  "restored_executable_matches_candidate": true
+}

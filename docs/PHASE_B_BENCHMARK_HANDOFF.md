@@ -3,9 +3,13 @@
 The filename is retained for existing links. This revision supersedes the
 Phase B candidate/baseline instructions with the Phase C output contract.
 
-**Performance comparisons are user-run.** At the user's request, the
+**Phase D update:** the user has explicitly authorized agent-run quantitative
+measurements. [Phase D status](PHASE_D_STATUS.md) records that work separately;
+the strict build, output and control requirements below remain in force.
+
+**Historical Phase C policy:** at the user's request, the
 agents stopped quantitative and repeated replay benchmarking. This runbook
-prepares a reproducible comparison for the user; its commands are not a
+prepared a reproducible comparison for the user; its commands alone are not a
 record of measurements already executed. Functional tests, replay output
 checks and CI remain separate acceptance work. No Phase C speed, CPU
 or peak-RSS improvement is claimed here. Earlier profiling and rejected
