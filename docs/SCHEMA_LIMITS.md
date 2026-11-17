@@ -39,7 +39,7 @@ not take that path.
 
 A refusal returns `SchemaError::ResourceLimit` through the existing frame or
 checkpoint error path. It never reports a successful parse with a silently
-dropped declaration. Previously accepted groups remain intact. Checkpoint
+dropped declaration. Previously accepted groups remain intact. Checkpoint group
 observers still see a declaration before cache storage, including one whose
 admission is refused; no field rows for that refused group are decoded.
 The CLI follows its existing export-failure behavior. Original replay files

@@ -4,13 +4,15 @@ Role E owns the probes and verification here. A, B, D and the coordinator own
 the product fixes. Historical Phase C/D oracles are reused only where named;
 their historical execution counts are not credited to this run.
 
-## Frozen candidate: public corpus and contracts passed
+## Final acceptance in the executed scope
 
 Runtime source: `1d2d8f6fe68f3ad1f196bca5adac24b0d3fbee6c`.
 Default-release executable SHA-256:
 `c3a3010083b81332e03d90b888d38dfe069dfb659f3c866637cfed0051d6d417`.
-`candidate-public-review.json` binds the source, frozen build receipt,
-toolchain, inputs, runner/dependency hashes, commands and reports.
+`final-acceptance.json` is the final E index. It binds the source, frozen build
+receipt, toolchain, inputs, runner/dependency hashes, commands and reports. All
+E executions listed below have completed successfully. Intermediate checkpoint
+receipts retain their original pending statuses as historical records.
 
 | Fresh final-candidate gate | Result |
 | --- | --- |
@@ -24,14 +26,37 @@ toolchain, inputs, runner/dependency hashes, commands and reports.
 | CLI inspect | Five matching branch/size/checkpoint checks |
 | CLI adversity | 25/25 pass: containment, legal sibling/hardlink output, malformed-input rollback and diagnostic replacement |
 | Exact-source selected contracts | 43/43 pass: 28 maintained tests, nine retained independent contracts, six new independent regressions |
+| Public GameplayIdentity interval oracle | All 4,495,315 movement rows and exact proof tuples agree; zero mismatches |
+| Final-source compiled movement mutation | Compiles and fails on the expected 12-versus-8 row assertion; restored source and test executable hashes match exactly |
 
 The five input files remain read-only and hash-identical. Repeated commands
 and malformed derivatives do not increase the distinct input count. The 28
 maintained contracts overlap the coordinator's regular test suite. The frozen
 release source checkout remains clean; temporary QA adapters are installed only
-in a separate checkout at the same commit. Fresh public GameplayIdentity joins
-and final-source compiled mutation/restoration are still running at this
-checkpoint. Hosted CI and Windows package gates belong to the coordinator.
+in a separate checkout at the same commit. After mutation, every tracked
+Rust/Cargo fingerprint in that QA checkout matches the final contract build.
+The frozen release and identity-adapter hashes remain unchanged. Hosted CI and
+Windows package gates belong to the coordinator.
+
+The fresh identity oracle checks 4,465,251 movement components, including
+11,703 movement rows from fragmented RPCs, and 23 raw `SpawnedCharacter`
+declarations. It agrees on 3,925,225 resolved rows and 570,090 rows that remain
+`unresolved:NoReference`. It joins main-stream packet intervals only and does
+not infer account identity or use final GUID paths. Per-row proof output stays
+inside a pipe; the committed results contain aggregate counts and digests.
+
+No newly discovered P0 or P1 remains unresolved in the reviewed scope, and no
+E finding remains open. This does not assert the absence of undiscovered
+defects. The packet-length arithmetic fix received source
+review plus the coordinator's allocation-free regression tests. The diagnostic
+Windows fix received source review, successful Linux publication checks and
+D's Linux compiled legacy-sequence negative control; E does not claim a native
+Windows baseline execution. The private archive remains metadata-only:
+24 releases, 1,011 assets, zero binary downloads, hash checks or executions.
+
+The [D diagnostic mutation/restoration receipt](../reader/diagnostic_mutation_restoration.json)
+is author evidence. It is separate from the
+[E independent final CLI adversity receipt](candidate-cli-adversity.json).
 
 ## Checkpoint: baseline and core fixes
 
@@ -91,9 +116,13 @@ observations establish a margin for the five public inputs only.
   Removing only the reset compiles and fails with 12 rows instead of 8. Restoring
   the exact source restores the exact test-executable hash and passes. The
   mutation never touches the frozen release executable or public input bytes.
+- `final-movement-mutation.json` and the three `final-movement-*.log` files:
+  repeat the compiled negative control at the exact frozen candidate source.
+  The restored test-executable SHA-256 is
+  `98db711c3620de7ab1bebe9c9aa61184c49d24e765775af94d9fc7bd8e7da2d3`.
 - `compare_identity.py`: final-public-corpus runner for the retained Rust
-  GameplayIdentity adapter and independent Python interval oracle. Prepared;
-  final-source execution remains pending.
+  GameplayIdentity adapter and independent Python interval oracle.
+  `final-identity.json` and its log record the fresh five-input pass.
 - `run_final_contracts.py`: installs isolated adapters, runs the 43 selected
   contracts and builds the core-only identity adapter. It records every tracked
   Rust/Cargo source hash and verifies that the tracked checkout remains
@@ -112,3 +141,16 @@ coordinator owns hosted CI and Windows package gates. No process-wide memory
 cap, hostile filesystem race, crash durability, quantitative speedup, or full
 private-corpus coverage is claimed. Existing unresolved wire semantics remain
 unresolved.
+
+The following remain `blocked_by_evidence`, as recorded in the frozen source's
+`docs/PHASE_D_RESULTS.md` and `docs/PHASE_C_DECODER_EVIDENCE.md`:
+
+- Six raw `ReplicatedMovement` classes and their rotator/quantization choices.
+- `InputEventData` tag meanings and unsupported variants.
+- Abilities/GAS FastArray item/property semantics and `StopEffectType` width/domain.
+- Section/scalar arithmetic, healing attribution and `OwnerActor`/`AvatarActor`
+  lifecycle ambiguities.
+- `FocusProjectiles` builds beyond the admitted exact route and evidence.
+- Unresolved RPC payloads and post-RepLayout tails beyond verified boundaries.
+- China-region mappings.
+- Complete account, kill and round semantics beyond admitted observations.

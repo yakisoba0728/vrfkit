@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
-  "scope": "Changed/new files relative to recovered8581642 before final evidence completion; final diff is checked again at freeze",
-  "inspected_changed_files": 103,
+  "verdict": "PASS_IN_INSPECTED_SCOPE",
+  "scope": "All changed/new files relative to8581642 at final source preparation",
+  "inspected_changed_files": 144,
   "high_signal_secret_patterns": [
     "github_token",
     "private_key",
@@ -9,13 +10,14 @@
     "signed_blob_url"
   ],
   "matches": [],
+  "replay_or_binary_artifacts_staged": [],
   "largest_files": [
     {
       "bytes": 108618,
       "path": "crates/vrf-net/src/pipeline/mod.rs"
     },
     {
-      "bytes": 98623,
+      "bytes": 98746,
       "path": "docs/USAGE.md"
     },
     {
@@ -27,9 +29,9 @@
       "path": "docs/evidence/final_consolidation/builds/candidate-cargo.jsonl"
     },
     {
-      "bytes": 52173,
-      "path": "docs/evidence/final_consolidation/builds/candidate-build.json"
+      "bytes": 77750,
+      "path": "docs/evidence/final_consolidation/builds/integrated-rust-workspace.log"
     }
   ],
-  "limits": "Bounded heuristic scan plus source/evidence review; not a guarantee that every possible sensitive string is recognized. No replay/Parquet bytes are staged."
+  "limits": "Bounded heuristic scan plus source/evidence review; not a guarantee that every possible sensitive string is recognized. Exact final tree and source hashes are reconciled separately."
 }

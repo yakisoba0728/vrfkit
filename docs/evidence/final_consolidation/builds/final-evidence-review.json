@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "reviewer_role": "C performance/review specialist reused for independent read-only consistency check",
+  "review_type": "Source/receipt inspection; no new replay, timing or test execution",
+  "verdict": "NO_BLOCKING_INCONSISTENCY",
+  "checked": {
+    "candidate_original_build_receipt_matches_E": true,
+    "E_evidence_hashes": 9,
+    "E_runner_hashes": 5,
+    "E_published_final_log_hashes": 4,
+    "D_linked_mutation_receipt_matches": true,
+    "integrated_log_hashes": 4,
+    "measured_Rust_passed": 885,
+    "measured_Python_passed": 1181,
+    "matched_runtime_tool_workflow_files": 355,
+    "candidate_release_checkout_clean": true
+  },
+  "wording_correction": "The overview now distinguishes author regressions from independent source review and functional checks, rather than implying every defect had a separately authored independent runtime test. Native Windows remains a hosted gate.",
+  "final_hosted_acceptance": "Pending final source push and exact branch/PR job and artifact verification"
+}

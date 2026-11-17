@@ -316,10 +316,11 @@ the consolidation ledger; no new ordinary-replay speedup is implied.
 [migration guide](docs/PHASE_C_MIGRATION.md) describe the included API/output
 changes. Main merge and publication remain separate user decisions.
 
-Integrated workspace qualification is in progress. The 14 new regression test
-functions bring the suites to **885 Rust tests (non-Windows)** and
-**886 Rust tests (Windows)**; final actual execution belongs to the linked
-receipt. The full Python suite has **1181 passing** tests in the fresh local run. The documentation guard
+Fresh local `cargo +1.86.0 test --workspace --locked` passes all
+**885 Rust tests (non-Windows)**, with zero failures or ignored tests. The
+Windows suite contains **886 Rust tests (Windows)**; exact final hosted
+execution belongs to the linked receipt. The full Python suite has
+**1181 passing** tests in the fresh local run. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.

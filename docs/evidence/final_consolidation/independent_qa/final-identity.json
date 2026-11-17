@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "verdict": "PASS",
+  "source_commit": "1d2d8f6fe68f3ad1f196bca5adac24b0d3fbee6c",
+  "probe_executable_sha256": "80c74697c44c8d019ae19047591afdfc4be09382b51a199680def0c60c8f570a",
+  "runner_sha256": "9aea6d2add3a90a9dc5b5c62970c6f1cd654d2ae0b001d559d4640f3b0042e02",
+  "retained_probe_source_sha256": "90da9c00e9987a70de871b1ae0b7e633831f3f93ac0f8d9fe5cbdebf0bef45bd",
+  "retained_oracle_sha256": "181c8c5366f8a388fec7ebccf28bb1a872a348a01f44aa1cf6364a8fb8177acc",
+  "corpus_report_sha256": "d22e621de683059db55bb33fe4d08f374bf474f13ff032988a6d2dc646baa06c",
+  "distinct_inputs": 5,
+  "movement_rows_compared": 4495315,
+  "exact_proof_tuples_compared": 4495315,
+  "movement_components": 4465251,
+  "fragmented_movement_rows": 11703,
+  "spawned_character_raw_values_compared": 23,
+  "resolution_counts": {
+    "resolved": 3925225,
+    "unresolved:NoReference": 570090
+  },
+  "mismatches": 0,
+  "results": [
+    {
+      "input_sha256": "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd",
+      "build": "++Ares-Core+release-12.11",
+      "movement_rows_compared": 3001,
+      "exact_proof_tuples_compared": 3001,
+      "movement_components": 2949,
+      "fragmented_movement_rows": 0,
+      "spawned_character_raw_values_compared": 1,
+      "spawned_character_widths": [
+        [
+          16,
+          1
+        ]
+      ],
+      "resolution_counts": {
+        "resolved": 3001
+      },
+      "probe_output_sha256": "82690f1a9d733d14d33d69473d6eac14c6f3d3518a0c9e21b1248ee5f17b0714",
+      "skipped_checkpoint_chunks": 6,
+      "mismatches": 0,
+      "scope": "Main packet intervals only; no account, event timestamp, or final GUID path join"
+    },
+    {
+      "input_sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "build": "++Ares-Core+release-12.09",
+      "movement_rows_compared": 2634029,
+      "exact_proof_tuples_compared": 2634029,
+      "movement_components": 2616931,
+      "fragmented_movement_rows": 6330,
+      "spawned_character_raw_values_compared": 10,
+      "spawned_character_widths": [
+        [
+          16,
+          10
+        ]
+      ],
+      "resolution_counts": {
+        "resolved": 2126838,
+        "unresolved:NoReference": 507191
+      },
+      "probe_output_sha256": "91fd1057fd9edaadd520f59fb317077f732298e984616c2886c26bd421a1b83c",
+      "skipped_checkpoint_chunks": 21,
+      "mismatches": 0,
+      "scope": "Main packet intervals only; no account, event timestamp, or final GUID path join"
+    },
+    {
+      "input_sha256": "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606",
+      "build": "++Ares-Core+release-12.10",
+      "movement_rows_compared": 8907,
+      "exact_proof_tuples_compared": 8907,
+      "movement_components": 8853,
+      "fragmented_movement_rows": 0,
+      "spawned_character_raw_values_compared": 1,
+      "spawned_character_widths": [
+        [
+          16,
+          1
+        ]
+      ],
+      "resolution_counts": {
+        "resolved": 8907
+      },
+      "probe_output_sha256": "ea2321b74c082e41e900de4360d47390aa22a67b31e1781302c97954352e85a1",
+      "skipped_checkpoint_chunks": 7,
+      "mismatches": 0,
+      "scope": "Main packet intervals only; no account, event timestamp, or final GUID path join"
+    },
+    {
+      "input_sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+      "build": "++Ares-Core+release-12.05",
+      "movement_rows_compared": 1844387,
+      "exact_proof_tuples_compared": 1844387,
+      "movement_components": 1831572,
+      "fragmented_movement_rows": 5373,
+      "spawned_character_raw_values_compared": 10,
+      "spawned_character_widths": [
+        [
+          16,
+          10
+        ]
+      ],
+      "resolution_counts": {
+        "resolved": 1781488,
+        "unresolved:NoReference": 62899
+      },
+      "probe_output_sha256": "be20c1b405ca4cb871e150710ac9ffb08118e0f120c958697ff9e6f4746f1e50",
+      "skipped_checkpoint_chunks": 19,
+      "mismatches": 0,
+      "scope": "Main packet intervals only; no account, event timestamp, or final GUID path join"
+    },
+    {
+      "input_sha256": "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a",
+      "build": "++Ares-Core+release-13.00",
+      "movement_rows_compared": 4991,
+      "exact_proof_tuples_compared": 4991,
+      "movement_components": 4946,
+      "fragmented_movement_rows": 0,
+      "spawned_character_raw_values_compared": 1,
+      "spawned_character_widths": [
+        [
+          8,
+          1
+        ]
+      ],
+      "resolution_counts": {
+        "resolved": 4991
+      },
+      "probe_output_sha256": "9f787b9e9d087f3687a3f57cb6d140ae0a2caa662a716841f2f200cb18f9979d",
+      "skipped_checkpoint_chunks": 6,
+      "mismatches": 0,
+      "scope": "Main packet intervals only; no account, event timestamp, or final GUID path join"
+    }
+  ],
+  "limitations": [
+    "Fresh Linux execution; retained Rust adapter and independent Python interval oracle.",
+    "Main packet intervals only; checkpoints are explicitly skipped by this identity API.",
+    "No account identity, event timestamp, final path join, or unobserved wire semantics inferred."
+  ]
+}

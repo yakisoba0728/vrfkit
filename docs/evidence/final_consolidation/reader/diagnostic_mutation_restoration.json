@@ -1,0 +1,218 @@
+{
+  "candidate_code_commit": "8dd465c0f773c45676c2a039ba9301c0435d8bb0",
+  "platform": "Linux x86_64",
+  "control": "Apply the prior Windows remove-before-rename sequence on Linux, then restore.",
+  "native_windows_baseline": "NOT_EXECUTED",
+  "native_windows_final_gate": "Coordinator-owned hosted Windows CI",
+  "source_before_sha256": "f2a7721c8538f63165835ce8bcf5ab41b9167e31f818fa45b42e9732e714a8fb",
+  "candidate_cli_before_sha256": "4fbe541ee469137b9efea971f5452b3d7b3e13ad6bda5fae62c51bfc2efeab01",
+  "candidate_unit_harness_before_sha256": "511eb6870611a5171bfa4fefb4c86cd9b9af1951577d0de632ab37f601d8102f",
+  "mutation_patch": "diagnostic_remove_before_rename.patch",
+  "public_replays_used": 0,
+  "private_replays_used": 0,
+  "logs_workspace_paths_normalized": true,
+  "clean_package": {
+    "command": [
+      "/home/agent/.cargo/bin/cargo",
+      "+1.86.0",
+      "clean",
+      "-p",
+      "vrfkit"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_TARGET_DIR": "$WORKSPACE/target-reader"
+    },
+    "started_at_utc": "2026-11-16T23:51:10.354739+00:00",
+    "duration_seconds": 4.189,
+    "exit_code": 0,
+    "log": "diagnostic_clean_package.log",
+    "log_sha256": "83cdda75f260673283fee4463aca1d884e35fbddc9896feb196ebde10c37ddad",
+    "log_sha256_before_whitespace_normalization": "83cdda75f260673283fee4463aca1d884e35fbddc9896feb196ebde10c37ddad"
+  },
+  "source_mutant_sha256": "dd32622ec96e019dec94ee2c9f86da158d88add9423ba93a6192561da5358e78",
+  "mutant": {
+    "command": [
+      "/home/agent/.cargo/bin/cargo",
+      "+1.86.0",
+      "test",
+      "-p",
+      "vrfkit",
+      "--all-features",
+      "--locked",
+      "--lib",
+      "diagnose::tests::failed_json_publication_preserves_the_prior_report",
+      "--",
+      "--exact"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_TARGET_DIR": "$WORKSPACE/target-reader"
+    },
+    "started_at_utc": "2026-11-16T23:51:14.554420+00:00",
+    "duration_seconds": 73.713,
+    "exit_code": 101,
+    "log": "diagnostic_mutant.log",
+    "log_sha256": "6bef501b6e008a43cbb4f7119550b07a045409270e6d9d879a07fd6deff8583c",
+    "log_sha256_before_whitespace_normalization": "6bef501b6e008a43cbb4f7119550b07a045409270e6d9d879a07fd6deff8583c"
+  },
+  "mutant_unit_harness_sha256": "3ea4b8c0203439df2f1965dd4208ed2ff10e7e0b0a24d88394920b5021fc721d",
+  "mutation_detected": true,
+  "source_restored_sha256": "f2a7721c8538f63165835ce8bcf5ab41b9167e31f818fa45b42e9732e714a8fb",
+  "source_restored_byte_exact": true,
+  "restored_unit": {
+    "command": [
+      "/home/agent/.cargo/bin/cargo",
+      "+1.86.0",
+      "test",
+      "-p",
+      "vrfkit",
+      "--all-features",
+      "--locked",
+      "--lib",
+      "diagnose::tests::failed_json_publication_preserves_the_prior_report",
+      "--",
+      "--exact"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_TARGET_DIR": "$WORKSPACE/target-reader"
+    },
+    "started_at_utc": "2026-11-16T23:52:28.582497+00:00",
+    "duration_seconds": 7.16,
+    "exit_code": 0,
+    "log": "diagnostic_restored_unit.log",
+    "log_sha256": "23c650581168d4dbbf9db3a04f2546c9a871f7570d46c642c24dcadf888a0f2e",
+    "log_sha256_before_whitespace_normalization": "b36a59b176100a3bcf0c4a386771b095e1f556fd1446d4f35a089798eb29289d"
+  },
+  "restored_dev_cli_build": {
+    "command": [
+      "/home/agent/.cargo/bin/cargo",
+      "+1.86.0",
+      "build",
+      "-p",
+      "vrfkit",
+      "--all-features",
+      "--locked",
+      "--bin",
+      "vrfkit"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_TARGET_DIR": "$WORKSPACE/target-reader"
+    },
+    "started_at_utc": "2026-11-16T23:52:36.367488+00:00",
+    "duration_seconds": 139.063,
+    "exit_code": 0,
+    "log": "diagnostic_restored_cli_build.log",
+    "log_sha256": "6220ef038b8c090b04cbe53d470116f51b921f9390a00e2fc38b94441eb156c9",
+    "log_sha256_before_whitespace_normalization": "6220ef038b8c090b04cbe53d470116f51b921f9390a00e2fc38b94441eb156c9"
+  },
+  "unsupported_version_smoke": {
+    "command": [
+      "$WORKSPACE/target-reader/debug/vrfkit",
+      "--version"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_TARGET_DIR": "$WORKSPACE/target-reader"
+    },
+    "started_at_utc": "2026-11-16T23:54:55.622290+00:00",
+    "duration_seconds": 0.005,
+    "exit_code": 1,
+    "log": "diagnostic_restored_cli_version.log",
+    "log_sha256": "e58b4694aa5339c9e0b23e406d05e8201feef7a054f5de529e3caacd5895ab81",
+    "explanation": "Author harness used --version, which this CLI does not support. The exit 1 log is retained; the supported --help smoke command follows.",
+    "log_sha256_before_whitespace_normalization": "f78ce2cc51925ff19645c65bdeb633b33ff38aa87de965c5bd7b1f6de2b9f9ee"
+  },
+  "restored_unit_harness_sha256": "511eb6870611a5171bfa4fefb4c86cd9b9af1951577d0de632ab37f601d8102f",
+  "restored_unit_harness_matches_original": true,
+  "restored_dev_cli_sha256": "5c5f20b61885b2e3bcbe3dcc83ea20f9242d68d759231f00deab246b38a77ff2",
+  "profile_note": "The package suite built its normal CLI under profile.test (opt-level=2). A default dev build was also executed successfully, but has a different profile and is not used for the byte-for-byte restoration comparison. The following explicit --profile test build restores the normal CLI in the same profile as the initial package run.",
+  "restored_normal_cli_build": {
+    "command": [
+      "/home/agent/.cargo/bin/cargo",
+      "+1.86.0",
+      "build",
+      "-p",
+      "vrfkit",
+      "--all-features",
+      "--locked",
+      "--profile",
+      "test",
+      "--bin",
+      "vrfkit"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_TARGET_DIR": "$WORKSPACE/target-reader"
+    },
+    "started_at_utc": "2026-11-16T23:55:31.110886+00:00",
+    "duration_seconds": 46.477,
+    "exit_code": 0,
+    "log": "diagnostic_restored_cli_test_profile_build.log",
+    "log_sha256": "ff1719ce422dce3fe86c4b04ed2825e6263c21fc1d8c193c90ee0b44c5a99919",
+    "log_sha256_before_whitespace_normalization": "ff1719ce422dce3fe86c4b04ed2825e6263c21fc1d8c193c90ee0b44c5a99919"
+  },
+  "restored_normal_cli_sha256": "4fbe541ee469137b9efea971f5452b3d7b3e13ad6bda5fae62c51bfc2efeab01",
+  "restored_normal_cli_matches_original": true,
+  "restored_cli_help": {
+    "command": [
+      "$WORKSPACE/target-reader/debug/vrfkit",
+      "--help"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_TARGET_DIR": "$WORKSPACE/target-reader"
+    },
+    "started_at_utc": "2026-11-16T23:56:18.016970+00:00",
+    "duration_seconds": 0.007,
+    "exit_code": 0,
+    "log": "diagnostic_restored_cli_help.log",
+    "log_sha256": "7d9c327c0bff6519985b8d027c8531743cd67dc1ff15cca8b9230e62e63a681d",
+    "log_sha256_before_whitespace_normalization": "59ca97b9afd50c2655bc302cdf3ab70b77d7a8adb1be282078bc3c5e5ca7eab6"
+  },
+  "format_check": {
+    "command": [
+      "/home/agent/.cargo/bin/cargo",
+      "+1.86.0",
+      "fmt",
+      "--check"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_TARGET_DIR": "$WORKSPACE/target-reader"
+    },
+    "started_at_utc": "2026-11-16T23:56:18.024136+00:00",
+    "duration_seconds": 1.011,
+    "exit_code": 0,
+    "log": "candidate_format_check.log",
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "log_sha256_before_whitespace_normalization": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "diff_check": {
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_TARGET_DIR": "$WORKSPACE/target-reader"
+    },
+    "started_at_utc": "2026-11-16T23:56:19.035768+00:00",
+    "duration_seconds": 0.022,
+    "exit_code": 0,
+    "log": "candidate_diff_check.log",
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "log_sha256_before_whitespace_normalization": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "tracked_source_diff": "",
+  "completed_at_utc": "2026-11-16T23:56:19.061666+00:00",
+  "author_control_status": "PASS; native Windows gate remains coordinator-owned",
+  "log_normalization": "Workspace paths replaced with $WORKSPACE; trailing whitespace and final blank lines removed; all exit codes and substantive output preserved.",
+  "executed_mutation_patch_text": "--- a/crates/vrfkit/src/diagnose.rs\n+++ b/crates/vrfkit/src/diagnose.rs\n@@ -279,6 +279,9 @@\n fn publish_json_file(staged: &Path, destination: &Path) -> std::io::Result<()> {\n     // rename replaces an existing file on Windows too. Removing it first\n     // would discard the prior complete report if the rename then failed.\n+    if destination.try_exists()? {\n+        fs::remove_file(destination)?;\n+    }\n     fs::rename(staged, destination)\n }\n \n",
+  "executed_mutation_patch_sha256": "9812fe569aa21caaceca718e405646d75b516eda23dc1ab638889f3f2f3c834d",
+  "saved_mutation_patch_sha256": "3fd7852b0b2a593097ef1133fd178127ab993b79b6e7ed0bbf61fd4a4138f1ba",
+  "mutation_patch_normalization": "The saved .patch drops one trailing empty context line and adjusts hunk counts to satisfy git diff --check. The executed patch text and digest above preserve the original patch exactly; inserted source lines are identical. git apply --check passes for the saved patch on restored source."
+}

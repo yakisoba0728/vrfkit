@@ -16,7 +16,9 @@ These results are distinct from final candidate qualification.
 
 ## Integrated candidate
 
-`candidate-build.json` records the clean isolated runtime source
+`candidate-build-original.json` preserves the exact original receipt hash
+referenced by independent QA. `candidate-build.json` adds published-log
+mappings and normalized artifact paths. Both record the clean runtime source
 `1d2d8f6fe68f3ad1f196bca5adac24b0d3fbee6c`, tree
 `833dae7add06f21589ffdae9680d5df12a5f89fe`. All 12 workspace packages were
 cleaned from the shared release target before compiling the candidate. Cargo
@@ -29,5 +31,10 @@ The default release profile, Rust 1.86 and Cargo.lock are unchanged.
 The actual artifact count is recorded in the JSON; source, command, profile,
 complete file fingerprints and raw/published log hashes are preserved. Later
 documentation/evidence commits must retain every runtime/tool/workflow hash.
-Local regular-suite results and final published-tree reconciliation will be
-recorded separately. A matching version string alone is insufficient.
+`integrated-local-tests.json` records the complete regular Rust workspace run:
+885 passed, zero failed/ignored, plus rustfmt. The fresh Python 3.12 suite
+passes all 1,181 tests with warnings as errors and no skips. These runs use
+unmodified regular test profiles and exclude temporary independent adapters.
+Both full logs are preserved with original and published hashes. Final
+published-tree reconciliation is recorded separately. A matching version
+string alone is insufficient.

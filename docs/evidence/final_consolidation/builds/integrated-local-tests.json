@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "source_commit": "1d2d8f6fe68f3ad1f196bca5adac24b0d3fbee6c",
+  "platform": "Linux x86_64",
+  "rustc": "1.86.0",
+  "CARGO_BUILD_JOBS": 1,
+  "CARGO_TARGET_DIR": "/workspace/scratch/5a322f957689/target-integrated-tests",
+  "profile": "unchanged workspace test profile; no debug/codegen override",
+  "clean_command": [
+    "cargo",
+    "+1.86.0",
+    "clean",
+    "-p",
+    "vrf-bitio",
+    "-p",
+    "vrf-container",
+    "-p",
+    "vrf-testkit",
+    "-p",
+    "vrf-decode",
+    "-p",
+    "vrf-export",
+    "-p",
+    "vrf-frame",
+    "-p",
+    "vrf-schema",
+    "-p",
+    "vrf-movement",
+    "-p",
+    "vrf-net",
+    "-p",
+    "vrf-transform",
+    "-p",
+    "vrfkit",
+    "-p",
+    "extract-component-classes"
+  ],
+  "checks": [
+    {
+      "name": "rust-workspace.log",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "test",
+        "--workspace",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "passed": 885,
+      "ignored": 0,
+      "log_sha256": "7d00348fc0e67b7eeaf5ac6edc9476a6f5c64b3cfa8484b5987a2633a787da20"
+    },
+    {
+      "name": "fmt.log",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "fmt",
+        "--check"
+      ],
+      "exit_code": 0,
+      "passed": 0,
+      "ignored": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "published_logs": {
+    "integrated-rust-workspace.log": {
+      "raw_sha256": "7d00348fc0e67b7eeaf5ac6edc9476a6f5c64b3cfa8484b5987a2633a787da20",
+      "published_sha256": "7f590e35493f379d3f7647e7dd1e74f7c98ad349f9ebb973483296e543847e84"
+    },
+    "integrated-fmt.log": {
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "integrated-workspace-clean.log": {
+      "raw_sha256": "6aa784e1e0637e7bfd29381d1f0edc6c282eb95d61b898426d74f9bb4c7c0d62",
+      "published_sha256": "6aa784e1e0637e7bfd29381d1f0edc6c282eb95d61b898426d74f9bb4c7c0d62"
+    },
+    "integrated-python-full.log": {
+      "raw_sha256": "b4f2a94306689b6c53d6d8e37e945240feb7b77c36c4725e44773d7121a847f2",
+      "published_sha256": "b4f2a94306689b6c53d6d8e37e945240feb7b77c36c4725e44773d7121a847f2"
+    }
+  },
+  "python": {
+    "command": [
+      "python",
+      "-W",
+      "error",
+      "-m",
+      "unittest",
+      "discover",
+      "-b",
+      "-s",
+      "tools/tests",
+      "-p",
+      "test_*.py"
+    ],
+    "passed": 1181,
+    "exit_code": 0,
+    "skipped": 0,
+    "version": "Python 3.12.14"
+  },
+  "published_log_transformations": [
+    "Workspace prefix replaced with $WORK_ROOT",
+    "Terminal blank lines normalized; all test result lines retained"
+  ]
+}

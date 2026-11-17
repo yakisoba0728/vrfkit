@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "verdict": "PASS",
+  "check": "Official check_docs.py count functions applied to actual completed integrated test counts; no test subprocess rerun",
+  "rust_non_windows": 885,
+  "python": 1181,
+  "problems": [],
+  "scope": "Independent of --fast structural documentation gate; final Windows/full hosted checker remains required",
+  "test_receipt_sha256": "df327286bb9da3d582a9033092699436d19c6b964ba932069f4ad1f468bfab57"
+}

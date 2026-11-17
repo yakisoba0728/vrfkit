@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "verdict": "PASS",
+  "source_commit": "1d2d8f6fe68f3ad1f196bca5adac24b0d3fbee6c",
+  "runner_sha256": "f3b1509194187071b9badffc53b9ac9407ce21a673f2a6965f453cfc96b0fd15",
+  "test_source_sha256": "aed0c72575c64b9cbb0a06de5e87d717026204a159c57374df8b9f1e98a629bf",
+  "command": [
+    "cargo",
+    "+1.86.0",
+    "test",
+    "-p",
+    "vrfkit",
+    "--no-default-features",
+    "--locked",
+    "--test",
+    "qa_final_guid"
+  ],
+  "environment": {
+    "CARGO_BUILD_JOBS": "1",
+    "CARGO_PROFILE_TEST_DEBUG": "0",
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "CARGO_INCREMENTAL": "0"
+  },
+  "mutation": "remove only shooter_guid = None from the malformed repeated GUID branch",
+  "before": {
+    "exit_code": 0,
+    "source_sha256": "a8989c4eb82820f7f99d14dcaa1dfb3e251fa385f4813f8867ab018915af6409",
+    "log_sha256": "1aa38f8b03ae9480364dd7a8677ed437aab7a807934dc16a759cc8f7ca7dd571",
+    "test_executable_sha256": "98db711c3620de7ab1bebe9c9aa61184c49d24e765775af94d9fc7bd8e7da2d3"
+  },
+  "compiled_mutant": {
+    "exit_code": 101,
+    "source_sha256": "ed185d9bf1c0bded2364c3163b9ee33211ffa5a5f5cbd7f20971a1973fd7650a",
+    "log_sha256": "3713c52a723870a9d70efa4e8906dfef8bf370ba4180e89558fa8188b5c6bf1a",
+    "test_executable_sha256": "55691b9365c7671b99e84f5f45894c68861bb81788ec7832ed796a529e78db46"
+  },
+  "restored": {
+    "exit_code": 0,
+    "source_sha256": "a8989c4eb82820f7f99d14dcaa1dfb3e251fa385f4813f8867ab018915af6409",
+    "log_sha256": "980c8c7ba09b7e26f3c41dc9b94a7fd8c8a26725cf161252b743b9649bf7850f",
+    "test_executable_sha256": "98db711c3620de7ab1bebe9c9aa61184c49d24e765775af94d9fc7bd8e7da2d3"
+  },
+  "source_and_test_executable_restored_exactly": true,
+  "limitations": [
+    "Synthetic public Reader replay tests; no mutation of public corpus inputs.",
+    "Only stale movement identity mutation is measured here."
+  ],
+  "published_logs": {
+    "final-movement-before": {
+      "raw_sha256": "1aa38f8b03ae9480364dd7a8677ed437aab7a807934dc16a759cc8f7ca7dd571",
+      "published_sha256": "c200c388eeaa2f32d8a9e63c01bdb3f0d8e0462572faa23fa6be3c43d3c36d28"
+    },
+    "final-movement-mutant": {
+      "raw_sha256": "3713c52a723870a9d70efa4e8906dfef8bf370ba4180e89558fa8188b5c6bf1a",
+      "published_sha256": "03814b4a3e390f141154cdfcc750ea6abc336b0bac1c63b9c14a749ba82dd6a5"
+    },
+    "final-movement-restored": {
+      "raw_sha256": "980c8c7ba09b7e26f3c41dc9b94a7fd8c8a26725cf161252b743b9649bf7850f",
+      "published_sha256": "a7fdf8447d1c793ebb8f9e16ac066625d1f31fb57a9e248d45482189bc95e8e3"
+    }
+  },
+  "published_log_transformations": [
+    "Workspace prefix replaced with $QA_ROOT",
+    "Terminal blank lines normalized; compilation and test outcomes retained"
+  ]
+}

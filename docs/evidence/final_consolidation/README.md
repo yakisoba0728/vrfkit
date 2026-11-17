@@ -15,6 +15,7 @@ all gates. It is separate from these source-frozen intermediate receipts.
 | Compatibility | [Final migration](../../FINAL_CONSOLIDATION_MIGRATION.md) | Public enum cases, checkpoint budget and publication behavior |
 | Core movement | [A audit](core/README.md) | Malformed repeated GUID failing-before/fixed-after regression |
 | Architecture | [B audit](architecture/README.md) | Fixed cumulative checkpoint path admission and dependency boundaries |
+| Reader and CLI | [D audit](reader/README.md) | Input protection, report replacement and compiled mutation/restoration |
 | Network boundary | [Coordinator regressions](net/README.md) | Short buffers, preserved assemblies and checked wide packet arithmetic |
 | Independent QA | [E evidence](independent_qa/README.md) | Public corpus, independent probes, raw/value preservation and compiled mutation |
 | Performance | [C review](performance/README.md) | Retained arithmetic, harness controls, source review; zero fresh benchmark executions |
@@ -23,9 +24,11 @@ all gates. It is separate from these source-frozen intermediate receipts.
 | Local builds | [Executable provenance](builds/README.md) | Immutable source and executable hashes; failed build retained distinctly |
 | PR history | [Original PR #58 body](pr58-before.md) | Preserved before the final review rewrite |
 
-Reader/CLI author evidence and the final candidate corpus/build receipts will
-be linked here after their recorded checks complete. Pending work is not a
-passing result.
+All author and independent local checks are complete. E's
+[final functional receipt](independent_qa/final-acceptance.json) records no new
+unresolved P0/P1 within its scope. Final actual-HEAD hosted CI and downloaded
+Windows package acceptance are recorded in the fixed external receipt above;
+intermediate runs are not credited as final acceptance.
 
 ## Evidence interpretation
 

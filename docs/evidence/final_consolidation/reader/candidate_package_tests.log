@@ -1,0 +1,364 @@
+   Compiling vrf-bitio v0.6.0 ($WORKSPACE/worktrees/reader-fix/crates/vrf-bitio)
+   Compiling vrf-schema v0.6.0 ($WORKSPACE/worktrees/reader-fix/crates/vrf-schema)
+   Compiling vrf-transform v0.6.0 ($WORKSPACE/worktrees/reader-fix/crates/vrf-transform)
+   Compiling vrf-net v0.6.0 ($WORKSPACE/worktrees/reader-fix/crates/vrf-net)
+   Compiling vrf-container v0.6.0 ($WORKSPACE/worktrees/reader-fix/crates/vrf-container)
+   Compiling vrf-frame v0.6.0 ($WORKSPACE/worktrees/reader-fix/crates/vrf-frame)
+   Compiling vrf-movement v0.6.0 ($WORKSPACE/worktrees/reader-fix/crates/vrf-movement)
+   Compiling vrf-decode v0.6.0 ($WORKSPACE/worktrees/reader-fix/crates/vrf-decode)
+   Compiling vrfkit v0.6.0 ($WORKSPACE/worktrees/reader-fix/crates/vrfkit)
+    Finished `test` profile [optimized + debuginfo] target(s) in 5m 15s
+     Running unittests src/lib.rs ($WORKSPACE/target-reader/debug/deps/vrfkit-0dc91349cf577b46)
+
+running 171 tests
+test diagnose::tests::build_labels_come_from_the_release_marker ... ok
+test diagnose::tests::json_output_cannot_alias_the_input ... ok
+test diagnose::tests::json_strings_encode_non_bmp_as_surrogate_pairs ... ok
+test diagnose::tests::failed_json_publication_preserves_the_prior_report ... ok
+test cli::tests::unknown_surplus_and_duplicate_arguments_are_refused_before_the_file ... ok
+test diagnose::tests::net_members_are_every_counter_then_the_derives ... ok
+test diagnose::tests::json_output_replaces_a_hardlink_without_truncating_its_source ... ok
+test diagnose::tests::json_strings_escape_terminators_and_control_bytes ... ok
+test diagnose::tests::optional_numbers_render_as_the_number_or_null ... ok
+test driver::checkpoints::tests::actor_rows_a_chunk_opened_or_closed_but_did_not_write_are_dropped ... ok
+test driver::publish::tests::a_long_list_of_foreign_entries_names_the_first_and_counts_the_rest ... ok
+test driver::publish::tests::a_concurrent_exports_staging_is_reported_and_left_to_publish ... ok
+test driver::publish::tests::a_failed_publication_names_the_step_the_paths_and_the_outcome ... ok
+test driver::publish::tests::a_directory_named_like_a_table_is_a_foreign_entry ... ok
+test driver::publish::tests::a_prior_output_stranded_between_the_renames_is_reported_not_restored ... ok
+test driver::publish::tests::a_kept_prior_output_is_reported_with_what_it_holds_besides_export_output ... ok
+test driver::publish::tests::a_staging_directory_left_by_a_killed_export_is_reported_and_kept ... ok
+test driver::publish::tests::a_publication_failure_restores_the_prior_complete_directory ... ok
+test driver::publish::tests::a_successful_publication_replaces_the_directory_as_one_complete_set ... ok
+test driver::publish::tests::every_generated_name_is_recognised_as_its_own_kind ... ok
+test driver::publish::tests::an_aborted_export_preserves_the_prior_output_and_cleans_staging ... ok
+test driver::publish::tests::an_entry_that_appears_during_the_run_keeps_the_prior_output ... ok
+test driver::publish::tests::only_this_destinations_generated_shapes_are_reported ... ok
+test driver::summary::tests::an_unreadable_file_size_is_a_visible_absence ... ok
+test driver::summary::tests::diagnostic_path_truncation_never_slices_inside_unicode ... ok
+test driver::summary::tests::the_typed_share_of_no_rows_is_unknown_not_zero ... ok
+test driver::summary::tests::native_component_counters_reach_main_and_checkpoint_summaries ... ok
+test driver::summary::tests::a_leftover_checkpoint_table_is_named_when_this_run_did_not_write_one ... ok
+test driver::writers::tests::a_writer_that_fails_after_draining_its_channel_fails_finish ... ok
+test gameplay::identity::tests::body_projection_preserves_complete_borrowed_evidence_and_null ... ok
+test gameplay::identity::tests::dormancy_and_dormant_channel_reuse_do_not_destroy_identity ... ok
+test gameplay::identity::tests::identity_and_overlay_mutations_are_rejected_without_changing_raw ... ok
+test gameplay::identity::tests::later_evidence_never_backfills_earlier_or_same_packet_boundaries ... ok
+test gameplay::identity::tests::close_and_active_channel_replacement_retire_lifetimes ... ok
+test gameplay::identity::tests::malformed_observation_poisoning_prevents_stale_resolution_after_ignored_errors ... ok
+test gameplay::identity::tests::movement_missing_misaligned_or_impossible_source_is_an_error ... ok
+test gameplay::identity::tests::movement_joins_exact_aligned_source_without_controller_or_timestamp_guess ... ok
+test gameplay::identity::tests::movement_same_packet_or_partial_interval_changes_remain_unresolved ... ok
+test gameplay::identity::tests::null_then_reconnect_keeps_historical_relation_without_current_backfill ... ok
+test gameplay::identity::tests::packed_guid_negative_controls_require_exact_value_width_and_termination ... ok
+test driver::writers::tests::append_reports_a_writer_that_returned_ok_early_as_stopped ... ok
+test driver::writers::tests::append_reports_a_panicking_writer_as_a_panic ... ok
+test driver::writers::tests::a_panicking_writer_thread_is_reported_not_swallowed ... ok
+test gameplay::identity::tests::conflicting_states_are_explicit_and_preserve_both_source_declarations ... ok
+test gameplay::identity::tests::same_packet_close_reopen_and_unknown_earlier_close_cannot_reuse_a_reference ... ok
+test gameplay::identity::tests::timeline_owns_reused_callback_buffers_and_requires_observed_lifetimes ... ok
+test inspect::tests::redaction_never_returns_the_replay_value ... ok
+test driver::checkpoints::tests::partial_rows_come_back_labelled_with_their_own_checkpoint ... ok
+test driver::writers::tests::append_reports_the_writer_threads_own_error ... ok
+test gameplay::identity::tests::repeated_open_without_dormancy_is_unresolved_on_same_or_other_channel ... ok
+test inspect::tests::default_output_remains_backward_compatible ... ok
+test manifest::tests::a_player_lists_every_body_and_names_the_last ... ok
+test manifest::tests::json_f32_replaces_non_finite_with_null ... ok
+test manifest::tests::json_str_escapes_only_what_rfc_8259_requires ... ok
+test manifest::tests::content_blocks_lost_publishes_the_measured_number ... ok
+test manifest::tests::objects_and_arrays_render_one_member_per_line ... ok
+test oracle::tests::each_verdict_earns_its_own_exit_code ... ok
+test oracle::tests::every_unfinished_or_payload_failure_prevents_a_pass ... ok
+test oracle::tests::partial_reassembly_rejections_are_named_as_unscored_input ... ok
+test oracle::tests::the_pass_rate_saturates_like_the_passed_count ... ok
+test oracle::tests::the_verdict_separates_clean_from_failed_from_unvalidatable ... ok
+test oracle::tests::skipped_checkpoint_chunks_are_named_rather_than_implied ... ok
+test manifest::tests::json_str_passes_non_ascii_through_verbatim ... ok
+test manifest::tests::quality_json_publishes_every_member_once_with_its_own_value ... ok
+test pass::tests::walk_accumulates_every_packets_sink_counters ... ok
+test pass::tests::unknown_chunk_types_are_counted ... ok
+test sink::blobs::tests::active_blinds_effect_id_is_signed ... ok
+test sink::blobs::tests::active_blinds_empty_delta_with_zero_trailer_is_complete ... ok
+test sink::blobs::tests::active_blinds_null_causing_actor_is_a_decoded_reference ... ok
+test sink::blobs::tests::active_blinds_changed_member_declaration_retains_only_raw_parent ... ok
+test sink::blobs::tests::active_blinds_every_truncated_null_update_retains_only_raw_parent ... ok
+test sink::blobs::tests::active_blinds_invalid_trailers_and_references_still_fail ... ok
+test sink::blobs::tests::active_blinds_empty_delta_rejects_every_nonzero_trailer_byte ... ok
+test sink::blobs::tests::active_blinds_sparse_updates_keep_indices_and_packed_reference_boundaries ... ok
+test sink::blobs::tests::an_untyped_leaf_on_an_admitted_route_stays_raw ... ok
+test sink::blobs::tests::existing_ability_array_keeps_its_float_type_without_measured_route ... ok
+test sink::blobs::tests::focus_projectiles_requires_both_exact_declarations_and_the_observed_build ... ok
+test sink::blobs::tests::focus_projectiles_malformed_windows_never_emit_partial_children ... ok
+test sink::blobs::tests::focus_projectiles_emits_exact_guids_in_wire_order_before_the_raw_parent ... ok
+test sink::blobs::tests::kill_data_refuses_wrong_child_identity_and_any_overlay_disagreement ... ok
+test sink::blobs::tests::focus_projectiles_empty_deltas_preserve_and_count_only_the_zero_trailer ... ok
+test sink::blobs::tests::kill_data_weapon_theme_rejects_bad_flag_terminator_and_residual ... ok
+test sink::blobs::tests::kill_data_types_only_qualified_primitive_leaves ... ok
+test pass::tests::errors_arrive_at_their_own_chunk_and_on_chunk_errors_stop_the_walk ... ok
+test sink::blobs::tests::kill_data_weapon_theme_decodes_exact_prefixed_fstrings ... ok
+test sink::blobs::tests::localized_reward_text_keeps_raw_on_success_and_failure ... ok
+test sink::blobs::tests::malformed_nested_value_is_transactional_and_keeps_outer_raw ... ok
+test sink::blobs::tests::measured_effect_and_ignore_routes_emit_expected_leaf_values ... ok
+test sink::blobs::tests::measured_array_emits_typed_child_before_exact_raw_parent ... ok
+test sink::blobs::tests::measured_effect_value_arrays_render_as_effect_json ... ok
+test sink::blobs::tests::measured_routes_refuse_changed_identity_and_inexact_windows ... ok
+test sink::blobs::tests::legacy_branches_expand_only_their_admitted_routes ... ok
+test sink::blobs::tests::measured_nested_arrays_emit_after_their_preserved_raw_containers ... ok
+test sink::blobs::tests::measured_effect_vectors_are_typed_without_a_top_level_overlay ... ok
+test sink::blobs::tests::nested_array_identity_and_overlay_disagreements_are_refused ... ok
+test sink::blobs::tests::nested_array_preflight_requires_bounds_nonzero_windows_and_terminators ... ok
+test sink::blobs::tests::new_routes_type_only_the_verified_leaf_windows ... ok
+test sink::blobs::tests::requested_ignore_actor_bad_packed_child_keeps_raw_rows_and_counts_error ... ok
+test sink::blobs::tests::requested_ignore_actor_requires_exact_child_identity_and_non_raw_resolution ... ok
+test sink::blobs::tests::tracked_rewards_bad_typed_width_keeps_raw_leaf_and_counts_error ... ok
+test sink::blobs::tests::selected_v2_bad_object_net_guid_windows_stay_raw_and_count_errors ... ok
+test sink::blobs::tests::selected_v2_types_only_the_six_qualified_object_net_guid_leaves ... ok
+test sink::blobs::tests::tracked_rewards_literal_opaque_empty_variant_keeps_only_parent_raw ... ok
+test sink::blobs::tests::tracked_rewards_localized_text_requires_its_raw_declaration ... ok
+test sink::blobs::tests::tracked_rewards_refuses_wrong_child_identity_or_resolved_type ... ok
+test sink::failure_stats::tests::a_long_payload_keeps_a_flagged_prefix ... ok
+test sink::failure_stats::tests::default_does_not_retain_payloads ... ok
+test sink::failure_stats::tests::absorb_adds_counts_and_fills_samples ... ok
+test sink::blobs::tests::tracked_rewards_residual_variants_keep_exact_diagnostics ... ok
+test sink::blobs::tests::tracked_rewards_types_only_the_four_verified_leaf_identities ... ok
+test sink::failure_stats::tests::reconciles_checks_both_invariants_against_net_stats ... ok
+test sink::failure_stats::tests::real_loss_keeps_rep_layout_and_rpc_apart ... ok
+test sink::intern::tests::a_formatted_name_pools_with_its_plain_twin ... ok
+test sink::intern::tests::equal_names_share_one_allocation ... ok
+test sink::measured_routes::tests::routes_are_pinned_for_every_supported_branch ... ok
+test sink::measured_routes::tests::unknown_branches_admit_no_route ... ok
+test sink::paths::tests::a_guid_path_registration_invalidates_the_memo ... ok
+test sink::paths::tests::a_class_net_cache_actor_block_is_not_captured_by_a_rep_layout_leaf ... ok
+test sink::paths::tests::a_redundant_registration_leaves_the_memo_alone ... ok
+test sink::paths::tests::an_actor_path_that_is_a_unique_leaf_reaches_its_declared_group ... ok
+test sink::paths::tests::an_ambiguous_actor_leaf_binds_to_nothing ... ok
+test sink::paths::tests::a_reused_channel_does_not_inherit_the_previous_actors_archetype ... ok
+test sink::paths::tests::the_same_actor_reopening_without_an_archetype_keeps_its_class ... ok
+test sink::rpc::tests::effect_failures_print_the_label_of_their_cause ... ok
+test sink::paths::tests::an_unlisted_component_name_is_not_remapped ... ok
+test sink::rpc::tests::temporary_death_1310_point_adds_typed_children_and_keeps_raw_parent ... ok
+test sink::rpc::tests::temporary_death_array_malformed_windows_keep_raw_and_count_failures ... ok
+test sink::rpc::tests::temporary_death_array_expansion_requires_the_measured_branch_rpc_and_param ... ok
+test sink::stats_tests::a_later_struct_blob_failure_keeps_the_first_error ... ok
+test sink::stats_tests::movement_errors_count_every_occurrence_and_keep_the_first ... ok
+test sink::paths::tests::every_rep_layout_remap_reaches_its_group_and_only_from_rep_layout ... ok
+test sink::stream::tests::a_dormancy_close_is_not_recorded_as_a_despawn ... ok
+test sink::stream::tests::a_completed_rpc_payload_is_neither_truncated_nor_a_drop ... ok
+test sink::stream::tests::a_failed_movement_decode_retains_the_whole_rpc_payload ... ok
+test sink::stream::tests::a_partially_parsed_truncated_rpc_retains_the_whole_payload ... ok
+test sink::stats_tests::movement_missing_array_terminator_preserves_raw_rpc_evidence ... ok
+test sink::stats_tests::native_tallies_sum_field_by_field_without_recounting_errors ... ok
+test sink::stream::tests::a_rejected_partial_row_masks_its_last_byte_and_keeps_its_header ... ok
+test sink::stream::tests::a_static_actors_close_row_does_not_fabricate_a_class_path_from_its_own_guid ... ok
+test sink::stream::tests::a_truncated_rpc_payload_increments_truncated_rpcs ... ok
+test sink::stream::tests::bits_after_the_rpc_terminator_are_counted_not_discarded ... ok
+test sink::stream::tests::deleted_and_live_blocks_both_advance_the_sink_block_tally ... ok
+test sink::stream::tests::checkpoint_block_spans_include_every_emitted_child_and_empty_block ... ok
+test sink::stream::tests::destroyed_channel_archetypes_are_retired_but_dormant_ones_survive ... ok
+test sink::stream::tests::every_rejected_partial_reason_has_a_distinct_name ... ok
+test sink::stream::tests::every_rpc_shape_advances_the_sink_rpc_tally_once ... ok
+test sink::stream::tests::failures_past_the_line_cap_are_all_aggregated ... ok
+test sink::stream::tests::failed_movement_prefix_keeps_provenance_and_the_whole_raw_rpc ... ok
+test sink::stream::tests::matching_tail_shape_without_raw_component_provenance_stays_whole_and_raw ... ok
+test sink::stream::tests::movement_provenance_clears_between_packets_and_does_not_invent_a_source ... ok
+test sink::stream::tests::guarded_targeting_array_emits_vector_child_and_raw_parent ... ok
+test sink::stream::tests::on_field_keeps_exact_parent_raw_bits_for_unknown_and_typed_failures ... ok
+test sink::stream::tests::movement_provenance_is_opt_in_and_distinguishes_rpcs_in_one_packet ... ok
+test sink::stream::tests::player_identity_keeps_the_spawned_body ... ok
+test sink::stream::tests::preserved_unresolved_failures_are_separated_from_real_loss ... ok
+test sink::stream::tests::projectile_path_rpc_expands_only_on_admitting_branches ... ok
+test sink::stream::tests::projectile_path_rpc_rejects_unknown_missing_and_nonfinite_members ... ok
+test sink::stream::tests::only_subobject_blocks_record_an_object_guid_zero_included ... ok
+test sink::failure_stats::tests::distinct_cell_cap_preserves_exact_totals_in_overflow ... ok
+test sink::stream::tests::spawn_vectors_reach_their_own_columns_on_opens_only ... ok
+test sink::stream::tests::unresolved_abilities_and_buffs_that_does_not_walk_is_counted ... ok
+test sink::stream::tests::unresolved_abilities_and_buffs_emits_cnc_rpc_row ... ok
+test sink::stream::tests::unresolved_class_net_cache_payload_emits_one_distinguished_row ... ok
+test sink::stream::tests::unresolved_payload_for_other_group_emits_no_cnc_rows ... ok
+test sink::stream::tests::taking_the_aggregate_drains_it ... ok
+test sink::stream::tests::targeting_array_requires_exact_child_declaration_and_complete_grammar ... ok
+test sink::stream::tests::verified_abilities_tail_emits_one_raw_structural_h1_row ... ok
+test sink::stream::tests::verified_component_preserves_exact_but_unverified_tail_shapes_whole ... ok
+test sink::stream::tests::unknown_native_component_bodies_keep_every_move_and_the_whole_raw_rpc ... ok
+test sink::intern::tests::the_pool_stops_growing_but_never_stops_being_correct ... ok
+test driver::writers::tests::dropping_a_writer_closes_and_joins_its_thread ... ok
+
+test result: ok. 171 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running unittests src/main.rs ($WORKSPACE/target-reader/debug/deps/vrfkit-c15b508794a9f717)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/adapter_contract.rs ($WORKSPACE/target-reader/debug/deps/adapter_contract-8a27ea2241bd3e9d)
+
+running 11 tests
+test event_word_count_contract_accepts_the_parsers_own_table ... ok
+test adapter_pins_the_unresolved_class_net_cache_field_name ... ok
+test adapter_pins_the_class_net_cache_suffix ... ok
+test event_word_count_contract_rejects_a_group_the_parser_lacks - should panic ... ok
+test adapter_pins_the_event_payload_time_tolerance ... ok
+test adapter_pins_the_event_payload_tags ... ok
+test event_word_count_contract_rejects_one_drifted_value - should panic ... ok
+test adapter_pins_the_event_payload_names ... ok
+test adapter_pins_the_event_payload_word_counts ... ok
+test the_constant_scanner_reads_the_assignment_and_not_the_prose ... ok
+test event_word_count_contract_rejects_a_group_the_adapter_lacks - should panic ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/checkpoint_partials.rs ($WORKSPACE/target-reader/debug/deps/checkpoint_partials-cbdb28f11e66bca9)
+
+running 1 test
+test checkpoint_partial_rows_reach_the_partials_table ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/checkpoint_unread.rs ($WORKSPACE/target-reader/debug/deps/checkpoint_unread-f3763bbae7d45a26)
+
+running 2 tests
+test diag_counts_checkpoint_bytes_the_codec_never_read ... ok
+test export_counts_checkpoint_bytes_the_codec_never_read ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/cli_input.rs ($WORKSPACE/target-reader/debug/deps/cli_input-70096712cbcc7835)
+
+running 6 tests
+test export_can_replace_an_output_hardlink_to_an_external_input ... ok
+test validate_seeks_over_sparse_checkpoints_and_unknown_payloads ... ok
+test export_refuses_to_replace_a_directory_containing_its_input ... ok
+test sparse_unknown_chunks_do_not_change_main_or_checkpoint_tables ... ok
+test validate_rejects_a_late_invalid_skipped_payload ... ok
+test late_input_and_checkpoint_errors_leave_prior_export_unchanged ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/export_destination.rs ($WORKSPACE/target-reader/debug/deps/export_destination-235f9e2cba5290f4)
+
+running 3 tests
+test export_refuses_a_destination_holding_the_replay_and_other_files ... ok
+test export_publishes_into_a_missing_or_an_empty_destination ... ok
+test a_re_export_replaces_a_prior_export_and_names_the_tables_it_drops ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/frame_skips.rs ($WORKSPACE/target-reader/debug/deps/frame_skips-caaf88071eda9b2c)
+
+running 3 tests
+test validate_reports_the_replay_data_frame_skips ... ok
+test diag_reports_each_pass_frame_skips ... ok
+test export_reports_each_pass_frame_skips_in_summary_and_manifest ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/gameplay.rs ($WORKSPACE/target-reader/debug/deps/gameplay-b1594648b0d65033)
+
+running 12 tests
+test native_actor_references_never_claim_resolved_players ... ok
+test all_phase_bytes_round_trip_without_inventing_transitions ... ok
+test five_native_groups_preserve_values_and_borrowed_provenance ... ok
+test native_shape_mutations_fail_without_losing_raw_payload ... ok
+test native_declarations_and_time_are_checked_separately ... ok
+test phase_overlay_must_be_present_unique_and_in_byte_range ... ok
+test phase_schema_identity_is_not_inferred_from_field_name ... ok
+test unsupported_native_groups_stay_uninterpreted ... ok
+test zero_and_quantized_native_time_remain_wire_values ... ok
+test phase_raw_window_must_equal_the_overlay_exactly ... ok
+test optional_projection_preserves_reader_order_and_checkpoint_scope ... ok
+test supported_malformed_event_can_stop_consumer_without_changing_raw_reader ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/gameplay_lifecycle.rs ($WORKSPACE/target-reader/debug/deps/gameplay_lifecycle-2326928e369a85df)
+
+running 3 tests
+test same_packet_close_and_declaration_remain_ambiguous ... ok
+test ended_character_declaration_does_not_make_fresh_relation_ambiguous ... ok
+test ended_player_state_declaration_does_not_make_fresh_relation_ambiguous ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/movement_reader.rs ($WORKSPACE/target-reader/debug/deps/movement_reader-23cb6f6439ba6792)
+
+running 3 tests
+test reader_delivers_paired_movement_provenance_after_real_partial_reassembly ... ok
+test reader_preserves_the_whole_rpc_when_input_component_body_is_unresolved ... ok
+test checkpoint_movement_keeps_provenance_raw_rpc_and_all_native_counters ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/reader_api.rs ($WORKSPACE/target-reader/debug/deps/reader_api-9e4e6df942d92bd2)
+
+running 15 tests
+test metadata_can_describe_an_unsupported_branch_but_full_reads_refuse_it ... ok
+test consumer_error_outranks_a_later_schema_refusal_under_custom_limits ... ok
+test end_of_stream_partials_are_delivered_once_with_original_identity ... ok
+test metadata_callback_can_stop_without_delivering_records ... ok
+test a_later_container_failure_does_not_return_a_success_summary ... ok
+test explicit_default_limits_keep_records_native_events_and_counters ... ok
+test records_and_native_events_preserve_raw_data_and_file_order ... ok
+test consumer_error_is_preserved_even_when_later_frame_data_is_malformed ... ok
+test zero_slot_limit_permits_empty_groups_but_refuses_their_growth ... ok
+test slot_limits_refuse_a_declaration_before_its_truncated_field_flag ... ok
+test zero_group_limit_allows_no_declarations_even_when_the_group_is_empty ... ok
+test custom_file_limits_match_memory_reads_and_leave_the_input_unchanged ... ok
+test repeated_file_and_memory_reads_start_with_independent_state ... ok
+test schema_failures_keep_the_typed_cause_and_existing_display ... ok
+test group_limits_accumulate_across_chunks_and_reset_for_each_read ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/reader_bounded.rs ($WORKSPACE/target-reader/debug/deps/reader_bounded-75807d5ff9a792ce)
+
+running 11 tests
+test an_excess_byte_refuses_input_before_callbacks_and_stops_reading ... ok
+test callback_error_keeps_value_and_outranks_later_parse_failure ... ok
+test empty_reads_terminate_and_zero_limit_does_not_mean_unlimited ... ok
+test io_failure_keeps_original_payload_even_on_the_exact_limit_probe ... ok
+test checkpoint_schema_limit_keeps_typed_cause ... ok
+test checkpoint_callbacks_and_summaries_match_slice_order_for_both_options ... ok
+test main_schema_limit_keeps_typed_cause ... ok
+test largest_limit_does_not_overflow_or_reserve_up_front_and_accepts_dyn_read ... ok
+test short_reads_and_interruptions_do_not_lose_bytes ... ok
+test later_structural_failure_leaves_only_provisional_callbacks ... ok
+test exact_limit_requires_eof_before_callbacks_and_matches_slice ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/reader_checkpoints.rs ($WORKSPACE/target-reader/debug/deps/reader_checkpoints-be6090045645ba61)
+
+running 11 tests
+test checkpoint_consumer_error_keeps_identity_and_outranks_later_frame_failure ... ok
+test empty_snapshot_and_empty_frame_each_complete_without_record_callbacks ... ok
+test checkpoint_and_main_partials_finish_in_their_own_namespaces ... ok
+test declaration_callback_error_stops_before_later_malformed_table_bytes ... ok
+test late_checkpoint_failure_invalidates_earlier_snapshot_completion ... ok
+test snapshots_preserve_declarations_raw_rows_order_and_independent_state ... ok
+test file_input_callbacks_equal_slice_with_reused_payload_and_record_buffers ... ok
+test checkpoint_summary_callback_can_stop_without_a_successful_replay_summary ... ok
+test legacy_and_default_options_skip_even_malformed_snapshots ... ok
+test first_structural_failure_follows_file_order_even_with_main_prefetch ... ok
+test checkpoint_schema_limits_are_independent_and_keep_the_typed_cause ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/reader_input.rs ($WORKSPACE/target-reader/debug/deps/reader_input-3a7ec80994915ed9)
+
+running 6 tests
+test metadata_stop_and_missing_path_keep_existing_error_categories ... ok
+test stopping_at_an_event_preserves_original_error_over_a_later_failure ... ok
+test file_callbacks_and_summary_equal_slice_input_in_wire_order ... ok
+test large_sparse_skipped_chunks_are_counted_without_decoding ... ok
+test skipped_payloads_still_refuse_negative_or_out_of_file_lengths ... ok
+test every_truncated_chunk_preserves_errors_and_prior_callbacks ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+
+   Doc-tests vrfkit
+
+running 1 test
+test crates/vrfkit/src/lib.rs - (line 8) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
