@@ -36,6 +36,13 @@
       "prior_published_sha256": "fb3005c827fcfb876b4e1b1849048cb5dc697da5a4d004909ea9c3f75975dc6f",
       "published_sha256": "9d85409a5c23e46720255463a735be0f045938307c927134a2dea3f4b73e6f53",
       "transformation": "Only terminal blank lines normalized; every result line retained"
+    },
+    {
+      "file": "pr58-before.md",
+      "prior_published_sha256": "c038afa636819272032826e977a2f3fb036a39485cc72ba52479972476bcc22d",
+      "published_sha256": "df492b4d1fd30fcda798bfa32d918e70825cf48b862beec38fefe637b05f0564",
+      "transformation": "Remove two archival terminal newline bytes; all original text preserved. The result equals the raw GitHub PR58 body fetched immediately before rewrite.",
+      "raw_PR_body_characters": 30246
     }
   ]
 }

@@ -443,5 +443,3 @@ Capability receipt SHA-256: `cc24eb36c8a7c46b12db116f7adfea1418a32aee68387a9d7a1
 ```
 
 </details>
-
-
