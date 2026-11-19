@@ -1,0 +1,814 @@
+{
+  "schema_version": 1,
+  "started_utc": "2026-11-16T00:43:30.098650+00:00",
+  "candidate_commit": "93e107a10788021b59fb30c5cb145960c3fd21a0",
+  "candidate_tree": "e9c320bb96fa9e1d3c736913847b58353ad21735",
+  "rustc": "rustc 1.86.0 (05f9846f8 2025-03-31)",
+  "cargo": "cargo 1.86.0 (adf9b6ad1 2025-02-28)",
+  "platform": {
+    "system": "Linux",
+    "machine": "x86_64"
+  },
+  "cargo_lock_sha256": "599fd3fd5e24d8930fe899a2773131c84433416194b096a682e7450add4016d4",
+  "runner_sha256": "dc1923adeb55105882f4449dc2914ccc40d3a0a1e7371e788fe6ce2da6cf26a7",
+  "isolated_target_directory": true,
+  "source_clean_before": true,
+  "private_replays_read": 0,
+  "performance_measurements": false,
+  "metadata_package_count": 12,
+  "feature_package_count": 7,
+  "matrix_case_count": 27,
+  "core_only_case_count": 7,
+  "singleton_case_count": 20,
+  "matrix_scope": "Same cargo-metadata derivation as CI: feature-bearing workspace packages only; no-default and each non-default feature alone.",
+  "matrix_results": [
+    {
+      "label": "01-vrf-bitio-core",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-bitio",
+        "--no-default-features",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.571,
+      "log": "final-linux-matrix-logs/01-vrf-bitio-core.log",
+      "log_sha256": "132157c4280bdb9627898e8e02aab3f55658c2d99a5d9b0dfeacd6100c5d2624",
+      "package": "vrf-bitio",
+      "feature": null
+    },
+    {
+      "label": "02-vrf-bitio-alloc",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-bitio",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "alloc"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.268,
+      "log": "final-linux-matrix-logs/02-vrf-bitio-alloc.log",
+      "log_sha256": "6f6f3e0db4de80b4d0bbdced8fa1c53e6ab12c1a0de1eb7644d382c512608370",
+      "package": "vrf-bitio",
+      "feature": "alloc"
+    },
+    {
+      "label": "03-vrf-container-core",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-container",
+        "--no-default-features",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 4.536,
+      "log": "final-linux-matrix-logs/03-vrf-container-core.log",
+      "log_sha256": "03d1a7907b45bb350207afb31dafab2d6e9f1cc23bf632ff53e050e8046e9138",
+      "package": "vrf-container",
+      "feature": null
+    },
+    {
+      "label": "04-vrf-container-checkpoint",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-container",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "checkpoint"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.323,
+      "log": "final-linux-matrix-logs/04-vrf-container-checkpoint.log",
+      "log_sha256": "4f9d4d09be0fb0e20e9220da965c0ba7070bd33676232a5ca94744e7a0c41025",
+      "package": "vrf-container",
+      "feature": "checkpoint"
+    },
+    {
+      "label": "05-vrf-container-event",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-container",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "event"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.266,
+      "log": "final-linux-matrix-logs/05-vrf-container-event.log",
+      "log_sha256": "0d479518e8ac27446b19b2bf37db36032776ffd1a2ac18b88a632ad18731d560",
+      "package": "vrf-container",
+      "feature": "event"
+    },
+    {
+      "label": "06-vrf-container-oodle",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-container",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "oodle"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 7.259,
+      "log": "final-linux-matrix-logs/06-vrf-container-oodle.log",
+      "log_sha256": "1b8050cf092c4fc1fec846aee81399fe231282ee7d5904a99f5561d97d95d06a",
+      "package": "vrf-container",
+      "feature": "oodle"
+    },
+    {
+      "label": "07-vrf-decode-core",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-decode",
+        "--no-default-features",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.717,
+      "log": "final-linux-matrix-logs/07-vrf-decode-core.log",
+      "log_sha256": "57f01505baaa262c77b48d91bd3b51340c9d29243068a2ac310317c921b9c62f",
+      "package": "vrf-decode",
+      "feature": null
+    },
+    {
+      "label": "08-vrf-decode-array",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-decode",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "array"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.367,
+      "log": "final-linux-matrix-logs/08-vrf-decode-array.log",
+      "log_sha256": "5d60a8852bcd8fdef56a25198a9947510e2e548c80b8797fbfd4b64f0d623f5a",
+      "package": "vrf-decode",
+      "feature": "array"
+    },
+    {
+      "label": "09-vrf-decode-effect",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-decode",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "effect"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.375,
+      "log": "final-linux-matrix-logs/09-vrf-decode-effect.log",
+      "log_sha256": "27027a76e04f791b5209f008d437a0cb4be02b0e238e31f0dcb0a5ef6e55df87",
+      "package": "vrf-decode",
+      "feature": "effect"
+    },
+    {
+      "label": "10-vrf-decode-overlay",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-decode",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "overlay"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.629,
+      "log": "final-linux-matrix-logs/10-vrf-decode-overlay.log",
+      "log_sha256": "91a3946bcca1210655a52a45f04f5ee9fea32022d086c15f21f19e44225fac8d",
+      "package": "vrf-decode",
+      "feature": "overlay"
+    },
+    {
+      "label": "11-vrf-decode-structs",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-decode",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "structs"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.47,
+      "log": "final-linux-matrix-logs/11-vrf-decode-structs.log",
+      "log_sha256": "5ed485f983047d65ed3ecb1d36e69a3327cc18c28ec5c0a2af6db675c019ef69",
+      "package": "vrf-decode",
+      "feature": "structs"
+    },
+    {
+      "label": "12-vrf-export-core",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-export",
+        "--no-default-features",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.534,
+      "log": "final-linux-matrix-logs/12-vrf-export-core.log",
+      "log_sha256": "31c823c89048ba294406486b697f1940137c7c474c9efeac3f56fb2dc1899a79",
+      "package": "vrf-export",
+      "feature": null
+    },
+    {
+      "label": "13-vrf-export-actors",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-export",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "actors"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 21.904,
+      "log": "final-linux-matrix-logs/13-vrf-export-actors.log",
+      "log_sha256": "7778c03abb5ffbca8245411e404f69723556dc95d5c1e072dc4aa3090221c4f3",
+      "package": "vrf-export",
+      "feature": "actors"
+    },
+    {
+      "label": "14-vrf-export-checkpoint-context",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-export",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "checkpoint-context"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.322,
+      "log": "final-linux-matrix-logs/14-vrf-export-checkpoint-context.log",
+      "log_sha256": "adeeef6694637e38dc29d9ebfd6f6b46aaca32d58fb45948ce0504eae641379e",
+      "package": "vrf-export",
+      "feature": "checkpoint-context"
+    },
+    {
+      "label": "15-vrf-export-events",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-export",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "events"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.215,
+      "log": "final-linux-matrix-logs/15-vrf-export-events.log",
+      "log_sha256": "9340f935e9d05183b64d0df4f78e4ec4ea583a4f8a8a86d4887aa92751ba0d00",
+      "package": "vrf-export",
+      "feature": "events"
+    },
+    {
+      "label": "16-vrf-export-fields",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-export",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "fields"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.265,
+      "log": "final-linux-matrix-logs/16-vrf-export-fields.log",
+      "log_sha256": "8d8b48139d91a767ff73f94bb0714cbbc142d16016a0c1bc011fdf95f6609e3a",
+      "package": "vrf-export",
+      "feature": "fields"
+    },
+    {
+      "label": "17-vrf-export-movement",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-export",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "movement"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.216,
+      "log": "final-linux-matrix-logs/17-vrf-export-movement.log",
+      "log_sha256": "9340f935e9d05183b64d0df4f78e4ec4ea583a4f8a8a86d4887aa92751ba0d00",
+      "package": "vrf-export",
+      "feature": "movement"
+    },
+    {
+      "label": "18-vrf-export-net-guids",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-export",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "net-guids"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.488,
+      "log": "final-linux-matrix-logs/18-vrf-export-net-guids.log",
+      "log_sha256": "53567a69db3955f9648912d7a139a3cb45e9841c77d386679d4fb04f7f13de87",
+      "package": "vrf-export",
+      "feature": "net-guids"
+    },
+    {
+      "label": "19-vrf-export-parquet",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-export",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "parquet"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.576,
+      "log": "final-linux-matrix-logs/19-vrf-export-parquet.log",
+      "log_sha256": "811a8fe82ac093d839cb02834b3825fc96aa394d1d09300bb534ace3813ae4a1",
+      "package": "vrf-export",
+      "feature": "parquet"
+    },
+    {
+      "label": "20-vrf-export-partials",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-export",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "partials"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.27,
+      "log": "final-linux-matrix-logs/20-vrf-export-partials.log",
+      "log_sha256": "0286a56a26370d6e13ed9ff50ae6a1d63dcba3cb617be54aacec7dabbe73a221",
+      "package": "vrf-export",
+      "feature": "partials"
+    },
+    {
+      "label": "21-vrf-export-snappy",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-export",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "snappy"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.167,
+      "log": "final-linux-matrix-logs/21-vrf-export-snappy.log",
+      "log_sha256": "68118ce411de8ebd75dce22d1993ac98844575ea11199e68df7f79025240e18b",
+      "package": "vrf-export",
+      "feature": "snappy"
+    },
+    {
+      "label": "22-vrf-schema-core",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-schema",
+        "--no-default-features",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.265,
+      "log": "final-linux-matrix-logs/22-vrf-schema-core.log",
+      "log_sha256": "21449ebdc2fb4f140dbb45a6958e689c3406705680912875a50c8e55087dde1c",
+      "package": "vrf-schema",
+      "feature": null
+    },
+    {
+      "label": "23-vrf-schema-checkpoint",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-schema",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "checkpoint"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.221,
+      "log": "final-linux-matrix-logs/23-vrf-schema-checkpoint.log",
+      "log_sha256": "c692aa3702790917aa6baeb6cc71f62325b43151ca411d75ad5dcbb000fbd485",
+      "package": "vrf-schema",
+      "feature": "checkpoint"
+    },
+    {
+      "label": "24-vrf-net-core",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-net",
+        "--no-default-features",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.469,
+      "log": "final-linux-matrix-logs/24-vrf-net-core.log",
+      "log_sha256": "416369985a5f6bda1ab4182c618e5898fc21a12231d3e35908c7e2a5eb491537",
+      "package": "vrf-net",
+      "feature": null
+    },
+    {
+      "label": "25-vrf-net-diagnostics",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrf-net",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "diagnostics"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.315,
+      "log": "final-linux-matrix-logs/25-vrf-net-diagnostics.log",
+      "log_sha256": "667812cf3e04b20b55dd54da5b16976ffec450e6f9486adf7877c3087ee8d797",
+      "package": "vrf-net",
+      "feature": "diagnostics"
+    },
+    {
+      "label": "26-vrfkit-core",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrfkit",
+        "--no-default-features",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 2.007,
+      "log": "final-linux-matrix-logs/26-vrfkit-core.log",
+      "log_sha256": "423467625c40f83f37909e4db8b387762e14364e8076957ae5923c5a69dc5a06",
+      "package": "vrfkit",
+      "feature": null
+    },
+    {
+      "label": "27-vrfkit-export",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "check",
+        "-p",
+        "vrfkit",
+        "--no-default-features",
+        "--locked",
+        "--features",
+        "export"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 2.049,
+      "log": "final-linux-matrix-logs/27-vrfkit-export.log",
+      "log_sha256": "b6c21d2bb98e13187091300aaaa018c787c1b29a4fd951be7f9adc28a557b55f",
+      "package": "vrfkit",
+      "feature": "export"
+    }
+  ],
+  "runtime_tests": [
+    {
+      "label": "runtime-vrfkit-core",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "test",
+        "-p",
+        "vrfkit",
+        "--no-default-features",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 47.958,
+      "log": "final-linux-matrix-logs/runtime-vrfkit-core.log",
+      "log_sha256": "6e0f07ad3221c7c55e2024170555c67910b73077fc10303dc2fdefed830de7d9",
+      "test_harness_count": 9,
+      "tests_passed": 135,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "tests_filtered_out": 0
+    }
+  ],
+  "strict_rustdoc": [
+    {
+      "label": "strict-rustdoc-all-features",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "doc",
+        "--workspace",
+        "--all-features",
+        "--no-deps",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 6.225,
+      "log": "final-linux-matrix-logs/strict-rustdoc-all-features.log",
+      "log_sha256": "c0bc4e24f823e4a96630f9b7a46cbfe27aa79369bd846df946e2d9bbd940ec11",
+      "rustdocflags": "-D warnings"
+    },
+    {
+      "label": "strict-rustdoc-vrfkit-core",
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "doc",
+        "-p",
+        "vrfkit",
+        "--no-default-features",
+        "--no-deps",
+        "--locked"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "passed": true,
+      "verification_wall_seconds": 0.617,
+      "log": "final-linux-matrix-logs/strict-rustdoc-vrfkit-core.log",
+      "log_sha256": "57d958f1445effc343de4991c942f9e706f6800ca461ef52b5ce7f29cbd9a70c",
+      "rustdocflags": "-D warnings"
+    }
+  ],
+  "forbid_unsafe_roots": [
+    {
+      "package": "vrf-bitio",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "crates/vrf-bitio/src/lib.rs",
+      "source_sha256": "eeee600f2362d93a5db9ff96724abfc4ec91c8952062f3d882ec0a29adf9fcd2",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrf-container",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "crates/vrf-container/src/lib.rs",
+      "source_sha256": "d6eaf4734e3505451c9d9a656663455945cbafbf6f4ac27b5674a2a0bd315ff8",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrf-testkit",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "dev/vrf-testkit/src/lib.rs",
+      "source_sha256": "bf4d4e696eeab4a835503abafccbeb8aceb0b13b6f5c58d914cfaf4870033032",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrf-decode",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "crates/vrf-decode/src/lib.rs",
+      "source_sha256": "6e6cc079c123cbdcc0b64b34fb0bcd9cf9ab53a1573df6a83c4ab49c3debd1fc",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrf-export",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "crates/vrf-export/src/lib.rs",
+      "source_sha256": "159e8054a64a016f92c77f4971e1c611596427c6d5f16b1480ae80d091283b8f",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrf-frame",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "crates/vrf-frame/src/lib.rs",
+      "source_sha256": "91e61aaf5bf033d501f236f30cc95f42b604059ac8646c3a66d3430586cbe0bc",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrf-schema",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "crates/vrf-schema/src/lib.rs",
+      "source_sha256": "174c97235cd7dd8f606ca9dfc59f880740b4bd20a7d59625505f7dec20825188",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrf-schema",
+      "target_kind": [
+        "example"
+      ],
+      "path": "crates/vrf-schema/examples/registration_bench.rs",
+      "source_sha256": "f968afbeb1c00b8351d7cc6fcc2f8bf10a13848c3d36d17c42559cd9188211e9",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrf-movement",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "crates/vrf-movement/src/lib.rs",
+      "source_sha256": "e53741373ec8a910854127c65700eb72e406999bbc0a701b729fbd02e3b2aa57",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrf-net",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "crates/vrf-net/src/lib.rs",
+      "source_sha256": "bc43bbdcd90d0189ea2d594f6422cf9434990e93155b2be53c4601fa95af1bad",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrf-transform",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "crates/vrf-transform/src/lib.rs",
+      "source_sha256": "a97eb060117e43af79db5147b563b3d761c5769804a2def6aa18fbf6545226da",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrfkit",
+      "target_kind": [
+        "lib"
+      ],
+      "path": "crates/vrfkit/src/lib.rs",
+      "source_sha256": "713edb1a8ae34b6c9ce64f0762b2e45e851d0baf3475e6f301a5f2528010ea5d",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrfkit",
+      "target_kind": [
+        "bin"
+      ],
+      "path": "crates/vrfkit/src/main.rs",
+      "source_sha256": "3bf92301b8ccd9d0e855ff60dab2f2021bd7e9e67636ed7b0127c2b9ca5ff222",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "vrfkit",
+      "target_kind": [
+        "example"
+      ],
+      "path": "crates/vrfkit/examples/stream_replay.rs",
+      "source_sha256": "359dd745211b069395bd3470074690f171b42bcefcf26e805e726c5b021caec7",
+      "forbid_unsafe_code_present": true
+    },
+    {
+      "package": "extract-component-classes",
+      "target_kind": [
+        "bin"
+      ],
+      "path": "tools/extract_component_classes/src/main.rs",
+      "source_sha256": "f7c681b02b39fac2a8a097f41c15bafb4105cba3ad1a1aee33fdf4d0560add55",
+      "forbid_unsafe_code_present": true
+    }
+  ],
+  "completed": true,
+  "source_clean_after": true,
+  "source_head_unchanged": true,
+  "finished_utc": "2026-11-16T00:45:11.140149+00:00",
+  "all_passed": true
+}

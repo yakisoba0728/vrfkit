@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "reader_receipt_sha256": "912dd4df1b9499af438821851910d62851fc45259eeeb27d9e00a51b69b91071",
+  "reader_source_commit": "44fcb31d36eb5bb2638ad630e44954d16c024235",
+  "reader_source_tree": "268d44a521210973d5499c0e06cec07ff62f4650",
+  "reader_executable_sha256": "39ab667a79fda997eeaeb4df4e67e618744f5c3099b6e32cb3416d355f1b3d61",
+  "reader_executable_matches_generation_receipt": true,
+  "reviewed_reader_sources": {
+    "crates/vrfkit/src/reader.rs": "898be602b69f027e2bbdaa9edb0e1b8b95ae869114da405c8ba82a3cea61dfff",
+    "crates/vrfkit/src/lib.rs": "52a1b2c50f79d55b5450d744ea4cd26cc4653d30038a88fb40fd8d82247dc7b7",
+    "crates/vrfkit/examples/movement_provenance.rs": "ab459c2e9b581827807c49f6de1705fbbfada782a49207db0f17175e2eb5d4fa"
+  },
+  "comparator_source_sha256": "a129232f27ae46cb2dd491255807140ca91950793a63bd3ddaba8eac5fe3c9eb",
+  "comparison_report_sha256": "72a69f1f28a6819427a039a907351a6bc55763afb3642867be74270d095c3ad4",
+  "comparison_stdout_sha256": "38d72b18f394d8a7608eaac5795e600f5114e1baa7fa37fb83411621e158ce5a",
+  "reader_stderr_bytes": 0,
+  "input_sha256_from_generation_receipt": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+  "input_not_reopened_by_this_audit": true,
+  "native_envelope_correction_included": false
+}

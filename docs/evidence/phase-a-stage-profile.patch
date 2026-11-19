@@ -1,0 +1,165 @@
+--- a/crates/vrfkit/src/driver/writers.rs
++++ b/crates/vrfkit/src/driver/writers.rs
+@@ -19,6 +19,12 @@
+ 
+ use crate::error::CliError;
+ 
++pub(super) fn profile_cpu_ns() -> u128 {
++    std::fs::read_to_string("/proc/thread-self/schedstat")
++        .ok().and_then(|s| s.split_whitespace().next()?.parse().ok()).unwrap_or(0)
++}
++
++
+ /// Rows per message to a writer: one message per packet would cost more in
+ /// channel traffic than the encoding it hides (02d4d478: 2.44 `fields` and
+ /// 3.48 `movement` rows per packet, about 80 and 113 batches).
+@@ -54,7 +60,13 @@
+         // fresh multi-MB Vec the OS must zero (02d4d478: 255k -> 147k page
+         // faults); a deeper pool only kept more idle pages resident.
+         let (give_back, recycled) = sync_channel(1);
+-        let handle = thread::spawn(move || run(rx, give_back));
++        let handle = thread::spawn(move || {
++            let start = std::time::Instant::now();
++            let cpu = profile_cpu_ns();
++            let result = run(rx, give_back);
++            eprintln!("PHASE_PROFILE thread {table} wall_ns={} cpu_ns={}", start.elapsed().as_nanos(), profile_cpu_ns().saturating_sub(cpu));
++            result
++        });
+         Self {
+             tx: Some(tx),
+             recycled,
+--- a/crates/vrfkit/src/driver/mod.rs
++++ b/crates/vrfkit/src/driver/mod.rs
+@@ -65,7 +65,9 @@
+     let start = Instant::now();
+ 
+     eprintln!("reading {vrf_path}...");
++    let input_start = Instant::now();
+     let data = fs::read(vrf_path)?;
++    eprintln!("PHASE_PROFILE input_read wall_ns={}", input_start.elapsed().as_nanos());
+     let file_size = data.len();
+ 
+     let preamble = parse_preamble(&data)?;
+@@ -107,6 +109,8 @@
+     let (main, checkpoints) = thread::scope(|scope| {
+         let worker = checkpoint_writers
+             .map(|writers| scope.spawn(|| checkpoints::run(&data, &replay, writers)));
++        let profile_main_start = Instant::now();
++        let profile_main_cpu = writers::profile_cpu_ns();
+         let main = for_each_chunk(&data, &replay, |chunk| {
+             match chunk {
+                 Chunk::Event(payload) => write_event(payload, &mut event_writer, &mut totals)?,
+@@ -130,6 +134,7 @@
+             }
+             Ok(())
+         });
++        eprintln!("PHASE_PROFILE thread main wall_ns={} cpu_ns={}", profile_main_start.elapsed().as_nanos(), writers::profile_cpu_ns().saturating_sub(profile_main_cpu));
+         let checkpoints = worker.map(|worker| {
+             (worker.join())
+                 .unwrap_or_else(|_| Err(CliError::Usage("checkpoint pass panicked".to_owned())))
+--- a/crates/vrf-export/src/writer.rs
++++ b/crates/vrf-export/src/writer.rs
+@@ -119,6 +119,10 @@
+     /// in `buffer` or in `writer`; zeroed only when that group closes. Used
+     /// only with a byte budget ([`Table::MAX_BUFFERED_BYTES`]).
+     pending_bytes: usize,
++    profile_build_ns: u128,
++    profile_drop_ns: u128,
++    profile_encode_ns: u128,
++    profile_rows: usize,
+     _table: PhantomData<fn() -> T>,
+ }
+ 
+@@ -147,6 +151,10 @@
+             buffer: Vec::with_capacity(T::initial_capacity(batch_rows)),
+             batch_rows,
+             pending_bytes: 0,
++            profile_build_ns: 0,
++            profile_drop_ns: 0,
++            profile_encode_ns: 0,
++            profile_rows: 0,
+             _table: PhantomData,
+         })
+     }
+@@ -181,7 +189,9 @@
+         if !self.buffer.is_empty() {
+             self.flush_buffer()?;
+         }
++        let close_start = std::time::Instant::now();
+         self.writer.close()?;
++        eprintln!("PHASE_PROFILE table {} rows={} build_ns={} drop_ns={} encode_ns={} close_ns={}", std::any::type_name::<T>(), self.profile_rows, self.profile_build_ns, self.profile_drop_ns, self.profile_encode_ns, close_start.elapsed().as_nanos());
+         Ok(())
+     }
+ 
+@@ -246,11 +256,18 @@
+     }
+ 
+     fn flush_buffer(&mut self) -> Result<(), ExportError> {
++        self.profile_rows += self.buffer.len();
++        let build_start = std::time::Instant::now();
+         let batch = T::build_batch(&self.buffer)?;
++        self.profile_build_ns += build_start.elapsed().as_nanos();
++        let drop_start = std::time::Instant::now();
+         // Cleared (one allocation for the run) before `write`, so the rows are
+         // freed before the encoder runs.
+         self.buffer.clear();
++        self.profile_drop_ns += drop_start.elapsed().as_nanos();
++        let encode_start = std::time::Instant::now();
+         self.writer.write(&batch)?;
++        self.profile_encode_ns += encode_start.elapsed().as_nanos();
+         // A group closed at its row limit is on the sink; 131,072 is 16 whole
+         // batches, so every such close lands here. A custom size that splits a
+         // batch over-counts the flushed head, which can only close a group early.
+--- a/crates/vrf-movement/src/moves.rs
++++ b/crates/vrf-movement/src/moves.rs
+@@ -3,6 +3,42 @@
+ //! on from a desynced position yields well-formed nonsense.
+ 
+ use vrf_bitio::BitReader;
++
++#[derive(Default)]
++struct SampledMoves {
++    calls: std::cell::Cell<usize>,
++    samples: std::cell::RefCell<Vec<u128>>,
++}
++impl Drop for SampledMoves {
++    fn drop(&mut self) {
++        let mut samples = self.samples.borrow_mut();
++        samples.sort_unstable();
++        if !samples.is_empty() {
++            eprintln!("PHASE_PROFILE moves calls={} samples={} total_sample_ns={} median_sample_ns={} p95_sample_ns={}", self.calls.get(), samples.len(), samples.iter().sum::<u128>(), samples[samples.len()/2], samples[samples.len()*95/100]);
++        }
++    }
++}
++std::thread_local! { static SAMPLED_MOVES: SampledMoves = SampledMoves::default(); }
++struct MoveTimer(Option<std::time::Instant>);
++impl MoveTimer {
++    fn start() -> Self {
++        let selected = SAMPLED_MOVES.with(|p| {
++            let call = p.calls.get();
++            p.calls.set(call + 1);
++            call & 1023 == 0
++        });
++        Self(selected.then(std::time::Instant::now))
++    }
++}
++impl Drop for MoveTimer {
++    fn drop(&mut self) {
++        if let Some(start) = self.0 {
++            let ns = start.elapsed().as_nanos();
++            SAMPLED_MOVES.with(|p| p.samples.borrow_mut().push(ns));
++        }
++    }
++}
++
+ 
+ use crate::error::MovementError;
+ use crate::types::{MovementMove, RpcDecodeResult};
+@@ -61,6 +97,7 @@
+     reader: &mut BitReader<'_>,
+     shooter_guid: u32,
+ ) -> Result<MovementMove, MovementError> {
++    let _profile_move = MoveTimer::start();
+     let header = reader.read_bits(25)?;
+     let move_type_flag = (header & 1) != 0; // bit 0
+     let _rotation_yaw_multiplier = ((header >> 1) & 0xFF) as u8; // bits [1..9]

@@ -1,0 +1,42 @@
+{
+  "scope": "Lifecycle candidate-selection correction only; existing author_checks.json remains bound to its earlier source hashes.",
+  "base_commit": "5acf6c0233678e2c4a68d72de1e05b2279b43b62",
+  "preserved_test_origin_commit": "57f992575989e03d94c33ad4c5a89772fcd08494",
+  "preserved_test_path": "crates/vrfkit/tests/gameplay_lifecycle.rs",
+  "preserved_test_git_blob_sha": "9be879e4f9f8413adeec9958fbcd7d65e612656a",
+  "preserved_test_bytes_unchanged": true,
+  "before_fix": {
+    "public_api_tests_passed": 1,
+    "public_api_tests_failed": 2,
+    "exit_code": 101,
+    "failing_tests": [
+      "ended_player_state_declaration_does_not_make_fresh_relation_ambiguous",
+      "ended_character_declaration_does_not_make_fresh_relation_ambiguous"
+    ]
+  },
+  "fix": "Exclude a claim from a definitely retired lifetime only when its declaration packet is strictly before the current lifetime previous_end. Equal-packet declarations remain potential conflicts; no remaining current claim after retirement stays Unresolved(PreviousLifetime). Historical evidence is retained.",
+  "source_sha256": {
+    "crates/vrfkit/src/gameplay/identity.rs": "f169597598444d40315cb42663576a38d38fc66c2913b1583331b71cf6528fe6",
+    "crates/vrfkit/tests/gameplay_lifecycle.rs": "2381b1e5024f3bfb4b83c62364716d17dbdf933f2dbc1d64431ab0eff83eaaa6"
+  },
+  "after_fix": {
+    "public_api_tests_passed": 3,
+    "identity_unit_tests_passed": 15,
+    "prior_gameplay_tests_passed": 12,
+    "failures": 0,
+    "core_strict_all_targets_clippy": true,
+    "core_strict_rustdoc": true
+  },
+  "mutation_control": {
+    "mutation": "retire_equal_packet_boundary",
+    "mutant_exit_code": 101,
+    "targeted_assertion_failed": true,
+    "source_restored_sha256": "f169597598444d40315cb42663576a38d38fc66c2913b1583331b71cf6528fe6",
+    "restored_public_api_tests_passed": 3
+  },
+  "performance_measurement": false,
+  "pending": [
+    "independent final public replay parity on the corrected source",
+    "final full workspace/features/Windows/Linux CI"
+  ]
+}

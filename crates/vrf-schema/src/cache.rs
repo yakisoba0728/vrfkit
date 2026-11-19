@@ -13,6 +13,35 @@ use crate::resolve::register_leaf;
 /// The path used for the gameplay-tag name table group.
 const GAMEPLAY_TAG_GROUP_PATH: &str = "NetworkGameplayTagNodeIndex";
 
+/// Resource policy for one replay-wide schema cache, not wire-format limits.
+///
+/// The defaults bound amplification by empty, sparsely declared groups. The
+/// slot limit covers declared slots, including holes; it is not a cap on total
+/// process memory, strings, map storage or spare vector capacity. See
+/// docs/SCHEMA_LIMITS.md for the measured scope and configuration example.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SchemaLimits {
+    /// Maximum simultaneously registered export groups.
+    pub max_groups: usize,
+    /// Maximum declared field slots across all registered groups.
+    pub max_field_slots: usize,
+}
+
+impl Default for SchemaLimits {
+    fn default() -> Self {
+        Self {
+            max_groups: 4_096,
+            max_field_slots: 1_048_576,
+        }
+    }
+}
+
+struct GroupAdmission {
+    existing_by_path: Option<usize>,
+    existing_by_index: Option<usize>,
+    field_slots: usize,
+}
+
 /// Replay-wide schema accumulator: hashed lookups, and fields indexed by
 /// handle within a group ([`NetFieldExportGroup::get_field`]).
 #[derive(Default)]
@@ -26,6 +55,11 @@ pub struct NetGuidCache {
     by_leaf: FxHashMap<String, usize>,
     /// Central storage for all groups.
     groups: Vec<NetFieldExportGroup>,
+    limits: SchemaLimits,
+    /// Sum of declared slots, including holes, unless public mutable access
+    /// invalidated it. The wire readers never resize through that accessor.
+    field_slots: usize,
+    field_slots_dirty: bool,
     /// NetGUID value -> object path string.
     guid_to_path: FxHashMap<u32, String>,
     /// NetGUID value -> outer NetGUID value (containment hierarchy).
@@ -54,13 +88,53 @@ impl NetGuidCache {
         Self::default()
     }
 
+    /// Create a cache with explicit resource limits. Raising these limits for
+    /// trusted inputs also raises the maximum allocation a declaration allows.
+    ///
+    /// ```
+    /// use vrf_schema::{NetGuidCache, SchemaLimits};
+    /// let mut cache = NetGuidCache::with_limits(SchemaLimits {
+    ///     max_groups: 8,
+    ///     max_field_slots: 128,
+    /// });
+    /// cache.declare_export_group("Example".into(), 1, 16)?;
+    /// assert_eq!(cache.field_slot_count(), 16);
+    /// # Ok::<(), vrf_schema::SchemaError>(())
+    /// ```
+    #[must_use]
+    pub fn with_limits(limits: SchemaLimits) -> Self {
+        Self {
+            limits,
+            ..Self::default()
+        }
+    }
+
+    /// Resource limits used for subsequent group declarations and additions.
+    #[must_use]
+    pub fn limits(&self) -> SchemaLimits {
+        self.limits
+    }
+
+    /// Declared slots across all registered groups, including unpopulated ones.
+    #[must_use]
+    pub fn field_slot_count(&self) -> usize {
+        if self.field_slots_dirty {
+            self.groups
+                .iter()
+                .fold(0usize, |sum, group| sum.saturating_add(group.fields.len()))
+        } else {
+            self.field_slots
+        }
+    }
+
     /// The leaf index, for the resolvers in [`crate::resolve`].
     pub(crate) fn leaf_index(&self) -> &FxHashMap<String, usize> {
         &self.by_leaf
     }
 
     /// Changes whenever the set of group paths may have: on every successful
-    /// [`Self::add_export_group`] and [`Self::clear`]. It never tracks field
+    /// [`Self::add_export_group`], [`Self::declare_export_group`] and
+    /// [`Self::clear`]. It never tracks field
     /// mutations, so a memo of field contents must not key on it.
     #[must_use]
     pub fn schema_generation(&self) -> u64 {
@@ -69,31 +143,124 @@ impl NetGuidCache {
 
     /// Register a new export group or merge it into the one its path or index
     /// already names, returning that group's index. A path and index naming
-    /// two different groups fail without mutating the cache.
+    /// two different groups fail without mutating the cache. Resource limits
+    /// are checked before mutation, but `group` is already allocated: wire
+    /// readers should use [`Self::declare_export_group`] instead.
     pub fn add_export_group(&mut self, group: NetFieldExportGroup) -> Result<usize> {
-        let existing_by_path = self.by_path.get(&group.path).copied();
-        let existing_by_index = self.by_index.get(&group.path_name_index).copied();
+        let admission = self.admit_group(&group.path, group.path_name_index, group.fields.len())?;
+        Ok(self.register_group(group, admission))
+    }
+
+    /// Declare a group after checking its identity and aggregate resource use,
+    /// before allocating any field slots. Re-declarations merge the same way
+    /// as [`Self::add_export_group`]. A refusal leaves the cache unchanged.
+    pub fn declare_export_group(
+        &mut self,
+        path: String,
+        path_name_index: u32,
+        declared_slots: u32,
+    ) -> Result<usize> {
+        let admission = self.admit_group(&path, path_name_index, declared_slots as usize)?;
+        if let Some(idx) = admission.existing_by_path {
+            let group = &mut self.groups[idx];
+            if group.path == path && group.path_name_index == path_name_index {
+                // A declaration contains no populated fields to merge. Keep
+                // the existing slots and grow only when the declaration does.
+                // Identical identity leaves every lookup key unchanged.
+                if declared_slots as usize > group.fields.len() {
+                    group.fields.resize(declared_slots as usize, None);
+                }
+                self.field_slots = admission.field_slots;
+                self.schema_generation = self.schema_generation.wrapping_add(1);
+                return Ok(idx);
+            }
+        }
+        let group = NetFieldExportGroup::new(path, path_name_index, declared_slots);
+        Ok(self.register_group(group, admission))
+    }
+
+    fn admit_group(
+        &mut self,
+        path: &str,
+        path_name_index: u32,
+        slots: usize,
+    ) -> Result<GroupAdmission> {
+        let existing_by_path = self.by_path.get(path).copied();
+        let existing_by_index = self.by_index.get(&path_name_index).copied();
 
         if let (Some(path_idx), Some(index_idx)) = (existing_by_path, existing_by_index) {
             if path_idx != index_idx {
                 return Err(SchemaError::CrossedExportGroupIdentity {
-                    path: group.path,
-                    path_name_index: group.path_name_index,
+                    path: path.to_owned(),
+                    path_name_index,
                     path_group: self.groups[path_idx].path.clone(),
                     index_group: self.groups[index_idx].path.clone(),
                 });
             }
         }
 
+        let existing = existing_by_path.or(existing_by_index);
+        let group_count = self
+            .groups
+            .len()
+            .saturating_add(usize::from(existing.is_none()));
+        if group_count > self.limits.max_groups {
+            return Err(SchemaError::ResourceLimit {
+                resource: "export groups",
+                requested: group_count,
+                limit: self.limits.max_groups,
+            });
+        }
+
+        if self.field_slots_dirty {
+            self.field_slots = self.field_slot_count();
+            self.field_slots_dirty = false;
+        }
+        let old_slots = existing.map_or(0, |idx| self.groups[idx].fields.len());
+        let kept_slots = if existing_by_path.is_some() {
+            old_slots.max(slots)
+        } else {
+            slots
+        };
+        let field_slots = self
+            .field_slots
+            .saturating_sub(old_slots)
+            .checked_add(kept_slots);
+        let overflow = || SchemaError::ResourceLimit {
+            resource: "field slots",
+            requested: field_slots.unwrap_or(usize::MAX),
+            limit: self.limits.max_field_slots,
+        };
+        let field_slots = field_slots.ok_or_else(overflow)?;
+        if field_slots > self.limits.max_field_slots {
+            return Err(overflow());
+        }
+        Ok(GroupAdmission {
+            existing_by_path,
+            existing_by_index,
+            field_slots,
+        })
+    }
+
+    fn register_group(&mut self, group: NetFieldExportGroup, admission: GroupAdmission) -> usize {
+        let GroupAdmission {
+            existing_by_path,
+            existing_by_index,
+            field_slots,
+        } = admission;
         let idx = if let Some(idx) = existing_by_path {
             // The same class re-declaring or extending its group: its handle
             // slots stay valid and are kept.
+            let identity_changed = self.groups[idx].path != group.path
+                || self.groups[idx].path_name_index != group.path_name_index;
             self.groups[idx].merge_from(&group);
             self.groups[idx].path = group.path;
             self.groups[idx].path_name_index = group.path_name_index;
-            // The path can have arrived as another spelling and the index can
-            // be new; either retires keys, so every lookup is rebuilt.
-            self.rebuild_group_indexes();
+            // Only a changed spelling or index retires lookup keys. Field
+            // updates leave the path, index and leaf indexes exactly intact.
+            if identity_changed {
+                self.rebuild_group_indexes();
+            }
             idx
         } else if let Some(idx) = existing_by_index {
             // The index was reused for a path never seen: replace the group,
@@ -113,8 +280,9 @@ impl NetGuidCache {
             idx
         };
 
+        self.field_slots = field_slots;
         self.schema_generation = self.schema_generation.wrapping_add(1);
-        Ok(idx)
+        idx
     }
 
     /// Rebuild every lookup from `groups` after a merge or replacement, which
@@ -161,10 +329,11 @@ impl NetGuidCache {
         &mut self,
         path_name_index: u32,
     ) -> Option<&mut NetFieldExportGroup> {
-        self.by_index
-            .get(&path_name_index)
-            .copied()
-            .map(move |i| &mut self.groups[i])
+        let index = *self.by_index.get(&path_name_index)?;
+        // The caller can resize the public fields vector. Recount before the
+        // next admission so that it cannot bypass or stale the slot budget.
+        self.field_slots_dirty = true;
+        Some(&mut self.groups[index])
     }
 
     /// Look up a group by its full path (ordinal, case-sensitive): the hottest
@@ -291,6 +460,8 @@ impl NetGuidCache {
         self.by_index.clear();
         self.by_leaf.clear();
         self.groups.clear();
+        self.field_slots = 0;
+        self.field_slots_dirty = false;
         self.guid_to_path.clear();
         self.guid_to_outer.clear();
     }
@@ -645,7 +816,7 @@ mod tests {
         leaves_disambiguated: usize,
     }
 
-    /// Apply one `add_export_group` to the cache and the model, and hold the
+    /// Apply one registration to the cache and the model, and hold the
     /// cache to the model on all a caller can observe: the index or exact
     /// error, the groups, one generation bump per success, and lookups equal
     /// to the model's and to a rebuild of the cache's own groups. An error
@@ -657,6 +828,7 @@ mod tests {
         index: u32,
         slots: u32,
         what: &str,
+        declare: bool,
     ) -> Step {
         let by_spelling = model.owner_of_spelling(path);
         let by_index = model.owner_of_index(index);
@@ -697,7 +869,11 @@ mod tests {
             _ => unreachable!("{what}: every arm names the group it acts on"),
         };
 
-        let result = cache.add_export_group(NetFieldExportGroup::new(path.into(), index, slots));
+        let result = if declare {
+            cache.declare_export_group(path.into(), index, slots)
+        } else {
+            cache.add_export_group(NetFieldExportGroup::new(path.into(), index, slots))
+        };
         assert_eq!(result, expected, "{what}: wrong outcome");
         let bumps = u64::from(expected.is_ok());
         assert_eq!(
@@ -718,6 +894,11 @@ mod tests {
             );
         }
         assert_eq!(identities(cache), model.groups, "{what}: groups diverged");
+        assert_eq!(
+            cache.field_slot_count(),
+            model.groups.iter().map(|group| group.2).sum::<usize>(),
+            "{what}: slot accounting diverged from the model"
+        );
 
         let after = model.lookups();
         let held = lookups(cache);
@@ -799,29 +980,32 @@ mod tests {
             ("/Game/Empty.", 10, 1, Fresh, false, 0, 0),
         ];
 
-        let mut cache = NetGuidCache::new();
-        let mut model = Model::default();
-        for (n, &(path, index, slots, arm, older, turned, cleared)) in script.iter().enumerate() {
-            let what = format!("step {n}: {path:?} at index {index}");
-            let step = apply(&mut cache, &mut model, path, index, slots, &what);
-            let effect = (
-                step.arm,
-                step.took_older_spelling,
-                step.leaves_turned_ambiguous,
-                step.leaves_disambiguated,
-            );
-            assert_eq!(
-                effect,
-                (arm, older, turned, cleared),
-                "{what}: the script no longer reaches its case"
-            );
-        }
+        for declare in [false, true] {
+            let mut cache = NetGuidCache::new();
+            let mut model = Model::default();
+            for (n, &(path, index, slots, arm, older, turned, cleared)) in script.iter().enumerate()
+            {
+                let what = format!("declare={declare}, step {n}: {path:?} at index {index}");
+                let step = apply(&mut cache, &mut model, path, index, slots, &what, declare);
+                let effect = (
+                    step.arm,
+                    step.took_older_spelling,
+                    step.leaves_turned_ambiguous,
+                    step.leaves_disambiguated,
+                );
+                assert_eq!(
+                    effect,
+                    (arm, older, turned, cleared),
+                    "{what}: the script no longer reaches its case"
+                );
+            }
 
-        cache.clear();
-        let mut model = Model::default();
-        assert_eq!(lookups(&cache), model.lookups(), "clear left a lookup");
-        let step = apply(&mut cache, &mut model, "Foo", 1, 1, "after clear");
-        assert_eq!(step.arm, Fresh);
+            cache.clear();
+            let mut model = Model::default();
+            assert_eq!(lookups(&cache), model.lookups(), "clear left a lookup");
+            let step = apply(&mut cache, &mut model, "Foo", 1, 1, "after clear", declare);
+            assert_eq!(step.arm, Fresh);
+        }
     }
 
     /// SplitMix64. A fixed seed walks the same sequences on every run.
@@ -866,59 +1050,63 @@ mod tests {
         const CALLS: usize = 40;
         const INDEXES: usize = 8;
 
-        let mut rng = SplitMix64(0x7672_666b_6974_0001);
-        let mut arms: BTreeMap<Arm, usize> = BTreeMap::new();
-        let (mut fresh_alias, mut took_older, mut turned, mut cleared, mut clears) =
-            (0, 0, 0, 0, 0);
-        for sequence in 0..SEQUENCES {
-            let mut cache = NetGuidCache::new();
-            let mut model = Model::default();
-            for call in 0..CALLS {
-                if rng.below(50) == 0 {
-                    cache.clear();
-                    model = Model::default();
-                    assert_eq!(lookups(&cache), model.lookups(), "clear left a lookup");
-                    clears += 1;
-                    continue;
+        for declare in [false, true] {
+            let mut rng = SplitMix64(0x7672_666b_6974_0001);
+            let mut arms: BTreeMap<Arm, usize> = BTreeMap::new();
+            let (mut fresh_alias, mut took_older, mut turned, mut cleared, mut clears) =
+                (0, 0, 0, 0, 0);
+            for sequence in 0..SEQUENCES {
+                let mut cache = NetGuidCache::new();
+                let mut model = Model::default();
+                for call in 0..CALLS {
+                    if rng.below(50) == 0 {
+                        cache.clear();
+                        model = Model::default();
+                        assert_eq!(lookups(&cache), model.lookups(), "clear left a lookup");
+                        clears += 1;
+                        continue;
+                    }
+                    let path = PATHS[rng.below(PATHS.len())];
+                    let index = rng.below(INDEXES) as u32;
+                    let slots = rng.below(4) as u32;
+                    let what = format!(
+                        "declare={declare}, sequence {sequence}, call {call}: {path:?} at {index}"
+                    );
+                    let step = apply(&mut cache, &mut model, path, index, slots, &what, declare);
+                    *arms.entry(step.arm).or_default() += 1;
+                    fresh_alias += usize::from(step.fresh_alias);
+                    took_older += usize::from(step.took_older_spelling);
+                    turned += step.leaves_turned_ambiguous;
+                    cleared += step.leaves_disambiguated;
                 }
-                let path = PATHS[rng.below(PATHS.len())];
-                let index = rng.below(INDEXES) as u32;
-                let slots = rng.below(4) as u32;
-                let what = format!("sequence {sequence}, call {call}: {path:?} at {index}");
-                let step = apply(&mut cache, &mut model, path, index, slots, &what);
-                *arms.entry(step.arm).or_default() += 1;
-                fresh_alias += usize::from(step.fresh_alias);
-                took_older += usize::from(step.took_older_spelling);
-                turned += step.leaves_turned_ambiguous;
-                cleared += step.leaves_disambiguated;
             }
-        }
 
-        let tallies = format!(
-            "arms {arms:?}, fresh with alias {fresh_alias}, took an older spelling \
+            let tallies = format!(
+                "arms {arms:?}, fresh with alias {fresh_alias}, took an older spelling \
              {took_older}, leaves turned ambiguous {turned}, disambiguated {cleared}, \
              clears {clears}"
-        );
-        for arm in [
-            Arm::Fresh,
-            Arm::Redeclared,
-            Arm::NewIndex,
-            Arm::NewSpelling,
-            Arm::Replaced,
-            Arm::Crossed,
-        ] {
-            assert!(
-                arms.get(&arm).is_some_and(|&n| n > 0),
-                "{arm:?} never taken: {tallies}"
             );
+            for arm in [
+                Arm::Fresh,
+                Arm::Redeclared,
+                Arm::NewIndex,
+                Arm::NewSpelling,
+                Arm::Replaced,
+                Arm::Crossed,
+            ] {
+                assert!(
+                    arms.get(&arm).is_some_and(|&n| n > 0),
+                    "{arm:?} never taken: {tallies}"
+                );
+            }
+            assert!(fresh_alias > 0, "no new group had an alias: {tallies}");
+            assert!(
+                took_older > 0,
+                "no new group took an older spelling: {tallies}"
+            );
+            assert!(turned > 0, "no leaf turned ambiguous: {tallies}");
+            assert!(cleared > 0, "no ambiguous leaf became unique: {tallies}");
+            assert!(clears > 0, "clear was never exercised: {tallies}");
         }
-        assert!(fresh_alias > 0, "no new group had an alias: {tallies}");
-        assert!(
-            took_older > 0,
-            "no new group took an older spelling: {tallies}"
-        );
-        assert!(turned > 0, "no leaf turned ambiguous: {tallies}");
-        assert!(cleared > 0, "no ambiguous leaf became unique: {tallies}");
-        assert!(clears > 0, "clear was never exercised: {tallies}");
     }
 }

@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "verdict": "PASS_IN_EXECUTED_SCOPE",
+  "recorded_utc": "2026-11-16T23:57:36.269124+00:00",
+  "runtime_source_commit": "1d2d8f6fe68f3ad1f196bca5adac24b0d3fbee6c",
+  "runtime_source_tree": "833dae7add06f21589ffdae9680d5df12a5f89fe",
+  "frozen_default_release_cli_sha256": "c3a3010083b81332e03d90b888d38dfe069dfb659f3c866637cfed0051d6d417",
+  "frozen_default_release_cli_bytes": 38832064,
+  "candidate_build_receipt_sha256": "b1f3f4729e4ed44295cc4467db85e7ea3adbc1ae08332b245dfeb58f8ae47243",
+  "cargo_lock_sha256": "ef4c199b359baeca53be4c5d634a288ab4c7e00e1590c8d0948b186e5c5c316a",
+  "evidence_files_sha256": {
+    "candidate-public-review.json": "6461e5c96410d255c0d744e3fc010ed00750e8fe04b9592570bec7728f479a17",
+    "candidate-corpus-report.json": "d22e621de683059db55bb33fe4d08f374bf474f13ff032988a6d2dc646baa06c",
+    "final-public-comparison.json": "69a1be7296691d6d05f3d3c6513e33200f41352ca0c5d43b367e35102d6d46b4",
+    "candidate-cli-adversity.json": "c66f96cb6aa36edbd0335c1811f87b1577d9b3dda385a1488f8ffe90472d63cd",
+    "final-contracts.json": "5fc5ec84757c42b7d01836b2ae383ffb1fa6e962ba78548c2c04bdb723139382",
+    "final-identity.json": "3618530ac6f36a5e7e6d575cb50159466f15a6ad8f94606a551ad7ef176267b0",
+    "final-movement-mutation.json": "dbb8c0df3163731ec46c223dc5033c2fd85959fefd667504ac6b33151befb55e",
+    "private-corpus-capability.json": "31fd157f65214a21da9822070c9d59cb9219d1adb0f32ca3237ad10a39daf267",
+    "input-acquisition.json": "2ba55a49dd8a9f15b41102a75eb578968c48581dad54e989daaf574cfbafe03b"
+  },
+  "runner_sources_sha256": {
+    "compare_public.py": "70d5d4b6bf226375d9c8d3bd935e7cb99ab9cdc031e29d86263833245a96a5e7",
+    "adversarial_cli.py": "334d63485558df521cae5eee0e5d4d78b51f4480a73cc159d98365e7c8e55a4b",
+    "run_final_contracts.py": "abf7286a7b5d2d7971f3bee9bd540ceed368391ac73a96c739db9a18a0eccf40",
+    "compare_identity.py": "9aea6d2add3a90a9dc5b5c62970c6f1cd654d2ae0b001d559d4640f3b0042e02",
+    "mutate_movement.py": "f3b1509194187071b9badffc53b9ac9407ce21a673f2a6965f453cfc96b0fd15"
+  },
+  "results": {
+    "distinct_public_inputs": 5,
+    "builds": [
+      "12.05",
+      "12.09",
+      "12.10",
+      "12.11",
+      "13.00"
+    ],
+    "checkpoint_chunks": 59,
+    "oracle_blocks": 1380345,
+    "typed_values_compared": 43844,
+    "typed_specifications_observed": 16,
+    "absent_from_every_input": [],
+    "parquet_tables_byte_equal_to_baseline": 65,
+    "stable_manifests_equal": 5,
+    "summary_counter_values_compared": 765,
+    "main_only_tables_byte_equal": 30,
+    "main_and_checkpoint_rpc_loss_zero": true,
+    "jsonl_tables": 39,
+    "jsonl_rows": 138727,
+    "jsonl_binary_bytes": 298133,
+    "mandatory_counter_negative_controls_detected": 22,
+    "cli_adversarial_cases_passed": 25,
+    "selected_contracts_passed": 43,
+    "selected_contracts_overlap_regular_suite": 28,
+    "gameplay_identity": {
+      "distinct_inputs": 5,
+      "movement_rows_compared": 4495315,
+      "exact_proof_tuples_compared": 4495315,
+      "movement_components": 4465251,
+      "fragmented_movement_rows": 11703,
+      "spawned_character_raw_values_compared": 23,
+      "resolution_counts": {
+        "resolved": 3925225,
+        "unresolved:NoReference": 570090
+      },
+      "mismatches": 0
+    },
+    "compiled_movement_negative_control": {
+      "compiled_mutant_detected": true,
+      "mutant_exit_code": 101,
+      "restored_exit_code": 0,
+      "restored_test_executable_sha256": "98db711c3620de7ab1bebe9c9aa61184c49d24e765775af94d9fc7bd8e7da2d3",
+      "source_and_test_executable_restored_exactly": true
+    }
+  },
+  "review_findings": [
+    {
+      "finding": "Malformed repeated movement GUID retains stale attribution",
+      "independent_evidence": "Baseline Reader fails with 12 rows instead of 8. The fix preserves valid prefix, recovery, provenance and raw data across five malformed widths, main and two checkpoints. The final compiled mutant is detected and restored.",
+      "status": "FIX_VERIFIED"
+    },
+    {
+      "finding": "Short direct partial-bunch input panics and misaccounts absent bits",
+      "independent_evidence": "Three public API tests fail on baseline and pass on final source. They cover retained prior payload, an unrelated channel, restart and usize::MAX without allocating nonexistent bytes.",
+      "status": "FIX_VERIFIED"
+    },
+    {
+      "finding": "Packet bit-size signed arithmetic overflow",
+      "independent_evidence": "Independently reviewed the checked u64 helper and its caller. The coordinator authored allocation-free boundary regressions. E did not allocate an enormous packet merely to reach that boundary.",
+      "status": "SOURCE_REVIEWED_AUTHOR_REGRESSION_SEPARATE"
+    },
+    {
+      "finding": "Checkpoint path-reference amplification",
+      "independent_evidence": "The public 256 MiB exact boundary is admitted; one additional 64 KiB reference is rejected before callback or cache insertion. Baseline admits 268,500,992 resolved path bytes from 90,019 wire bytes.",
+      "status": "FIX_VERIFIED"
+    },
+    {
+      "finding": "Export replaces or deletes replay located inside owned output",
+      "independent_evidence": "The frozen baseline demonstrates five input-loss cases and one conservative alias refusal failure. All six final refusals preserve inputs and output; sibling and external hardlink destinations succeed.",
+      "status": "FIX_VERIFIED"
+    },
+    {
+      "finding": "Windows diagnostic pre-unlink loses old report on rename failure",
+      "independent_evidence": "Independently reviewed the source and verified successful final Linux replacement. D authored the compiled legacy-sequence mutation on Linux. Native Windows verification is a separate gate.",
+      "status": "SOURCE_REVIEWED_NATIVE_WINDOWS_SEPARATE"
+    }
+  ],
+  "open_e_findings": [],
+  "preservation": {
+    "frozen_candidate_checkout_clean": true,
+    "all_tracked_qa_source_fingerprints_equal_to_final_contract_build": true,
+    "qa_product_git_diff_empty_after_mutation": true,
+    "frozen_cli_hash_unchanged": true,
+    "identity_adapter_hash_unchanged": true,
+    "all_original_inputs_hash_equal_and_read_only": true,
+    "raw_private_payloads_or_player_identity_rows_published": false
+  },
+  "published_logs": {
+    "final-identity": {
+      "raw_sha256": "fa78b56a7e2f0e4462b4bc8bddfd51fe470586f07bb2be1bb162274c8294b944",
+      "published_sha256": "fa78b56a7e2f0e4462b4bc8bddfd51fe470586f07bb2be1bb162274c8294b944"
+    },
+    "final-movement-before": {
+      "raw_sha256": "1aa38f8b03ae9480364dd7a8677ed437aab7a807934dc16a759cc8f7ca7dd571",
+      "published_sha256": "c200c388eeaa2f32d8a9e63c01bdb3f0d8e0462572faa23fa6be3c43d3c36d28"
+    },
+    "final-movement-mutant": {
+      "raw_sha256": "3713c52a723870a9d70efa4e8906dfef8bf370ba4180e89558fa8188b5c6bf1a",
+      "published_sha256": "03814b4a3e390f141154cdfcc750ea6abc336b0bac1c63b9c14a749ba82dd6a5"
+    },
+    "final-movement-restored": {
+      "raw_sha256": "980c8c7ba09b7e26f3c41dc9b94a7fd8c8a26725cf161252b743b9649bf7850f",
+      "published_sha256": "a7fdf8447d1c793ebb8f9e16ac066625d1f31fb57a9e248d45482189bc95e8e3"
+    }
+  },
+  "commands": [
+    [
+      "python",
+      "-W",
+      "error",
+      "compare_identity.py",
+      "--source",
+      "$QA_ROOT/worktrees/qa-final",
+      "--probe",
+      "$QA_ROOT/qa-work/final-contracts/identity-probe",
+      "--corpus",
+      "$QA_ROOT/qa-work/candidate-corpus",
+      "--corpus-report",
+      "$QA_ROOT/qa-work/candidate-corpus-report.json",
+      "--work",
+      "$QA_ROOT/qa-work/final-identity",
+      "--output",
+      "$QA_ROOT/qa-work/final-identity.json"
+    ],
+    [
+      "python",
+      "-W",
+      "error",
+      "mutate_movement.py",
+      "--source",
+      "$QA_ROOT/worktrees/qa-final",
+      "--target",
+      "$QA_ROOT/target-qa",
+      "--work",
+      "$QA_ROOT/qa-work/final-movement-mutation",
+      "--output",
+      "$QA_ROOT/qa-work/final-movement-mutation.json"
+    ]
+  ],
+  "scope_limits": [
+    {
+      "scope": "Private replay bytes",
+      "status": "NOT_EXECUTED",
+      "reason": "Authenticated connector metadata is available. Inspected operations do not transport private release binaries, and terminal transport lacks credentials. No bypass was attempted. Metadata covers 24 releases and 1,011 assets; binary downloads, payload hash checks and executions are all zero."
+    },
+    {
+      "scope": "Native Windows, hosted full CI and package gates",
+      "status": "NOT_EXECUTED_BY_E",
+      "reason": "This E run uses Linux. The coordinator owns hosted Windows/Linux workflows and optimized Windows package evidence."
+    },
+    {
+      "scope": "Full regular test suite",
+      "status": "SEPARATE_COORDINATOR_GATE",
+      "reason": "The 43 selected E contracts overlap 28 maintained tests and add nine retained independent contracts plus six new independent tests. They do not replace or inflate full-suite counts."
+    },
+    {
+      "scope": "Performance and global resource guarantees",
+      "status": "NOT_CLAIMED",
+      "reason": "No isolated speed or peak-memory benchmark was performed. The 256 MiB policy bounds resolved path text per checkpoint, not process RSS. Hostile filesystem races and crash durability were not simulated."
+    },
+    {
+      "scope": "Wire semantics absent from observed evidence",
+      "status": "BLOCKED_BY_EVIDENCE",
+      "reason": "No guessed types or account identity claims were added. Existing unresolved paths remain unresolved."
+    }
+  ],
+  "next_owner_action": "The coordinator may integrate this evidence-only commit, run final exact-HEAD CI and package gates, and retain PR #58 as the sole review window. This report does not authorize merge, release, tags or publication.",
+  "unresolved_new_p0_p1": 0,
+  "finding_verdict_scope": "No newly discovered P0 or P1 remains unresolved within E's reviewed fixes and executed public/synthetic contracts. This is not a claim of universal absence of undiscovered defects.",
+  "blocked_by_evidence": [
+    "Six raw ReplicatedMovement classes and their unverified rotator/quantization choices.",
+    "InputEventData tag meanings and unsupported payload variants.",
+    "Abilities/GAS FastArray item/property semantics and StopEffectType width/domain.",
+    "Section arithmetic, scalar warnings, healing attribution and OwnerActor/AvatarActor lifecycle ambiguities.",
+    "FocusProjectiles builds beyond the admitted exact route and evidence.",
+    "Unresolved RPC payloads and post-RepLayout tails beyond verified boundaries.",
+    "China-region mappings.",
+    "Complete account, kill and round semantics beyond the existing admitted observations."
+  ],
+  "blocked_semantics_source": "docs/PHASE_D_RESULTS.md and docs/PHASE_C_DECODER_EVIDENCE.md at runtime commit 1d2d8f6fe68f3ad1f196bca5adac24b0d3fbee6c",
+  "related_author_evidence": [
+    {
+      "role": "D implementation author",
+      "path": "../reader/diagnostic_mutation_restoration.json",
+      "origin_evidence_commit": "6afac4cd70277952a6ce7d20c199e3f05f33a182",
+      "sha256": "52abeea369827c21fac59cd9daa7b8df77877fa0697422841add31a11dbe444b",
+      "scope": "Linux compiled legacy remove-before-rename control; restored source, unit executable and normal CLI hashes. Native Windows baseline NOT_EXECUTED. Separate from E's candidate-cli-adversity.json."
+    }
+  ]
+}

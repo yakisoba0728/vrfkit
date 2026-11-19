@@ -57,8 +57,8 @@ impl std::fmt::Display for DecodeErrorKind {
 impl DecodeErrorKind {
     /// The kind of a bit-level read failure, shared by every decoder that
     /// reports into [`OverlayErrorReport`]. Only [`BitError::Eof`] is an EOF.
-    /// [`BitError::InvalidSerializedIntMax`] is `Rejected`, not `Malformed`:
-    /// the table's maximum is zero and no payload bit is at fault.
+    /// Invalid caller parameters are `Rejected`, not `Malformed`: no payload
+    /// bit is at fault when a width, scale or maximum is invalid.
     pub fn from_bit_error(err: &BitError) -> Self {
         match err {
             BitError::Eof { .. } => Self::Eof,
@@ -67,7 +67,10 @@ impl DecodeErrorKind {
             | BitError::InvalidLength { .. }
             | BitError::InvalidBitLength { .. }
             | BitError::InvalidString { .. } => Self::Malformed,
-            BitError::InvalidSerializedIntMax { .. } => Self::Rejected,
+            BitError::InvalidSerializedIntMax { .. }
+            | BitError::InvalidReadWidth { .. }
+            | BitError::InvalidRotatorWidth { .. }
+            | BitError::InvalidVectorScale { .. } => Self::Rejected,
         }
     }
 
@@ -377,6 +380,18 @@ mod tests {
             ),
             (
                 BitError::InvalidSerializedIntMax { max: 0 },
+                DecodeErrorKind::Rejected,
+            ),
+            (
+                BitError::InvalidReadWidth { count: 65 },
+                DecodeErrorKind::Rejected,
+            ),
+            (
+                BitError::InvalidRotatorWidth { width: 32 },
+                DecodeErrorKind::Rejected,
+            ),
+            (
+                BitError::InvalidVectorScale { scale: 0 },
                 DecodeErrorKind::Rejected,
             ),
         ];

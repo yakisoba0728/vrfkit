@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "predeclared_utc": "2026-11-16T13:48:27.803187+00:00",
+  "baseline_source": "1b9bbf222f003e35c882e640c1b19e0bbcc88472",
+  "candidate_source": "ff8596b546736ea4300e013248609c7c3987e231",
+  "inputs": [
+    {
+      "build": "12.05",
+      "input_sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+      "input_bytes": 54702346,
+      "selection_reason": "large replay with exact FocusProjectiles extension"
+    },
+    {
+      "build": "12.09",
+      "input_sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "input_bytes": 61015648,
+      "selection_reason": "largest available public Movement replay"
+    },
+    {
+      "build": "13.00",
+      "input_sha256": "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a",
+      "input_bytes": 431908,
+      "selection_reason": "small public high-build fixture"
+    }
+  ],
+  "modes": [
+    "main",
+    "checkpoints"
+  ],
+  "warmup_pairs": 1,
+  "measured_pairs": 6,
+  "order": "For each build/mode: A/A control, then baseline/candidate; each series alternates AB, BA by pair.",
+  "preflight": "Two unmeasured exports per build/mode, strict fingerprint equality required before any timed series.",
+  "measurement": "Full export on same host, same session, default features and fixed release builds. Warm cache, no affinity override, outputs hashed outside measured interval. All samples retained; no outlier deletion.",
+  "timeout_per_export_seconds": 120,
+  "noise_rule": "Report per-pair range and A/A control; effects overlapping A/A variation or changing direction are INCONCLUSIVE. No confidence interval or universal speed claim.",
+  "repeat_budget": "One primary series; at most one predeclared confirmatory series if a concrete ambiguity remains. No favorable-sample selection.",
+  "host_limitation": "No exclusive-host, power-state, or cold-storage guarantee.",
+  "unmeasured": [
+    "allocation_count",
+    "allocation_bytes",
+    "isolated_io_time",
+    "per_core_utilization",
+    "stage_cpu_attribution"
+  ]
+}

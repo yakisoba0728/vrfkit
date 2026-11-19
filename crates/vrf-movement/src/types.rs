@@ -28,6 +28,26 @@ pub struct MovementMove {
     pub move_type: u8,
 }
 
+/// The wire location of one emitted move inside its RPC payload.
+///
+/// All ordinals are zero-based and count encountered occurrences, including
+/// ones that emit no move. They do not collapse repeated array properties,
+/// sparse update indices or component properties. A move is a decoded prefix;
+/// a later error or replacement can still occur in the same RPC.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MovementContext {
+    /// Occurrence of the RemoteCharacterUpdates array property in the RPC.
+    pub array_ordinal: u32,
+    /// Arrival ordinal within this array, distinct from its sparse wire index.
+    pub update_ordinal: u32,
+    /// Sparse array index, decoded as `encodedIndex - 1`.
+    pub update_index: u32,
+    /// Occurrence of ComponentDataStream within this update.
+    pub component_ordinal: u32,
+    /// Decoded move ordinal within this component, independent of marker wrap.
+    pub move_index: u32,
+}
+
 /// A character update descriptor. The decoder never builds one (moves go out
 /// through its callback); kept for callers that construct it.
 #[derive(Debug, Clone)]
@@ -54,29 +74,24 @@ pub struct RpcDecodeResult {
     /// window, a shooter-GUID field not 32 bits wide, a stream with no GUID,
     /// a missing array zero index, and bits after it other than one IntPacked byte.
     pub error_count: u32,
-    /// Sections in a `movementBitCount`-sized window that stopped with bits
-    /// unread: at a zero marker (a drifted cursor loses every later move), or
-    /// too short for the magic or the first marker. Not counted: an empty
-    /// window, or the unread end within 31 bits of a move. A tally, not an error.
-    pub sized_section_tails: u32,
-    /// Bits left unread by the sections counted in [`Self::sized_section_tails`].
-    pub sized_section_tail_bits: u64,
-    /// The same for windows that ran to the end of the component stream, kept
-    /// apart: after a zero marker there, the rest may be component data.
-    pub open_section_tails: u32,
-    /// Bits left unread by the sections counted in [`Self::open_section_tails`].
-    pub open_section_tail_bits: u64,
-    /// Components with bits after a nonzero, fitting `movementBitCount`
-    /// window. Separate from unread bits inside it and outside the envelope.
-    pub sized_section_trailers: u32,
-    /// Bits after the windows counted in [`Self::sized_section_trailers`],
-    /// tallied even when parsing the section fails. A tally, not an error.
-    pub sized_section_trailer_bits: u64,
-    /// Byte-wrapped streams, counted when the envelope is cut out, before its
-    /// section is parsed and whether or not bits follow: a vanished trailer
-    /// reads as bits short of 24 per stream.
-    pub envelope_trailer_streams: u32,
-    /// Bits after those envelopes, never read: 24 per stream on every measured
-    /// replay. A tally like the section tails.
-    pub envelope_trailer_bits: u64,
+    /// Component decodes attempted with a known character GUID. Every attempt
+    /// is either complete or an error; orphaned components count in error_count.
+    pub component_streams: u32,
+    /// Components whose complete logical payload was parsed, including empty ones.
+    pub component_complete: u32,
+    /// Component attempts that failed, also included in [`Self::error_count`].
+    /// A decoded move prefix remains emitted and the whole RPC must stay raw.
+    pub component_errors: u32,
+    /// Complete native envelopes with a zero byte count and zero unused bits.
+    pub component_empty: u32,
+    /// Envelopes with valid length and unused-bit count, before inner parsing.
+    pub component_envelopes: u32,
+    /// Payload bytes within those envelopes, including the final unused bits.
+    pub component_payload_bytes: u64,
+    /// Unused high bits in the last payload byte, between zero and seven per envelope.
+    pub component_unused_bits: u64,
+    /// Recognized 0xA3 headers, including a header before an unparsed-body error.
+    pub component_input_headers: u32,
+    /// Recognized optional 0xA4 headers, including one before an unparsed-body error.
+    pub component_discrepancy_headers: u32,
 }

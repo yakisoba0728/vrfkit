@@ -1,0 +1,692 @@
+[
+  {
+    "build": "12.08",
+    "input_sha256": "78e706843ea6992e5502d58f9b41c23ac5470a9e36e810d45e8724fb47a91201",
+    "baseline": "historical accepted Phase B",
+    "exact_parquet_tables": 13,
+    "unexplained_manifest_differences": 0,
+    "unexplained_summary_counter_differences": 0,
+    "intentional_focus_delta": {
+      "parents": 0,
+      "children": 0,
+      "empty_trailers": 0,
+      "unchanged_rows": 0
+    },
+    "tables": {
+      "actors.parquet": {
+        "bytes": 72426,
+        "sha256": "12badea9bb60588c3171d78fb6dd741bbaf80bf538c9e7695fc97a129f22d5fb"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 25817,
+        "sha256": "17a6224d773f2aebcf33d295f1d75981ac986fa16087ae87cd00d0286f6c10ba"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 108794,
+        "sha256": "5841691a2410d5cc5261de986f75e6831718c3015d50677453aa66f2cb8c3c5d"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 95790,
+        "sha256": "c09cd27a83744997d7201d8a2b433b4bdd2eb5c585deb4e625aba4a9ee54aca0"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 17122,
+        "sha256": "261c33ad4596bcf9840b42aed4f70f40fc1edf1f3e4f194bd22823d14ac36189"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 1144105,
+        "sha256": "7c6eef48ac11b7eda190c635e2edf4f34c5fdbc9cf3e25ed38cb6f66a3627f96"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 211680,
+        "sha256": "c4967d7dc91631d8761588ff5347831b880d7cd983e46132737d7d1586d5f07a"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 174919,
+        "sha256": "967f22478afdc2304fcc75d368f66f98f2f33fe9efb4df37bd29e7663d27541b"
+      },
+      "events.parquet": {
+        "bytes": 11852,
+        "sha256": "39da15c9b37f7d9d86cfeec7ea2f07daa2259b5c1f6b70738c1bf4cbfa19253b"
+      },
+      "fields.parquet": {
+        "bytes": 12308658,
+        "sha256": "e03f9e1b821b6ead9a9f58ab7fa3d0e0cdb2cc183d679b67faf3a9897492b5f0"
+      },
+      "movement.parquet": {
+        "bytes": 19079308,
+        "sha256": "01a5f45321c4bcab06161aaf6d575350e31cc362d646fd0e31a01dc9a32e8859"
+      },
+      "net_guids.parquet": {
+        "bytes": 111804,
+        "sha256": "379cabfb0270fdb9abbcc354161afb43e73e228fa287c514a33ed104886b5f22"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      }
+    },
+    "normalized_manifest_sha256": "9d1232f2c06105b93f54bddaa0ce61592e3254058d6a912640f8140cfa826533"
+  },
+  {
+    "build": "12.11",
+    "input_sha256": "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd",
+    "baseline": "historical accepted Phase B",
+    "exact_parquet_tables": 13,
+    "unexplained_manifest_differences": 0,
+    "unexplained_summary_counter_differences": 0,
+    "intentional_focus_delta": {
+      "parents": 0,
+      "children": 0,
+      "empty_trailers": 0,
+      "unchanged_rows": 0
+    },
+    "tables": {
+      "actors.parquet": {
+        "bytes": 7287,
+        "sha256": "294bff42bbb032a7b4babb85b422874578d7f8cb8ceeeaadd911fb432b7d174e"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 8312,
+        "sha256": "1899a9d5c2ad684b0ae7b48220090ac4331662298bd07e6163bf58ea0866ed1a"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 21429,
+        "sha256": "4c783717ef2692c13568257ee7db99974993b090fd06b68202f7edc516d526a7"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 20636,
+        "sha256": "a40e0eee32e247f42a60591920a38ad7c235ab019645ec988a5519c7bb6859e2"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 6221,
+        "sha256": "3c55ace58f1a229be18bd3a80d16ee15361d34a4d54295cc26d88e3fcd111f23"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 31401,
+        "sha256": "d901065dc6288916d382a60329a595f7a44e11250c658342ce23a0e71a2b49fc"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 15910,
+        "sha256": "65e23de5781a3541c0cc67d2496314cad7dc4297b6bbaf82c938caf1f960a739"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 13954,
+        "sha256": "3eea1bea4087e41c98aa55205559786040035a79ff57362553ee3bedcd2bcfc6"
+      },
+      "events.parquet": {
+        "bytes": 4395,
+        "sha256": "d1d875aec6391696f0aba6232219cfb569a623b6cf1adeec34c7f9548d16860a"
+      },
+      "fields.parquet": {
+        "bytes": 78763,
+        "sha256": "faba493053c90309c61f5829e4394704be356038afb34af40f5c481083953d77"
+      },
+      "movement.parquet": {
+        "bytes": 30350,
+        "sha256": "155ceb3ca1abac67306dbd2463e844073ea1efbed377a58b89392c806f34d797"
+      },
+      "net_guids.parquet": {
+        "bytes": 10939,
+        "sha256": "61a7e92575701a860f5f0aa0727ee55685fb67f38fe585473e0bfef46827e596"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      }
+    },
+    "normalized_manifest_sha256": "9d0f44c42cb24bdf635330b8be18bb2b27a9f3e1a86ffbe29a8bebd3b19ddb8a"
+  },
+  {
+    "build": "12.09",
+    "input_sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+    "baseline": "historical accepted Phase B",
+    "exact_parquet_tables": 13,
+    "unexplained_manifest_differences": 0,
+    "unexplained_summary_counter_differences": 0,
+    "intentional_focus_delta": {
+      "parents": 0,
+      "children": 0,
+      "empty_trailers": 0,
+      "unchanged_rows": 0
+    },
+    "tables": {
+      "actors.parquet": {
+        "bytes": 87545,
+        "sha256": "92d09756cf4a723af4287ca974cef88d0a512db0e4cad53f1a63e42031f3731e"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 32426,
+        "sha256": "20b6206ecd12f9ac2c9045cb8b05632b806b4e44bd68eeb4b3e40804e5496122"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 149291,
+        "sha256": "7ab65e55538ff5daf91c32953adb2a4a0748840d333d41735f4e046fd5856422"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 113797,
+        "sha256": "dd1f8688d33f2a868f423cc034945b30503e4bf27f371ebadfbea7f4eb76fdc0"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 16991,
+        "sha256": "b04551eb2ff9867e37d382efeece9514319a922fc0a22fa1f11787ad7133596d"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 1739291,
+        "sha256": "6a42d730d77221d722b90ce57665c48ead426de4e7158a9e4fc355a93b0efeed"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 315643,
+        "sha256": "02935b9404740b5fdca110a80b20bb7ab3176db40e743f5f7f48c6c383a0d0a0"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 271066,
+        "sha256": "f47be39e8a0ccdec7c5d1893a84dd90f6c70e82528539249b1bb5921ae978c88"
+      },
+      "events.parquet": {
+        "bytes": 14801,
+        "sha256": "98373fab8deeb28abd823269718b5cef81b679bbd7be16ca709e8f2408aaa7eb"
+      },
+      "fields.parquet": {
+        "bytes": 16182850,
+        "sha256": "1f2523163d6d1127b88557ec23f9ab2e904ad1fe02a36bdd1fdbbc2a61d9403c"
+      },
+      "movement.parquet": {
+        "bytes": 24917591,
+        "sha256": "6d58428843e2729cf18270045d24c0e00cc1428ac289847b6a2c860402edad3b"
+      },
+      "net_guids.parquet": {
+        "bytes": 140325,
+        "sha256": "59d05749ccd076ace8cfa7832d4a5040d5f88c7f6a462d35783125db10ab6552"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      }
+    },
+    "normalized_manifest_sha256": "2236099dc871de63f5d751290c84f9343da53d643c8b4f38675b5e3ace827bf3"
+  },
+  {
+    "build": "13.00",
+    "input_sha256": "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a",
+    "baseline": "historical accepted Phase B",
+    "exact_parquet_tables": 13,
+    "unexplained_manifest_differences": 0,
+    "unexplained_summary_counter_differences": 0,
+    "intentional_focus_delta": {
+      "parents": 0,
+      "children": 0,
+      "empty_trailers": 0,
+      "unchanged_rows": 0
+    },
+    "tables": {
+      "actors.parquet": {
+        "bytes": 6911,
+        "sha256": "7269014340704e31cf9160e502a818cd487f5f5b031d92082a27bbee591e8761"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 8042,
+        "sha256": "24172c2731d2b162afd5a57cafd602d02b004c2e1152e8a1a283123c83dcd8f8"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 20111,
+        "sha256": "e2a4ad23ca316fed240948e69293225e723bd19ae61c3673d49846f26682f23a"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 20643,
+        "sha256": "75c30912399954d56710300f8067df95fd68aa5b5d3dcd9679765b1c5760a37f"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 6076,
+        "sha256": "bb5d0cade3b2eb43b7247b924cf66740ebb30b2d5b838578f4548d1c9bcf3b76"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 29748,
+        "sha256": "0a2b150117acafa1d5180bdb3cfdf9568722ca6aec221a8ecf8a4724074772ee"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 15247,
+        "sha256": "337243a30c58008858b1876b9d23074d2c427ed1fc1576954e04b8a879397db1"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 13950,
+        "sha256": "487fabf008d5e0e47158449c8fcbdeece15ddb1fa03318ac0141249fa3978b85"
+      },
+      "events.parquet": {
+        "bytes": 4393,
+        "sha256": "e07ed1280ee07eaec1ec6049dbd6f7c30ac6f3b2d56ee8a2e27e901559d07adb"
+      },
+      "fields.parquet": {
+        "bytes": 97479,
+        "sha256": "ea41df9e6fd6631f32e95266e67c5208bdd17e0c97d75585f8424788e97173bd"
+      },
+      "movement.parquet": {
+        "bytes": 89602,
+        "sha256": "7afa2cdea2bf48c61aeb2a3d733f6ea7594bf8c913ae0e5376bab755f9ec6297"
+      },
+      "net_guids.parquet": {
+        "bytes": 10968,
+        "sha256": "fff8ca48b18df1ec8acfca8741b61634213d70339f6a1115d0e408a0d7d9be56"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      }
+    },
+    "normalized_manifest_sha256": "b8b973ffbe20b66d6fc0f33234b4272262f7cbac24d597213f2bb6eb3627ba45"
+  },
+  {
+    "build": "12.05",
+    "input_sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+    "baseline": "historical accepted Phase B",
+    "exact_parquet_tables": 12,
+    "unexplained_manifest_differences": 0,
+    "unexplained_summary_counter_differences": 0,
+    "intentional_focus_delta": {
+      "parents": 102,
+      "children": 53,
+      "empty_trailers": 3,
+      "unchanged_rows": 1240315
+    },
+    "tables": {
+      "actors.parquet": {
+        "bytes": 82702,
+        "sha256": "0c0b45026d4bb945f61f12cef9f08063adf46999e721e92cab128db8ba29b6db"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 25658,
+        "sha256": "19bf50675e4910a19f39308225d6c7cc17e8efcd97ab51fadbf159000e6d58cb"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 109841,
+        "sha256": "7b3fd2827b58f00d52d279ee470bac4198bd935ed77ffb4dc3b2afcd7749ebd0"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 97574,
+        "sha256": "19495e717bf001080ee1f3d6e950fb98d8c04b85a8136dbd5bf3fef42b0f1fac"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 17551,
+        "sha256": "7f8831a6a087fff43be787db2a4aafaa52529e95c7bab96351987b2b847bbd2e"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 1298854,
+        "sha256": "d5254668bc1766bc59fee43b21537f8b30e739ea45e92e36e8b7e506d7a4afcd"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 254220,
+        "sha256": "02e4362a556fa07f18d1a52999ab1ccb014400eae51e548eb7a72aaa14016a9d"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 219008,
+        "sha256": "d131b83e9fa125a11e038d045cdc6c68f1e24a4d30760eaede2f614499c22c21"
+      },
+      "events.parquet": {
+        "bytes": 12778,
+        "sha256": "cd1ef2f5f44869ec7b315206fb9ab36b400647b5b73c3e7cd4650d7737a0583f"
+      },
+      "fields.parquet": {
+        "bytes": 12024554,
+        "sha256": "d9c30e78e34a545d6bc1160eca3226efb3cb585042fd5af4224b704423b5b15e"
+      },
+      "movement.parquet": {
+        "bytes": 19568009,
+        "sha256": "6a0498a6e3dc836bc643fe3f8e6b353efbac08d9a26867596cfe88d90d9358f0"
+      },
+      "net_guids.parquet": {
+        "bytes": 129759,
+        "sha256": "ef04a6c0f2db7a0ce6f933e76f1d38d354a75466ad840af9f6e4fedb081da6ea"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      }
+    },
+    "normalized_manifest_sha256": "b4f10e1c006ee83c778ba6f9dc2afda405f714245d2d6287b08a8656cf771fe8"
+  },
+  {
+    "build": "12.10",
+    "input_sha256": "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606",
+    "baseline": "historical accepted Phase B",
+    "exact_parquet_tables": 13,
+    "unexplained_manifest_differences": 0,
+    "unexplained_summary_counter_differences": 0,
+    "intentional_focus_delta": {
+      "parents": 0,
+      "children": 0,
+      "empty_trailers": 0,
+      "unchanged_rows": 0
+    },
+    "tables": {
+      "actors.parquet": {
+        "bytes": 7072,
+        "sha256": "e5c7b06192d6e092a11a0b82997a1de555f7d165a6e2af474e8f697b27abf3dc"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 7937,
+        "sha256": "940b6a72567df5bf9389fde14acb6bae98b9ef0d6b0dfa6af92749fad69a4ca4"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 21199,
+        "sha256": "bd02708df551b65f65aee3ce248c463a557f46aa0236f579e5401b0df24ff127"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 21938,
+        "sha256": "f9abd105b2fd6efdb351786115281fce7151a0d1abe3d130272f1de273ee69ae"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 6094,
+        "sha256": "865d7cec60c334ffb438860b773701193017312bd3358203abd7bc613d9b87bc"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 32327,
+        "sha256": "8e48d78e2cecb0cdb35a66b31e1e0bc1a1fb28aae1fb7e808724d02ad55af6e0"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 14705,
+        "sha256": "1d90c6514d55239d29a287e2dbdde8e85d94526de7bb002facdc76de209dc2a7"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 13026,
+        "sha256": "b8229ee537d43433d1ab955bddd532a801cce45a979009867170342c8363df75"
+      },
+      "events.parquet": {
+        "bytes": 4453,
+        "sha256": "97b2b89d738ece56e786a6d9f331210a99c9523e434923744105cebed9aada0e"
+      },
+      "fields.parquet": {
+        "bytes": 138971,
+        "sha256": "33b2961683c20db1ce18a3c390f0373bf8f0808f6129c0901a50915c0de31c85"
+      },
+      "movement.parquet": {
+        "bytes": 57017,
+        "sha256": "0d4f5ac695f077fa8945a8516eede492d6ba76303d1026b976abb1f549f71ee5"
+      },
+      "net_guids.parquet": {
+        "bytes": 10599,
+        "sha256": "baab4bf1ac090f97fba8c345ccae453aac97e1def20e2445a98abf337f52f3eb"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      }
+    },
+    "normalized_manifest_sha256": "b4477bdd2fc0e4c7d3bf22a22e3d2f0075b4d6b3458e8ac0a10347e9cbae5dba"
+  },
+  {
+    "build": "++Ares-Core+release-13.01",
+    "input_sha256": "12cd225dd357d7fce907c3e57a1c72a96f00199d8d176c84ab29b27fd36a3745",
+    "baseline": "fresh frozen Phase B CLI",
+    "exact_parquet_tables": 13,
+    "unexplained_manifest_differences": 0,
+    "unexplained_summary_counter_differences": 0,
+    "intentional_focus_delta": {
+      "parents": 0,
+      "children": 0,
+      "empty_trailers": 0,
+      "unchanged_rows": 0
+    },
+    "tables": {
+      "actors.parquet": {
+        "bytes": 9337,
+        "sha256": "7e987078c4a36e269fadb3b0dcc2ae4888b74a83c5fcc49683ba2f96c75069ed"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 8755,
+        "sha256": "5ba8fc8175f4a73d841db68c2d31b827327f868d53aaf2ecd7c903e44a075f06"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 23101,
+        "sha256": "5788647db1466a29ca7767a5bda09ed285fee9666107672b28ee886ab233ffa7"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 27401,
+        "sha256": "bd425237207f630fd81e852c21a884b5e99cd6a50138e90664f16956dc76dd8f"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 7696,
+        "sha256": "02005f64da1c8cea4d9a7d283af8d5ad7ca0e6ef83585dbc7edecd03ebb7dd27"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 33735,
+        "sha256": "8bc5427a587130ba28fade25cb920fe7b3bd13688b75fa197c855866cd19e51c"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 20520,
+        "sha256": "985e23e4ced327ee02e56d26950820983654160fa06977631a088afaa78084ed"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 18613,
+        "sha256": "21fe63d783b25dde1947626bbcd7569b2fb41ca06b9ea4770b3006867aa657b7"
+      },
+      "events.parquet": {
+        "bytes": 4341,
+        "sha256": "61adfe08723d63b34bab5b1953872fac5452f4d3c8da7f8e8d60cf29b7b2ce26"
+      },
+      "fields.parquet": {
+        "bytes": 342323,
+        "sha256": "b06c383aebe366c9e0f2d3eef35ac3add965253a5205abb0fe116f1f134c1346"
+      },
+      "movement.parquet": {
+        "bytes": 252218,
+        "sha256": "b58571b6d4873d6817d6f94c83b64ae40a24b9dd168e322db13f3f4cd700a779"
+      },
+      "net_guids.parquet": {
+        "bytes": 16107,
+        "sha256": "e6aceb83ebd955d85382d2e378d6d554e3789c1aac530b10b57922f448ce27a5"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      }
+    },
+    "normalized_manifest_sha256": "0ccad6fc329ac62ca0da9076b3cee0adcc6e0ce6a1817118c375de5f3d2e04d4"
+  },
+  {
+    "build": "++Ares-Core+release-13.01",
+    "input_sha256": "a4dd202886eabbd285f2165c53fadc523581d59ea09d9c07af5401561f424299",
+    "baseline": "fresh frozen Phase B CLI",
+    "exact_parquet_tables": 13,
+    "unexplained_manifest_differences": 0,
+    "unexplained_summary_counter_differences": 0,
+    "intentional_focus_delta": {
+      "parents": 0,
+      "children": 0,
+      "empty_trailers": 0,
+      "unchanged_rows": 0
+    },
+    "tables": {
+      "actors.parquet": {
+        "bytes": 7389,
+        "sha256": "5160fdcfb0bf2ea4e489aa44058191411aa8302582e8541a5b3a43a60fb8fa9d"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 7892,
+        "sha256": "c832c51ce602c964a5ffbc4fd662c7214e7362960bcadf2b912dc01fa9276813"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 21608,
+        "sha256": "5a0d3365f8cd1a1ba1d37a1d62857647e2a2c2153bf87ac7e6ec41df746dd267"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 22670,
+        "sha256": "ed5ffe013be536aa764a5e2cd9784020da538fab2a910d82043de069165c8043"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 6659,
+        "sha256": "0a15a1b013c0b9fde212f282d0f3d254a6bbc2ce86cb916074afeedbd6a51d08"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 33254,
+        "sha256": "90cfc0a5864b68ab0034c1d3e598acff417775c87b765138cb5c3f72ab91d0d6"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 16974,
+        "sha256": "144effdb70de0b2dd7edf5ab2e791d76845896574d62e822ae7379b57dae6547"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 15512,
+        "sha256": "a48357195be35f38505f56c865e49294020f7827416a3b6bb8235ecd26d97d74"
+      },
+      "events.parquet": {
+        "bytes": 4615,
+        "sha256": "983ee14a3cb23737eb3bef036e62d8675878bacf75d4025acb0dd5c4b23717d9"
+      },
+      "fields.parquet": {
+        "bytes": 169990,
+        "sha256": "a08e6a80779558f9aa462c3787b4de35e0db71d0cea44d9d70623d70af43d201"
+      },
+      "movement.parquet": {
+        "bytes": 106548,
+        "sha256": "d6accc45369834656bc6e75eebcf2aadbca325e03aedae3d9baf94ff5884485c"
+      },
+      "net_guids.parquet": {
+        "bytes": 12347,
+        "sha256": "f0589a4c11089c032e4d1c44e601b97f1b62aa1faf880986caa2c43a05a354c6"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      }
+    },
+    "normalized_manifest_sha256": "664d50881e7a29defa5d8cf98347f0b425120415b50aa63677a08c2add320fc9"
+  },
+  {
+    "build": "++Ares-Core+release-13.01",
+    "input_sha256": "a3bf9a374e8afb969dc327fe578f65fafecba5c62ad50c2fad2834d41918021d",
+    "baseline": "fresh frozen Phase B CLI",
+    "exact_parquet_tables": 13,
+    "unexplained_manifest_differences": 0,
+    "unexplained_summary_counter_differences": 0,
+    "intentional_focus_delta": {
+      "parents": 0,
+      "children": 0,
+      "empty_trailers": 0,
+      "unchanged_rows": 0
+    },
+    "tables": {
+      "actors.parquet": {
+        "bytes": 7450,
+        "sha256": "f0e66b741d6b6984910ad6b5b15e807431949e917a8d84faf9ebb653a4b62c1e"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 7785,
+        "sha256": "6dbc74b2f81f8945d579ef180a4da59de59e71b8bc7d36a2070d199e819d6736"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 20911,
+        "sha256": "4760a00a68d15a545bb1e2cdb15cd3ebb6736255eddbff069d31a95f6bbc4658"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 24366,
+        "sha256": "d74f2d75207dd396c003bf406ddedc7c2cae4b3b80cff2165882d0744173406e"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 6795,
+        "sha256": "ad54f01d4790d5d1fdaf5af635fe716e66504e84659eda23d4edb86eefe25b24"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 31876,
+        "sha256": "50399bc19239a7516d27d2ed41aa74e0d29977ca45398930a8223614342ea56f"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 17283,
+        "sha256": "cca2197ca8ca80a4b7be8ecfc0a4517ae9caf456dc612d4279b971dc9189b9f3"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 15845,
+        "sha256": "d2079e44162cf7a9da6ab4ea55c86cea6b993b4a445dfc9d20b17e8713a6192d"
+      },
+      "events.parquet": {
+        "bytes": 4558,
+        "sha256": "bf25f156026824500875b8f38f6337e91ed39b585ff262ce05705bbb414c07cc"
+      },
+      "fields.parquet": {
+        "bytes": 227696,
+        "sha256": "5f4a7f5284ba6d1aa78a85871c3057bf839adcae767d89498edbe759dbcf630b"
+      },
+      "movement.parquet": {
+        "bytes": 145792,
+        "sha256": "d5842d0facee1c33d878957ca81b6e723371e8602f84c220c5e9226073a42e3a"
+      },
+      "net_guids.parquet": {
+        "bytes": 13435,
+        "sha256": "3ae14ccc3de0395c9a2e5a6385bc4f430fcff01284388e23cf93f1c8c60042be"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      }
+    },
+    "normalized_manifest_sha256": "2e8d841d8a0036ff56b98f87691cfc57aa83e9af1aa00bb6bcde6456fe1afec4"
+  },
+  {
+    "build": "++Ares-Core+release-12.08",
+    "input_sha256": "44d4fd3e12ee536091bc7745682a328dffb48a5c0f022b4eb18249f817ee28a5",
+    "baseline": "fresh frozen Phase B CLI",
+    "exact_parquet_tables": 13,
+    "unexplained_manifest_differences": 0,
+    "unexplained_summary_counter_differences": 0,
+    "intentional_focus_delta": {
+      "parents": 0,
+      "children": 0,
+      "empty_trailers": 0,
+      "unchanged_rows": 0
+    },
+    "tables": {
+      "actors.parquet": {
+        "bytes": 7090,
+        "sha256": "ac20888701efb35bad3db639d97e2e4deea010356eddb523e1a722fd438d5bba"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 7962,
+        "sha256": "3d6f18ca87df6e18752b6b28a99bd5d7422663b509bc5bb9671dbf7c46bba7bb"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 20954,
+        "sha256": "c9c0a671871a107f91f0e54602c11acc45a2bb625a01d65ea5020b2f4cd595d1"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 22004,
+        "sha256": "72d834d16935308071a83f298112bcb2b3844ccb7807f9ba3c8b891828ca0631"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 6141,
+        "sha256": "daa18bca58dbb638258985511e9a140839ae4da9186c0e62f853464b71c5a3d6"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 32371,
+        "sha256": "122731f723ec5bb8f1e7dcb63f2989a08a33d4e8e404a1d7698d045976db0143"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 15419,
+        "sha256": "bd867e8e14dbab4b946b1185aa8f4837a2108c52a12854f60723d8eae5a45537"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 13248,
+        "sha256": "00d15120661c13de93acf1a8b8c88612b4c01428a5b11d272e3c5f3442c12446"
+      },
+      "events.parquet": {
+        "bytes": 4452,
+        "sha256": "eac00a1c4c7588c3119a6b3c70764f49a79f0d14584416dfb83e984691465603"
+      },
+      "fields.parquet": {
+        "bytes": 159016,
+        "sha256": "5badef4f68e4e7eb4277f9f969ab9e6155954c30cdaa297e72324cad8d1698ce"
+      },
+      "movement.parquet": {
+        "bytes": 66894,
+        "sha256": "724c6d78ffb71141f7e7860ad2989d285bfe6f9c35b02dee9d8853803c0e2e36"
+      },
+      "net_guids.parquet": {
+        "bytes": 10612,
+        "sha256": "7282c1b749c82c8bf1a20c457efb15f1f11e7cce664d9efd57cb8c0b312ea331"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      }
+    },
+    "normalized_manifest_sha256": "eadca868d12531fc9cc95312a963ee59bd69ff93a9ad64447164cb34c8d96b3a"
+  }
+]

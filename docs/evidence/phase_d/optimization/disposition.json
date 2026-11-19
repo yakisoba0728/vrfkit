@@ -1,0 +1,140 @@
+{
+  "status": "REJECTED_NOT_INTEGRATED",
+  "performance_classification": "INCONCLUSIVE",
+  "accepted_runtime_optimizations": 0,
+  "experiments_implemented": 1,
+  "source_revision": "df93e66f48d196ed3a1e4fada5da1ec97e61617e",
+  "source_tree": "8bd1c22aaec09b6be89939996c6bc5c5fe11a29d",
+  "published_same_tree_revision": "1848dc9910662d0247b3f1cebaedd939b01fc33b",
+  "published_branch": "phase-d/raw-bits-capacity-experiment",
+  "binary_sha256": "e3a93d678ff9d262eed181c70f930b8d8275b24d514e7e5c9c5c06677c3d9eb3",
+  "baseline_revision": "ff8596b546736ea4300e013248609c7c3987e231",
+  "decision_owner": "Coordinator after independent A benchmark and D correctness review",
+  "decision_reasons": [
+    "Every condition has wall pairs on both sides of 1 and overlaps contemporaneous A/A control variation.",
+    "No demonstrated end-to-end wall or CPU benefit sufficiently separates from noise.",
+    "12.09 checkpoint RSS increases in all six comparison pairs.",
+    "The allocator mechanism reduces realloc call count, but increases library-reported heap total and peak in the bounded diagnostic pair."
+  ],
+  "normal_release_measurement": {
+    "completed_series": 8,
+    "timed_exports": 112,
+    "preflight_exports": 12,
+    "failed_attempts": 0,
+    "all_samples_retained": true,
+    "all_strict_output_gates_passed": true,
+    "rows": [
+      {
+        "build": "12.05",
+        "mode": "main",
+        "paired_median_percent_change": {
+          "wall_seconds": -5.878388378122567,
+          "cpu_total_seconds": -9.003972422387141,
+          "peak_rss_bytes": 0.7788099816709915
+        },
+        "wall_pair_ratio_range": [
+          0.772436226206131,
+          1.062838167334114
+        ],
+        "same_binary_wall_pair_ratio_range": [
+          0.9724970976165391,
+          1.1553447052973005
+        ],
+        "all_outputs_equal": true
+      },
+      {
+        "build": "12.05",
+        "mode": "checkpoints",
+        "paired_median_percent_change": {
+          "wall_seconds": -4.546191324773263,
+          "cpu_total_seconds": 0.30723254797107025,
+          "peak_rss_bytes": 0.7315956377759614
+        },
+        "wall_pair_ratio_range": [
+          0.8330927943638124,
+          1.1452573813307274
+        ],
+        "same_binary_wall_pair_ratio_range": [
+          0.8575228830175764,
+          1.0549649977028868
+        ],
+        "all_outputs_equal": true
+      },
+      {
+        "build": "12.09",
+        "mode": "main",
+        "paired_median_percent_change": {
+          "wall_seconds": 0.6947180320018065,
+          "cpu_total_seconds": -1.5254845563848818,
+          "peak_rss_bytes": 1.184524291422262
+        },
+        "wall_pair_ratio_range": [
+          0.9119407871643669,
+          1.067854281260752
+        ],
+        "same_binary_wall_pair_ratio_range": [
+          0.9003607156236745,
+          1.1565366806776474
+        ],
+        "all_outputs_equal": true
+      },
+      {
+        "build": "12.09",
+        "mode": "checkpoints",
+        "paired_median_percent_change": {
+          "wall_seconds": -0.8743840179890272,
+          "cpu_total_seconds": -1.4596314258939147,
+          "peak_rss_bytes": 1.5822599253902947
+        },
+        "wall_pair_ratio_range": [
+          0.9099203554164954,
+          1.1325684938414853
+        ],
+        "same_binary_wall_pair_ratio_range": [
+          0.9330232568069312,
+          1.1660333248649069
+        ],
+        "all_outputs_equal": true
+      }
+    ]
+  },
+  "author_correctness": {
+    "library_tests": 8,
+    "roundtrip_tests": 17,
+    "doc_tests": 1,
+    "passed": 26,
+    "failed": 0,
+    "ignored": 0,
+    "new_permanent_tests_only_on_unmerged_experiment": 1,
+    "fmt_ascii_whitespace_passed": true
+  },
+  "independent_correctness": {
+    "distinct_public_writer_contract_tests": 2,
+    "compiled_semantic_mutants_detected": 2,
+    "restored_contract_tests_passed": 2,
+    "scope": "main and checkpoint raw payload order, lengths, None vs Some(empty), inline/spilled/large payloads and batch/row-group boundaries",
+    "receipt_owner": "D independent QA"
+  },
+  "allocation_diagnostic": {
+    "exports": 2,
+    "output_equivalent": true,
+    "accepted_realloc_calls": 932129,
+    "experiment_realloc_calls": 930558,
+    "realloc_calls_change": -1571,
+    "accepted_heap_total_reported": 3094844704,
+    "experiment_heap_total_reported": 3122046678,
+    "accepted_heap_peak_reported": 122694522,
+    "experiment_heap_peak_reported": 126158622,
+    "scope": "glibc malloc/calloc/realloc/free interposition subset; not complete Rust allocation totals, process RSS, or normal runtime performance",
+    "report_parser_recovery": "Initial regex missed glibc pipe separator; reused the successful retained accepted export and executed experiment only once."
+  },
+  "evidence_sha256": {
+    "author-verification.json": "bc8983926f7b713f9e1c1588ede82121da14a7e453f22f05ea25f25cdf4bc527",
+    "allocator.json": "942fb1de93f352f225e5f9d5cdbfc499d1349ba3dacd7440abe4e9c8e778f390",
+    "independent-benchmark-summary.json": "ac3e0e3e05418bdc726f08f47efe578707702f6b21394d877a969cc9b3bf4a73"
+  },
+  "child_agents_created": 0,
+  "followup_experiments": 0,
+  "confirmation_series": 0,
+  "remaining_track_c_work": []
+}

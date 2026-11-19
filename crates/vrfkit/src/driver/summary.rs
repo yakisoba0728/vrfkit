@@ -194,27 +194,23 @@ pub(super) fn print(
     if let Some(err) = &totals.sink.movement_first_error {
         eprintln!("  Movement err:     {err}");
     }
-    // Sections that stopped with bits unread before their measured end (a
-    // `000` terminator and 8 to 23 bits after the last move): a tally, not an
-    // error. Sized and open windows stay apart; see
-    // `RpcDecodeResult::sized_section_tails` and `open_section_tails`.
     eprintln!(
-        "  Movement tails:   {} sized ({} bits) / {} open ({} bits)",
-        totals.sink.movement_sized_section_tails,
-        totals.sink.movement_sized_section_tail_bits,
-        totals.sink.movement_open_section_tails,
-        totals.sink.movement_open_section_tail_bits
+        "  Movement components: {} attempted / {} complete / {} errors / {} empty",
+        totals.sink.movement_component_streams,
+        totals.sink.movement_component_complete,
+        totals.sink.movement_component_errors,
+        totals.sink.movement_component_empty
     );
     eprintln!(
-        "  Movement section trailers: {} streams / {} bits",
-        totals.sink.movement_sized_section_trailers,
-        totals.sink.movement_sized_section_trailer_bits
+        "  Component envelopes: {} validated / {} payload bytes / {} unused bits",
+        totals.sink.movement_component_envelopes,
+        totals.sink.movement_component_payload_bytes,
+        totals.sink.movement_component_unused_bits
     );
-    // Every byte-wrapped movement stream and the bits after its envelope,
-    // which nothing reads: 24 per stream on every measured replay.
     eprintln!(
-        "  Envelope trailers: {} streams / {} bits",
-        totals.sink.movement_envelope_trailers, totals.sink.movement_envelope_trailer_bits
+        "  Component headers: {} input / {} discrepancy",
+        totals.sink.movement_component_input_headers,
+        totals.sink.movement_component_discrepancy_headers
     );
     // Non-zero errors or truncations: bits abandoned mid-element, leaves lost.
     eprintln!(
@@ -250,6 +246,10 @@ pub(super) fn print(
     eprintln!(
         "  ActiveBlinds trailers: {} empty deltas",
         totals.sink.active_blinds_empty_trailers
+    );
+    eprintln!(
+        "  FocusProjectiles trailers: {} empty deltas",
+        totals.sink.focus_projectiles_empty_trailers
     );
     eprintln!("  Truncated RPCs:   {}", totals.sink.truncated_rpcs);
     eprintln!("  RPC param walks:  {}", totals.sink.rpc_param_walks);
@@ -467,6 +467,10 @@ fn print_checkpoints(cp: &CheckpointStats) {
         cp.sink.active_blinds_empty_trailers
     );
     eprintln!(
+        "  Checkpoint FocusProjectiles trailers: {} empty deltas",
+        cp.sink.focus_projectiles_empty_trailers
+    );
+    eprintln!(
         "  Checkpoint movement: {} failures",
         cp.sink.movement_rpc_errors
     );
@@ -474,19 +478,21 @@ fn print_checkpoints(cp: &CheckpointStats) {
         eprintln!("  Checkpoint movement error: {error}");
     }
     eprintln!(
-        "  Checkpoint movement tails: {} sized ({} bits) / {} open ({} bits)",
-        cp.sink.movement_sized_section_tails,
-        cp.sink.movement_sized_section_tail_bits,
-        cp.sink.movement_open_section_tails,
-        cp.sink.movement_open_section_tail_bits
+        "  Checkpoint movement components: {} attempted / {} complete / {} errors / {} empty",
+        cp.sink.movement_component_streams,
+        cp.sink.movement_component_complete,
+        cp.sink.movement_component_errors,
+        cp.sink.movement_component_empty
     );
     eprintln!(
-        "  Checkpoint movement section trailers: {} streams / {} bits",
-        cp.sink.movement_sized_section_trailers, cp.sink.movement_sized_section_trailer_bits
+        "  Checkpoint component envelopes: {} validated / {} payload bytes / {} unused bits",
+        cp.sink.movement_component_envelopes,
+        cp.sink.movement_component_payload_bytes,
+        cp.sink.movement_component_unused_bits
     );
     eprintln!(
-        "  Checkpoint envelope trailers: {} streams / {} bits",
-        cp.sink.movement_envelope_trailers, cp.sink.movement_envelope_trailer_bits
+        "  Checkpoint component headers: {} input / {} discrepancy",
+        cp.sink.movement_component_input_headers, cp.sink.movement_component_discrepancy_headers
     );
     eprintln!(
         "  Checkpoint suffix:{} RPC bits",
@@ -653,15 +659,20 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn movement_section_trailers_reach_main_and_checkpoint_summaries() {
+    fn native_component_counters_reach_main_and_checkpoint_summaries() {
         // Given: zero controls, then different accumulated values in each pass.
         let mut totals = super::RunTotals::default();
         let mut cp = super::CheckpointStats::default();
         for extra in [false, true] {
             if extra {
                 let result = vrf_movement::RpcDecodeResult {
-                    sized_section_trailers: 1,
-                    sized_section_trailer_bits: 8,
+                    component_streams: 1,
+                    component_complete: 1,
+                    component_envelopes: 1,
+                    component_payload_bytes: 32,
+                    component_unused_bits: 3,
+                    component_input_headers: 1,
+                    component_discrepancy_headers: 1,
                     ..Default::default()
                 };
                 totals.sink.record_movement_decode(Ok(&result));
@@ -682,12 +693,12 @@ mod tests {
             );
             // Then: each pass retains its own aggregate; no movement loss.
             assert_eq!(
-                totals.sink.movement_sized_section_trailer_bits,
-                u64::from(extra) * 8
+                totals.sink.movement_component_payload_bytes,
+                u64::from(extra) * 32
             );
             assert_eq!(
-                cp.sink.movement_sized_section_trailer_bits,
-                u64::from(extra) * 16
+                cp.sink.movement_component_payload_bytes,
+                u64::from(extra) * 64
             );
             assert_eq!(totals.sink.movement_rpc_errors, 0);
             assert_eq!(cp.sink.movement_rpc_errors, 0);

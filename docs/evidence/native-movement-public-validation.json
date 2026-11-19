@@ -1,0 +1,521 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "scope": "six fixed public replay inputs; main stream and checkpoints; no private corpus remeasurement or performance comparison",
+  "implementation_commit": "2e3526fb867c58400046b5d294aa58d01496e11a",
+  "implementation_tree": "e486b0ed587930a9e9eca8900d9673f13e8396b2",
+  "rustc": "rustc 1.86.0 (05f9846f8 2025-03-31)",
+  "binary_sha256": "e6b855ed2ea154260a30bca8606eefa15454e1b76cecca09a0e886e07d096a69",
+  "binary_bytes": 38547424,
+  "parser_sources_sha256": "0fc5b7c26fece8aab301d8f3da56b5831255833c2483dd92722cbd4e0ad312f4",
+  "parser_sources_unchanged_during_build": true,
+  "binary_unchanged_during_audit": true,
+  "harness_unchanged_during_audit": true,
+  "runner_sha256": "3f7d75c9c484ffe60664d368b427aad29c30d7ef234e3d49d2145ae69a6b5bb6",
+  "type_evidence_fixture_sha256": "1d2fd9890eccd843e53dd33f2bfb2ea95240cbe10974e045bb7fdfd3b15a7c34",
+  "corpus_sha256": "3694de8b2fa01ee7b536d45af10f9e0a059206d58e1b1848d390d7870ae14d41",
+  "baseline_provenance": {
+    "date_utc": "2026-11-16T00:31:14.154090+00:00",
+    "parser_commit": "93e107a10788021b59fb30c5cb145960c3fd21a0",
+    "parser_sources_sha256": "92328ce1ab9a4236c38ae07c49ed816d259e0107cac4470295e05de48fbff93d",
+    "exe_sha256": "ef02b508753e05ff1bffd96792f402c3639d652406333978fd0fe8917af1c8ad",
+    "runner_sha256": "41eb8f6f3f75c23830b2f471a17177726d6799c6a8966a2003a981997438ec4c",
+    "evidence_sha256": "1d2fd9890eccd843e53dd33f2bfb2ea95240cbe10974e045bb7fdfd3b15a7c34",
+    "discovered_paths": 6,
+    "unique_replays": 6,
+    "duplicates": 0,
+    "corpus_sha256": "3694de8b2fa01ee7b536d45af10f9e0a059206d58e1b1848d390d7870ae14d41"
+  },
+  "baseline_report_sha256": "27e2d076f7a56b1655d8428a9ecb00b8ffe6f7743100402093292be896c7da0f",
+  "receipts": {
+    "build-receipt.json": {
+      "sha256": "a4fd684f77dc22a47ff433cd6b3bac72e9170d30482815a8feac4c8c37aea2a4",
+      "bytes": 23445
+    },
+    "audit-receipt.json": {
+      "sha256": "a7c9a5a7c3c46484bce2982d8ae8e8382e9e124a784fdf89c9af63c6e6ed58db",
+      "bytes": 13335
+    },
+    "audit-complete-receipt.json": {
+      "sha256": "9f1a89a57f189d92d6bb1ac9965a2edc487a69a4904aaf7db01ad43afaf801c1",
+      "bytes": 13444
+    },
+    "six-public-report.json": {
+      "sha256": "2f3faede8dd54f9562493b8ddd586e7e9aa3bf10c193fe018784db73c769b7b7",
+      "bytes": 30246
+    },
+    "six-public-report-complete.json": {
+      "sha256": "41d77d874bbb06eae54e8a1e7adc5e68ddb9de914af81d1c18532873d2a1ed31",
+      "bytes": 60515
+    },
+    "six-public-byte-manifest-parity.json": {
+      "sha256": "b3f729a4f2d623899545b0def49026056d8d6e1dead043ff0264a18a5614baeb",
+      "bytes": 158265
+    },
+    "compare_native_exports.py": {
+      "sha256": "bd1242c5b96c1f9fe7fb5a99097307c56a940327e2811130f0690d01120ae720",
+      "bytes": 9901
+    },
+    "discovery-scope-correction.json": {
+      "sha256": "7c4d536819e62c81ac749082c789e331d4285f0004dcf66c1a877a63224b0a9f",
+      "bytes": 1313
+    }
+  },
+  "wire_observation_receipt_sha256": "104985a9ce98b63ec5bcd5d9fee231d9f61dc2b5ac6c28c324b99a84c56aa13c",
+  "independent_code_qa_receipt_sha256": "389d2aa499e9ded689788e009699c8a05b7fb01acf5d36539c8fdcaa683d2653",
+  "first_attempt": {
+    "report": "six-public-report.json",
+    "discovered_inputs": 3,
+    "status": "passed only the three discovered .vrf files",
+    "limitation": "Original .replay files were outside the documented suffix discovery. Report retained; not counted as six-input validation."
+  },
+  "complete_attempt": {
+    "report": "six-public-report-complete.json",
+    "discovered_inputs": 6,
+    "passed_inputs": 6,
+    "failed_inputs": 0,
+    "method": "A new directory of six .vrf symlinks; verifier resolves them to exact original input paths. No original file was renamed, modified or deleted."
+  },
+  "parquet_files_compared": 78,
+  "parquet_byte_matches": 78,
+  "unexplained_manifest_differences": 0,
+  "manifest_difference_policy": "Only exact legacy movement counter removal, exact native counter addition in main/checkpoint sink, and finite nonnegative top-level elapsed_ms variation.",
+  "non_movement_audit_count_differences": [],
+  "totals": {
+    "main_field_rows": 4207888,
+    "movement_rows": 6252733,
+    "checkpoint_field_rows": 1142904,
+    "oracle_scored_blocks": 1958155,
+    "oracle_passed_blocks": 1958155,
+    "checkpoint_chunks": 76,
+    "typed_values_compared": 60169,
+    "typed_mismatches": 0,
+    "type_width_failures": 0,
+    "main_movement_rpc_errors": 0,
+    "checkpoint_movement_rpc_errors": 0,
+    "main_rpc_loss": 0,
+    "checkpoint_rpc_loss": 0,
+    "main_unresolved_rpc_payloads_preserved": 22561,
+    "checkpoint_unresolved_rpc_payloads_preserved": 0,
+    "main_movement_component_streams": 6211925,
+    "main_movement_component_complete": 6211925,
+    "main_movement_component_errors": 0,
+    "main_movement_component_empty": 0,
+    "main_movement_component_envelopes": 6211925,
+    "main_movement_component_payload_bytes": 215894827,
+    "main_movement_component_unused_bits": 22792654,
+    "main_movement_component_input_headers": 6211925,
+    "main_movement_component_discrepancy_headers": 5764165
+  },
+  "builds": [
+    {
+      "build": "12.05",
+      "input_sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+      "input_unchanged": true,
+      "passed": true,
+      "checkpoint_evidence": "observed",
+      "parquet_files_compared": 13,
+      "parquet_byte_matches": 13,
+      "main_field_rows": 1240315,
+      "movement_rows": 1844387,
+      "checkpoint_field_rows": 358253,
+      "native_counter_maps": {
+        "main": {
+          "before": {
+            "movement_envelope_trailer_bits": 43957728,
+            "movement_envelope_trailers": 1831572,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 1831572,
+            "movement_component_discrepancy_headers": 1815504,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 1831572,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 1831572,
+            "movement_component_payload_bytes": 63849934,
+            "movement_component_streams": 1831572,
+            "movement_component_unused_bits": 6996492
+          }
+        },
+        "checkpoint": {
+          "before": {
+            "movement_envelope_trailer_bits": 0,
+            "movement_envelope_trailers": 0,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 0,
+            "movement_component_discrepancy_headers": 0,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 0,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 0,
+            "movement_component_payload_bytes": 0,
+            "movement_component_streams": 0,
+            "movement_component_unused_bits": 0
+          }
+        }
+      },
+      "native_counters_match_wire_observation": true,
+      "unexplained_manifest_differences": 0,
+      "manifest_changes": {
+        "elapsed_time": 1,
+        "added_native_counter": 18,
+        "removed_obsolete_counter": 16
+      },
+      "non_movement_audit_count_differences": []
+    },
+    {
+      "build": "12.08",
+      "input_sha256": "78e706843ea6992e5502d58f9b41c23ac5470a9e36e810d45e8724fb47a91201",
+      "input_unchanged": true,
+      "passed": true,
+      "checkpoint_evidence": "observed",
+      "parquet_files_compared": 13,
+      "parquet_byte_matches": 13,
+      "main_field_rows": 1269401,
+      "movement_rows": 1757418,
+      "checkpoint_field_rows": 312318,
+      "native_counter_maps": {
+        "main": {
+          "before": {
+            "movement_envelope_trailer_bits": 41920176,
+            "movement_envelope_trailers": 1746674,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 1746674,
+            "movement_component_discrepancy_headers": 1742627,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 1746674,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 1746674,
+            "movement_component_payload_bytes": 61298486,
+            "movement_component_streams": 1746674,
+            "movement_component_unused_bits": 6302270
+          }
+        },
+        "checkpoint": {
+          "before": {
+            "movement_envelope_trailer_bits": 0,
+            "movement_envelope_trailers": 0,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 0,
+            "movement_component_discrepancy_headers": 0,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 0,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 0,
+            "movement_component_payload_bytes": 0,
+            "movement_component_streams": 0,
+            "movement_component_unused_bits": 0
+          }
+        }
+      },
+      "native_counters_match_wire_observation": true,
+      "unexplained_manifest_differences": 0,
+      "manifest_changes": {
+        "elapsed_time": 1,
+        "added_native_counter": 18,
+        "removed_obsolete_counter": 16
+      },
+      "non_movement_audit_count_differences": []
+    },
+    {
+      "build": "12.09",
+      "input_sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "input_unchanged": true,
+      "passed": true,
+      "checkpoint_evidence": "observed",
+      "parquet_files_compared": 13,
+      "parquet_byte_matches": 13,
+      "main_field_rows": 1657000,
+      "movement_rows": 2634029,
+      "checkpoint_field_rows": 439892,
+      "native_counter_maps": {
+        "main": {
+          "before": {
+            "movement_envelope_trailer_bits": 62806344,
+            "movement_envelope_trailers": 2616931,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 2616931,
+            "movement_component_discrepancy_headers": 2189286,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 2616931,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 2616931,
+            "movement_component_payload_bytes": 90191658,
+            "movement_component_streams": 2616931,
+            "movement_component_unused_bits": 9432555
+          }
+        },
+        "checkpoint": {
+          "before": {
+            "movement_envelope_trailer_bits": 0,
+            "movement_envelope_trailers": 0,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 0,
+            "movement_component_discrepancy_headers": 0,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 0,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 0,
+            "movement_component_payload_bytes": 0,
+            "movement_component_streams": 0,
+            "movement_component_unused_bits": 0
+          }
+        }
+      },
+      "native_counters_match_wire_observation": true,
+      "unexplained_manifest_differences": 0,
+      "manifest_changes": {
+        "elapsed_time": 1,
+        "added_native_counter": 18,
+        "removed_obsolete_counter": 16
+      },
+      "non_movement_audit_count_differences": []
+    },
+    {
+      "build": "12.10",
+      "input_sha256": "a4ce1b72f9bdf99492162013c1c909e6994a0d22bef1899e687fde71fbc86606",
+      "input_unchanged": true,
+      "passed": true,
+      "checkpoint_evidence": "observed",
+      "parquet_files_compared": 13,
+      "parquet_byte_matches": 13,
+      "main_field_rows": 19119,
+      "movement_rows": 8907,
+      "checkpoint_field_rows": 13980,
+      "native_counter_maps": {
+        "main": {
+          "before": {
+            "movement_envelope_trailer_bits": 212472,
+            "movement_envelope_trailers": 8853,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 8853,
+            "movement_component_discrepancy_headers": 8853,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 8853,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 8853,
+            "movement_component_payload_bytes": 285074,
+            "movement_component_streams": 8853,
+            "movement_component_unused_bits": 30431
+          }
+        },
+        "checkpoint": {
+          "before": {
+            "movement_envelope_trailer_bits": 0,
+            "movement_envelope_trailers": 0,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 0,
+            "movement_component_discrepancy_headers": 0,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 0,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 0,
+            "movement_component_payload_bytes": 0,
+            "movement_component_streams": 0,
+            "movement_component_unused_bits": 0
+          }
+        }
+      },
+      "native_counters_match_wire_observation": true,
+      "unexplained_manifest_differences": 0,
+      "manifest_changes": {
+        "elapsed_time": 1,
+        "added_native_counter": 18,
+        "removed_obsolete_counter": 16
+      },
+      "non_movement_audit_count_differences": []
+    },
+    {
+      "build": "12.11",
+      "input_sha256": "7a7a5492ddf286bb04413da96f0d3b216f91150e8174a3a4397493529e17ebdd",
+      "input_unchanged": true,
+      "passed": true,
+      "checkpoint_evidence": "observed",
+      "parquet_files_compared": 13,
+      "parquet_byte_matches": 13,
+      "main_field_rows": 9872,
+      "movement_rows": 3001,
+      "checkpoint_field_rows": 12169,
+      "native_counter_maps": {
+        "main": {
+          "before": {
+            "movement_envelope_trailer_bits": 70776,
+            "movement_envelope_trailers": 2949,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 2949,
+            "movement_component_discrepancy_headers": 2949,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 2949,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 2949,
+            "movement_component_payload_bytes": 97011,
+            "movement_component_streams": 2949,
+            "movement_component_unused_bits": 12284
+          }
+        },
+        "checkpoint": {
+          "before": {
+            "movement_envelope_trailer_bits": 0,
+            "movement_envelope_trailers": 0,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 0,
+            "movement_component_discrepancy_headers": 0,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 0,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 0,
+            "movement_component_payload_bytes": 0,
+            "movement_component_streams": 0,
+            "movement_component_unused_bits": 0
+          }
+        }
+      },
+      "native_counters_match_wire_observation": true,
+      "unexplained_manifest_differences": 0,
+      "manifest_changes": {
+        "elapsed_time": 1,
+        "added_native_counter": 18,
+        "removed_obsolete_counter": 16
+      },
+      "non_movement_audit_count_differences": []
+    },
+    {
+      "build": "13.00",
+      "input_sha256": "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a",
+      "input_unchanged": true,
+      "passed": true,
+      "checkpoint_evidence": "observed",
+      "parquet_files_compared": 13,
+      "parquet_byte_matches": 13,
+      "main_field_rows": 12181,
+      "movement_rows": 4991,
+      "checkpoint_field_rows": 6292,
+      "native_counter_maps": {
+        "main": {
+          "before": {
+            "movement_envelope_trailer_bits": 118704,
+            "movement_envelope_trailers": 4946,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 4946,
+            "movement_component_discrepancy_headers": 4946,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 4946,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 4946,
+            "movement_component_payload_bytes": 172664,
+            "movement_component_streams": 4946,
+            "movement_component_unused_bits": 18622
+          }
+        },
+        "checkpoint": {
+          "before": {
+            "movement_envelope_trailer_bits": 0,
+            "movement_envelope_trailers": 0,
+            "movement_open_section_tail_bits": 0,
+            "movement_open_section_tails": 0,
+            "movement_sized_section_tail_bits": 0,
+            "movement_sized_section_tails": 0,
+            "movement_sized_section_trailer_bits": 0,
+            "movement_sized_section_trailers": 0
+          },
+          "after": {
+            "movement_component_complete": 0,
+            "movement_component_discrepancy_headers": 0,
+            "movement_component_empty": 0,
+            "movement_component_envelopes": 0,
+            "movement_component_errors": 0,
+            "movement_component_input_headers": 0,
+            "movement_component_payload_bytes": 0,
+            "movement_component_streams": 0,
+            "movement_component_unused_bits": 0
+          }
+        }
+      },
+      "native_counters_match_wire_observation": true,
+      "unexplained_manifest_differences": 0,
+      "manifest_changes": {
+        "elapsed_time": 1,
+        "added_native_counter": 18,
+        "removed_obsolete_counter": 16
+      },
+      "non_movement_audit_count_differences": []
+    }
+  ],
+  "failures": []
+}

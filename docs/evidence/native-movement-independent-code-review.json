@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "implementation_commit": "279873ad8ece68bfee29b5bd0bf80fc993f29544",
+  "implementation_tree": "ff39384bf9c6c569b5391fee4e7760355c345926",
+  "qa_checkout_commit": "b1dee7e854b8e9dd9b03a4b5b2c86ab0a47502d9",
+  "independent_reader_regression_commit": "14537fb",
+  "required_prior_changes": [
+    "PR61 Reader hook and source/provenance exposure",
+    "e947acc+b37ef6d per-packet RPC ordinal correction"
+  ],
+  "reader_hook_overlay_receipt_sha256": "e05419b5f1c6098e37677456cd26eaf538c96a43e632c2325712a6c29a0e75e1",
+  "reviewed_sources": {
+    "crates/vrf-movement/src/rpc.rs": "82f019e06ab9fa9ba3f66a76bafc395ac754fb1791b600027e7915ca3bf5defb",
+    "crates/vrf-movement/src/moves.rs": "efde97371ccd4b8d76f47c224e0577a2c9c0e906a107e102cef0822bfae35424",
+    "crates/vrf-movement/src/error.rs": "5ab605f53bdad7c93e837ecb7fef42b05e7b7effab55691958b0ee958a86d422",
+    "crates/vrf-movement/src/types.rs": "4199c3c62fb1bdead25f5d79ef16b0e5b08140bc7164a3be30f6640f7d8eed62",
+    "crates/vrfkit/src/sink/mod.rs": "dae80f65ecf788ab88c3c963affe215f201e401af9e0ec1f1eaee15ff5f8a581",
+    "crates/vrfkit/src/sink/stream.rs": "1bc9d3ccb67fbe4bc4777e2d5c154d8f247024e46295211ee70d8641c6ac7b6a",
+    "tools/summary_counters.py": "221019193873e56e8d8a8f748bb79d2e3fd86c1dbaea320c09360e7cf9fbaca0",
+    "tools/check_export_baseline.py": "d4a9e718545645437af3ed6b3f3c737e0fc5da3ad171ce98a2d1f9d23789d2a7",
+    "tools/benchmark_resources.py": "6ec1c13a9310da426a6dc5c329220e302f234896a0dd01ba1888f61697650674",
+    "crates/vrfkit/tests/movement_reader.rs": "840eb44dfc24c37a0a8c9420da9032071d03376ddcfe94422ecc25ab74903466"
+  },
+  "checks": [
+    {
+      "file": "native-reader-raw-before-fix.log",
+      "sha256": "bcb930c3c1bd6ed3b1a1a9d545cf476752a1946fc2d34fd17b4df896e57cc642",
+      "description": "Before fix: generated A3 body produces a decoded prefix but loses whole raw RPC; runtime failure.",
+      "passed": 0,
+      "failed": 1,
+      "ignored": 0,
+      "compilation_error": false
+    },
+    {
+      "file": "native-positive-rust.log",
+      "sha256": "797577d5d0deec0217e6d4540c32b7824cb1f09d670257eff8b66b23d1aff853",
+      "description": "Corrected movement/core suites including real Reader regression.",
+      "passed": 171,
+      "failed": 0,
+      "ignored": 0,
+      "compilation_error": false
+    },
+    {
+      "file": "native-input-body-guard-mutation.log",
+      "sha256": "6167863a71f1aae83ee563818117062fa6e6b1fb91ed867686dd640fcef99de1",
+      "description": "Remove A3 body completion guard; compiled Reader regression fails with raw_bits=None.",
+      "passed": 0,
+      "failed": 1,
+      "ignored": 0,
+      "compilation_error": false
+    },
+    {
+      "file": "native-reader-restored.log",
+      "sha256": "aa42cbfd1f3e0d485d39f287028518a7dabd599eea90b9a0d98f1796c72f73f8",
+      "description": "Both real Reader tests pass after exact source restoration.",
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0,
+      "compilation_error": false
+    },
+    {
+      "file": "native-python-gates.log",
+      "sha256": "4c86a6dd2a7afa919d8f4c8b03f537b1b6467efd30878ddfa2a6458b4e1645f3",
+      "description": "Six affected Python validation/benchmark/baseline modules.",
+      "tests": 137,
+      "success": true
+    },
+    {
+      "file": "native-clippy.log",
+      "sha256": "4ac8d6b2667adb558259ed3a131efd3190e84733b35cea2cb99074ba01b67357",
+      "description": "Movement and vrfkit core all-targets Clippy with -D warnings."
+    },
+    {
+      "file": "native-baseline-schemas.log",
+      "sha256": "abb7513b6c0be5231700b0004e46ae83579d42545c6e69ff06509d5f939047a1",
+      "description": "Archived baseline schemas remain valid without rewriting values."
+    },
+    {
+      "file": "native-fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "description": "Workspace rustfmt check."
+    }
+  ],
+  "independent_found_defect": {
+    "scope": "Fully source-generated synthetic input, not an observed public replay corruption claim.",
+    "before": "One declared unresolved A3 input-body bit returned a false-clean decode and discarded the whole raw parent RPC while emitting movement prefixes.",
+    "after": "All four prefix rows and paired provenance survive across fragmented/ordinary transport; both original RPC byte arrays and exact bit lengths are retained; movement_rpc_errors=2.",
+    "mutation": "Removing only the A3 body-end guard restores the raw loss; targeted runtime assertion fails. Source restored and both real Reader tests pass."
+  },
+  "source_review": [
+    "Exact signed32 byte count plus payload and unused byte; no count-driven allocation; negative/oversized/extraneous bounds fail before borrowing.",
+    "Explicit movement zero terminator, absolute input-end window, mandatory A3 and optional A4; unknown bodies fail and retain whole RPC.",
+    "No reference-only16-move or8192-byte cap added;20-move marker-wrap test remains valid.",
+    "Unsupported prior direct/u16-sized alternatives remain covered as negative regressions; their previously accepted assumptions were disproved by native wire evidence.",
+    "Orphan components remain errors without falsely attributed component attempts; complete/error partition and empty/envelope/header counts reviewed.",
+    "Default CLI and Reader sink preserve raw failure payload after prefix emission; per-packet provenance ordinal correction remains intact.",
+    "Current Python checks reject missing/inconsistent native counters and obsolete counter contracts; archived baselines retain exact old values.",
+    "Obsolete baseline refusal precedes missing-input skipping; benchmark refuses unequal obsolete contract instead of normalizing it."
+  ],
+  "archived_baselines_diff_from_turn_baseline": "",
+  "documentation_followup": "Parent owns active USAGE/README native-counter migration (old24-bit descriptions identified at USAGE654,1205-1206,1364); author0bfbe63 clarifies changed malformed-input outputs.",
+  "verdict": "Approve parser/counter correction and test design subject to final active-document migration, immutable integrated source checks, six-public main/checkpoint export parity and required CI. Performance is not approved by this receipt.",
+  "limitations": [
+    "Independent numeric full12.09 comparison was executed on PR61 provenance source before this native correction; production post-fix public parity remains a separate gate.",
+    "Private corpus was not revalidated.",
+    "No speed, CPU-neutrality or memory-improvement claim is made."
+  ],
+  "private_replay_bytes_read": 0,
+  "original_replay_files_modified": false
+}

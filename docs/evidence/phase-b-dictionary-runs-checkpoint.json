@@ -1,0 +1,125 @@
+{
+  "status": "implementation checkpoint; functional acceptance pending independent QA",
+  "implementation_commit": "ae682ea3034ddebe1cf0a973364349ed76b3809d",
+  "base_commit": "9c133fb423c521d7df25b6ef19cb546fa489de4e",
+  "compiler": "rustc 1.86.0 (05f9846f8 2025-03-31)",
+  "source_sha256": {
+    "crates/vrf-export/src/schema.rs": "8511565c966ef8ece355451ff9b9a2be5440da714bfba77c5cc99e38555d8986",
+    "crates/vrf-export/tests/roundtrip.rs": "49f8d23077c94d06c08670309b799db4f286ed07057d96f50a3a5b01f05ce95e"
+  },
+  "scope": "Non-null group_path in fields and checkpoint_fields only.",
+  "performance_measurements": "Not run after user direction to stop quantitative measurements.",
+  "performance_claim": null,
+  "release_profile": {
+    "opt_level": 3,
+    "lto": "fat",
+    "codegen_units": 1,
+    "debug": 1
+  },
+  "build_jobs": 1,
+  "workspace_packages_cleaned_before_source_switch": [
+    "vrf-bitio",
+    "vrf-container",
+    "vrf-testkit",
+    "vrf-decode",
+    "vrf-export",
+    "vrf-frame",
+    "vrf-schema",
+    "vrf-movement",
+    "vrf-net",
+    "vrf-transform",
+    "vrfkit",
+    "extract-component-classes"
+  ],
+  "runtime_library_compile": {
+    "target": "vrf_export",
+    "manifest": "crates/vrf-export/Cargo.toml",
+    "features": [
+      "actors",
+      "checkpoint-context",
+      "events",
+      "fields",
+      "movement",
+      "net-guids",
+      "parquet",
+      "partials"
+    ],
+    "fresh": false,
+    "note": "Compiler emitted this library artifact during the first failed CLI build; no executable was accepted."
+  },
+  "commands": [
+    {
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python",
+        "-W",
+        "error",
+        "tools/check_ascii.py",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "build",
+        "--release",
+        "-p",
+        "vrfkit",
+        "--locked",
+        "--message-format=json-render-diagnostics"
+      ],
+      "attempts": 2,
+      "exit_codes": [
+        101,
+        101
+      ],
+      "stage": "CLI rustc terminated by signal 9 (SIGKILL)"
+    },
+    {
+      "command": [
+        "cargo",
+        "+1.86.0",
+        "test",
+        "--release",
+        "-p",
+        "vrf-export",
+        "--lib",
+        "--test",
+        "roundtrip",
+        "--locked"
+      ],
+      "exit_code": 101,
+      "stage": "parquet dependency rustc terminated by signal 9 (SIGKILL); tests did not execute"
+    }
+  ],
+  "accepted_candidate_executable": null,
+  "tests_executed": false,
+  "mutation_check_executed": false,
+  "replay_exports_executed": false,
+  "pending_independent_checks": [
+    "Run the two new tests and existing vrf-export suite.",
+    "Change the run increment from one to two, confirm the new tests fail, restore the original source hash, and confirm they pass.",
+    "Check complete public main/checkpoint exports against the preserved baseline using fresh combined-source artifact provenance.",
+    "Run full pinned correctness gates and hosted optimized release checks before acceptance."
+  ]
+}

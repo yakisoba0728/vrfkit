@@ -54,11 +54,13 @@
 //! plausible garbage, which is why [`read_checkpoint_tables`] ends by asserting
 //! the prologue's frame offset.
 
+use std::borrow::Cow;
+
 use vrf_bitio::{BitError, BitReader};
 
 use crate::cache::NetGuidCache;
 use crate::error::{Result, SchemaError};
-use crate::export::{NetFieldExport, NetFieldExportGroup};
+use crate::export::NetFieldExport;
 use crate::guid::NetworkGuid;
 use crate::reader::{MAX_FIELDS_PER_GROUP, MAX_FSTRING_BYTES, read_fname};
 
@@ -131,6 +133,10 @@ const MAX_GUID_ENTRIES: u32 = 1_000_000;
 /// The largest corpus checkpoint declares 543 export groups.
 const MAX_GROUPS: u32 = 100_000;
 
+/// Bound indexed-path expansion before cache storage and detached output copies.
+/// This counts UTF-8 bytes across declarations, not total process memory.
+const MAX_RESOLVED_GUID_PATH_BYTES: usize = 256 * 1024 * 1024;
+
 /// What [`read_checkpoint_tables`] consumed, for the caller to report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckpointTables {
@@ -182,6 +188,10 @@ pub enum CheckpointPathMode {
 /// Beyond truncation, each `Checkpoint*` [`SchemaError`] is a check that the
 /// cursor is still aligned. `PathIsString` accepts only 0 and 1; the FName
 /// kind and exported-slot flag accept any nonzero byte.
+/// GUID paths also have a cumulative 256 MiB resolved UTF-8 byte budget per
+/// checkpoint, including repeated GUIDs and literal/legacy paths. Exceeding it
+/// returns [`SchemaError::ResourceLimit`] before cloning an indexed path,
+/// invoking that entry's observer or storing it. Prior callbacks are provisional.
 pub fn read_checkpoint_tables(data: &[u8], cache: &mut NetGuidCache) -> Result<CheckpointTables> {
     let mut sink = NoopCheckpointTableSink;
     match read_checkpoint_tables_with_sink(data, cache, &mut sink) {
@@ -215,6 +225,16 @@ pub fn read_checkpoint_tables_with_sink_mode<S: CheckpointTableSink>(
     sink: &mut S,
     mode: CheckpointPathMode,
 ) -> core::result::Result<CheckpointTables, CheckpointReadError<S::Error>> {
+    read_checkpoint_tables_with_path_limit(data, cache, sink, mode, MAX_RESOLVED_GUID_PATH_BYTES)
+}
+
+fn read_checkpoint_tables_with_path_limit<S: CheckpointTableSink>(
+    data: &[u8],
+    cache: &mut NetGuidCache,
+    sink: &mut S,
+    mode: CheckpointPathMode,
+    max_path_bytes: usize,
+) -> core::result::Result<CheckpointTables, CheckpointReadError<S::Error>> {
     let mut reader = BitReader::new(data);
 
     let frame_offset_word = reader.read_u32()?;
@@ -235,9 +255,10 @@ pub fn read_checkpoint_tables_with_sink_mode<S: CheckpointTableSink>(
     }
 
     let mut indexed_paths = 0u32;
-    let mut literal_paths = Vec::new();
+    let mut literal_paths: Vec<String> = Vec::new();
     let mut literal_count = 0u32;
     let mut resolved_path_indices = 0u32;
+    let mut resolved_path_bytes = 0usize;
     for entry in 0..guid_count {
         let net_guid = reader.read_int_packed()?;
         let outer_guid = reader.read_int_packed()?;
@@ -245,17 +266,13 @@ pub fn read_checkpoint_tables_with_sink_mode<S: CheckpointTableSink>(
         let (path_is_string, path, name_index) = match path_kind {
             1 => {
                 let path = reader.read_fstring(MAX_FSTRING_BYTES)?;
-                literal_count += 1;
-                if mode == CheckpointPathMode::LiteralPathTable {
-                    literal_paths.push(path.clone());
-                }
-                (true, path, None)
+                (true, Cow::Owned(path), None)
             }
             0 => {
                 indexed_paths += 1;
                 let index = reader.read_int_packed()?;
                 let path = match mode {
-                    CheckpointPathMode::LegacyDecimal => index.to_string(),
+                    CheckpointPathMode::LegacyDecimal => Cow::Owned(index.to_string()),
                     CheckpointPathMode::LiteralPathTable => {
                         let Some(path) = literal_paths.get(index as usize) else {
                             return Err(SchemaError::CheckpointPathIndexOutOfBounds {
@@ -266,7 +283,7 @@ pub fn read_checkpoint_tables_with_sink_mode<S: CheckpointTableSink>(
                             .into());
                         };
                         resolved_path_indices += 1;
-                        path.clone()
+                        Cow::Borrowed(path.as_str())
                     }
                 };
                 (false, path, Some(index))
@@ -275,6 +292,26 @@ pub fn read_checkpoint_tables_with_sink_mode<S: CheckpointTableSink>(
         };
         // Preserve the flags byte without assigning unverified bit meanings.
         let flags = reader.read_u8()?;
+
+        // A short index can expand to a long literal. Check before cloning;
+        // sharing only the cache would still amplify detached summary rows.
+        let requested = resolved_path_bytes.saturating_add(path.len());
+        if requested > max_path_bytes {
+            return Err(SchemaError::ResourceLimit {
+                resource: "checkpoint resolved GUID path bytes",
+                requested,
+                limit: max_path_bytes,
+            }
+            .into());
+        }
+        resolved_path_bytes = requested;
+        let path = path.into_owned();
+        if path_is_string {
+            literal_count += 1;
+            if mode == CheckpointPathMode::LiteralPathTable {
+                literal_paths.push(path.clone());
+            }
+        }
 
         sink.on_guid_entry(
             entry,
@@ -330,11 +367,7 @@ pub fn read_checkpoint_tables_with_sink_mode<S: CheckpointTableSink>(
         sink.on_export_group(group_ordinal, path_name_index, &path, declared)
             .map_err(CheckpointReadError::Sink)?;
 
-        cache.add_export_group(NetFieldExportGroup::new(
-            path.clone(),
-            path_name_index,
-            declared,
-        ))?;
+        cache.declare_export_group(path.clone(), path_name_index, declared)?;
 
         for slot in 0..declared {
             let exported_flag = reader.read_u8()?;
@@ -690,6 +723,192 @@ mod tests {
     }
 
     const RESOLVED: CheckpointPathMode = CheckpointPathMode::LiteralPathTable;
+
+    #[test]
+    fn path_budget_rejects_before_observer_and_cache_mutation() {
+        for last in [(9, 0, None, 0), (7, 0, None, 0), (9, 0, Some("CD"), 0)] {
+            let archive = build(&[(7, 0, Some("AB"), 0), (8, 7, None, 0), last], &[], &[]);
+            let mut cache = NetGuidCache::new();
+            let mut sink = RecordingSink::default();
+            let error = read_checkpoint_tables_with_path_limit(
+                &archive, &mut cache, &mut sink, RESOLVED, 4,
+            )
+            .unwrap_err();
+            assert!(matches!(
+                error,
+                CheckpointReadError::Schema(SchemaError::ResourceLimit {
+                    resource: "checkpoint resolved GUID path bytes",
+                    requested: 6,
+                    limit: 4
+                })
+            ));
+            assert_eq!(
+                sink.guids,
+                vec![
+                    (0, true, Some("AB".into()), None, 3),
+                    (1, false, None, Some(0), 3)
+                ]
+            );
+            assert_eq!(cache.net_guid_entries().len(), 2);
+            assert_eq!(cache.get_path_by_guid(7), Some("AB"));
+            assert_eq!(cache.get_path_by_guid(8), Some("AB"));
+            assert_eq!(cache.get_outer_guid(8), Some(NetworkGuid(7)));
+            assert!(cache.get_path_by_guid(9).is_none());
+        }
+    }
+
+    #[test]
+    fn path_budget_accepts_exact_boundary_and_resets_for_each_read() {
+        let archive = build(&[(7, 0, Some("ABC"), 0), (8, 0, None, 0)], &[], &[0xa5]);
+        for _ in 0..2 {
+            let mut cache = NetGuidCache::new();
+            let tables = read_checkpoint_tables_with_path_limit(
+                &archive,
+                &mut cache,
+                &mut NoopCheckpointTableSink,
+                RESOLVED,
+                6,
+            )
+            .unwrap();
+            assert_eq!(tables.frame_offset, archive.len() - 1);
+            assert_eq!(tables.guid_count, 2);
+            assert_eq!(tables.literal_paths, 1);
+            assert_eq!(tables.resolved_path_indices, 1);
+            assert_eq!(cache.get_path_by_guid(8), Some("ABC"));
+        }
+    }
+
+    #[test]
+    fn path_budget_counts_decoded_utf8_bytes() {
+        let archive = build(&[(7, 0, Some("\u{754c}"), 0)], &[], &[]);
+        let mut cache = NetGuidCache::new();
+        let mut sink = RecordingSink::default();
+        let error =
+            read_checkpoint_tables_with_path_limit(&archive, &mut cache, &mut sink, RESOLVED, 2)
+                .unwrap_err();
+        assert!(matches!(
+            error,
+            CheckpointReadError::Schema(SchemaError::ResourceLimit {
+                requested: 3,
+                limit: 2,
+                ..
+            })
+        ));
+        assert!(sink.guids.is_empty());
+        assert!(cache.net_guid_entries().is_empty());
+    }
+
+    #[test]
+    fn path_budget_includes_legacy_decimal_paths() {
+        let archive = build(&[(7, 0, Some("AB"), 0), (8, 0, None, 12345)], &[], &[]);
+        for limit in [6, 7] {
+            let mut cache = NetGuidCache::new();
+            let mut sink = RecordingSink::default();
+            let result = read_checkpoint_tables_with_path_limit(
+                &archive,
+                &mut cache,
+                &mut sink,
+                CheckpointPathMode::LegacyDecimal,
+                limit,
+            );
+            if limit == 7 {
+                assert!(result.is_ok());
+                assert_eq!(cache.get_path_by_guid(8), Some("12345"));
+                assert_eq!(sink.guids[1], (1, false, None, Some(12345), 3));
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(CheckpointReadError::Schema(SchemaError::ResourceLimit {
+                        requested: 7,
+                        limit: 6,
+                        ..
+                    }))
+                ));
+                assert_eq!(sink.guids.len(), 1);
+                assert!(cache.get_path_by_guid(8).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn path_budget_preserves_truncation_and_index_error_precedence() {
+        let mut truncated = build(&[(7, 0, Some("ABC"), 0)], &[], &[]);
+        truncated.truncate(truncated.len() - 5); // remove the flags and group count
+        let mut cache = NetGuidCache::new();
+        let error = read_checkpoint_tables_with_path_limit(
+            &truncated,
+            &mut cache,
+            &mut NoopCheckpointTableSink,
+            RESOLVED,
+            0,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            CheckpointReadError::Schema(SchemaError::Bitio(_))
+        ));
+        assert!(cache.net_guid_entries().is_empty());
+
+        let invalid_index = build(&[(7, 0, None, 0)], &[], &[]);
+        let error = read_checkpoint_tables_with_path_limit(
+            &invalid_index,
+            &mut cache,
+            &mut NoopCheckpointTableSink,
+            RESOLVED,
+            0,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            CheckpointReadError::Schema(SchemaError::CheckpointPathIndexOutOfBounds {
+                entry: 0,
+                index: 0,
+                literals: 0
+            })
+        ));
+    }
+
+    #[test]
+    fn path_budget_preserves_earlier_sink_error() {
+        let archive = build(&[(7, 0, Some("AB"), 0), (8, 0, None, 0)], &[], &[]);
+        let mut cache = NetGuidCache::new();
+        let mut sink = StopAfterFirstGuid(0);
+        let error =
+            read_checkpoint_tables_with_path_limit(&archive, &mut cache, &mut sink, RESOLVED, 2)
+                .unwrap_err();
+        assert!(matches!(error, CheckpointReadError::Sink("stop")));
+        assert_eq!(sink.0, 1);
+        assert!(cache.net_guid_entries().is_empty());
+    }
+
+    #[test]
+    fn zero_path_budget_permits_empty_paths_but_not_a_byte() {
+        for path in ["", "A"] {
+            let archive = build(&[(7, 0, Some(path), 0)], &[], &[]);
+            let mut cache = NetGuidCache::new();
+            let result = read_checkpoint_tables_with_path_limit(
+                &archive,
+                &mut cache,
+                &mut NoopCheckpointTableSink,
+                RESOLVED,
+                0,
+            );
+            if path.is_empty() {
+                assert!(result.is_ok());
+                assert_eq!(cache.get_path_by_guid(7), Some(""));
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(CheckpointReadError::Schema(SchemaError::ResourceLimit {
+                        requested: 1,
+                        limit: 0,
+                        ..
+                    }))
+                ));
+                assert!(cache.net_guid_entries().is_empty());
+            }
+        }
+    }
 
     #[test]
     fn resolved_default_preserves_raw_observers_and_explicit_legacy_mode() {

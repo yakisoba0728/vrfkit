@@ -3,6 +3,12 @@
 The CLI, output schemas, library use, `tools/` scripts, and validation suite.
 
 Design rationale is in [`../README.md`](../README.md).
+For a first checkout, source pin and executable Rust/Python recipes, start
+with the [adoption guide](ADOPTION.md).
+Current source changes and acceptance are in
+[final consolidation](FINAL_CONSOLIDATION_STATUS.md). Review the
+[final migration](FINAL_CONSOLIDATION_MIGRATION.md) and the earlier
+[API/counter migration](PHASE_C_MIGRATION.md) when upgrading an existing consumer.
 
 ## Table of contents
 
@@ -18,6 +24,12 @@ Design rationale is in [`../README.md`](../README.md).
 ---
 
 ## 1. Build
+
+The API and examples documented here come from `integration/vrfkit-overhaul`.
+Use the [source checkout instructions](ADOPTION.md#select-and-record-the-source)
+and record `git rev-parse HEAD`; an unqualified checkout of `main` can have a
+different interface. Source API compatibility is not promised across revisions,
+and the crates are not yet published to crates.io.
 
 Build commands are in [CONTRIBUTING.md](../CONTRIBUTING.md#build). `export` is
 a default feature: without it (`--no-default-features`) `arrow`/`parquet`/`zstd`
@@ -36,6 +48,18 @@ vrfkit validate <file.vrf> [--diagnostics]
 vrfkit diag     <file.vrf> [--json <path>] [--include-payloads]
 vrfkit export   <file.vrf> --out <dir> [--checkpoints]
 ```
+
+The commands below use `vrfkit` as executable shorthand. After a source build,
+use `./target/release/vrfkit` on Linux/macOS or
+`.\target\release\vrfkit.exe` in Windows PowerShell, unless you installed it
+on `PATH`. A custom `CARGO_TARGET_DIR` changes that build-output location.
+
+`validate` and `export` use read-only, seekable file input with chunk buffering;
+`export --checkpoints` uses a separate checkpoint cursor. Keep the input file
+unchanged until the command completes. This avoids retaining the complete
+replay, but it does not impose a fixed process-memory limit. `inspect` and
+`diag` retain their existing whole-file paths. See [CLI input](CLI_INPUT_STREAMING.md)
+for buffering, failure and publication details.
 
 ### `inspect`
 
@@ -651,8 +675,12 @@ Every loss and fallback counter for the run, including the checkpoint pass when
 | `event_payloads_decoded` | Event payloads whose exact known arity, tag, public enum name and time relation populated the structural overlay. |
 | `event_payload_unknown_groups` | Event groups outside that measured vocabulary; their raw payload remains preserved. |
 | `event_layout_mismatches` | Known groups that failed any structural guard; all nullable overlay columns remain empty. |
-| `movement_envelope_trailers`, `movement_envelope_trailer_bits` | In each `sink` block: byte-wrapped movement streams and the bits after their envelopes, which nothing reads. Printed as `Envelope trailers:` (`Checkpoint envelope trailers:`); 24 bits per stream on every measured replay, which `verify_build_corpus.py` requires. |
+| `movement_component_streams`, `movement_component_complete`, `movement_component_errors`, `movement_component_empty` | In each `sink` block: native component attempts, complete decodes, failures and complete empty arrays. Attempts must equal complete decodes plus failures. Unsupported bodies count as failures and preserve the whole raw RPC alongside any decoded movement prefix. |
+| `movement_component_envelopes`, `movement_component_payload_bytes`, `movement_component_unused_bits` | Valid signed-32-bit native envelopes, their payload bytes and declared unused high bits. A valid envelope can still contain an unsupported or malformed body; unused bits are outside its logical payload. |
+| `movement_component_input_headers`, `movement_component_discrepancy_headers` | Recognized A3 input headers and optional A4 discrepancy headers. Only header-only bodies are decoded. These replace the former movement tail/trailer counters; see the [migration and measured layout](NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration). |
 | `active_blinds_empty_trailers` | In each `sink` block: empty `ActiveBlinds` deltas whose one trailing zero byte the strict array walker was spared; the parent row keeps it. Printed as `ActiveBlinds trailers:` (`Checkpoint ActiveBlinds trailers:`). |
+| `route_children_focus_projectiles` | In each `sink` block: child rows emitted by the exact measured 12.05 Clay `FocusProjectiles` route; the original raw parent remains. This required key is present even at zero. See [the route and evidence](PHASE_C_FOCUS_PROJECTILES.md). |
+| `focus_projectiles_empty_trailers` | In each `sink` block: empty deltas from that exact route with one final zero byte retained in the raw parent. Printed as `FocusProjectiles trailers:` (`Checkpoint FocusProjectiles trailers:`); this required key is present even at zero. |
 | `frame_non_finite_times` | DemoFrames whose time was NaN or infinite; their packets carry 0 ms. `checkpoints.checkpoint_frame_non_finite_times` counts the snapshot frames. Printed as `Frame times:` (`Checkpoint frame times:`), and by `validate`. |
 | `checkpoints.checkpoint_trailing_bytes` | Checkpoint bytes no reader consumed: bytes after an archive inside its chunk, and archive bytes the Oodle codec never read -- the checkpoint twin of `replay_data_trailing_bytes`. Printed as `Trailing bytes:` under `=== Checkpoints ===`, and by `diag --json` as `checkpoint_meta.trailing_bytes`. 0 in all 19,166 checkpoint archives of 1,014 replays, 11.06-13.06; `verify_build_corpus.py` fails a replay where it is not. |
 
@@ -674,6 +702,25 @@ preserved, uninterpreted streams, so it is not a count of lost payload bits.
 
 ## 4. Using it as a library
 
+Start with [`ReplayReader`](RUST_API.md) to receive borrowed field, movement,
+actor and rejected-partial batches, plus native Event payloads. It uses the same
+main-stream decoder as the CLI and does not require Parquet dependencies.
+Checkpoint callbacks are optional through `ReadOptions`; default Reader calls
+continue to skip them. `export --checkpoints` writes separate snapshot tables.
+
+`read_path` reads container chunks from a file; `read(&bytes, ...)` borrows an
+existing snapshot. `read_bounded` accepts finite nonseekable `Read` input with
+an explicit byte cap, buffers through EOF, and then runs the same parser;
+see [its memory and I/O contract](RUST_API.md#nonseekable-input-with-an-explicit-byte-cap).
+Callback rows are provisional until the read succeeds, and their borrowed
+slices cannot outlive the callback. [Optional gameplay helpers](GAMEPLAY_API.md)
+project a documented subset of native Event chunks and round-phase field
+observations without changing ordinary Reader or CLI work. A separate
+`MainIdentityTimeline` supports evidence-preserving body/movement association;
+it requires ordered main records and keeps missing/ambiguous results explicit. The
+[Rust and Python recipes](ADOPTION.md#rust-without-parquet) show how to choose
+the smallest integration layer and retain explicit quality checks.
+
 Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 `vrf-bitio` is `no_std` + optional `alloc`.
 
@@ -688,7 +735,7 @@ Take only the layer you need. Every crate is `#![forbid(unsafe_code)]`, and
 | Field decoder + nested arrays + type overlay + effects | `vrf-decode` | `array` `effect` `overlay` `structs` |
 | Movement decoder | `vrf-movement` | none |
 | Parquet writer | `vrf-export` | `parquet` + per-table |
-| Unified CLI | `vrfkit` | `export` (default) |
+| Main/checkpoint reader and CLI | `vrfkit` | `export` (default; optional for the reader) |
 
 ZSTD is deliberately *not* feature-gated out -- every writer picks it, so
 disabling it would produce files this crate could not explain.
@@ -742,7 +789,7 @@ the list. `check_docs.py` checks both figures.
 | `check_corpus_baseline.py` | Per-build corpus baseline |
 | `check_export_baseline.py` | Export counters + per-file rows/bytes/SHA-256 content identity, and the `Sink tally` fields against the `fields.parquet` rows; with `--checkpoints`, also every checkpoint GUID path against the main stream's own declaration of that GUID ([method](CHECKPOINT_PATH_RESOLUTION.md#cross-check-against-the-main-stream)) |
 | `check_baseline_schemas.py` | All committed baseline schemas, measured SHA-256 hashes, and cross-file replay/counter/table identities. |
-| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads and movement-section tails -- the same zero-required counters as `verify_build_corpus.py` -- and fails when a work counter behind them (decoded rows, struct blobs, array elements and fields, movement rows, `RPC param walks` for truncated RPCs) never moves; the unwalked-CNC gates, the main pass's sized movement-tail gate and the checkpoint movement gates have no work counter and are printed as unbacked (top level; `--recursive` for subdirectories, `--checkpoints` to also decode Checkpoint chunks) |
+| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads and native movement component failures -- the same zero-required counters as `verify_build_corpus.py` -- plus native envelope/header counter consistency. Fails when a work counter behind a gate never moves; the unwalked-CNC and checkpoint movement gates lack observed work and are printed as unbacked (top level; `--recursive` for subdirectories, `--checkpoints` to also decode Checkpoint chunks). |
 | `corpus_scan.py` | Not a check -- the `.vrf` discovery `validate_corpus.py` and `check_decode_errors_corpus.py` share, so the two can no longer glob a directory two different ways and disagree about what "the corpus" is without saying so. Non-recursive by default; read its docstring for why. |
 | `summary_counters.py` | Not a check -- what the guard tools share: the export summary's counter lines as one table, read by `check_export_baseline.py`, `check_decode_errors_corpus.py` and `verify_build_corpus.py`, each pattern anchored on the whole line (a Python test reads every line and the argument behind each count back out of `summary.rs`); and the helpers that run vrfkit and resolve, skip or pin a baseline's input. |
 | `export_scan.py` | Not a check -- the export discovery the tools that read a directory of exports share: it names the staging and backup directories an interrupted `vrfkit export` leaves behind ([section 2](#if-an-export-is-interrupted)), so none of those tools can count one as an export. A Python test reads the names back out of the Rust code that creates them. |
@@ -754,7 +801,8 @@ the list. `check_docs.py` checks both figures.
 | `check_metrics_baseline.py` | **Semantics** -- rounds, score, K/D/A |
 | `compare_combat_report.py` | Metrics-input multiset |
 | `compare_rpc_params.py` | RPC parameters and records against the C# export, with its listed expected differences |
-| `compare_with_csharp.py` | Diff against the C# parser |
+| `compare_with_csharp.py` | Same-input C# comparison with matching count units and unique packet/character/movement-time joins. Unknown and ambiguous matches remain explicit; exit 0 is report coverage, not universal value equality. See [comparison scope](REFERENCE_COMPARISON.md). |
+| `compare_movement_provenance.py` | Gates complete latest-update correspondence using actual initial-packet, actor/object/channel and wire update identities. Requires unique groups, contiguous move counts, exact scalar and f32-bit parity; reports only aggregates. See [full movement comparison](MOVEMENT_COMPARISON.md). |
 | `check_effect_decoder.py` | Effect decoder (12 cases), run by `tools/tests/test_check_effect_decoder.py`; it has no command line of its own |
 | `check_ascii.py` | Rust source ASCII sweep |
 | `check_docs.py` | This document itself (below) |
@@ -1048,6 +1096,7 @@ This measures value presence, not semantic understanding or block preservation.
 
 | Script | What it does |
 |---|---|
+| `export_jsonl.py` | Streams a selected main/checkpoint Parquet table to atomic, schema-described JSONL; exact integers, raw bytes as hex, explicit nulls, projected columns and bounded row batches. See [JSONL](JSONL.md) for encodings, unsupported types, source protection and memory scope. |
 | `extract_kill_observations.py` | Exports main and checkpoint KillData element snapshots with physical parent-row identity, independently checked raw values, nullable missing members and scoped reference status. Keeps all clocks separately; updates are not deduplicated kills. Accepts 11.06-12.09, 13.01-13.06 and 13.08-13.10 (`MEASURED_BUILDS`) and refuses 12.10, 12.11, 13.00 and any other build before reading a row. See [KILL_OBSERVATIONS.md](KILL_OBSERVATIONS.md#measured-builds). |
 | `extract_kill_ledger.py` | Retains character-death events, projects component-local KillData state and links mutually unique same-round PlayerState identities. Preserves unmatched events and observations. Reads the same measured builds as the observation extractor. See [KILL_OBSERVATIONS.md](KILL_OBSERVATIONS.md#ledger). |
 | `extract_healing_observations.py` | Retains serialized heal amounts, section state, raw source rows and separate identity corroboration. Amount sums do not establish effective HP restored or player healing credit. See [SECTION_OBSERVATIONS.md](SECTION_OBSERVATIONS.md#healing). |
@@ -1062,6 +1111,7 @@ This measures value presence, not semantic understanding or block preservation.
 | `player_identity.py` | Python module used by `extract_player_effects.py`, `extract_spike_carrier.py`, `extract_ability_lifecycle.py`, `extract_healing_observations.py` and `extract_damage_events.py`, not a command. Admits every non-zero `SpawnedCharacter` value in main `fields.parquet` (BombPlayerState and its Swiftplay alias) as a player body, joined to the manifest `subject` -- not only the manifest's last value, which drops the pawn a player had before reconnecting. A pawn claimed by two PlayerStates or subjects is a conflict. Its counts (earlier pawns, conflicts, manifest disagreements, untyped or foreign rows) are reported with their zeros by every tool that uses it. |
 | `analyze_raw_properties.py` | Streams a deterministic size-stratified corpus sample (or `--all`) one temporary export at a time and inventories preserved unnamed/raw replicated properties. Reports only build-level counts, bit widths, and anonymous recurrence ranks; it never prints replay paths/names, group/actor/object/handle/checksum identifiers, hashes, or payloads. Exits nonzero if an unnamed property row lacks exact-length `raw_bits`. Use `--format json` for a deterministic, versioned aggregate document. |
 | `bench_export.py` | Times a full `export` against `tools/baselines/bench.json`; `--checkpoints` times `export --checkpoints` against its own `export_checkpoints` slot. A smoke detector, not a profiler -- wall clock is noisy, so the default tolerance is 25% and it answers "did something get twice as slow", nothing finer. Reports a run *faster* than the baseline too: that means the recorded number no longer describes the code. |
+| `benchmark_resources.py` | Alternates complete baseline/candidate exports with warmups; records wall/CPU time, peak RSS, throughput and output sizes, and refuses a comparison unless Parquet bytes, normalized manifests and quality counters match. See [resource comparisons](RESOURCE_BENCHMARKS.md) for privacy and platform limits, and the [user-run Phase B handoff](PHASE_B_BENCHMARK_HANDOFF.md) for isolated builds, provenance and controls. |
 | `extract_active_effects.py` | Derives an `active_effects.parquet` view from an export -- one row per persistent ability instance (smoke/wall/molly/slow/trap/recon/orb) with class, spawn position, and open/close lifetime. A `dormant` event does NOT end an instance -- a settled smoke that stops replicating has not despawned -- so those instances stay open-ended and the summary counts them. The data already lives in `actors.parquet`; this filters and pairs it. Each row carries `actor_kind` (`projectile`/`game_object`/`zone`/`patch`/`pawn`/`other`, from the class leaf prefix): a projectile and the zone it places are two rows by design, and the kind lets a consumer count either. Weapons (`Gun_` leaves, such as Chamber's ult gun) and Breach's through-wall flash are not effects; Brimstone's orbital strike is a `damage_zone`. Every type and kind prints with its zero. `--tracks <path>` also writes `actor_tracks.parquet`: one row per `ReplicatedMovement` update (location, velocity, yaw) or `MulticastAddSmokeScreenPoint.Translation` wall point, with the class and a `source` column; an untyped row is kept with null coordinates and counted by class. |
 | `extract_spike_carrier.py` | Derives a `spike_carrier.parquet` view -- one row per spike custody interval, resolved through to the manifest `subject`. Reads `BombEquippable_C.Owner` on the spike's own channel rather than the inventory side, so it covers carrying-in-the-backpack and not just in-hand, and it follows proxy carriers (Gekko's Wingman) back through `Instigator`. A carrier is any `SpawnedCharacter` pawn of a player, including one from before a reconnect; `carrier_identity_provenance` says which. |
 | `minimap.py` | Minimap projection (`project`, crossed axes: u from `pos_y`, v from `pos_x`) and park-slot mask (`parked`, on both x and z), importable. As a command, `--export <dir> --maps <valorant-api /v1/maps JSON>` prints the share of live movement rows inside [0,1]짼 and the u/v range, and exits 1 for a map the file lacks or leaves at zero, or a share below 99%. The constants file is the user's; nothing in the repo carries it. See [DATA.md](DATA.md#minimap-projection). |
@@ -1120,7 +1170,9 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-744 Rust tests (Windows), 743 Rust tests (non-Windows), and 1081 Python tests.
+886 Rust tests (Windows), 885 Rust tests (non-Windows), and 1181 Python tests.
+Final integrated execution and exact-source CI are recorded in the
+[consolidation receipt](FINAL_CONSOLIDATION_STATUS.md).
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
@@ -1159,8 +1211,12 @@ may leave the private analysis machine.
 These read their inputs from `VRFKIT_CORPUS_DIR` and
 `VRFKIT_VALPLAY_DIR` -- see
 [Environment](../CONTRIBUTING.md#environment) for what each one points at.
-**With the variable unset they print `SKIP` and exit 0**, so read the output
-rather than the exit code.
+**With the variable unset, input-dependent checks can print `SKIP` and exit 0**,
+so read the output rather than the exit code. An exception is
+`check_export_baseline.py` with an obsolete movement-counter baseline: it
+fails before checking for the replay. The committed private export/checkpoint
+baselines retain their historical values and require genuine remeasurement
+under the [native component contract](NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration).
 
 `compare_combat_report.py` is the exception: it exits 2 when either input is
 missing. Its C# side is a CliReader export of the same replay, kept
@@ -1195,8 +1251,8 @@ other difference, and on that one if it stops occurring exactly as listed
 |---|---|---|---|
 | `validate_corpus.py` | Framing (top level of the corpus dir; `--recursive` for subdirectories) | Type errors, broken semantics | ~30 s |
 | `check_export_baseline.py` | Every export counter + per-file rows/bytes/SHA-256 | Other builds | 1 s |
-| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads, movement-section tails, and a decoder whose work counter never moves (top level; `--recursive` for subdirectories) | Broken semantics; a decoder stopped on one build or route while the rest keep its corpus total up; a CNC brute force that never runs (`attempted` is legitimately 0 on some builds, so it backs nothing); a sized movement window (none measured; no work counter backs `Movement tails sized`); Checkpoint chunks, unless `--checkpoints` | ~50 s |
-| `check_decode_errors_corpus.py --checkpoints` | The same failure counters for every Checkpoint chunk too (overlay, struct blobs, array truncations/residual bits, leaf errors, truncated RPCs, movement, unwalked CNC payloads, movement tails), and the checkpoint work counters (decoded fields, blobs, array elements and fields) | Broken semantics; checkpoint movement, movement-tail, CNC brute-force and truncated-RPC failures in practice -- no checkpoint RPC reached those decoders on the 1,018-replay audit (each was a RepLayout tail), so their zero is printed as unbacked | slower: `vrfkit export` also decodes every Checkpoint chunk per replay |
+| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads, native component failures and counter consistency, and a decoder whose work counter never moves (top level; `--recursive` for subdirectories) | Broken semantics; a decoder stopped on one build or route while the rest keep its corpus total up; a CNC brute force that never runs (`attempted` can legitimately be 0); Checkpoint chunks, unless `--checkpoints` | ~50 s in the historical audit; native contract requires remeasurement |
+| `check_decode_errors_corpus.py --checkpoints` | The same failure counters and native component counter consistency for every Checkpoint chunk, plus checkpoint work counters (decoded fields, blobs, array elements and fields) | Broken semantics; checkpoint movement, CNC brute-force and truncated-RPC failures remain unbacked when no checkpoint RPC reaches those decoders. That was the case in the historical 1,018-replay audit; its old movement counters are not current validation | slower: `vrfkit export` also decodes every Checkpoint chunk per replay |
 | `check_metrics_baseline.py` | **Semantics** -- rounds, score, K/D/A (8 builds) | Errors in the metrics pipeline itself | ~46 s |
 | `compare_combat_report.py` | Metrics-input multiset | Framing | seconds |
 
@@ -1222,6 +1278,14 @@ R5  if kills > 0 then damage > 0
 Every baseline check takes `--update`. **When DRIFT appears, explain each line
 before** you use it. The point is not that the numbers are sacred but that
 silent change must be impossible.
+
+The native component migration removes eight incorrectly interpreted movement
+tail/trailer counters and adds nine structural counters. There is no arithmetic
+conversion between those contracts. Preserve the archived reports, export the
+original input with the new executable, inspect all changed counters and
+Parquet hashes, and only then update a baseline. A missing private replay cannot
+validate this migration. The existing historical build table remains historical
+evidence; the native decoder has a separately documented public validation scope.
 
 ---
 
@@ -1280,6 +1344,11 @@ directory. Preserved copies live in `%LOCALAPPDATA%\vrfkit\baseline-corpora`.
 ---
 
 ## 8. Known limits
+
+Build acceptance and preservation are separate from semantic completeness.
+The [adoption limits](ADOPTION.md#support-and-preservation-limits) distinguish
+historical corpus audits, current public checks, raw-window availability and
+the optional gameplay layer's deliberately unresolved identities.
 
 - **Untyped residual** -- the [`export`](#export) `Typed` is ~83.1% (denominator
   including RPC parameters). **Untyped != lost** (`raw_bits` preserved). Each
@@ -1354,8 +1423,9 @@ Each replay receives `validate`, `export --checkpoints`, required-counter
 and Parquet row-count checks, and independent Python comparisons for the
 observed fields in `public_fixture_type_evidence.json`. Missing counters,
 nonzero framing/transform/array/type failures and changed inputs fail the
-strict audit, as does a movement envelope trailer total that is not 24 bits
-per stream. Every build must also show positive checkpoint block and
+strict audit, as do obsolete movement counters, failed native components or
+inconsistent envelope/header counts. The main pass must show positive native
+component decoding work. Every build must also show positive checkpoint block and
 decoded-value counts; otherwise `build_errors` makes the command fail. Unknown
 RPCs preserved whole are counted separately from loss.
 Unobserved evidence fields are reported as absent, never as verified values.

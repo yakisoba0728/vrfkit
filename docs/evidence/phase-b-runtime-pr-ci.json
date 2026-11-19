@@ -1,0 +1,1054 @@
+{
+  "schema_version": 1,
+  "scope": "Read-only observation of three Phase B functional PR CI runs; no workflow rerun, repository publication, local build, replay execution or performance series by the collector",
+  "repository": "yakisoba0728/vrfkit",
+  "observed_terminal_state_utc": "2026-11-16 09:00:58 UTC",
+  "evidence_completed_utc": "2026-11-16 09:04:20 UTC",
+  "log_method": {
+    "source": "GitHub decoded workflow-job log endpoint, fetched after each job completed",
+    "normalization": "Remove one initial UTF-8 BOM, normalize CRLF to LF, and ensure one final LF when absent. Hash the resulting UTF-8 bytes.",
+    "counts": "Isolate the named Cargo command's job-log interval before summing harness summaries. Read Windows MSRV counts from the successful live documentation guard. Read each Python job's unittest total and OK result. Feature counts come from the executed Windows MSRV matrix.",
+    "privacy": "Only hashes, public source/job identities, fixed counters and selected validation lines are retained. Full logs remain outside the repository.",
+    "msrv_limit": "The Windows MSRV documentation guard emits passed totals, not individual workspace harness summaries; ignored/filtered Rust counts are not independently exposed there."
+  },
+  "runs": [
+    {
+      "pr": 65,
+      "pr_url": "https://github.com/yakisoba0728/vrfkit/pull/65",
+      "head_sha": "384d0c043c4a00b0087c45b3ef8655b1c22a04c7",
+      "head_tree": "60ac0b8c1cb98d73ccf5b185a6efef7d4753ecf3",
+      "source_commit_api": "https://api.github.com/repos/yakisoba0728/vrfkit/git/commits/384d0c043c4a00b0087c45b3ef8655b1c22a04c7",
+      "run": {
+        "id": 43834772474,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474",
+        "event": "pull_request",
+        "workflow_path": ".github/workflows/overhaul.yml",
+        "attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "384d0c043c4a00b0087c45b3ef8655b1c22a04c7",
+        "created_at": "2026-11-16T08:52:19Z",
+        "updated_at": "2026-11-16T08:59:36Z"
+      },
+      "synthetic_checkout": {
+        "sha": "be25443a2a2496657b81424261d4503163bcb1c3",
+        "tree": "60ac0b8c1cb98d73ccf5b185a6efef7d4753ecf3",
+        "parents": [
+          "9c133fb423c521d7df25b6ef19cb546fa489de4e",
+          "384d0c043c4a00b0087c45b3ef8655b1c22a04c7"
+        ],
+        "url": "https://api.github.com/repos/yakisoba0728/vrfkit/git/commits/be25443a2a2496657b81424261d4503163bcb1c3",
+        "tree_equals_pr_head_tree": true,
+        "jobs_with_observed_checkout": 9,
+        "gate_jobs_without_checkout": [
+          133191860829,
+          133191908172
+        ]
+      },
+      "job_outcomes": {
+        "total": 11,
+        "success": 11,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "step_outcomes": {
+        "total": 128,
+        "success": 128,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "observed_counts": {
+        "linux_msrv": {
+          "job_id": 133188565453,
+          "command": "cargo +1.86.0 test --workspace --all-features --locked",
+          "passed": 812,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 39,
+          "command_lines": [
+            551,
+            1627
+          ],
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_msrv": {
+          "job_id": 133188566295,
+          "command": "python -W error tools/check_docs.py",
+          "rust_passed": 813,
+          "python_ran": 1178,
+          "feature_cases": 27,
+          "count_line": {
+            "line": 770,
+            "text": "tests: rust 813 (Windows), tools 1178"
+          },
+          "feature_line": {
+            "line": 653,
+            "text": "feature matrix: 27 cases"
+          },
+          "documentation_guard_ok": true,
+          "rust_ignored": null,
+          "rust_filtered": null,
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_stable": {
+          "job_id": 133188564949,
+          "command": "cargo +stable test --workspace --all-features --locked",
+          "compiler": [
+            "rustc 1.100.0 (0ef1bc386 2026-11-09)"
+          ],
+          "passed": 813,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 39,
+          "command_lines": [
+            484,
+            1574
+          ]
+        },
+        "python_matrix": [
+          {
+            "job_id": 133188565240,
+            "python": "3.13",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          },
+          {
+            "job_id": 133188565317,
+            "python": "3.12",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          },
+          {
+            "job_id": 133188565566,
+            "python": "3.13",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          },
+          {
+            "job_id": 133188565622,
+            "python": "3.12",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          }
+        ]
+      },
+      "jobs": [
+        {
+          "id": 133188564949,
+          "name": "Reusable CI / Rust stable / all features",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133188564949",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 9,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 120,
+            "sha": "be25443a2a2496657b81424261d4503163bcb1c3"
+          },
+          "decoded_log": {
+            "bytes": 174822,
+            "lines": 1850,
+            "sha256": "dadf7d645bfaf6722ea8d75ebf371f1399dd09bc60e4e901ab4cadf20f361a73"
+          }
+        },
+        {
+          "id": 133188565240,
+          "name": "Reusable CI / Python 3.13 / windows-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133188565240",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 119,
+            "sha": "be25443a2a2496657b81424261d4503163bcb1c3"
+          },
+          "decoded_log": {
+            "bytes": 32288,
+            "lines": 341,
+            "sha256": "b9ec496031a83d4ce0e02c23b0759e92542b24c93016745ee686c59e3bf5ed24"
+          }
+        },
+        {
+          "id": 133188565317,
+          "name": "Reusable CI / Python 3.12 / windows-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133188565317",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 119,
+            "sha": "be25443a2a2496657b81424261d4503163bcb1c3"
+          },
+          "decoded_log": {
+            "bytes": 32285,
+            "lines": 341,
+            "sha256": "2011b20d89e45d312cedb95c1fdceb776b6b43aedbe10cdcf2623106c811d8b9"
+          }
+        },
+        {
+          "id": 133188565343,
+          "name": "Reusable CI / Windows release package",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133188565343",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 122,
+            "sha": "be25443a2a2496657b81424261d4503163bcb1c3"
+          },
+          "decoded_log": {
+            "bytes": 96623,
+            "lines": 1038,
+            "sha256": "1a9fc1518084219c72220944bba36bd0f8680c676722623997c190b372e16e1b"
+          }
+        },
+        {
+          "id": 133188565372,
+          "name": "Reusable CI / workflow-lint",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133188565372",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 5,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 131,
+            "sha": "be25443a2a2496657b81424261d4503163bcb1c3"
+          },
+          "decoded_log": {
+            "bytes": 15772,
+            "lines": 184,
+            "sha256": "f4be89c85aa56b9714488ce5c1e92a747c032ba534f536acc4d1f7974d5175d6"
+          }
+        },
+        {
+          "id": 133188565453,
+          "name": "Reusable CI / Rust 1.86 / Linux",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133188565453",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 18,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 135,
+            "sha": "be25443a2a2496657b81424261d4503163bcb1c3"
+          },
+          "decoded_log": {
+            "bytes": 199536,
+            "lines": 2158,
+            "sha256": "b69de5d95a0611042aaea386e7800ef6943fb4c57245e510bf10a0dc7086e4a8"
+          }
+        },
+        {
+          "id": 133188565566,
+          "name": "Reusable CI / Python 3.13 / ubuntu-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133188565566",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 132,
+            "sha": "be25443a2a2496657b81424261d4503163bcb1c3"
+          },
+          "decoded_log": {
+            "bytes": 33016,
+            "lines": 362,
+            "sha256": "713e1d721e58f15bcda7245cb663b57e4a37f33b56ac21ea5edabeb83de5cc2b"
+          }
+        },
+        {
+          "id": 133188565622,
+          "name": "Reusable CI / Python 3.12 / ubuntu-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133188565622",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 132,
+            "sha": "be25443a2a2496657b81424261d4503163bcb1c3"
+          },
+          "decoded_log": {
+            "bytes": 33012,
+            "lines": 362,
+            "sha256": "6e3cb77a6cbfe6c8190179895af1b3a45989ba8e320542e3eeac93a444155b88"
+          }
+        },
+        {
+          "id": 133188566295,
+          "name": "Reusable CI / rust",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133188566295",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 20,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 122,
+            "sha": "be25443a2a2496657b81424261d4503163bcb1c3"
+          },
+          "decoded_log": {
+            "bytes": 128976,
+            "lines": 1471,
+            "sha256": "23e86978e1810c9e8ea4d2c35184e47f65a8aee059730caa459433b216ca45be"
+          }
+        },
+        {
+          "id": 133191860829,
+          "name": "Reusable CI / CI complete",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133191860829",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 3,
+          "non_success_steps": [],
+          "checkout": null,
+          "decoded_log": {
+            "bytes": 4037,
+            "lines": 78,
+            "sha256": "b084342a133ba538e370c47f9e00ffb2042031b2db8177ecc6ce50d8abf68515"
+          }
+        },
+        {
+          "id": 133191908172,
+          "name": "Overhaul complete",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834772474/job/133191908172",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 3,
+          "non_success_steps": [],
+          "checkout": null,
+          "decoded_log": {
+            "bytes": 2105,
+            "lines": 37,
+            "sha256": "3d5e54e57205e1ec9dd692dd3bf6ebf256e32eb70553c588b6a88dc92dea6281"
+          }
+        }
+      ]
+    },
+    {
+      "pr": 66,
+      "pr_url": "https://github.com/yakisoba0728/vrfkit/pull/66",
+      "head_sha": "45f787c460b8d7a54876572d3c7e6a1aeb01dafc",
+      "head_tree": "448c075ad4fb21797ddd5c9fb7a196a08b863e5a",
+      "source_commit_api": "https://api.github.com/repos/yakisoba0728/vrfkit/git/commits/45f787c460b8d7a54876572d3c7e6a1aeb01dafc",
+      "run": {
+        "id": 43834808862,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862",
+        "event": "pull_request",
+        "workflow_path": ".github/workflows/overhaul.yml",
+        "attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "45f787c460b8d7a54876572d3c7e6a1aeb01dafc",
+        "created_at": "2026-11-16T08:52:35Z",
+        "updated_at": "2026-11-16T08:59:16Z"
+      },
+      "synthetic_checkout": {
+        "sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9",
+        "tree": "448c075ad4fb21797ddd5c9fb7a196a08b863e5a",
+        "parents": [
+          "9c133fb423c521d7df25b6ef19cb546fa489de4e",
+          "45f787c460b8d7a54876572d3c7e6a1aeb01dafc"
+        ],
+        "url": "https://api.github.com/repos/yakisoba0728/vrfkit/git/commits/22c044d4e953418c82f7da7a6348ea62710fb7a9",
+        "tree_equals_pr_head_tree": true,
+        "jobs_with_observed_checkout": 9,
+        "gate_jobs_without_checkout": [
+          133191706472,
+          133191747947
+        ]
+      },
+      "job_outcomes": {
+        "total": 11,
+        "success": 11,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "step_outcomes": {
+        "total": 128,
+        "success": 128,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "observed_counts": {
+        "linux_msrv": {
+          "job_id": 133188684696,
+          "command": "cargo +1.86.0 test --workspace --all-features --locked",
+          "passed": 824,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 40,
+          "command_lines": [
+            553,
+            1647
+          ],
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_msrv": {
+          "job_id": 133188684757,
+          "command": "python -W error tools/check_docs.py",
+          "rust_passed": 825,
+          "python_ran": 1178,
+          "feature_cases": 27,
+          "count_line": {
+            "line": 780,
+            "text": "tests: rust 825 (Windows), tools 1178"
+          },
+          "feature_line": {
+            "line": 663,
+            "text": "feature matrix: 27 cases"
+          },
+          "documentation_guard_ok": true,
+          "rust_ignored": null,
+          "rust_filtered": null,
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_stable": {
+          "job_id": 133188684456,
+          "command": "cargo +stable test --workspace --all-features --locked",
+          "compiler": [
+            "rustc 1.100.0 (0ef1bc386 2026-11-09)"
+          ],
+          "passed": 825,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 40,
+          "command_lines": [
+            484,
+            1592
+          ]
+        },
+        "python_matrix": [
+          {
+            "job_id": 133188684998,
+            "python": "3.12",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          },
+          {
+            "job_id": 133188685038,
+            "python": "3.13",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          },
+          {
+            "job_id": 133188685051,
+            "python": "3.13",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          },
+          {
+            "job_id": 133188685076,
+            "python": "3.12",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          }
+        ]
+      },
+      "jobs": [
+        {
+          "id": 133188684456,
+          "name": "Reusable CI / Rust stable / all features",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133188684456",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 9,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 120,
+            "sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9"
+          },
+          "decoded_log": {
+            "bytes": 177959,
+            "lines": 1886,
+            "sha256": "0cfb96feca7d092553d6451ec23a090049868699a4a4b3d27dc619d9c8143d32"
+          }
+        },
+        {
+          "id": 133188684696,
+          "name": "Reusable CI / Rust 1.86 / Linux",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133188684696",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 18,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 135,
+            "sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9"
+          },
+          "decoded_log": {
+            "bytes": 202644,
+            "lines": 2195,
+            "sha256": "57ddb82fec8d243678584409272ab3978c3ee5406b19334a2fc8f12364f992d6"
+          }
+        },
+        {
+          "id": 133188684757,
+          "name": "Reusable CI / rust",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133188684757",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 20,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 122,
+            "sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9"
+          },
+          "decoded_log": {
+            "bytes": 131351,
+            "lines": 1499,
+            "sha256": "5ff2ed6fbadd1922949c02096e18d7c4a1b0fb1e36a23f0fe1031521e54285a8"
+          }
+        },
+        {
+          "id": 133188684867,
+          "name": "Reusable CI / Windows release package",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133188684867",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 122,
+            "sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9"
+          },
+          "decoded_log": {
+            "bytes": 98261,
+            "lines": 1057,
+            "sha256": "1acfadcea726ef659ff1f9796f59144b29284ada443dcdda2fac8823713499e4"
+          }
+        },
+        {
+          "id": 133188684998,
+          "name": "Reusable CI / Python 3.12 / windows-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133188684998",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 119,
+            "sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9"
+          },
+          "decoded_log": {
+            "bytes": 32287,
+            "lines": 341,
+            "sha256": "ded36df5bd5188e86b5e4668d6458e6f3e163ea4f0443aef8186c37c980fca66"
+          }
+        },
+        {
+          "id": 133188685031,
+          "name": "Reusable CI / workflow-lint",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133188685031",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 5,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 131,
+            "sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9"
+          },
+          "decoded_log": {
+            "bytes": 15772,
+            "lines": 184,
+            "sha256": "7ccb4ad9d4c7d625afe1b816e97946c054bcdd9a9c4b6bac8b22c4306eb3ca04"
+          }
+        },
+        {
+          "id": 133188685038,
+          "name": "Reusable CI / Python 3.13 / windows-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133188685038",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 119,
+            "sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9"
+          },
+          "decoded_log": {
+            "bytes": 32289,
+            "lines": 341,
+            "sha256": "9e0ac908ad69054c61510a2c538255dec3cb0a3b688ff3c0272af7dee0e2d760"
+          }
+        },
+        {
+          "id": 133188685051,
+          "name": "Reusable CI / Python 3.13 / ubuntu-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133188685051",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 132,
+            "sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9"
+          },
+          "decoded_log": {
+            "bytes": 33006,
+            "lines": 362,
+            "sha256": "81475d6da632605521a682924169a6f187b0e49f381864aff778420aa2b88587"
+          }
+        },
+        {
+          "id": 133188685076,
+          "name": "Reusable CI / Python 3.12 / ubuntu-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133188685076",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 132,
+            "sha": "22c044d4e953418c82f7da7a6348ea62710fb7a9"
+          },
+          "decoded_log": {
+            "bytes": 33006,
+            "lines": 362,
+            "sha256": "53739787d5322270e681ffa91b5eef8717595990471799f8a8205ca7e982f153"
+          }
+        },
+        {
+          "id": 133191706472,
+          "name": "Reusable CI / CI complete",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133191706472",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 3,
+          "non_success_steps": [],
+          "checkout": null,
+          "decoded_log": {
+            "bytes": 4039,
+            "lines": 78,
+            "sha256": "5e07db6da05cc2d64b0b37d031beab1ab9a6f1e53ce769456b2dde78ecc2dcf8"
+          }
+        },
+        {
+          "id": 133191747947,
+          "name": "Overhaul complete",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834808862/job/133191747947",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 3,
+          "non_success_steps": [],
+          "checkout": null,
+          "decoded_log": {
+            "bytes": 2102,
+            "lines": 37,
+            "sha256": "382288cacfb5d2b70443f9773a03172ae1cafb318606881c18d0bc47e5ca768f"
+          }
+        }
+      ]
+    },
+    {
+      "pr": 67,
+      "pr_url": "https://github.com/yakisoba0728/vrfkit/pull/67",
+      "head_sha": "d56daa16f4c67052cc0eff1556599ace4046b60f",
+      "head_tree": "c76a2f1fc5dcbf4285538c6531fe6e5e4bc300ae",
+      "source_commit_api": "https://api.github.com/repos/yakisoba0728/vrfkit/git/commits/d56daa16f4c67052cc0eff1556599ace4046b60f",
+      "run": {
+        "id": 43834838291,
+        "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291",
+        "event": "pull_request",
+        "workflow_path": ".github/workflows/overhaul.yml",
+        "attempt": 1,
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "d56daa16f4c67052cc0eff1556599ace4046b60f",
+        "created_at": "2026-11-16T08:52:47Z",
+        "updated_at": "2026-11-16T09:00:19Z"
+      },
+      "synthetic_checkout": {
+        "sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0",
+        "tree": "c76a2f1fc5dcbf4285538c6531fe6e5e4bc300ae",
+        "parents": [
+          "9c133fb423c521d7df25b6ef19cb546fa489de4e",
+          "d56daa16f4c67052cc0eff1556599ace4046b60f"
+        ],
+        "url": "https://api.github.com/repos/yakisoba0728/vrfkit/git/commits/8e36991c852caf3b11832bc0b4ce5fcd4cbabad0",
+        "tree_equals_pr_head_tree": true,
+        "jobs_with_observed_checkout": 9,
+        "gate_jobs_without_checkout": [
+          133192184497,
+          133192233523
+        ]
+      },
+      "job_outcomes": {
+        "total": 11,
+        "success": 11,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "step_outcomes": {
+        "total": 128,
+        "success": 128,
+        "failure": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "other": 0
+      },
+      "observed_counts": {
+        "linux_msrv": {
+          "job_id": 133188782136,
+          "command": "cargo +1.86.0 test --workspace --all-features --locked",
+          "passed": 826,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 40,
+          "command_lines": [
+            550,
+            1646
+          ],
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_msrv": {
+          "job_id": 133188781782,
+          "command": "python -W error tools/check_docs.py",
+          "rust_passed": 827,
+          "python_ran": 1178,
+          "feature_cases": 27,
+          "count_line": {
+            "line": 771,
+            "text": "tests: rust 827 (Windows), tools 1178"
+          },
+          "feature_line": {
+            "line": 654,
+            "text": "feature matrix: 27 cases"
+          },
+          "documentation_guard_ok": true,
+          "rust_ignored": null,
+          "rust_filtered": null,
+          "compiler": [
+            "rustc 1.86.0 (05f9846f8 2025-03-31)"
+          ]
+        },
+        "windows_stable": {
+          "job_id": 133188781957,
+          "command": "cargo +stable test --workspace --all-features --locked",
+          "compiler": [
+            "rustc 1.100.0 (0ef1bc386 2026-11-09)"
+          ],
+          "passed": 827,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0,
+          "harness_summaries": 40,
+          "command_lines": [
+            485,
+            1595
+          ]
+        },
+        "python_matrix": [
+          {
+            "job_id": 133188781835,
+            "python": "3.12",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          },
+          {
+            "job_id": 133188781873,
+            "python": "3.13",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          },
+          {
+            "job_id": 133188782025,
+            "python": "3.13",
+            "platform": "ubuntu-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 343,
+            "result_line": 345
+          },
+          {
+            "job_id": 133188782246,
+            "python": "3.12",
+            "platform": "windows-latest",
+            "ran": 1178,
+            "status": "OK",
+            "skipped": 0,
+            "count_line": 322,
+            "result_line": 324
+          }
+        ]
+      },
+      "jobs": [
+        {
+          "id": 133188781782,
+          "name": "Reusable CI / rust",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133188781782",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 20,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 122,
+            "sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0"
+          },
+          "decoded_log": {
+            "bytes": 130597,
+            "lines": 1490,
+            "sha256": "6cb7ae125c8563db23e0b3dd0fc8a5d0584994a01605f4db75348643d0e87837"
+          }
+        },
+        {
+          "id": 133188781806,
+          "name": "Reusable CI / Windows release package",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133188781806",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 122,
+            "sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0"
+          },
+          "decoded_log": {
+            "bytes": 98175,
+            "lines": 1056,
+            "sha256": "4ee6d6846f2744576328e328c8b9ebba4175c77809c9712c42329ffc2f8878df"
+          }
+        },
+        {
+          "id": 133188781835,
+          "name": "Reusable CI / Python 3.12 / ubuntu-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133188781835",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 132,
+            "sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0"
+          },
+          "decoded_log": {
+            "bytes": 33010,
+            "lines": 362,
+            "sha256": "7a9273fa4a463490bf61c1e9692e9061063d679239d1d328d7194c4e6bc07aa0"
+          }
+        },
+        {
+          "id": 133188781873,
+          "name": "Reusable CI / Python 3.13 / windows-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133188781873",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 119,
+            "sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0"
+          },
+          "decoded_log": {
+            "bytes": 32290,
+            "lines": 341,
+            "sha256": "e133cdaa5ce2d285ec34e488980e61aaecbe618cce210e52a6dffc1fc9e72aaa"
+          }
+        },
+        {
+          "id": 133188781957,
+          "name": "Reusable CI / Rust stable / all features",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133188781957",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 9,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 120,
+            "sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0"
+          },
+          "decoded_log": {
+            "bytes": 178258,
+            "lines": 1889,
+            "sha256": "c14e9fd200fb8546cd6060c6bbb7205190ae570788eda77c3cc655170a5b4f6d"
+          }
+        },
+        {
+          "id": 133188782025,
+          "name": "Reusable CI / Python 3.13 / ubuntu-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133188782025",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 132,
+            "sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0"
+          },
+          "decoded_log": {
+            "bytes": 33012,
+            "lines": 362,
+            "sha256": "a3872e900315fa9e4d5f90466099307c593922765ef0dc49a0ed01e7a211fb27"
+          }
+        },
+        {
+          "id": 133188782032,
+          "name": "Reusable CI / workflow-lint",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133188782032",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 5,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 131,
+            "sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0"
+          },
+          "decoded_log": {
+            "bytes": 15775,
+            "lines": 184,
+            "sha256": "29de1eb7ce2aa725b90d120db2d4633dbd1906139802c634b6fd1ed0038e87d7"
+          }
+        },
+        {
+          "id": 133188782136,
+          "name": "Reusable CI / Rust 1.86 / Linux",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133188782136",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 18,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 135,
+            "sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0"
+          },
+          "decoded_log": {
+            "bytes": 202622,
+            "lines": 2194,
+            "sha256": "12f2a0ae7e8dfbb83f70aea48c695ceeac0c676e4fc3e66ac64347082c247cdf"
+          }
+        },
+        {
+          "id": 133188782246,
+          "name": "Reusable CI / Python 3.12 / windows-latest",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133188782246",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 14,
+          "non_success_steps": [],
+          "checkout": {
+            "line": 119,
+            "sha": "8e36991c852caf3b11832bc0b4ce5fcd4cbabad0"
+          },
+          "decoded_log": {
+            "bytes": 32286,
+            "lines": 341,
+            "sha256": "89b2dd1a73c3cc87c1a9643c04d267d4a3aa42632abaf83a02a6b1efa146c983"
+          }
+        },
+        {
+          "id": 133192184497,
+          "name": "Reusable CI / CI complete",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133192184497",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 3,
+          "non_success_steps": [],
+          "checkout": null,
+          "decoded_log": {
+            "bytes": 4039,
+            "lines": 78,
+            "sha256": "7a78de1e48dfb47d83e93f24ed92d9351ed1393315464f9e7986a5f7f46bea41"
+          }
+        },
+        {
+          "id": 133192233523,
+          "name": "Overhaul complete",
+          "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43834838291/job/133192233523",
+          "status": "completed",
+          "conclusion": "success",
+          "steps": 3,
+          "non_success_steps": [],
+          "checkout": null,
+          "decoded_log": {
+            "bytes": 2103,
+            "lines": 37,
+            "sha256": "dccb04b591d7d2e6e28dce842672625c83609dccec3817eee217911b3dbe07a4"
+          }
+        }
+      ]
+    }
+  ],
+  "independent_receipt_recheck": {
+    "decoded_log_hashes": 33,
+    "workspace_harness_sections": 6,
+    "windows_msrv_guards": 3,
+    "python_job_summaries": 12,
+    "checkout_jobs": 27,
+    "result": "all matched",
+    "method": "Python independently parsed retained normalized logs and checked every retained SHA-256; no build or replay was executed"
+  }
+}

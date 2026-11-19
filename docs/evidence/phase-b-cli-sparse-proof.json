@@ -1,0 +1,28 @@
+{
+  "status": "passed",
+  "address_space_limit_bytes": 536870912,
+  "input_bytes": 2147483935,
+  "scope": "Two 1GiB sparse unknown chunks, no decoded data. Validates skipped-input retention only, not a decoded chunk memory bound.",
+  "baseline_binary_sha256": "33f4a2e286055e487ac677a9713e626f7b4a340932630a15679a1d84f2d2af87",
+  "candidate_binary_sha256": "c64d63107f79f843a58ab5b1b2db8682553f072c7ece4269bfffe044c776e219",
+  "checks": [
+    {
+      "case": "baseline-validate",
+      "exit_code": 1,
+      "expected_exit": 1,
+      "log_sha256": "9d721c1cde1b81476685337863dc7c4fd05bf33f815d58f5c782f862a11f4c6a"
+    },
+    {
+      "case": "candidate-validate",
+      "exit_code": 2,
+      "expected_exit": 2,
+      "log_sha256": "6895399b4efbb4e0117a9eedd064284f1e0e03fde998d9a59842a97700c8d161"
+    },
+    {
+      "case": "candidate-export-checkpoints",
+      "exit_code": 0,
+      "expected_exit": 0,
+      "log_sha256": "0cb42a3d27c3a525f6aa80e7fd4c1a547a4a48ce513c24089e1c26e6aa880bfc"
+    }
+  ]
+}

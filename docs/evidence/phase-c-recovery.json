@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "phase": "C",
+  "status": "blocked_by_execution_environment",
+  "functional_acceptance": "not_complete",
+  "final_phase_c_candidate": null,
+  "accepted_integration": "588be1effc8dfca2bed8810fd51a006828081c1b",
+  "main": "9ece4ab84dee62cbf8bf34b7996d2efb0593f9c9",
+  "final_pr": {
+    "number": 58,
+    "state": "open",
+    "draft": true,
+    "merged": false
+  },
+  "source_backups": {
+    "reader": {
+      "local_commit": "0e92e629cb1062de7348a9ec775fe82062ac22c0",
+      "local_branch": "phase-c/reader-checkpoints",
+      "remote_source_preserved": false,
+      "byte_identity_attested": false,
+      "requires_original_filesystem": true
+    },
+    "gameplay": {
+      "branch": "phase-c/gameplay-identity-unverified",
+      "commit": "0e40d8c86623b4d1f0a78be9395fa213e54cc244",
+      "tree": "a44a3f2685c2ae0a1eddfbc27f0906d5c7f0b523",
+      "provenance": "reconstructed from successful recorded patch inputs and pinned base; not byte-identical attestation of formatted local source",
+      "readback_verified": true,
+      "rust_test_completion_observed": false
+    },
+    "independent_qa": {
+      "branch": "phase-c/qa-recovery",
+      "commit": "ad64e9ee92697a3cf0f288641f154997878ef788",
+      "tree": "0878868ec49dab4c77517ebe6ab9593863b3c3d8",
+      "metadata_only": true,
+      "source_files_preserved": false,
+      "receipt_commit_url": "https://github.com/yakisoba0728/vrfkit/commit/ad64e9ee92697a3cf0f288641f154997878ef788",
+      "receipt_file_name": "RECOVERY_UNVERIFIED.md"
+    }
+  },
+  "agents": {
+    "unique_created": 5,
+    "names": [
+      "a_reader",
+      "b_gameplay",
+      "c_decoder",
+      "e_qa",
+      "f_recovery"
+    ],
+    "max_concurrent_non_root": 3,
+    "max_total_including_coordinator": 4,
+    "returned_checkpoints_or_reviews": 5,
+    "observed_worker_failures": 0,
+    "stream_role_created": false,
+    "completion_is_not_feature_acceptance": true
+  },
+  "checks": {
+    "reader": {
+      "new_checkpoint_tests_passed": 11,
+      "movement_file_tests_passed": 3,
+      "movement_file_new_tests": 1,
+      "core_suite_passed_before_final_added_movement_test": 180,
+      "core_typecheck": true,
+      "core_strict_clippy": true,
+      "core_strict_rustdoc": true,
+      "fmt": true,
+      "ascii": true,
+      "field_offset_mutation_failed_as_expected": true,
+      "full_feature_cli_and_public_acceptance_complete": false,
+      "local_profile": "Rust 1.86; dev/test opt-level=0, debug=0, one job, incremental=0; repository and CI profiles unchanged",
+      "dependency_compile_sigkill_attempts": 3
+    },
+    "gameplay": {
+      "pre_disconnect_static_checks_passed": true,
+      "authored_rust_tests": 15,
+      "rust_build_or_test_completion_observed": false,
+      "post_disconnect_backup_static_checks_run": false,
+      "final_tiny_comment_patch_applied": false
+    },
+    "decoder": {
+      "focused_python_tests": 72,
+      "failed": 0,
+      "fastarray_guard_mutation_failed_as_expected": true,
+      "decoder_code_changed": false
+    },
+    "independent_qa": {
+      "fresh_phase_c_exports": 0,
+      "completed_phase_c_callback_parquet_comparison": false,
+      "completed_phase_c_identity_oracle": false,
+      "historical_cli_sha256": "29fa495b19b7dbce2bfe7bbedc1dc9be2492a4c6a5aca2a9d1468d3d74c657d4",
+      "historical_runtime_hashes_matched": 133
+    },
+    "focus_candidate": {
+      "scope": "historical accepted public12.05 output",
+      "group": "/Game/Characters/Clay/Clay_PC.Clay_PC_C",
+      "parent_handle": 45,
+      "parent_checksum": 957945936,
+      "member_handle": 46,
+      "member_checksum": 831657485,
+      "main_parents": 102,
+      "checkpoint_parents": 18,
+      "main_members": 53,
+      "fully_consumed_selected_parents": 120,
+      "positive_synthetic_controls": 3,
+      "rejected_malformed_controls": 10,
+      "actor_open_corroborated_members": 53,
+      "final_combined_receipt_rerun_observed": false,
+      "implemented": false
+    }
+  },
+  "input_scope": {
+    "six_existing_public_hashes_verified": true,
+    "additional_public_inputs_downloaded": 4,
+    "additional_metadata_inspections": 4,
+    "prepared_final_scope_inputs": 10,
+    "prepared_final_scope_builds": 7,
+    "fresh_phase_c_decodes_claimed": 0,
+    "added_public_inputs": [
+      {
+        "name": "c96127a8-f003-48db-a2cd-9c71de5aba15.12_08.vrf",
+        "branch": "12.08",
+        "sha256": "44d4fd3e12ee536091bc7745682a328dffb48a5c0f022b4eb18249f817ee28a5",
+        "git_blob": "1107e5de7677898c098a27139d75c4321eaaf540"
+      },
+      {
+        "name": "harbor.vrf",
+        "branch": "13.01",
+        "sha256": "a3bf9a374e8afb969dc327fe578f65fafecba5c62ad50c2fad2834d41918021d",
+        "git_blob": "250ae21beb93b0e58c2236a21ba1a386ca29963a"
+      },
+      {
+        "name": "omen.vrf",
+        "branch": "13.01",
+        "sha256": "a4dd202886eabbd285f2165c53fadc523581d59ea09d9c07af5401561f424299",
+        "git_blob": "7bb232cc0e5fe1422832d4a7e919468ff5df70ec"
+      },
+      {
+        "name": "viper_wall.vrf",
+        "branch": "13.01",
+        "sha256": "12cd225dd357d7fce907c3e57a1c72a96f00199d8d176c84ab29b27fd36a3745",
+        "git_blob": "70487c5dbf59b9a3e9516c228f39437ecdb16b3d"
+      }
+    ],
+    "source_repository": "michel-giehl/ValorantReplayParser",
+    "source_commit": "b51d67423b7b4952d59051cf91e55efa1c42da05"
+  },
+  "private_archive": {
+    "scope": "metadata only, one release page",
+    "assets_on_page": 27,
+    "full_inventory": false,
+    "binary_downloads": 0,
+    "replays_decoded": 0,
+    "mutated": false
+  },
+  "final_feature_ci_run": false,
+  "performance_benchmarks_run": false,
+  "performance_claim": null,
+  "main_mutated": false,
+  "releases_or_tags_created": false,
+  "registry_publication": false,
+  "checkpoint_kind": "historical_interruption",
+  "superseded_by": "docs/PHASE_C_STATUS.md#resumed-after-environment-reconnection"
+}

@@ -107,6 +107,15 @@ need a corpus — see [Environment](#environment) below.
   be observed and every independently decoded value must match; the fixtures
   cover only the fields they contain. The report and logs are kept 14 days as
   an artifact, failures included; replays and Parquet are not uploaded.
+- **`linux-rust`** (Ubuntu 24.04, Rust 1.86): all-feature workspace tests,
+  core-only CLI tests, and the same three pinned, SHA-256-checked public
+  fixtures as Windows. It runs the corpus baselines, main and checkpoint
+  export audit, and the independent typed/raw evidence comparison. The
+  aggregate `linux-public-replay-verification` reports are retained 14 days,
+  including failures; replay files, Parquet and detailed per-replay logs are
+  not uploaded by this job. The `vrfkit-source` artifact retains a tracked
+  source snapshot, its commit ID and SHA-256 for 3 days; replay and Parquet
+  paths are explicitly excluded from that snapshot.
 - **`python-checks`** (Python 3.12 and 3.13, Windows and Ubuntu): the ASCII,
   generator and baseline-schema checks, the tools suite and
   `check_docs.py --fast`.
@@ -120,6 +129,11 @@ need a corpus — see [Environment](#environment) below.
 `CI complete` succeeds only when every job above succeeds; a failure,
 cancellation or skip cannot pass it. The 13.02, 13.04, 13.05 and 13.06
 baselines have no public fixture and are still yours to run.
+
+These checks live in the reusable `ci.yml`, so Linux runtime and replay
+validation are required on main, main-targeted PRs, manual runs and tagged
+release validation. `overhaul.yml` calls the same workflow for the integration
+branch and requires its success, without running a duplicate Linux job.
 
 ### Replay evidence for parser changes
 
@@ -156,9 +170,13 @@ checks succeed for that exact tagged commit. Only that publishing job receives
 Version numbers follow the CLI, which is what a release ships. A release bumps
 the patch version unless it breaks how `vrfkit` is invoked or what it writes;
 such a break bumps the minor version. New manifest keys and new summary lines
-do not count as breaks. The library crates are not published, so their Rust
-API is internal and may change in any release. Every crate carries the
-workspace version.
+do not count as breaks. The workspace crates are not yet published to crates.io. The `vrfkit` crate
+provides a public source API; consumers should pin an exact source revision.
+Source API compatibility is not currently promised across revisions, so
+document Rust API changes and migration steps even when CLI arguments and
+output schemas are unchanged. Every crate carries the workspace version.
+Define the registry package compatibility policy before the first crates.io
+release.
 
 The Windows package job is also required on every PR and manual CI run. It
 builds and tests the optimized CLI for `x86_64-pc-windows-msvc` (and
@@ -223,6 +241,12 @@ replay not present`. That is deliberate — the corpus lives outside the repo, s
 a contributor without one is not blocked — but it means an unset variable reads
 as a pass at a glance. If you meant to run them, read the output and check it
 says how many replays it walked.
+
+`check_export_baseline.py` rejects an obsolete movement-counter baseline before
+that missing-input skip. The archived private export/checkpoint baselines need
+genuine remeasurement for the [native component migration](docs/NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration);
+their historical numbers must not be converted into new counters. Removing the
+old summary/manifest fields requires a minor version bump before a release.
 
 ## The load-bearing invariants (do not break)
 

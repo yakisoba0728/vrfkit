@@ -1,0 +1,13 @@
+diff --git a/crates/vrf-export/src/schema.rs b/crates/vrf-export/src/schema.rs
+index c951dc7..a653077 100644
+--- a/crates/vrf-export/src/schema.rs
++++ b/crates/vrf-export/src/schema.rs
+@@ -95,7 +95,7 @@ macro_rules! column {
+             $rows.len(),
+             byte_capacity,
+         );
+-        builder.extend($rows.clone().map(|r| r.$name.as_deref()));
++        builder.extend($rows.clone().map(|r| Some(r.$name.as_deref().unwrap_or(&[]))));
+         column!(@array builder.finish())
+     }};
+     ($rows:ident $name:ident @kind dict($distinct:literal, $bytes:literal)) => {

@@ -1,0 +1,111 @@
+   Compiling unicode-ident v1.0.24
+   Compiling thiserror v2.0.19
+   Compiling proc-macro2 v1.0.107
+   Compiling vrf-bitio v0.6.0 (<worktree>/crates/vrf-bitio)
+   Compiling quote v1.0.47
+   Compiling vrf-testkit v0.0.0 (<worktree>/dev/vrf-testkit)
+   Compiling syn v3.0.3
+   Compiling thiserror-impl v2.0.19
+   Compiling vrf-schema v0.6.0 (<worktree>/crates/vrf-schema)
+    Finished `test` profile [optimized + debuginfo] target(s) in 1m 12s
+     Running unittests src/lib.rs (/workspace/scratch/5a322f957689/target-architecture/debug/deps/vrf_schema-ee1d494cc737fe3b)
+
+running 68 tests
+test cache::tests::cache_clear_removes_all ... ok
+test cache::tests::a_renamed_field_export_is_counted ... ok
+test cache::tests::cache_net_guid_entries_yields_guid_path_and_outer ... ok
+test cache::tests::property_exports_never_shadow_the_class_net_cache_group ... ok
+test cache::tests::same_index_with_new_path_does_not_inherit_old_fields ... ok
+test cache::tests::cache_outer_guid_chain ... ok
+test cache::tests::cache_gameplay_tag_lookup ... ok
+test checkpoint::tests::a_desynced_table_is_rejected_not_silently_accepted ... ok
+test checkpoint::tests::a_nonzero_reserved_word_is_an_error ... ok
+test cache::tests::set_field_on_unregistered_group_returns_false_and_counts_the_drop ... ok
+test cache::tests::every_registration_arm_leaves_the_lookups_a_full_rebuild_would_build ... ok
+test checkpoint::tests::observer_failure_stops_before_cache_or_later_records ... ok
+test checkpoint::tests::observer_preserves_nonzero_wire_flags_and_hardcoded_fname_index ... ok
+test checkpoint::tests::observer_reports_raw_variants_before_cache_storage ... ok
+test checkpoint::tests::observer_sees_zero_slot_group ... ok
+test checkpoint::tests::path_budget_counts_decoded_utf8_bytes ... ok
+test checkpoint::tests::path_budget_includes_legacy_decimal_paths ... ok
+test cache::tests::a_redundant_set_net_guid_path_call_does_not_bump_guid_generation ... ok
+test checkpoint::tests::path_budget_preserves_truncation_and_index_error_precedence ... ok
+test checkpoint::tests::reads_both_tables_and_lands_on_the_frame ... ok
+test checkpoint::tests::path_budget_rejects_before_observer_and_cache_mutation ... ok
+test checkpoint::tests::path_budget_preserves_earlier_sink_error ... ok
+test checkpoint::tests::path_budget_accepts_exact_boundary_and_resets_for_each_read ... ok
+test checkpoint::tests::a_handle_that_is_not_its_slot_is_an_error ... ok
+test checkpoint::tests::resolved_default_preserves_raw_observers_and_explicit_legacy_mode ... ok
+test checkpoint::tests::resolved_forward_and_upper_bound_indices_are_rejected ... ok
+test checkpoint::tests::resolved_table_resets_between_checkpoint_reads ... ok
+test checkpoint::tests::resolved_duplicate_literal_occurrences_each_append ... ok
+test checkpoint::tests::two_groups_at_one_index_fail_before_returning_an_untrusted_cache ... ok
+test export::tests::render_fname_negative_is_not_wrapped_into_a_plausible_suffix ... ok
+test checkpoint::tests::a_third_path_discriminator_is_an_error ... ok
+test checkpoint::tests::two_groups_at_different_indices_are_not_a_collision ... ok
+test checkpoint::tests::resolved_references_do_not_append_to_the_literal_table ... ok
+test export::tests::render_fname_positive_and_zero ... ok
+test checkpoint::tests::zero_path_budget_permits_empty_paths_but_not_a_byte ... ok
+test path::tests::a_path_that_is_only_the_suffix_yields_no_stripped_key ... ok
+test hash::tests::byte_slice_length_changes_the_hash ... ok
+test hash::tests::distinct_paths_do_not_collide_across_the_reference_shapes ... ok
+test path::tests::class_net_cache_suffix_toggled_after_each_base_key ... ok
+test hash::tests::works_as_a_hashmap_hasher ... ok
+test path::tests::characters_root_gains_core ... ok
+test path::tests::class_net_cache_suffix_toggled_after_the_core_alias ... ok
+test path::tests::find_short_circuits_on_the_first_acceptance ... ok
+test path::tests::the_original_path_is_always_the_first_key ... ok
+test path::tests::default_prefix_stripped ... ok
+test path::tests::the_default_alias_is_tried_before_the_core_alias ... ok
+test path::tests::no_alias_for_qualified_path_without_core ... ok
+test reader::tests::an_is_exported_value_other_than_0_or_1_is_an_error ... ok
+test reader::tests::export_guid_negative_size_returns_error ... ok
+test path::tests::core_segment_removed ... ok
+test reader::tests::out_of_range_handle_is_dropped_and_counted ... ok
+test hash::tests::distinct_small_integers_do_not_collide ... ok
+test path::tests::bare_leaf_gains_default_prefix ... ok
+test reader::tests::registers_exported_group ... ok
+test reader::tests::roundtrip_multiple_groups_multiple_fields ... ok
+test reader::tests::export_guid_trailing_data_returns_error ... ok
+test reader::tests::in_range_handle_is_placed_and_not_counted ... ok
+test reader::tests::unknown_path_index_returns_error ... ok
+test reader::tests::zero_counts_are_valid ... ok
+test resolve::tests::unique_leaf_match_resolves_each_row ... ok
+test resolve::tests::resolve_cnc_for_instance_name_resolves_each_row ... ok
+test reader::tests::stores_export_by_handle ... ok
+test reader::tests::export_guid_registers_path ... ok
+test reader::tests::fname_numbers_disambiguate_two_fields_with_one_base_name ... ok
+test reader::tests::re_exported_group_expands_without_losing_existing_fields ... ok
+test reader::tests::live_group_rejects_field_count_above_checkpoint_protocol_limit ... ok
+test reader::tests::truncated_input_returns_bitio_error ... ok
+test cache::tests::random_registration_sequences_leave_the_lookups_a_full_rebuild_would_build ... ok
+
+test result: ok. 68 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.99s
+
+     Running tests/resource_limits.rs (/workspace/scratch/5a322f957689/target-architecture/debug/deps/resource_limits-c350e6e53d90cbb0)
+
+running 15 tests
+test alias_and_index_changes_merge_without_double_charging_slots ... ok
+test a_single_declaration_is_bounded_before_any_slot_is_stored ... ok
+test checkpoints::checkpoint_group_limit_includes_zero_slot_groups ... ok
+test checkpoints::checkpoint_refusal_precedes_missing_slots_and_retains_large_count_errors ... ok
+test preallocated_groups_use_the_same_budget ... ok
+test live_oversized_group_keeps_its_existing_wire_error ... ok
+test zero_budgets_have_explicit_boundary_behavior ... ok
+test checkpoints::checkpoint_slot_limit_preserves_observed_declarations_and_returns_error ... ok
+test live_slot_budget_persists_across_frames_and_rejects_before_field_data ... ok
+test public_mutable_fields_do_not_leave_stale_budget_accounting ... ok
+test replacement_releases_slots_and_failed_growth_preserves_the_old_group ... ok
+test clear_resets_usage_and_preserves_configured_limits ... ok
+test redeclarations_charge_only_growth_and_cannot_shrink_existing_slots ... ok
+test crossed_identity_errors_still_precede_resource_refusals ... ok
+test tiny_declarations_cannot_grow_default_cache_without_bound ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+   Doc-tests vrf_schema
+
+running 1 test
+test crates/vrf-schema/src/cache.rs - cache::NetGuidCache::with_limits (line 94) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

@@ -29,10 +29,11 @@ use vrf_decode::{
     OverlayTable, group_hash_state,
 };
 use vrf_export::{
-    ActorRecord, CheckpointBlockRecord, CheckpointIdentity, FieldRecord, MovementRecord,
-    PartialRecord,
+    ActorRecord, CheckpointBlockRecord, CheckpointIdentity, FieldRecord, MovementProvenance,
+    MovementRecord, PartialRecord,
 };
 use vrf_net::net_guid::GuidPathSink;
+use vrf_net::pipeline::ContentBlockContext;
 use vrf_net::types::NetworkGuid;
 use vrf_schema::{FxHashMap, NetGuidCache};
 
@@ -147,6 +148,9 @@ pub struct ExportStats {
     /// (`active_blind_array_bits`); the parent row keeps the byte, and no other
     /// number moves if a build makes such trailers common.
     pub active_blinds_empty_trailers: u64,
+    /// Empty FocusProjectiles deltas carrying exactly one final zero byte.
+    /// The measured route keeps that byte in its raw parent.
+    pub focus_projectiles_empty_trailers: u64,
     /// EffectContainer RPC parameters turned into a `value_str` JSON array:
     /// the decoder's only success signal there, as the overlay buckets are
     /// filled first. Failures land in `overlay.decoded_err`; the
@@ -203,24 +207,21 @@ pub struct ExportStats {
     /// The first movement-decode problem verbatim, for the summary to name.
     pub movement_first_error: Option<String>,
 
-    /// Sections in a `movementBitCount`-sized window that stopped with bits
-    /// unread, and those bits (`vrf_movement::RpcDecodeResult::sized_section_tails`).
-    /// A soft tally: the batch still counts as clean, so no Parquet row moves.
-    pub movement_sized_section_tails: u64,
-    pub movement_sized_section_tail_bits: u64,
-    /// The same for windows that ran to the end of the component stream, where
-    /// what follows may be other data: kept apart, never summed with the above.
-    pub movement_open_section_tails: u64,
-    pub movement_open_section_tail_bits: u64,
-    /// Components with bits after a fitting, nonzero movement window, and
-    /// those bits. Neither inside-section tails nor outside-envelope trailers.
-    pub movement_sized_section_trailers: u64,
-    pub movement_sized_section_trailer_bits: u64,
-    /// Byte-wrapped movement streams and the bits after their envelopes,
-    /// which nothing reads (`vrf_movement::RpcDecodeResult::envelope_trailer_bits`):
-    /// 24 per stream on every measured replay. A soft tally like the tails.
-    pub movement_envelope_trailers: u64,
-    pub movement_envelope_trailer_bits: u64,
+    /// Native component attempts, completions, failures and empty envelopes.
+    /// Hard RPC framing errors return no RpcDecodeResult and count above.
+    pub movement_component_streams: u64,
+    pub movement_component_complete: u64,
+    pub movement_component_errors: u64,
+    pub movement_component_empty: u64,
+    /// Structurally valid byte-array envelopes, their payload bytes and unused
+    /// high padding bits; counted before parsing their logical component data.
+    pub movement_component_envelopes: u64,
+    pub movement_component_payload_bytes: u64,
+    pub movement_component_unused_bits: u64,
+    /// Recognized input/discrepancy headers. Extra bodies still fail and keep
+    /// the complete RPC raw; header recognition does not decode such bodies.
+    pub movement_component_input_headers: u64,
+    pub movement_component_discrepancy_headers: u64,
 
     /// RPC payloads whose parameter loop broke on a malformed read before the
     /// zero-handle terminator. The walk keeps its rows and reports success, so
@@ -258,6 +259,7 @@ pub struct ExportStats {
     pub route_children_requested_ignore_actors: u64,
     pub route_children_active_blinds: u64,
     pub route_children_projectile_path: u64,
+    pub route_children_focus_projectiles: u64,
 }
 
 /// `counters` and `counters_mut` over one list per struct. Each destructure
@@ -294,19 +296,21 @@ macro_rules! export_counters {
 export_counters! {
     "" ExportStats {
         fields_emitted, rpcs_emitted, actor_opens, actor_closes, content_blocks,
-        tracked_rewards_opaque_empty_variants, active_blinds_empty_trailers, effect_blobs_decoded,
+        tracked_rewards_opaque_empty_variants, active_blinds_empty_trailers,
+        focus_projectiles_empty_trailers, effect_blobs_decoded,
         struct_blobs_decoded, multi_contents_items_emitted, cnc_rpcs_emitted,
         cnc_bruteforce_payloads_attempted, cnc_bruteforce_payloads_unwalked,
         rep_layout_cnc_tails_decoded, rep_layout_cnc_tails_preserved, struct_blobs_failed,
-        movement_rpc_errors, movement_sized_section_tails, movement_sized_section_tail_bits,
-        movement_open_section_tails, movement_open_section_tail_bits, movement_envelope_trailers,
-        movement_sized_section_trailers, movement_sized_section_trailer_bits,
-        movement_envelope_trailer_bits, truncated_rpcs, rpc_param_walks, rpc_suffix_bits_dropped,
+        movement_rpc_errors, movement_component_streams, movement_component_complete,
+        movement_component_errors, movement_component_empty, movement_component_envelopes,
+        movement_component_payload_bytes, movement_component_unused_bits,
+        movement_component_input_headers, movement_component_discrepancy_headers,
+        truncated_rpcs, rpc_param_walks, rpc_suffix_bits_dropped,
         array_leaf_decode_errors, targeting_world_locations_decoded,
         route_children_player_information, route_children_tracked_rewards,
         route_children_selected_v2, route_children_kill_data, route_children_server_active_effects,
         route_children_requested_ignore_actors, route_children_active_blinds,
-        route_children_projectile_path
+        route_children_projectile_path, route_children_focus_projectiles
     } except { overlay, array, struct_blob_first_error, movement_first_error }
     "overlay_" OverlayStats.overlay {
         decoded_ok, decoded_err, raw_or_skip, not_in_table, no_field_name, handle_conflicts_refused
@@ -336,6 +340,7 @@ impl ExportStats {
             }
             MeasuredArrayRoute::ActiveBlinds => &mut self.route_children_active_blinds,
             MeasuredArrayRoute::NetworkedProjectilePath => &mut self.route_children_projectile_path,
+            MeasuredArrayRoute::FocusProjectiles => &mut self.route_children_focus_projectiles,
         }
     }
 
@@ -353,23 +358,26 @@ impl ExportStats {
                     total_moves: _,
                     update_count: _,
                     error_count,
-                    sized_section_tails,
-                    sized_section_tail_bits,
-                    open_section_tails,
-                    open_section_tail_bits,
-                    sized_section_trailers,
-                    sized_section_trailer_bits,
-                    envelope_trailer_streams,
-                    envelope_trailer_bits,
+                    component_streams,
+                    component_complete,
+                    component_errors,
+                    component_empty,
+                    component_envelopes,
+                    component_payload_bytes,
+                    component_unused_bits,
+                    component_input_headers,
+                    component_discrepancy_headers,
                 } = *r;
-                self.movement_sized_section_tails += u64::from(sized_section_tails);
-                self.movement_sized_section_tail_bits += sized_section_tail_bits;
-                self.movement_open_section_tails += u64::from(open_section_tails);
-                self.movement_open_section_tail_bits += open_section_tail_bits;
-                self.movement_sized_section_trailers += u64::from(sized_section_trailers);
-                self.movement_sized_section_trailer_bits += sized_section_trailer_bits;
-                self.movement_envelope_trailers += u64::from(envelope_trailer_streams);
-                self.movement_envelope_trailer_bits += envelope_trailer_bits;
+                self.movement_component_streams += u64::from(component_streams);
+                self.movement_component_complete += u64::from(component_complete);
+                self.movement_component_errors += u64::from(component_errors);
+                self.movement_component_empty += u64::from(component_empty);
+                self.movement_component_envelopes += u64::from(component_envelopes);
+                self.movement_component_payload_bytes += component_payload_bytes;
+                self.movement_component_unused_bits += component_unused_bits;
+                self.movement_component_input_headers += u64::from(component_input_headers);
+                self.movement_component_discrepancy_headers +=
+                    u64::from(component_discrepancy_headers);
                 if error_count > 0 {
                     self.movement_rpc_errors = self
                         .movement_rpc_errors
@@ -431,45 +439,44 @@ mod stats_tests {
         );
     }
 
-    /// A clean-framed batch with soft errors and independent movement tallies.
-    fn batch(error_count: u32, t: [u32; 8]) -> Result<RpcDecodeResult, MovementError> {
+    /// Every native counter reaches the sink even when an RPC has soft errors.
+    fn batch(error_count: u32, t: [u32; 9]) -> Result<RpcDecodeResult, MovementError> {
         Ok(RpcDecodeResult {
             error_count,
-            sized_section_tails: t[0],
-            sized_section_tail_bits: t[1].into(),
-            open_section_tails: t[2],
-            open_section_tail_bits: t[3].into(),
-            envelope_trailer_streams: t[4],
-            envelope_trailer_bits: t[5].into(),
-            sized_section_trailers: t[6],
-            sized_section_trailer_bits: t[7].into(),
+            component_streams: t[0],
+            component_complete: t[1],
+            component_errors: t[2],
+            component_empty: t[3],
+            component_envelopes: t[4],
+            component_payload_bytes: t[5].into(),
+            component_unused_bits: t[6].into(),
+            component_input_headers: t[7],
+            component_discrepancy_headers: t[8],
             ..Default::default()
         })
     }
 
-    /// Each tail and trailer tally sums into its own counter from every `Ok`
-    /// decode, soft errors or not, and none is a movement error (which would
-    /// keep the batch as a raw row); an `Err` carries no tally.
     #[test]
-    fn tallies_sum_field_by_field_and_are_not_errors() {
+    fn native_tallies_sum_field_by_field_without_recounting_errors() {
         let mut s = ExportStats::default();
-        s.record_movement_decode(batch(0, [1, 2, 3, 4, 5, 6, 7, 8]).as_ref());
-        s.record_movement_decode(batch(1, [10, 20, 30, 40, 50, 60, 70, 80]).as_ref());
+        s.record_movement_decode(batch(0, [1, 2, 3, 4, 5, 6, 7, 8, 9]).as_ref());
+        s.record_movement_decode(batch(1, [10, 20, 30, 40, 50, 60, 70, 80, 90]).as_ref());
         s.record_movement_decode(Err(MovementError::ErrorSentinel).as_ref());
         let tallies = [
-            s.movement_sized_section_tails,
-            s.movement_sized_section_tail_bits,
-            s.movement_open_section_tails,
-            s.movement_open_section_tail_bits,
-            s.movement_envelope_trailers,
-            s.movement_envelope_trailer_bits,
-            s.movement_sized_section_trailers,
-            s.movement_sized_section_trailer_bits,
+            s.movement_component_streams,
+            s.movement_component_complete,
+            s.movement_component_errors,
+            s.movement_component_empty,
+            s.movement_component_envelopes,
+            s.movement_component_payload_bytes,
+            s.movement_component_unused_bits,
+            s.movement_component_input_headers,
+            s.movement_component_discrepancy_headers,
         ];
-        assert_eq!(tallies, [11, 22, 33, 44, 55, 66, 77, 88]);
+        assert_eq!(tallies, [11, 22, 33, 44, 55, 66, 77, 88, 99]);
         let counters = s.counters();
-        assert!(counters.contains(&("movement_sized_section_trailers", 77)));
-        assert!(counters.contains(&("movement_sized_section_trailer_bits", 88)));
+        assert!(counters.contains(&("movement_component_input_headers", 88)));
+        assert!(counters.contains(&("movement_component_discrepancy_headers", 99)));
         assert_eq!(s.movement_rpc_errors, 2, "the soft error and the Err");
     }
 
@@ -479,10 +486,10 @@ mod stats_tests {
     #[test]
     fn movement_errors_count_every_occurrence_and_keep_the_first() {
         let mut s = ExportStats::default();
-        s.record_movement_decode(batch(0, [0; 8]).as_ref());
+        s.record_movement_decode(batch(0, [0; 9]).as_ref());
         assert_eq!(s.movement_rpc_errors, 0);
         assert!(s.movement_first_error.is_none());
-        s.record_movement_decode(batch(3, [0; 8]).as_ref());
+        s.record_movement_decode(batch(3, [0; 9]).as_ref());
         s.record_movement_decode(Err(MovementError::InvalidMagic(0x00)).as_ref());
         assert_eq!(s.movement_rpc_errors, 4);
         assert_eq!(
@@ -541,6 +548,9 @@ mod stats_tests {
 pub struct RecordBuffers {
     pub fields: Vec<FieldRecord>,
     pub movement: Vec<MovementRecord>,
+    /// Companion rows are collected only for consumers that request them.
+    pub movement_provenance: Vec<MovementProvenance>,
+    pub capture_movement_provenance: bool,
     pub actors: Vec<ActorRecord>,
     pub partials: Vec<PartialRecord>,
     pub checkpoint_blocks: Vec<CheckpointBlockRecord>,
@@ -581,6 +591,9 @@ pub struct ExportSink<'a> {
     current_group_resolution_source: &'static str,
     current_function_count_source: &'static str,
     current_resolution_memo_hit: bool,
+    current_movement_context: Option<ContentBlockContext>,
+    /// Packet-local callback count, independent of the cumulative lent stats.
+    next_rpc_index: u32,
 }
 
 impl<'a> ExportSink<'a> {
@@ -592,6 +605,7 @@ impl<'a> ExportSink<'a> {
     ) -> Self {
         records.fields.clear();
         records.movement.clear();
+        records.movement_provenance.clear();
         records.actors.clear();
         records.partials.clear();
         records.checkpoint_blocks.clear();
@@ -616,6 +630,8 @@ impl<'a> ExportSink<'a> {
             current_group_resolution_source: "unset",
             current_function_count_source: "unset",
             current_resolution_memo_hit: false,
+            current_movement_context: None,
+            next_rpc_index: 0,
         }
     }
 
@@ -630,7 +646,6 @@ impl<'a> ExportSink<'a> {
         self.measured_array_routes.admits(route)
     }
 
-    #[cfg(feature = "export")]
     pub(super) fn enable_checkpoint_block_context(
         &mut self,
         checkpoint: CheckpointIdentity,

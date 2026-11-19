@@ -96,8 +96,11 @@ impl RawPacketReader {
             return result;
         }
 
-        let bit_size = compute_bit_size(packet_data, last_byte);
-        let Ok(mut reader) = BitReader::with_bit_len(packet_data, bit_size as u64) else {
+        let Some(bit_size) = compute_bit_size(packet_data.len(), last_byte) else {
+            result.is_malformed = true;
+            return result;
+        };
+        let Ok(mut reader) = BitReader::with_bit_len(packet_data, bit_size) else {
             result.is_malformed = true;
             return result;
         };
@@ -326,10 +329,14 @@ impl Default for RawPacketReader {
 
 /// The bits below the sentinel, the last byte's highest `1` bit: the byte's
 /// leading zeros are padding. The caller rejects a zero last byte, so the
-/// count is at most 7 and the result never underflows.
-fn compute_bit_size(packet: &[u8], last_byte: u8) -> i32 {
+/// count is at most 7. Checked wide arithmetic also protects direct callers
+/// whose packets did not pass through the frame reader's small-packet limit.
+fn compute_bit_size(byte_count: usize, last_byte: u8) -> Option<u64> {
     debug_assert!(last_byte != 0, "caller must reject a zero last byte");
-    (packet.len() as i32) * 8 - 1 - last_byte.leading_zeros() as i32
+    u64::try_from(byte_count)
+        .ok()?
+        .checked_mul(8)?
+        .checked_sub(1 + u64::from(last_byte.leading_zeros()))
 }
 
 #[cfg(test)]
@@ -339,6 +346,16 @@ mod tests {
     use crate::test_bits::{
         BunchSpec, build_bunch_packet, build_packet, write_bunch, write_bunch_header,
     };
+
+    #[test]
+    fn packet_bit_size_keeps_wide_lengths_and_exact_sentinel_positions() {
+        for byte_count in [1, 2048, 268_435_456, 268_435_457] {
+            for sentinel in 0..8 {
+                let expected = ((byte_count as u64 - 1) * 8) + sentinel;
+                assert_eq!(compute_bit_size(byte_count, 1 << sentinel), Some(expected));
+            }
+        }
+    }
 
     /// An unreliable bunch on `ch_index` with no other flag set: no control
     /// bits and no channel name.

@@ -1,0 +1,57 @@
+{
+  "failure_count": 0,
+  "typed_mismatch_count": 0,
+  "missing": [],
+  "fields": {
+    "/Game/Characters/Deadeye/Deadeye_PC.Deadeye_PC_C::ReplayLastTransformUpdateTimeStamp": {
+      "rows": 54
+    },
+    "/Game/Characters/Gumshoe/Gumshoe_PC.Gumshoe_PC_C::ReplayLastTransformUpdateTimeStamp": {
+      "rows": 65
+    },
+    "/Game/Characters/Thorne/Thorne_PC.Thorne_PC_C::ReplayLastTransformUpdateTimeStamp": {
+      "rows": 14197
+    },
+    "/Game/Equippables/Guns/Sidearms/BasePistol/BasePistol.BasePistol_C_ClassNetCache::MulticastPlayContinuousEffectFromClient.AllianceFilter::checksum=2270825073": {
+      "rows": 3434
+    },
+    "/Game/Equippables/Guns/Sidearms/BasePistol/BasePistol.BasePistol_C_ClassNetCache::MulticastPlayContinuousEffectFromClient.EffectManagerComponent::checksum=1051633025": {
+      "rows": 3434
+    },
+    "/Game/GameModes/Bomb/BombGameState.BombGameState_C::CurrentLossStreak::checksum=1863385026": {
+      "rows": 130
+    },
+    "/Game/GameModes/Bomb/BombGameState.BombGameState_C::LossStreakTeam::checksum=22256526": {
+      "rows": 125
+    },
+    "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C::bFadeCrosshairWithFiringError": {
+      "rows": 371
+    },
+    "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C::bShowMinError": {
+      "rows": 2574
+    },
+    "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C::bShowSpectatedPlayerCrosshair": {
+      "rows": 629
+    },
+    "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C::bUsePrimaryCrosshairForADS": {
+      "rows": 595
+    },
+    "/Script/ShooterGame.AresEquippableDataTracker::OriginalBuyerTeam::checksum=255019476": {
+      "rows": 2129
+    },
+    "/Script/ShooterGame.AresInventory::CorrectionIndex::checksum=3198546915": {
+      "rows": 3416
+    },
+    "/Script/ShooterGame.AresInventory::LastSeenClientCorrectionIndex::checksum=1076231069": {
+      "rows": 3138
+    },
+    "/Script/ShooterGame.EquippableStateMachineComponent::TransitionContext": {
+      "rows": 17663
+    },
+    "/Script/ShooterGame.ForceModuleManagerComponent_ClassNetCache::NetMulticastRemoveForceModule.ModuleType::checksum=3263282135": {
+      "rows": 9048
+    }
+  },
+  "source_report_sha256": "a1dfc8c9c08c2197afa990602eae14a92ff7349d45f2e2b09b0a6b29d7722ef1",
+  "typed_raw_rows": 61002
+}

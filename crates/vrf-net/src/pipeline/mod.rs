@@ -143,6 +143,7 @@ pub enum PartialPayloadReason {
     OverlappingInitial,
     MismatchedContinuation,
     NonByteAlignedFragment,
+    PayloadOverrun,
     ActiveStateLimit,
     BufferedBitsLimit,
     AllocationFailure,
@@ -195,6 +196,22 @@ impl<'a> RejectedPartialFragment<'a> {
     }
 }
 
+/// Transport identity of a successfully framed content block.
+///
+/// The initial packet comes from the authoritative reassembly header; it is
+/// not reconstructed from packet distances. The completion identity belongs
+/// to the bunch that made this block available for decoding. For an ordinary
+/// non-partial bunch the two packet IDs are equal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContentBlockContext {
+    pub initial_packet_id: i32,
+    pub completion_packet_id: i32,
+    /// Zero-based global index of the completing bunch, including fragments.
+    pub bunch_index: u64,
+    /// Zero-based block index within the whole, possibly reassembled bunch.
+    pub block_index: u32,
+}
+
 /// Trait for receiving all replication events: fields, RPCs and actor
 /// lifecycle, with nothing discarded silently.
 pub trait ReplicationSink: GuidPathSink + FieldSink {
@@ -241,6 +258,19 @@ pub trait ReplicationSink: GuidPathSink + FieldSink {
         actor_net_guid: NetworkGuid,
         header: &ContentBlockHeader,
     ) -> u32;
+
+    /// A framed block with transport provenance. The default delegates to
+    /// [`Self::on_content_block`], preserving existing consumers. Called once
+    /// per non-deleted block, before any of its field or RPC callbacks.
+    fn on_content_block_with_context(
+        &mut self,
+        channel_index: u32,
+        actor_net_guid: NetworkGuid,
+        header: &ContentBlockHeader,
+        _context: &ContentBlockContext,
+    ) -> u32 {
+        self.on_content_block(channel_index, actor_net_guid, header)
+    }
 
     /// A content block was flagged as deleted.
     fn on_deleted_block(
@@ -305,9 +335,10 @@ struct Stage<'a> {
     scratch: &'a mut Vec<u8>,
 }
 
-/// Where a bunch sits in the stream; read only by a `DiagnosticEvent`.
+/// Where a bunch sits in the stream, before any partial-header replacement.
 #[derive(Clone, Copy)]
 struct BunchIds {
+    packet_id: i32,
     bunch_index_in_packet: u32,
     global_bunch_index: u64,
     channel_bunch_index: u64,
@@ -445,6 +476,7 @@ impl ReplicationReader {
             let slot = stage.channels.entry(header.ch_index).or_default();
             slot.bunch_count += 1;
             let ids = BunchIds {
+                packet_id,
                 bunch_index_in_packet: index_in_packet,
                 global_bunch_index: global_index,
                 channel_bunch_index: slot.bunch_count,
@@ -547,6 +579,9 @@ impl ReplicationReader {
                 Some(PartialSequenceKind::NonByteAlignedFragment) => {
                     stage.stats.partial_non_byte_aligned += 1;
                 }
+                // Pipeline staging supplies the complete declared bit window;
+                // the public accumulator also defends direct callers.
+                Some(PartialSequenceKind::PayloadOverrun) => {}
                 None => {}
             }
 
@@ -768,6 +803,7 @@ fn partial_payload_reason(cause: PartialDiscardCause) -> PartialPayloadReason {
         Sequence(PartialSequenceKind::NonByteAlignedFragment) => {
             PartialPayloadReason::NonByteAlignedFragment
         }
+        Sequence(PartialSequenceKind::PayloadOverrun) => PartialPayloadReason::PayloadOverrun,
         Resource(PartialResourceLimit::ActiveStates) => PartialPayloadReason::ActiveStateLimit,
         Resource(PartialResourceLimit::BufferedBits) => PartialPayloadReason::BufferedBitsLimit,
         Resource(PartialResourceLimit::Allocation) => PartialPayloadReason::AllocationFailure,
@@ -807,6 +843,7 @@ mod tests {
         pub(super) guid_paths: std::collections::HashMap<u32, String>,
         /// Content-block headers, in arrival order.
         content_blocks: Vec<ContentBlockHeader>,
+        block_contexts: Vec<ContentBlockContext>,
         rep_layout_tails: Vec<(u32, Vec<u8>)>,
         rep_layout_tail_outcome: Option<RepLayoutTailOutcome>,
         rejected_partials: Vec<OwnedRejectedPartial>,
@@ -876,6 +913,16 @@ mod tests {
         ) -> u32 {
             self.content_blocks.push(header.clone());
             0
+        }
+        fn on_content_block_with_context(
+            &mut self,
+            channel_index: u32,
+            actor_net_guid: NetworkGuid,
+            header: &ContentBlockHeader,
+            context: &ContentBlockContext,
+        ) -> u32 {
+            self.block_contexts.push(*context);
+            self.on_content_block(channel_index, actor_net_guid, header)
         }
         fn on_deleted_block(
             &mut self,
@@ -1078,6 +1125,48 @@ mod tests {
             );
             assert_eq!(stats.diagnostics_dropped, 0);
         }
+    }
+
+    #[test]
+    fn block_provenance_uses_authoritative_initial_and_completion_packets() {
+        let mut payload = guid(3);
+        payload.extend(empty_actor_block());
+        payload.extend(empty_actor_block());
+        let (mut reader, mut sink) = (reader(), TestSink::default());
+        for (packet_id, packet) in [
+            (7, partial_packet(true, true, false, &payload[..8])),
+            (19, partial_packet(false, false, false, &payload[8..16])),
+            (41, partial_packet(false, false, true, &payload[16..])),
+            (43, later_block_on_two()),
+        ] {
+            reader.process_packet(&packet, packet_id, &mut sink);
+        }
+        assert_eq!(reader.stats().partial_completed, 1);
+        assert_eq!(reader.stats().partial_errors, 0);
+        assert_eq!(reader.stats().content_blocks, 3);
+        assert_eq!(
+            sink.block_contexts,
+            [
+                ContentBlockContext {
+                    initial_packet_id: 7,
+                    completion_packet_id: 41,
+                    bunch_index: 2,
+                    block_index: 0,
+                },
+                ContentBlockContext {
+                    initial_packet_id: 7,
+                    completion_packet_id: 41,
+                    bunch_index: 2,
+                    block_index: 1,
+                },
+                ContentBlockContext {
+                    initial_packet_id: 43,
+                    completion_packet_id: 43,
+                    bunch_index: 3,
+                    block_index: 0,
+                },
+            ]
+        );
     }
 
     /// A partial final with no initial is one error, counted once, by the
@@ -2081,6 +2170,7 @@ mod tests {
         let ctx = BunchContext {
             header: &header,
             ids: BunchIds {
+                packet_id: 42,
                 bunch_index_in_packet: 3,
                 global_bunch_index: 100,
                 channel_bunch_index: 7,

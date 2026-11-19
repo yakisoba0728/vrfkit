@@ -1,0 +1,21 @@
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.32s
+     Running unittests src/lib.rs (/workspace/scratch/5a322f957689/target-net/debug/deps/vrf_net-6c9e3567cc2bff29)
+
+running 1 test
+test packet::tests::packet_bit_size_keeps_wide_lengths_and_exact_sentinel_positions ... FAILED
+
+failures:
+
+---- packet::tests::packet_bit_size_keeps_wide_lengths_and_exact_sentinel_positions stdout ----
+
+thread 'packet::tests::packet_bit_size_keeps_wide_lengths_and_exact_sentinel_positions' panicked at crates/vrf-net/src/packet.rs:335:11:
+attempt to multiply with overflow
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    packet::tests::packet_bit_size_keeps_wide_lengths_and_exact_sentinel_positions
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 118 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p vrf-net --lib`

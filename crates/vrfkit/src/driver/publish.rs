@@ -46,15 +46,19 @@ pub(super) struct OutputTransaction {
 impl OutputTransaction {
     /// Create an empty, uniquely named staging directory beside `destination`,
     /// after refusing a destination that holds anything an export does not
-    /// write ([`foreign_entries`]) and naming what earlier exports left beside
-    /// it ([`report_leftovers`]).
-    pub(super) fn begin(destination: &Path) -> io::Result<Self> {
-        Self::begin_reporting_to(destination, &mut io::stderr())
+    /// write ([`foreign_entries`]), protecting `input` from replacement, and
+    /// naming what earlier exports left beside it ([`report_leftovers`]).
+    pub(super) fn begin(destination: &Path, input: &Path) -> io::Result<Self> {
+        Self::begin_reporting_to(destination, input, &mut io::stderr())
     }
 
     /// [`begin`](Self::begin), with the leftover warnings written to
     /// `warnings`, so a test reads exactly the lines an operator would.
-    fn begin_reporting_to(destination: &Path, warnings: &mut dyn Write) -> io::Result<Self> {
+    fn begin_reporting_to(
+        destination: &Path,
+        input: &Path,
+        warnings: &mut dyn Write,
+    ) -> io::Result<Self> {
         let file_name = destination.file_name().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -95,6 +99,25 @@ impl OutputTransaction {
                     name_list(&foreign)
                 ),
             ));
+        }
+
+        // A replay can have an export-owned filename, so the name allowlist
+        // alone cannot protect it. Resolve aliases before creating staging.
+        match fs::canonicalize(destination) {
+            Ok(directory) if fs::canonicalize(input)?.starts_with(&directory) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "export destination {} contains the input replay {}; choose a different \
+                         output directory",
+                        destination.display(),
+                        input.display()
+                    ),
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
         }
 
         let parent = usable_parent(destination);
@@ -566,8 +589,12 @@ mod tests {
     /// `begin`, with the leftover warnings captured instead of printed.
     fn begin_capturing(destination: &Path) -> (OutputTransaction, String) {
         let mut warnings = Vec::new();
-        let transaction = OutputTransaction::begin_reporting_to(destination, &mut warnings)
-            .expect("begin an export transaction");
+        let transaction = OutputTransaction::begin_reporting_to(
+            destination,
+            &std::env::current_exe().unwrap(),
+            &mut warnings,
+        )
+        .expect("begin an export transaction");
         let warnings = String::from_utf8(warnings).expect("warnings are UTF-8");
         (transaction, warnings)
     }
@@ -578,7 +605,8 @@ mod tests {
         let destination = prior_output(&root, "export");
 
         {
-            let transaction = OutputTransaction::begin(&destination).unwrap();
+            let transaction =
+                OutputTransaction::begin(&destination, &std::env::current_exe().unwrap()).unwrap();
             fs::write(transaction.path().join("manifest.json"), b"new partial").unwrap();
             // Fault injection: returning before publication drops the guard.
         }
@@ -595,7 +623,8 @@ mod tests {
         let root = TestDir::new();
         let destination = prior_output(&root, "export");
 
-        let transaction = OutputTransaction::begin(&destination).unwrap();
+        let transaction =
+            OutputTransaction::begin(&destination, &std::env::current_exe().unwrap()).unwrap();
         fs::write(transaction.path().join("manifest.json"), b"new complete").unwrap();
         // Fault injection after staging: make the second rename fail, after
         // publication has already moved the old destination aside.
@@ -872,9 +901,13 @@ mod tests {
         fs::write(impostor.join("part-0.parquet"), b"someone else's dataset").unwrap();
         fs::write(destination.join(MANIFEST), b"old complete").unwrap();
 
-        let error = OutputTransaction::begin_reporting_to(&destination, &mut Vec::new())
-            .err()
-            .expect("a directory is never export output");
+        let error = OutputTransaction::begin_reporting_to(
+            &destination,
+            &std::env::current_exe().unwrap(),
+            &mut Vec::new(),
+        )
+        .err()
+        .expect("a directory is never export output");
         assert!(
             error.to_string().contains(&format!(
                 "1 entry an export does not write ({})",

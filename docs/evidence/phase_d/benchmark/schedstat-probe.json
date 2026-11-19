@@ -1,0 +1,7 @@
+{
+  "available": true,
+  "before_cpu_ns": 21750538,
+  "after_cpu_ns": 52839339,
+  "cpu_delta_ns": 31088801,
+  "interpretation": "Positive thread scheduled CPU observed; any zero or missing actual diagnostic value remains unavailable, not a measured zero."
+}

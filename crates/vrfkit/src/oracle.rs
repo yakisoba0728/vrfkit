@@ -21,14 +21,14 @@
 //! what fails the verdict; an unresolved ClassNetCache block whose whole
 //! decoded payload was kept is reported apart and is not loss.
 
-use std::fs;
+use std::path::Path;
 use std::time::Instant;
 
-use vrf_container::parse_preamble;
 use vrf_net::stats::{DiagnosticEvent, NetStats, SkipReason};
 
 use crate::error::CliError;
-use crate::pass::{Chunk, Pass, Replay, for_each_chunk};
+use crate::pass::{Chunk, Pass, Replay};
+use crate::reader_input::FileInput;
 use crate::report;
 use crate::sink::ExportStats;
 
@@ -41,7 +41,7 @@ use crate::sink::ExportStats;
 pub enum Verdict {
     /// Content blocks were found and every one of them framed.
     Passed,
-    /// At least one failure [`verdict_from_stats`] counts.
+    /// At least one failure covered by ReplayData block validation.
     ValidationFailed,
     /// No RepLayout or ClassNetCache blocks at all -- nothing was validated.
     NoContentBlocks,
@@ -83,7 +83,7 @@ impl Verdict {
 /// is 0 on 45 replays of 24 builds, main and checkpoint passes.
 /// `package_map_exports` (a superset of `rep_layout_export_bunches`) fails the
 /// run: the bunch content after the exports is never read. 0 on 1,018 replays.
-fn verdict_from_stats(stats: &NetStats, replay_data_trailing_bytes: u64) -> Verdict {
+pub(crate) fn verdict_from_stats(stats: &NetStats, replay_data_trailing_bytes: u64) -> Verdict {
     let total_with_content = stats.rep_layout_blocks + stats.class_net_cache_blocks;
     let failures = stats.malformed_packets
         + stats.unfinished_partials
@@ -103,8 +103,7 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
     let start = Instant::now();
 
     eprintln!("reading {path}...");
-    let data = fs::read(path)?;
-    let preamble = parse_preamble(&data)?;
+    let (preamble, input) = FileInput::open(Path::new(path))?;
     let replay = Replay::new(&preamble);
     let branch = replay.branch;
 
@@ -117,7 +116,7 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
     // Counted, not merely skipped: see `checkpoint_scope_note`.
     let mut checkpoint_chunks: u64 = 0;
     let mut replay_data_trailing_bytes = 0u64;
-    let unknown_chunks = for_each_chunk(&data, &replay, |chunk| {
+    let unknown_chunks = input.for_each_chunk(&replay, &mut |chunk| {
         match chunk {
             Chunk::Checkpoint(_) => checkpoint_chunks += 1,
             Chunk::ReplayData(frames, unread) => {

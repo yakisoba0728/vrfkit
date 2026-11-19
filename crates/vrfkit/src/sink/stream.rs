@@ -10,14 +10,14 @@ use vrf_bitio::BitReader;
 use vrf_decode::apply_overlay_with_checksum;
 use vrf_decode::cnc::{CncRpc, decode_cnc_payload};
 use vrf_export::{
-    ActorRecord, CheckpointBlockRecord, MovementRecord, PartialRecord,
-    UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME,
+    ActorRecord, CheckpointBlockRecord, MovementProvenance, MovementRecord, MovementSource,
+    PartialRecord, UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME,
 };
 use vrf_net::content::ContentBlockHeader;
 use vrf_net::field::FieldSink;
 use vrf_net::pipeline::{
-    ActorChannelState, PartialPayloadReason, RejectedPartialFragment, RepLayoutTailOutcome,
-    ReplicationSink, StreamFailure, StreamFailureCause,
+    ActorChannelState, ContentBlockContext, PartialPayloadReason, RejectedPartialFragment,
+    RepLayoutTailOutcome, ReplicationSink, StreamFailure, StreamFailureCause,
 };
 use vrf_net::types::{FVector, NetworkGuid};
 
@@ -143,7 +143,7 @@ impl FieldSink for ExportSink<'_> {
         // with the whole payload is still emitted below.
         if let Some(raw) = raw_bits.as_deref() {
             let name = field_name.as_deref();
-            self.emit_flattened_array(name, field_checksum, raw, bit_count);
+            self.emit_flattened_array(handle, name, field_checksum, raw, bit_count);
             self.decode_struct_blob(name, raw, bit_count);
             self.emit_multi_contents(name, raw, bit_count);
         }
@@ -178,15 +178,18 @@ impl FieldSink for ExportSink<'_> {
     }
 
     fn on_rpc(&mut self, handle: u32, bit_count: u32, reader: BitReader<'_>) {
+        let rpc_index = self.next_rpc_index;
+        if self.records.capture_movement_provenance {
+            self.next_rpc_index += 1;
+        }
         let field_name = self.resolve_field_name_and_checksum(handle).0;
 
         if field_name.as_deref() == Some(MOVEMENT_RPC) && bit_count > 0 {
             let fallback_reader = reader.clone();
-            let failed = self.decode_movement_rpc(reader);
+            let failed = self.decode_movement_rpc(reader, handle, rpc_index);
             // A clean batch is movement.parquet row for row; a failed or partial
-            // one cannot reproduce its input, so the whole payload is kept. Bits
-            // a section leaves unread in a clean batch are only tallied
-            // (`movement_*_section_tail*`).
+            // one cannot reproduce its input, so the whole payload is kept.
+            // Unknown component headers or bodies follow the same failure path.
             self.push_field(FieldValues {
                 handle,
                 field_name,
@@ -222,6 +225,26 @@ impl FieldSink for ExportSink<'_> {
     }
 }
 
+fn movement_record(mv: vrf_movement::MovementMove, time_ms: u32, packet_id: u32) -> MovementRecord {
+    MovementRecord {
+        time_ms,
+        packet_id,
+        character_net_guid: mv.shooter_character_net_guid,
+        pos_x: mv.pos_x as f32,
+        pos_y: mv.pos_y as f32,
+        pos_z: mv.pos_z as f32,
+        yaw: mv.yaw as f32,
+        pitch: mv.pitch as f32,
+        vel_x: mv.vel_x as f32,
+        vel_y: mv.vel_y as f32,
+        vel_z: mv.vel_z as f32,
+        timestamp: mv.timestamp,
+        movement_state: mv.movement_state,
+        // mode_flags duplicates movement_state in the decoder's wire reading.
+        move_type: mv.move_type,
+    }
+}
+
 /// Bomb-mode PlayerState, whose `Subject` and `SpawnedCharacter` feed the
 /// manifest `players` array (see `PlayerIdentity`).
 const BOMB_PLAYER_STATE: &str = "/Game/GameModes/Bomb/BombPlayerState.BombPlayerState_C";
@@ -238,32 +261,40 @@ const ABILITIES_AND_BUFFS_FC: u32 = 34;
 
 impl ExportSink<'_> {
     /// Decode a movement RPC payload into `movement.parquet` rows.
-    fn decode_movement_rpc(&mut self, reader: BitReader<'_>) -> bool {
+    fn decode_movement_rpc(&mut self, reader: BitReader<'_>, handle: u32, rpc_index: u32) -> bool {
         let mut rpc_reader = reader;
         let time_ms = self.time_ms;
         let packet_id = self.packet_id;
         let movement = &mut self.records.movement;
-        let result = vrf_movement::decode_movement_rpc(&mut rpc_reader, |mv| {
-            movement.push(MovementRecord {
-                time_ms,
-                packet_id,
-                character_net_guid: mv.shooter_character_net_guid,
-                pos_x: mv.pos_x as f32,
-                pos_y: mv.pos_y as f32,
-                pos_z: mv.pos_z as f32,
-                yaw: mv.yaw as f32,
-                pitch: mv.pitch as f32,
-                vel_x: mv.vel_x as f32,
-                vel_y: mv.vel_y as f32,
-                vel_z: mv.vel_z as f32,
-                timestamp: mv.timestamp,
-                movement_state: mv.movement_state,
-                // mv.mode_flags is intentionally not carried: the decoder
-                // assigns it from the same local as movement_state, so it
-                // can never hold a different value.
-                move_type: mv.move_type,
+        let result = if self.records.capture_movement_provenance {
+            let source = self.current_movement_context.map(|context| MovementSource {
+                initial_packet_id: context.initial_packet_id as u32,
+                completion_packet_id: context.completion_packet_id as u32,
+                channel_index: self.current_channel,
+                actor_net_guid: self.current_actor_guid,
+                object_net_guid: self.current_object_guid,
+                bunch_index: context.bunch_index,
+                block_index: context.block_index,
+                rpc_index,
+                rpc_handle: handle,
             });
-        });
+            let provenance = &mut self.records.movement_provenance;
+            vrf_movement::decode_movement_rpc_with_context(&mut rpc_reader, |mv, context| {
+                movement.push(movement_record(mv, time_ms, packet_id));
+                provenance.push(MovementProvenance {
+                    source,
+                    array_ordinal: context.array_ordinal,
+                    update_ordinal: context.update_ordinal,
+                    update_index: context.update_index,
+                    component_ordinal: context.component_ordinal,
+                    move_index: context.move_index,
+                });
+            })
+        } else {
+            vrf_movement::decode_movement_rpc(&mut rpc_reader, |mv| {
+                movement.push(movement_record(mv, time_ms, packet_id));
+            })
+        };
         let failed = match &result {
             Ok(decoded) => decoded.error_count != 0,
             Err(_) => true,
@@ -386,6 +417,7 @@ impl ReplicationSink for ExportSink<'_> {
             PartialPayloadReason::OverlappingInitial => "overlapping_initial",
             PartialPayloadReason::MismatchedContinuation => "mismatched_continuation",
             PartialPayloadReason::NonByteAlignedFragment => "non_byte_aligned_fragment",
+            PartialPayloadReason::PayloadOverrun => "payload_overrun",
             PartialPayloadReason::ActiveStateLimit => "active_state_limit",
             PartialPayloadReason::BufferedBitsLimit => "buffered_bits_limit",
             PartialPayloadReason::AllocationFailure => "allocation_failure",
@@ -504,6 +536,7 @@ impl ReplicationSink for ExportSink<'_> {
         actor_net_guid: NetworkGuid,
         header: &ContentBlockHeader,
     ) -> u32 {
+        self.current_movement_context = None;
         self.current_channel = channel_index;
         self.current_actor_guid = actor_net_guid.0;
         // An actor block carries no subobject GUID; a subobject block's GUID
@@ -521,6 +554,20 @@ impl ReplicationSink for ExportSink<'_> {
         self.stats.content_blocks += 1;
         let function_count = self.resolve_block(channel_index, actor_net_guid, header);
         self.record_checkpoint_block(channel_index, actor_net_guid, header, function_count, true);
+        function_count
+    }
+
+    fn on_content_block_with_context(
+        &mut self,
+        channel_index: u32,
+        actor_net_guid: NetworkGuid,
+        header: &ContentBlockHeader,
+        context: &ContentBlockContext,
+    ) -> u32 {
+        let function_count = self.on_content_block(channel_index, actor_net_guid, header);
+        if self.records.capture_movement_provenance {
+            self.current_movement_context = Some(*context);
+        }
         function_count
     }
 
@@ -768,6 +815,7 @@ mod tests {
             OverlappingInitial,
             MismatchedContinuation,
             NonByteAlignedFragment,
+            PayloadOverrun,
             ActiveStateLimit,
             BufferedBitsLimit,
             AllocationFailure,
@@ -1359,6 +1407,292 @@ mod tests {
         assert_eq!(fallback.raw_bits.as_deref(), Some(data.as_slice()));
     }
 
+    fn movement_test_rig() -> Rig {
+        let mut rig = Rig::default();
+        rig.cache
+            .add_export_group(vrf_schema::NetFieldExportGroup::new(
+                "/Script/Test.Movement_ClassNetCache".into(),
+                7,
+                1,
+            ))
+            .unwrap();
+        assert!(rig.cache.set_field_on_group(
+            7,
+            vrf_schema::NetFieldExport {
+                handle: 0,
+                compatible_checksum: 0,
+                name: MOVEMENT_RPC.into(),
+            }
+        ));
+        rig
+    }
+
+    fn movement_rpc_fixture(move_count: u32, fail_last: bool) -> Vec<bool> {
+        movement_rpc_fixture_with_body(move_count, fail_last, None)
+    }
+
+    fn movement_rpc_fixture_with_body(
+        move_count: u32,
+        fail_last: bool,
+        body: Option<&str>,
+    ) -> Vec<bool> {
+        let mut component = Vec::new();
+        component.u8(0x52);
+        for index in 0..move_count {
+            component.bits(u64::from(index % 7 + 1), 3);
+            component.bit(true).u8(0).u8(0).u8(0);
+            component.u16(0).u16(0).u16(0).int_packed(100 + index);
+            component.serialized_int(0, 128).f32(1.0).f32(2.0).f32(3.0);
+            component.bit(false).bit(false).u32(0);
+            component
+                .bit(false)
+                .serialized_int(0, 128)
+                .f32(4.0)
+                .f32(5.0)
+                .f32(6.0);
+            component.bit(fail_last && index + 1 == move_count);
+        }
+        component.bits(0, 3);
+        let input_end = (component.len() + 24 + usize::from(body == Some("input"))) as u16;
+        component.u16(input_end).u8(0xA3);
+        if body == Some("input") {
+            component.bit(true);
+        }
+        component.u8(0xA4);
+        if body == Some("discrepancy") {
+            component.bit(true);
+        }
+        let unused = (8 - component.len() % 8) % 8;
+        component.repeat(false, unused);
+        let mut native = Vec::new();
+        native
+            .i32((component.len() / 8) as i32)
+            .extend_bits(&component)
+            .u8(unused as u8);
+        let component = native;
+        let mut update = Vec::new();
+        update
+            .int_packed(3)
+            .int_packed(32)
+            .u32(53)
+            .int_packed(4)
+            .int_packed(component.len() as u32)
+            .extend_bits(&component)
+            .int_packed(0);
+        let mut array = Vec::new();
+        array
+            .int_packed(8)
+            .int_packed(5)
+            .extend_bits(&update)
+            .int_packed(0);
+        let mut rpc = vec![false];
+        rpc.int_packed(2)
+            .int_packed(array.len() as u32)
+            .extend_bits(&array)
+            .int_packed(0);
+        rpc
+    }
+
+    #[test]
+    fn movement_provenance_is_opt_in_and_distinguishes_rpcs_in_one_packet() {
+        let bits = movement_rpc_fixture(2, false);
+        let bytes = pack(&bits);
+        let mut observed = Vec::new();
+        for enabled in [false, true] {
+            let mut rig = movement_test_rig();
+            rig.records.capture_movement_provenance = enabled;
+            let mut sink = rig.sink();
+            sink.packet_id = 41;
+            sink.time_ms = 900;
+            sink.on_content_block_with_context(
+                7,
+                NetworkGuid(89),
+                &subobject_block(0, false),
+                &ContentBlockContext {
+                    initial_packet_id: 7,
+                    completion_packet_id: 41,
+                    bunch_index: 2,
+                    block_index: 3,
+                },
+            );
+            sink.set_current_group_path(Arc::from("/Script/Test.Movement_ClassNetCache"));
+            sink.on_rpc(9, 0, BitReader::new(&[]));
+            for _ in 0..2 {
+                sink.on_rpc(
+                    0,
+                    bits.len() as u32,
+                    BitReader::with_bit_len(&bytes, bits.len() as u64).unwrap(),
+                );
+            }
+            assert_eq!(sink.stats.movement_rpc_errors, 0);
+            assert_eq!(sink.records.movement.len(), 4);
+            assert!(
+                sink.records
+                    .movement
+                    .iter()
+                    .all(|movement| movement.packet_id == 41 && movement.time_ms == 900)
+            );
+            if enabled {
+                assert_eq!(sink.records.movement_provenance.len(), 4);
+                for (index, provenance) in sink.records.movement_provenance.iter().enumerate() {
+                    assert_eq!(
+                        *provenance,
+                        MovementProvenance {
+                            source: Some(MovementSource {
+                                initial_packet_id: 7,
+                                completion_packet_id: 41,
+                                channel_index: 7,
+                                actor_net_guid: 89,
+                                object_net_guid: Some(0),
+                                bunch_index: 2,
+                                block_index: 3,
+                                rpc_index: 1 + (index / 2) as u32,
+                                rpc_handle: 0,
+                            }),
+                            array_ordinal: 0,
+                            update_ordinal: 0,
+                            update_index: 4,
+                            component_ordinal: 0,
+                            move_index: (index % 2) as u32,
+                        }
+                    );
+                }
+            } else {
+                assert_eq!(sink.records.movement_provenance.capacity(), 0);
+                assert!(sink.records.movement_provenance.is_empty());
+            }
+            observed.push((
+                format!("{:?}", sink.records.movement),
+                format!("{:?}", sink.records.fields),
+                sink.stats.counters(),
+            ));
+        }
+        assert_eq!(
+            observed[0], observed[1],
+            "collection cannot change existing rows or counters"
+        );
+    }
+
+    #[test]
+    fn movement_provenance_clears_between_packets_and_does_not_invent_a_source() {
+        let bits = movement_rpc_fixture(1, false);
+        let bytes = pack(&bits);
+        let mut rig = movement_test_rig();
+        rig.records.capture_movement_provenance = true;
+        let starting_rpc_total = u64::from(u32::MAX) + 7;
+        let mut cumulative_stats = ExportStats {
+            rpcs_emitted: starting_rpc_total,
+            ..ExportStats::default()
+        };
+        for (ordinal, packet_id) in [41, 43, 47].into_iter().enumerate() {
+            let mut sink = rig.sink();
+            // Pass::walk lends cumulative stats to each newly constructed sink.
+            std::mem::swap(&mut sink.stats, &mut cumulative_stats);
+            assert!(sink.records.movement_provenance.is_empty());
+            sink.packet_id = packet_id;
+            if packet_id != 47 {
+                sink.on_content_block_with_context(
+                    7,
+                    NetworkGuid(89),
+                    &actor_block(false),
+                    &ContentBlockContext {
+                        initial_packet_id: if packet_id == 41 { 7 } else { 43 },
+                        completion_packet_id: packet_id as i32,
+                        bunch_index: 2 + ordinal as u64,
+                        block_index: 0,
+                    },
+                );
+            }
+            sink.set_current_group_path(Arc::from("/Script/Test.Movement_ClassNetCache"));
+            for _ in 0..ordinal {
+                sink.on_rpc(9, 0, BitReader::new(&[]));
+            }
+            sink.on_rpc(
+                0,
+                bits.len() as u32,
+                BitReader::with_bit_len(&bytes, bits.len() as u64).unwrap(),
+            );
+            assert_eq!(sink.records.movement_provenance.len(), 1);
+            let source = sink.records.movement_provenance[0].source;
+            if packet_id != 47 {
+                assert_eq!(source.unwrap().rpc_index, ordinal as u32);
+                assert_eq!(source.unwrap().object_net_guid, None);
+                assert_eq!(source.unwrap().completion_packet_id, packet_id);
+            } else {
+                assert!(source.is_none(), "no framed source is an explicit absence");
+            }
+            std::mem::swap(&mut sink.stats, &mut cumulative_stats);
+        }
+        assert_eq!(cumulative_stats.rpcs_emitted, starting_rpc_total + 6);
+    }
+
+    #[test]
+    fn failed_movement_prefix_keeps_provenance_and_the_whole_raw_rpc() {
+        let bits = movement_rpc_fixture(3, true);
+        let bytes = pack(&bits);
+        let mut rig = movement_test_rig();
+        rig.records.capture_movement_provenance = true;
+        let mut sink = rig.sink();
+        sink.set_current_group_path(Arc::from("/Script/Test.Movement_ClassNetCache"));
+        sink.on_rpc(
+            0,
+            bits.len() as u32,
+            BitReader::with_bit_len(&bytes, bits.len() as u64).unwrap(),
+        );
+        assert_eq!(sink.stats.movement_rpc_errors, 1);
+        assert_eq!(sink.records.movement.len(), 2);
+        assert_eq!(sink.records.movement_provenance.len(), 2);
+        assert_eq!(sink.records.movement_provenance[0].move_index, 0);
+        assert_eq!(sink.records.movement_provenance[1].move_index, 1);
+        assert_eq!(sink.records.fields.len(), 1);
+        assert_eq!(sink.records.fields[0].bit_count, bits.len() as u32);
+        assert_eq!(
+            sink.records.fields[0].raw_bits.as_deref(),
+            Some(bytes.as_slice())
+        );
+    }
+
+    #[test]
+    fn unknown_native_component_bodies_keep_every_move_and_the_whole_raw_rpc() {
+        for body in ["input", "discrepancy"] {
+            let bits = movement_rpc_fixture_with_body(2, false, Some(body));
+            let bytes = pack(&bits);
+            let mut rig = movement_test_rig();
+            rig.records.capture_movement_provenance = true;
+            let mut sink = rig.sink();
+            sink.set_current_group_path(Arc::from("/Script/Test.Movement_ClassNetCache"));
+            sink.on_rpc(
+                0,
+                bits.len() as u32,
+                BitReader::with_bit_len(&bytes, bits.len() as u64).unwrap(),
+            );
+            assert_eq!(sink.stats.movement_rpc_errors, 1, "{body}");
+            assert_eq!(sink.stats.movement_component_errors, 1, "{body}");
+            assert_eq!(sink.stats.movement_component_complete, 0, "{body}");
+            assert_eq!(sink.stats.movement_component_input_headers, 1, "{body}");
+            assert_eq!(
+                sink.stats.movement_component_discrepancy_headers,
+                u64::from(body == "discrepancy"),
+                "{body}"
+            );
+            assert_eq!(sink.records.movement.len(), 2, "{body}");
+            assert_eq!(sink.records.movement_provenance.len(), 2, "{body}");
+            assert_eq!(sink.records.movement_provenance[0].move_index, 0, "{body}");
+            assert_eq!(sink.records.movement_provenance[1].move_index, 1, "{body}");
+            assert_eq!(sink.records.fields.len(), 1, "{body}");
+            assert_eq!(
+                sink.records.fields[0].bit_count,
+                bits.len() as u32,
+                "{body}"
+            );
+            assert_eq!(
+                sink.records.fields[0].raw_bits.as_deref(),
+                Some(bytes.as_slice()),
+                "{body}"
+            );
+        }
+    }
+
     #[test]
     fn a_failed_movement_decode_retains_the_whole_rpc_payload() {
         let mut update = Vec::new();
@@ -1369,7 +1703,7 @@ mod tests {
         }
         update.int_packed(4); // component stream handle 3
         update.int_packed(8);
-        update.extend(std::iter::repeat_n(false, 8)); // short u16 header
+        update.extend(std::iter::repeat_n(false, 8)); // short native i32 byte count
         update.int_packed(0);
 
         let mut array = Vec::new();

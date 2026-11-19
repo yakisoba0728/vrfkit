@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "retrieved_utc": "2026-11-16T01:02:15.841182+00:00",
+  "repository": "yakisoba0728/vrfkit",
+  "workflow_run": {
+    "id": 43782959411,
+    "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43782959411",
+    "attempt": 1,
+    "event": "pull_request",
+    "conclusion": "success",
+    "successful_jobs": 11
+  },
+  "pr_head_commit": "65d98f0b7455cb6b7b2a51c37867d0c025e1eacc",
+  "actions_checkout_commit": "22cd027c72bf7290c4fbb0be2b01c7a394432dbd",
+  "integration_merge_commit": "ed7dc30978261f27d3999b194344bcf55287860d",
+  "checkout_and_integration_tree": "fd9462cadb51d8cf14cc7e65aad2cb1054fd577f",
+  "checkout_tree_matches_actual_merge": true,
+  "tree_verification_urls": [
+    "https://api.github.com/repos/yakisoba0728/vrfkit/git/commits/22cd027c72bf7290c4fbb0be2b01c7a394432dbd",
+    "https://api.github.com/repos/yakisoba0728/vrfkit/git/commits/ed7dc30978261f27d3999b194344bcf55287860d"
+  ],
+  "provenance_note": "Actions tested the pull-request synthetic merge, not the PR head or later integration merge object. GitHub commit metadata confirms the synthetic and actual merge trees are identical.",
+  "log_hash_definition": "SHA-256 of the exact decoded log string returned by the GitHub job-log tool, encoded as UTF-8; BOM and original line endings retained. Not a ZIP or compressed-response digest.",
+  "windows_count_method": {
+    "method": "Observed successful check_docs.py live-suite summary; its pinned measure_tests implementation sums successful Cargo result lines and executed Python module counts.",
+    "raw_workspace_harness_output_in_job_log": false,
+    "guard_source": "https://github.com/yakisoba0728/vrfkit/blob/65d98f0b7455cb6b7b2a51c37867d0c025e1eacc/tools/check_docs.py",
+    "guard_source_sha256": "9fbfc8084a4f6126bd29112837c6a58e03dbbd8f2fe082cbd8417122cab5590e"
+  },
+  "jobs": [
+    {
+      "id": 133024113152,
+      "name": "Reusable CI / rust",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43782959411/job/133024113152",
+      "checkout_commit": "22cd027c72bf7290c4fbb0be2b01c7a394432dbd",
+      "decoded_log_utf8_bytes": 125935,
+      "decoded_log_sha256": "5a7bfd0b74ae2dff1e58390b3563b88bc5c6d1fe0c97cac852842b9de4db9396",
+      "platform": "Windows",
+      "rust_toolchain": "1.86.0",
+      "workspace_tests_passed": 775,
+      "python_tests_executed": 1143,
+      "workspace_count_source": "check_docs.py live-suite summary",
+      "observed_summary": "tests: rust 775 (Windows), tools 1143",
+      "core_vrfkit": {
+        "harness_summaries": 9,
+        "passed": 135,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "feature_matrix_cases": 27
+    },
+    {
+      "id": 133024113303,
+      "name": "Reusable CI / Python 3.13 / windows-latest",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43782959411/job/133024113303",
+      "checkout_commit": "22cd027c72bf7290c4fbb0be2b01c7a394432dbd",
+      "decoded_log_utf8_bytes": 32595,
+      "decoded_log_sha256": "5271e0f7083932de5c41afcdc01290f4322f410881b56aa6ab98933af818d6c7",
+      "python_version": "3.13",
+      "runner_platform": "windows-latest",
+      "tests_executed": 1143,
+      "unittest_result": "OK",
+      "skipped_tests": 0,
+      "count_source": "Observed unittest Ran N tests line and unqualified OK result."
+    },
+    {
+      "id": 133024113351,
+      "name": "Reusable CI / Python 3.13 / ubuntu-latest",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43782959411/job/133024113351",
+      "checkout_commit": "22cd027c72bf7290c4fbb0be2b01c7a394432dbd",
+      "decoded_log_utf8_bytes": 32976,
+      "decoded_log_sha256": "4d8ddcbf9f5c66fbf09c39e3271415a5f5e23a72bc4fa5fd5832779fc43301ea",
+      "python_version": "3.13",
+      "runner_platform": "ubuntu-latest",
+      "tests_executed": 1143,
+      "unittest_result": "OK",
+      "skipped_tests": 0,
+      "count_source": "Observed unittest Ran N tests line and unqualified OK result."
+    },
+    {
+      "id": 133024113355,
+      "name": "Reusable CI / Python 3.12 / ubuntu-latest",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43782959411/job/133024113355",
+      "checkout_commit": "22cd027c72bf7290c4fbb0be2b01c7a394432dbd",
+      "decoded_log_utf8_bytes": 32977,
+      "decoded_log_sha256": "e04128847c006856a87b5fe0dae35127e5aa31bef0819b3bd825ee41ffbc0d92",
+      "python_version": "3.12",
+      "runner_platform": "ubuntu-latest",
+      "tests_executed": 1143,
+      "unittest_result": "OK",
+      "skipped_tests": 0,
+      "count_source": "Observed unittest Ran N tests line and unqualified OK result."
+    },
+    {
+      "id": 133024113366,
+      "name": "Reusable CI / Rust 1.86 / Linux",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43782959411/job/133024113366",
+      "checkout_commit": "22cd027c72bf7290c4fbb0be2b01c7a394432dbd",
+      "decoded_log_utf8_bytes": 190050,
+      "decoded_log_sha256": "935447db93e9f5593b8f33534fb92e9eee4f23353ab18be4431676c1ff432a10",
+      "platform": "Linux",
+      "rust_toolchain": "1.86.0",
+      "workspace_tests": {
+        "harness_summaries": 35,
+        "passed": 774,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "workspace_count_source": "Sum of Cargo harness result lines scoped to the all-feature workspace step, excluding the later core-only step.",
+      "core_vrfkit": {
+        "harness_summaries": 9,
+        "passed": 135,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0
+      }
+    },
+    {
+      "id": 133024114702,
+      "name": "Reusable CI / Python 3.12 / windows-latest",
+      "conclusion": "success",
+      "url": "https://github.com/yakisoba0728/vrfkit/actions/runs/43782959411/job/133024114702",
+      "checkout_commit": "22cd027c72bf7290c4fbb0be2b01c7a394432dbd",
+      "decoded_log_utf8_bytes": 32594,
+      "decoded_log_sha256": "dcc9060a5a9fafdfbb17465de0966a4d1638241e4eceebf31973c6eddd9ed1e3",
+      "python_version": "3.12",
+      "runner_platform": "windows-latest",
+      "tests_executed": 1143,
+      "unittest_result": "OK",
+      "skipped_tests": 0,
+      "count_source": "Observed unittest Ran N tests line and unqualified OK result."
+    }
+  ],
+  "test_suites_rerun_for_this_receipt": false,
+  "private_replays_read": 0,
+  "full_logs_embedded": false,
+  "observed_totals": {
+    "rust_windows_msrv_workspace": 775,
+    "rust_linux_msrv_all_features_workspace": 774,
+    "python_matrix_jobs": 4,
+    "python_tests_per_matrix_job": [
+      1143,
+      1143,
+      1143,
+      1143
+    ],
+    "rust_core_tests_per_platform": {
+      "Windows": 135,
+      "Linux": 135
+    }
+  }
+}

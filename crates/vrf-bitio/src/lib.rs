@@ -60,6 +60,21 @@ pub enum BitError {
         /// The rejected maximum.
         max: u32,
     },
+    /// `read_bits` was asked for more bits than a `u64` can hold.
+    InvalidReadWidth {
+        /// The rejected bit count.
+        count: u32,
+    },
+    /// A compressed rotator's bit width cannot be used with its `u32` scale.
+    InvalidRotatorWidth {
+        /// The rejected width; supported widths are `0..=31`.
+        width: u32,
+    },
+    /// `read_quantized_vector` was given a zero divisor.
+    InvalidVectorScale {
+        /// The rejected scale.
+        scale: u32,
+    },
     /// A length prefix beyond the caller's cap or the remaining stream.
     InvalidLength {
         /// Where the length prefix started.
@@ -100,6 +115,15 @@ impl fmt::Display for BitError {
             ),
             Self::InvalidSerializedIntMax { max } => {
                 write!(f, "serialized int maximum must be positive, got {max}")
+            }
+            Self::InvalidReadWidth { count } => {
+                write!(f, "bit read width must be 0..=64, got {count}")
+            }
+            Self::InvalidRotatorWidth { width } => {
+                write!(f, "compressed rotator width must be 0..=31, got {width}")
+            }
+            Self::InvalidVectorScale { scale } => {
+                write!(f, "quantized vector scale must be positive, got {scale}")
             }
             Self::InvalidLength { position, length } => {
                 write!(f, "invalid length {length} at position {position}")
@@ -235,9 +259,13 @@ impl<'a> BitReader<'a> {
     }
 
     /// Read `count` bits (0..=64) LSB-first into the low bits of a `u64`.
+    /// A larger count returns [`BitError::InvalidReadWidth`] without consuming
+    /// input, including when the stream would also be too short.
     #[inline]
     pub fn read_bits(&mut self, count: u32) -> Result<u64> {
-        debug_assert!(count <= 64, "read_bits supports at most 64 bits");
+        if count > 64 {
+            return Err(BitError::InvalidReadWidth { count });
+        }
         if count == 0 {
             return Ok(0);
         }
@@ -366,8 +394,13 @@ impl<'a> BitReader<'a> {
     /// divide by 1.0, which is exact); width 0: 3 x f32 unscaled, else 3 x f64.
     /// Movement matches an independent parser to 0.0005 through this
     /// arithmetic: do not restyle it.
+    /// A zero `scale` returns [`BitError::InvalidVectorScale`] before reading
+    /// the header, even if that header would select an unscaled encoding.
     #[inline]
     pub fn read_quantized_vector(&mut self, scale: u32) -> Result<[f64; 3]> {
+        if scale == 0 {
+            return Err(BitError::InvalidVectorScale { scale });
+        }
         let info = u64::from(self.read_serialized_int(128)?);
         let component_bits = (info & 63) as u32;
         let extra_info = info >> 6;
@@ -414,8 +447,13 @@ impl<'a> BitReader<'a> {
     /// Read Unreal's compressed rotator: pitch, yaw and roll, each a presence
     /// bit and then, if set, a `width`-bit value (16 short, 8 byte) scaled to
     /// degrees. `360 / 2^width` divides by a power of two, so it is exact in `f32`.
+    /// Widths `0..=31` are supported; a larger width returns
+    /// [`BitError::InvalidRotatorWidth`] without consuming presence bits.
     #[inline]
     pub fn read_compressed_rotator(&mut self, width: u32) -> Result<[f32; 3]> {
+        if width >= u32::BITS {
+            return Err(BitError::InvalidRotatorWidth { width });
+        }
         let scale = 360.0 / (1u32 << width) as f32;
         let mut component = || -> Result<f32> {
             Ok(if self.read_bit()? {

@@ -1,0 +1,5244 @@
+{
+  "schema_version": 1,
+  "started_utc": "2026-11-16T14:01:18.708148+00:00",
+  "status": "completed",
+  "purpose": "diagnostic stage attribution, not an optimization comparison",
+  "provenance": {
+    "baseline": {
+      "sha256": "182bf7c98de925f374b26bccf279507fe89f91c22ef2de9ff5f151cfe3b77f38",
+      "bytes": 38828984
+    },
+    "profile": {
+      "sha256": "5dd4bc3d8e6f26e4783fc7deb38a21c9151a39f36db00696f7431337e3e6de88",
+      "bytes": 39585504
+    },
+    "input": {
+      "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "bytes": 61015648
+    }
+  },
+  "samples": [
+    {
+      "order": 0,
+      "variant": "baseline",
+      "measurements": {
+        "wall_seconds": 2.3008675330056576,
+        "cpu_user_seconds": 5.34622,
+        "cpu_system_seconds": 0.394265,
+        "cpu_total_seconds": 5.740485,
+        "cpu_utilization_percent": 249.49219881863945,
+        "peak_rss_bytes": 134283264,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87352,
+        "input_mib_per_second": 25.29005062732627,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676355
+      },
+      "profile": [],
+      "output_fingerprint": "f277ba4296d08872115cea99af8510ab38e6ddf521daf2583b79b3abe0b6688d",
+      "equivalent": true
+    },
+    {
+      "order": 1,
+      "variant": "profile",
+      "measurements": {
+        "wall_seconds": 1.9503147930008708,
+        "cpu_user_seconds": 4.4959810000000004,
+        "cpu_system_seconds": 0.229172,
+        "cpu_total_seconds": 4.725153000000001,
+        "cpu_utilization_percent": 242.27642721868494,
+        "peak_rss_bytes": 135954432,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87416,
+        "input_mib_per_second": 29.83572529178801,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676355
+      },
+      "profile": [
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable CheckpointIdentity.checkpoint_id",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 3652195,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable CheckpointIdentity.checkpoint_index",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1175055,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.actor_net_guid",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 358857,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.bit_count",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 473331,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.channel_index",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 623372,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.compatible_checksum",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1856911,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.field_name",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 23454295,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.group_path",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 2549630,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.handle",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 477402,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.object_net_guid",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 3099352,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.packet_id",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 428401,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.raw_bits",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 7442398,
+          "value_bytes": 4152024
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.time_ms",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1542476,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_bool",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1002723,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_f64",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1739446,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_i64",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 2052377,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_str",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 4524863,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointFieldsTable",
+          "rows": 439892,
+          "build_ns": 57451157,
+          "drop_ns": 14612566,
+          "encode_ns": 176968595,
+          "close_ns": 2301825
+        },
+        {
+          "label": "thread checkpoint_fields",
+          "wall_ns": 499148802,
+          "cpu_ns": 255498120
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.actor_net_guid",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 3475,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.archetype_path",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 280485,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.channel_index",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 11137,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.class_path",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 394463,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.event",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 37135,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.packet_id",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 3105,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_pitch",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 14582,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_roll",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 13800,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_vx",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 11898,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_vy",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 11016,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_vz",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 13470,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_x",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 35763,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_y",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 11017,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_yaw",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 15303,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_z",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 14111,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.time_ms",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 38837,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_archetype_outer_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 495693,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_archetype_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 455905,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_guid_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 365449,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 20420,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.block_index",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 246825,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.channel_index",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 19288,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.class_guid_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 620278,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.class_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 101029,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.delete_flags",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 18528,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.field_row_count",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 23734,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.field_row_start",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 59308,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.function_count",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 21281,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.function_count_source",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 165635,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.group_declared",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 94099,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.group_resolution_source",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 656641,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.has_rep_layout",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 140988,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.is_actor",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 72337,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.is_deleted",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 57786,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.is_stably_named",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 74031,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.object_guid_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 1027570,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.object_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 392179,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.object_outer_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 255948,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.outer_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 43995,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.packet_id",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 19109,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.resolution_memo_hit",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 53168,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.resolved_group_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 1458368,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.time_ms",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 21833,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.compatible_checksum",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 41753,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.exported_flag",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 47131,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_base",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 1078275,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_index",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 147289,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_kind",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 37776,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_number",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 189922,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.group_ordinal",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 348704,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.handle",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 69062,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.path_name_index",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 46117,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.rendered_name",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 813953,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.slot",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 121989,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.declared_slots",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 8672,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.group_path",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 549503,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.ordinal",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 34251,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.path_name_index",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 6089,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.flags",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 69131,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.literal_path",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 3497281,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.name_index",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 348868,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 98037,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.ordinal",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 620528,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.outer_net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 102761,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.path_is_string",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 248556,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointIdentity.checkpoint_id",
+          "batches": 36,
+          "rows": 290690,
+          "build_ns": 2187525,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointIdentity.checkpoint_index",
+          "batches": 36,
+          "rows": 290690,
+          "build_ns": 279753,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable NetGuidRecord.net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 1207337,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable NetGuidRecord.outer_net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 446000,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable NetGuidRecord.path",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 7961765,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointActorsTable",
+          "rows": 3970,
+          "build_ns": 951487,
+          "drop_ns": 263300,
+          "encode_ns": 1364448,
+          "close_ns": 711743
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 22403,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 2194,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable NetGuidRecord.net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 24756,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable NetGuidRecord.outer_net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 10576,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable NetGuidRecord.path",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 113207,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointNetGuidsTable",
+          "rows": 100639,
+          "build_ns": 10742449,
+          "drop_ns": 2423156,
+          "encode_ns": 16076900,
+          "close_ns": 1452689
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_archetype_outer_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 72908,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_archetype_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 186626,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_guid_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 112286,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2945,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.block_index",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 36133,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.channel_index",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2624,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.class_guid_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 82823,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.class_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 19318,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.delete_flags",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2173,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.field_row_count",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 3425,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.field_row_start",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 7992,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.function_count",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2334,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.function_count_source",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 76623,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.group_declared",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 12359,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.group_resolution_source",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 29394,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.has_rep_layout",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 20761,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.is_actor",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 7251,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.is_deleted",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 5699,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.is_stably_named",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 9514,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.object_guid_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 116633,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.object_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 47139,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.object_outer_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 153056,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.outer_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 8132,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.packet_id",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 3295,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.resolution_memo_hit",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 6780,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.resolved_group_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 286584,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.time_ms",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 5257,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 105587,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 9785,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointBlocksTable",
+          "rows": 27930,
+          "build_ns": 8899835,
+          "drop_ns": 2039438,
+          "encode_ns": 13668137,
+          "close_ns": 2339271
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.flags",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 1833,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.literal_path",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 83995,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.name_index",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 8983,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 2104,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.ordinal",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 37405,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.outer_net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 2874,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.path_is_string",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 11247,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 18227,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 58616,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointGuidEntriesTable",
+          "rows": 100639,
+          "build_ns": 6044250,
+          "drop_ns": 2838741,
+          "encode_ns": 16416503,
+          "close_ns": 2136971
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.declared_slots",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 1822,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.group_path",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 101039,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.ordinal",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 21152,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.path_name_index",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 1452,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 11457,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 1592,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportGroupsTable",
+          "rows": 10296,
+          "build_ns": 790990,
+          "drop_ns": 453361,
+          "encode_ns": 981432,
+          "close_ns": 413131
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.compatible_checksum",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 3165,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.exported_flag",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 3525,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_base",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 90384,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_index",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 14211,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_kind",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 2614,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_number",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 17056,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.group_ordinal",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 34511,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.handle",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 2874,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.path_name_index",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 3756,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.rendered_name",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 90143,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.slot",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 6860,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 137844,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 5368,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportFieldsTable",
+          "rows": 61164,
+          "build_ns": 3812678,
+          "drop_ns": 1984765,
+          "encode_ns": 14057932,
+          "close_ns": 410948
+        },
+        {
+          "label": "thread checkpoints",
+          "wall_ns": 517965891,
+          "cpu_ns": 507645955
+        },
+        {
+          "label": "decompression checkpoint",
+          "calls": 21,
+          "wall_ns": 26280235
+        },
+        {
+          "label": "thread prefetch",
+          "wall_ns": 1809105507,
+          "cpu_ns": 392282891
+        },
+        {
+          "label": "input_read replaydata",
+          "bytes": 54933362,
+          "wall_ns": 62407642
+        },
+        {
+          "label": "decompression replaydata",
+          "calls": 22,
+          "wall_ns": 328604933
+        },
+        {
+          "label": "thread main",
+          "wall_ns": 1896836223,
+          "cpu_ns": 1873261197
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.actor_net_guid",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1354751,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.bit_count",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 2246645,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.channel_index",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1828964,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.compatible_checksum",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 8441241,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.field_name",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 49917669,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.group_path",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 24484945,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.handle",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 2595173,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.object_net_guid",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 8808765,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.packet_id",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1485023,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.raw_bits",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 35601091,
+          "value_bytes": 17491180
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.time_ms",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 2777971,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_bool",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 3582504,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_f64",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 8612287,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_i64",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 8739794,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_str",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 29441329,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::fields::FieldsTable",
+          "rows": 1657000,
+          "build_ns": 194174327,
+          "drop_ns": 36519624,
+          "encode_ns": 723364763,
+          "close_ns": 5528358
+        },
+        {
+          "label": "thread fields",
+          "wall_ns": 1908429012,
+          "cpu_ns": 999390320
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.character_net_guid",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1890990,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.move_type",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1541335,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.movement_state",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1640842,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.packet_id",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 2133684,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pitch",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 2077108,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pos_x",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1679665,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pos_y",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 2097871,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pos_z",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 2107263,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.time_ms",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 2332608,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.timestamp",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1663322,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.vel_x",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 3506834,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.vel_y",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1767730,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.vel_z",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1677795,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.yaw",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1955806,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::movement::MovementTable",
+          "rows": 2634029,
+          "build_ns": 34573900,
+          "drop_ns": 7881,
+          "encode_ns": 598414194,
+          "close_ns": 1724871
+        },
+        {
+          "label": "thread movement",
+          "wall_ns": 1912709723,
+          "cpu_ns": 663777454
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.actor_net_guid",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 4016,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.archetype_path",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 408184,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.channel_index",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 21482,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.class_path",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 607719,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.event",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 46629,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.packet_id",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 4918,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_pitch",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 24987,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_roll",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 23815,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_vx",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 23055,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_vy",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 22293,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_vz",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 26219,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_x",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 26429,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_y",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 23134,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_yaw",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 25318,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_z",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 23976,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.time_ms",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 34050,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::actors::ActorsTable",
+          "rows": 4600,
+          "build_ns": 1413791,
+          "drop_ns": 574911,
+          "encode_ns": 1845420,
+          "close_ns": 1040399
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.group",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 24106,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.id",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 14552,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.metadata",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 3726,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_name",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 22212,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_seconds",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 1271,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_size",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 401,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_tag",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 661,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.raw_payload",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 7852,
+          "value_bytes": 13392
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.time1",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 1512,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.time2",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 431,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.word0",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 1883,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.word1",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 2924,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::events::EventsTable",
+          "rows": 254,
+          "build_ns": 100930,
+          "drop_ns": 22563,
+          "encode_ns": 337800,
+          "close_ns": 329597
+        },
+        {
+          "label": "table vrf_export::tables::partials::PartialsTable",
+          "rows": 0,
+          "build_ns": 0,
+          "drop_ns": 0,
+          "encode_ns": 0,
+          "close_ns": 46348
+        },
+        {
+          "label": "column vrf_export::tables::net_guids::NetGuidsTable NetGuidRecord.net_guid",
+          "batches": 3,
+          "rows": 20566,
+          "build_ns": 13049,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::net_guids::NetGuidsTable NetGuidRecord.outer_net_guid",
+          "batches": 3,
+          "rows": 20566,
+          "build_ns": 51638,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::net_guids::NetGuidsTable NetGuidRecord.path",
+          "batches": 3,
+          "rows": 20566,
+          "build_ns": 874584,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::net_guids::NetGuidsTable",
+          "rows": 20566,
+          "build_ns": 945048,
+          "drop_ns": 239515,
+          "encode_ns": 2196378,
+          "close_ns": 951347
+        }
+      ],
+      "output_fingerprint": "f277ba4296d08872115cea99af8510ab38e6ddf521daf2583b79b3abe0b6688d",
+      "equivalent": true
+    },
+    {
+      "order": 2,
+      "variant": "profile",
+      "measurements": {
+        "wall_seconds": 1.8845259449954028,
+        "cpu_user_seconds": 4.247451,
+        "cpu_system_seconds": 0.30276,
+        "cpu_total_seconds": 4.550211,
+        "cpu_utilization_percent": 241.45122608068417,
+        "peak_rss_bytes": 133132288,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87416,
+        "input_mib_per_second": 30.877291210032304,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676355
+      },
+      "profile": [
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable CheckpointIdentity.checkpoint_id",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 5037877,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable CheckpointIdentity.checkpoint_index",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 737502,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.actor_net_guid",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 615238,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.bit_count",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 593908,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.channel_index",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 472540,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.compatible_checksum",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1825043,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.field_name",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 28267515,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.group_path",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 2592753,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.handle",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 555411,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.object_net_guid",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 2159845,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.packet_id",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 796682,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.raw_bits",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 8744156,
+          "value_bytes": 4152024
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.time_ms",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1113699,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_bool",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1199292,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_f64",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1922058,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_i64",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 2285951,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_str",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 5218050,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointFieldsTable",
+          "rows": 439892,
+          "build_ns": 65384482,
+          "drop_ns": 24350907,
+          "encode_ns": 173250967,
+          "close_ns": 3095619
+        },
+        {
+          "label": "thread checkpoint_fields",
+          "wall_ns": 501281553,
+          "cpu_ns": 267996906
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.actor_net_guid",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 3485,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.archetype_path",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 304480,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.channel_index",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 10195,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.class_path",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 321716,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.event",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 40940,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.packet_id",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 4106,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_pitch",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 14511,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_roll",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 21142,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_vx",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 78065,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_vy",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 230431,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_vz",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 27210,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_x",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 34240,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_y",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 11226,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_yaw",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 221598,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_z",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 117283,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.time_ms",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 38507,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_archetype_outer_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 431227,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_archetype_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 372561,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_guid_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 395114,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 18587,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.block_index",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 195228,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.channel_index",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 19177,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.class_guid_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 624652,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.class_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 157462,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.delete_flags",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 18186,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.field_row_count",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 45947,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.field_row_start",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 56854,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.function_count",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 19097,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.function_count_source",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 140107,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.group_declared",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 69032,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.group_resolution_source",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 494971,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.has_rep_layout",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 163021,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.is_actor",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 65808,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.is_deleted",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 43714,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.is_stably_named",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 75531,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.object_guid_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 917347,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.object_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 313273,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.object_outer_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 311281,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.outer_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 38267,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.packet_id",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 19357,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.resolution_memo_hit",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 42443,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.resolved_group_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 1064604,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.time_ms",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 20391,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.compatible_checksum",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 43473,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.exported_flag",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 54640,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_base",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 1045076,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_index",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 162800,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_kind",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 42712,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_number",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 326793,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.group_ordinal",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 469053,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.handle",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 43615,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.path_name_index",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 50474,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.rendered_name",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 1191913,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.slot",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 105487,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.declared_slots",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 14342,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.group_path",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 255098,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.ordinal",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 34040,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.path_name_index",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 5789,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.flags",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 68683,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.literal_path",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 3221786,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.name_index",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 291048,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 88121,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.ordinal",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 425814,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.outer_net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 98334,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.path_is_string",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 280894,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointIdentity.checkpoint_id",
+          "batches": 36,
+          "rows": 290690,
+          "build_ns": 2205028,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointIdentity.checkpoint_index",
+          "batches": 36,
+          "rows": 290690,
+          "build_ns": 319551,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable NetGuidRecord.net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 404738,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable NetGuidRecord.outer_net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 375777,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable NetGuidRecord.path",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 7345066,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointActorsTable",
+          "rows": 3970,
+          "build_ns": 1562191,
+          "drop_ns": 479219,
+          "encode_ns": 1692463,
+          "close_ns": 723400
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 15603,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 2083,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable NetGuidRecord.net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 32428,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable NetGuidRecord.outer_net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 8112,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable NetGuidRecord.path",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 196540,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointNetGuidsTable",
+          "rows": 100639,
+          "build_ns": 9397053,
+          "drop_ns": 3044220,
+          "encode_ns": 15411259,
+          "close_ns": 1260815
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_archetype_outer_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 62602,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_archetype_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 767586,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_guid_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 43965,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2564,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.block_index",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 31386,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.channel_index",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2784,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.class_guid_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 96873,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.class_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 11237,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.delete_flags",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2174,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.field_row_count",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 5017,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.field_row_start",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 10195,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.function_count",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2794,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.function_count_source",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 23735,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.group_declared",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 12248,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.group_resolution_source",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 30235,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.has_rep_layout",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 19409,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.is_actor",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 7871,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.is_deleted",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 5969,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.is_stably_named",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 9074,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.object_guid_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 98475,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.object_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 35883,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.object_outer_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 32939,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.outer_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 4246,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.packet_id",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2553,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.resolution_memo_hit",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 5808,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.resolved_group_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 71035,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.time_ms",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2724,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 28792,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 59217,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointBlocksTable",
+          "rows": 27930,
+          "build_ns": 8111147,
+          "drop_ns": 2087557,
+          "encode_ns": 13342217,
+          "close_ns": 2282005
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.flags",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 1543,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.literal_path",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 70574,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.name_index",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 8753,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 2053,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.ordinal",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 37075,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.outer_net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 3265,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.path_is_string",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 7861,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 15323,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 2053,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointGuidEntriesTable",
+          "rows": 100639,
+          "build_ns": 5454357,
+          "drop_ns": 3334253,
+          "encode_ns": 16239871,
+          "close_ns": 1540028
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.declared_slots",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 2213,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.group_path",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 70464,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.ordinal",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 16855,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.path_name_index",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 1762,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 11737,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 1562,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportGroupsTable",
+          "rows": 10296,
+          "build_ns": 468563,
+          "drop_ns": 599056,
+          "encode_ns": 1128609,
+          "close_ns": 353803
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.compatible_checksum",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 2954,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.exported_flag",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 4326,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_base",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 75281,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_index",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 11958,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_kind",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 2613,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_number",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 13590,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.group_ordinal",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 29013,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.handle",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 2924,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.path_name_index",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 3395,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.rendered_name",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 69092,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.slot",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 7371,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 19719,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 2584,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportFieldsTable",
+          "rows": 61164,
+          "build_ns": 4233022,
+          "drop_ns": 2254365,
+          "encode_ns": 13345330,
+          "close_ns": 329497
+        },
+        {
+          "label": "thread checkpoints",
+          "wall_ns": 519479927,
+          "cpu_ns": 504563275
+        },
+        {
+          "label": "decompression checkpoint",
+          "calls": 21,
+          "wall_ns": 23597194
+        },
+        {
+          "label": "thread prefetch",
+          "wall_ns": 1750163280,
+          "cpu_ns": 342465254
+        },
+        {
+          "label": "input_read replaydata",
+          "bytes": 54933362,
+          "wall_ns": 16999767
+        },
+        {
+          "label": "decompression replaydata",
+          "calls": 22,
+          "wall_ns": 322913484
+        },
+        {
+          "label": "thread main",
+          "wall_ns": 1838700284,
+          "cpu_ns": 1780888627
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.actor_net_guid",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1427242,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.bit_count",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1748321,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.channel_index",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1660112,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.compatible_checksum",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 8503584,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.field_name",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 49469058,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.group_path",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 24737757,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.handle",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 2092641,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.object_net_guid",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 8817026,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.packet_id",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1547690,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.raw_bits",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 39575466,
+          "value_bytes": 17491180
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.time_ms",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 2198261,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_bool",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 3268198,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_f64",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 8214073,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_i64",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 10141738,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_str",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 27672253,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::fields::FieldsTable",
+          "rows": 1657000,
+          "build_ns": 194928644,
+          "drop_ns": 41418480,
+          "encode_ns": 693390256,
+          "close_ns": 4649768
+        },
+        {
+          "label": "thread fields",
+          "wall_ns": 1848975382,
+          "cpu_ns": 960405160
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.character_net_guid",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1854495,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.move_type",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1635818,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.movement_state",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1589776,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.packet_id",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1978332,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pitch",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1928734,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pos_x",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1831421,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pos_y",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1765155,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pos_z",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1870737,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.time_ms",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 2195289,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.timestamp",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1638038,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.vel_x",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1626775,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.vel_y",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1762784,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.vel_z",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1830577,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.yaw",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1822989,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::movement::MovementTable",
+          "rows": 2634029,
+          "build_ns": 29364791,
+          "drop_ns": 8040,
+          "encode_ns": 606079421,
+          "close_ns": 2303408
+        },
+        {
+          "label": "thread movement",
+          "wall_ns": 1853597024,
+          "cpu_ns": 658149758
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.actor_net_guid",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 4216,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.archetype_path",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 461493,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.channel_index",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 9094,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.class_path",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 595842,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.event",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 46989,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.packet_id",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 4166,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_pitch",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 24266,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_roll",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 22723,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_vx",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 21913,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_vy",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 20841,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_vz",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 24737,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_x",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 25608,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_y",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 21832,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_yaw",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 24095,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_z",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 22052,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.time_ms",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 57535,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::actors::ActorsTable",
+          "rows": 4600,
+          "build_ns": 1420921,
+          "drop_ns": 616011,
+          "encode_ns": 1363306,
+          "close_ns": 1125575
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.group",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 16855,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.id",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 13310,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.metadata",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 3315,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_name",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 9173,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_seconds",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 1151,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_size",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 400,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_tag",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 772,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.raw_payload",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 7180,
+          "value_bytes": 13392
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.time1",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 1132,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.time2",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 421,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.word0",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 1633,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.word1",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 2223,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::events::EventsTable",
+          "rows": 254,
+          "build_ns": 70084,
+          "drop_ns": 19980,
+          "encode_ns": 417147,
+          "close_ns": 400121
+        },
+        {
+          "label": "table vrf_export::tables::partials::PartialsTable",
+          "rows": 0,
+          "build_ns": 0,
+          "drop_ns": 0,
+          "encode_ns": 0,
+          "close_ns": 17416
+        },
+        {
+          "label": "column vrf_export::tables::net_guids::NetGuidsTable NetGuidRecord.net_guid",
+          "batches": 3,
+          "rows": 20566,
+          "build_ns": 9894,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::net_guids::NetGuidsTable NetGuidRecord.outer_net_guid",
+          "batches": 3,
+          "rows": 20566,
+          "build_ns": 36866,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::net_guids::NetGuidsTable NetGuidRecord.path",
+          "batches": 3,
+          "rows": 20566,
+          "build_ns": 884778,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::net_guids::NetGuidsTable",
+          "rows": 20566,
+          "build_ns": 936375,
+          "drop_ns": 256951,
+          "encode_ns": 2063622,
+          "close_ns": 735017
+        }
+      ],
+      "output_fingerprint": "f277ba4296d08872115cea99af8510ab38e6ddf521daf2583b79b3abe0b6688d",
+      "equivalent": true
+    },
+    {
+      "order": 3,
+      "variant": "baseline",
+      "measurements": {
+        "wall_seconds": 2.0126841250021243,
+        "cpu_user_seconds": 4.699258,
+        "cpu_system_seconds": 0.287259,
+        "cpu_total_seconds": 4.986517,
+        "cpu_utilization_percent": 247.75457500042322,
+        "peak_rss_bytes": 140062720,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87400,
+        "input_mib_per_second": 28.91117174008761,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676355
+      },
+      "profile": [],
+      "output_fingerprint": "f277ba4296d08872115cea99af8510ab38e6ddf521daf2583b79b3abe0b6688d",
+      "equivalent": true
+    },
+    {
+      "order": 4,
+      "variant": "baseline",
+      "measurements": {
+        "wall_seconds": 1.8450031570027932,
+        "cpu_user_seconds": 4.042055,
+        "cpu_system_seconds": 0.35473099999999996,
+        "cpu_total_seconds": 4.3967860000000005,
+        "cpu_utilization_percent": 238.30777651039784,
+        "peak_rss_bytes": 126017536,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87392,
+        "input_mib_per_second": 31.538729988415017,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676355
+      },
+      "profile": [],
+      "output_fingerprint": "f277ba4296d08872115cea99af8510ab38e6ddf521daf2583b79b3abe0b6688d",
+      "equivalent": true
+    },
+    {
+      "order": 5,
+      "variant": "profile",
+      "measurements": {
+        "wall_seconds": 1.7100803070061374,
+        "cpu_user_seconds": 4.032958,
+        "cpu_system_seconds": 0.248444,
+        "cpu_total_seconds": 4.281402,
+        "cpu_utilization_percent": 250.3626281443772,
+        "peak_rss_bytes": 141492224,
+        "io_input_blocks": 0,
+        "io_output_blocks": 87416,
+        "input_mib_per_second": 34.027089931441175,
+        "parquet_bytes": 43984122,
+        "output_bytes": 44676355
+      },
+      "profile": [
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable CheckpointIdentity.checkpoint_id",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 3763311,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable CheckpointIdentity.checkpoint_index",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 543087,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.actor_net_guid",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 410948,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.bit_count",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 558029,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.channel_index",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 414018,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.compatible_checksum",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1804225,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.field_name",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 24498636,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.group_path",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 2613131,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.handle",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 505842,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.object_net_guid",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 2209724,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.packet_id",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 612848,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.raw_bits",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 7710389,
+          "value_bytes": 4152024
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.time_ms",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1144927,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_bool",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 991057,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_f64",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1812275,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_i64",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 1968762,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointFieldsTable FieldRecord.value_str",
+          "batches": 54,
+          "rows": 439892,
+          "build_ns": 4333353,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointFieldsTable",
+          "rows": 439892,
+          "build_ns": 56780960,
+          "drop_ns": 16007958,
+          "encode_ns": 159801470,
+          "close_ns": 3075255
+        },
+        {
+          "label": "thread checkpoint_fields",
+          "wall_ns": 493605107,
+          "cpu_ns": 241343623
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.actor_net_guid",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 3605,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.archetype_path",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 300114,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.channel_index",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 9984,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.class_path",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 388145,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.event",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 40180,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.packet_id",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 3415,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_pitch",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 14392,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_roll",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 13901,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_vx",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 22113,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_vy",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 11126,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_vz",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 12949,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_x",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 32789,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_y",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 10175,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_yaw",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 15503,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.spawn_z",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 12899,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable ActorRecord.time_ms",
+          "batches": 1,
+          "rows": 3970,
+          "build_ns": 39618,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_archetype_outer_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 392481,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_archetype_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 427063,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_guid_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 311532,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.actor_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 24406,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.block_index",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 207658,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.channel_index",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 26250,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.class_guid_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 474772,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.class_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 70564,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.delete_flags",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 15163,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.field_row_count",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 92646,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.field_row_start",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 54560,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.function_count",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 38758,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.function_count_source",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 137704,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.group_declared",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 72938,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.group_resolution_source",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 533741,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.has_rep_layout",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 120518,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.is_actor",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 297721,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.is_deleted",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 117804,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.is_stably_named",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 60990,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.object_guid_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 752263,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.object_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 314567,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.object_outer_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 220096,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.outer_net_guid",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 29764,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.packet_id",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 21582,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.resolution_memo_hit",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 96673,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.resolved_group_path",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 964129,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointBlockRecord.time_ms",
+          "batches": 3,
+          "rows": 24576,
+          "build_ns": 48602,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.compatible_checksum",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 43084,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.exported_flag",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 78978,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_base",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 1104868,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_index",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 193405,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_kind",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 43995,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.fname_number",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 233156,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.group_ordinal",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 352512,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.handle",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 45898,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.path_name_index",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 57284,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.rendered_name",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 1013052,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportFieldRecord.slot",
+          "batches": 7,
+          "rows": 57344,
+          "build_ns": 224302,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.declared_slots",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 23475,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.group_path",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 612427,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.ordinal",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 46138,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointExportGroupRecord.path_name_index",
+          "batches": 1,
+          "rows": 8192,
+          "build_ns": 7902,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.flags",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 68322,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.literal_path",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 3351234,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.name_index",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 279674,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 99279,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.ordinal",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 412292,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.outer_net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 148019,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointGuidEntryRecord.path_is_string",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 261948,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointIdentity.checkpoint_id",
+          "batches": 36,
+          "rows": 290690,
+          "build_ns": 2300827,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable CheckpointIdentity.checkpoint_index",
+          "batches": 36,
+          "rows": 290690,
+          "build_ns": 377478,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable NetGuidRecord.net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 370809,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable NetGuidRecord.outer_net_guid",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 336130,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointActorsTable NetGuidRecord.path",
+          "batches": 12,
+          "rows": 98304,
+          "build_ns": 6869487,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointActorsTable",
+          "rows": 3970,
+          "build_ns": 974263,
+          "drop_ns": 489866,
+          "encode_ns": 1703162,
+          "close_ns": 829318
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 15092,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 1893,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable NetGuidRecord.net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 21792,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable NetGuidRecord.outer_net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 8072,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointNetGuidsTable NetGuidRecord.path",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 95451,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointNetGuidsTable",
+          "rows": 100639,
+          "build_ns": 8780204,
+          "drop_ns": 2461737,
+          "encode_ns": 13245078,
+          "close_ns": 1123915
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_archetype_outer_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 75732,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_archetype_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 66749,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_guid_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 62312,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.actor_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2865,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.block_index",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 53650,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.channel_index",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2323,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.class_guid_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 101921,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.class_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 11848,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.delete_flags",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2454,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.field_row_count",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 3505,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.field_row_start",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 11117,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.function_count",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2163,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.function_count_source",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 20170,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.group_declared",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 7992,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.group_resolution_source",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 20630,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.has_rep_layout",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 20571,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.is_actor",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 7952,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.is_deleted",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 5618,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.is_stably_named",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 9183,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.object_guid_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 149201,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.object_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 132957,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.object_outer_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 44075,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.outer_net_guid",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 4847,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.packet_id",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2394,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.resolution_memo_hit",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 5649,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.resolved_group_path",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 120218,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointBlockRecord.time_ms",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 2474,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 27290,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointBlocksTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 3354,
+          "build_ns": 5929,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointBlocksTable",
+          "rows": 27930,
+          "build_ns": 7396945,
+          "drop_ns": 2027773,
+          "encode_ns": 13226392,
+          "close_ns": 2345274
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.flags",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 1753,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.literal_path",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 113508,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.name_index",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 10186,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 1722,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.ordinal",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 37436,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.outer_net_guid",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 2093,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointGuidEntryRecord.path_is_string",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 10396,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 16815,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointGuidEntriesTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 2335,
+          "build_ns": 1933,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointGuidEntriesTable",
+          "rows": 100639,
+          "build_ns": 5670521,
+          "drop_ns": 2307808,
+          "encode_ns": 18393444,
+          "close_ns": 1910170
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.declared_slots",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 1883,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.group_path",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 102181,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.ordinal",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 43064,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointExportGroupRecord.path_name_index",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 1783,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 14271,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportGroupsTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 2104,
+          "build_ns": 1602,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportGroupsTable",
+          "rows": 10296,
+          "build_ns": 930017,
+          "drop_ns": 934564,
+          "encode_ns": 1236352,
+          "close_ns": 499199
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.compatible_checksum",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 3155,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.exported_flag",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 4146,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_base",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 100619,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_index",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 16785,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_kind",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 3245,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.fname_number",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 18718,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.group_ordinal",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 35763,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.handle",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 3165,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.path_name_index",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 2854,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.rendered_name",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 130824,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointExportFieldRecord.slot",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 8252,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointIdentity.checkpoint_id",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 25298,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::checkpoints::CheckpointExportFieldsTable CheckpointIdentity.checkpoint_index",
+          "batches": 1,
+          "rows": 3820,
+          "build_ns": 3274,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::checkpoints::CheckpointExportFieldsTable",
+          "rows": 61164,
+          "build_ns": 4251977,
+          "drop_ns": 1872596,
+          "encode_ns": 14418785,
+          "close_ns": 596964
+        },
+        {
+          "label": "thread checkpoints",
+          "wall_ns": 512547174,
+          "cpu_ns": 496020296
+        },
+        {
+          "label": "decompression checkpoint",
+          "calls": 21,
+          "wall_ns": 24218904
+        },
+        {
+          "label": "thread prefetch",
+          "wall_ns": 1596670695,
+          "cpu_ns": 331257886
+        },
+        {
+          "label": "input_read replaydata",
+          "bytes": 54933362,
+          "wall_ns": 43551325
+        },
+        {
+          "label": "decompression replaydata",
+          "calls": 22,
+          "wall_ns": 284774330
+        },
+        {
+          "label": "thread main",
+          "wall_ns": 1666827902,
+          "cpu_ns": 1624782788
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.actor_net_guid",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1314913,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.bit_count",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1568647,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.channel_index",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1565595,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.compatible_checksum",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 7623716,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.field_name",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 43599754,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.group_path",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 20467530,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.handle",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1724861,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.object_net_guid",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 6695799,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.packet_id",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 1714625,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.raw_bits",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 32881156,
+          "value_bytes": 17491180
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.time_ms",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 4360417,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_bool",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 3161784,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_f64",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 7694622,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_i64",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 8443718,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::fields::FieldsTable FieldRecord.value_str",
+          "batches": 203,
+          "rows": 1657000,
+          "build_ns": 23212031,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::fields::FieldsTable",
+          "rows": 1657000,
+          "build_ns": 170218013,
+          "drop_ns": 24912325,
+          "encode_ns": 611151539,
+          "close_ns": 3085330
+        },
+        {
+          "label": "thread fields",
+          "wall_ns": 1675890656,
+          "cpu_ns": 841582028
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.character_net_guid",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1706134,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.move_type",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1653333,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.movement_state",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1668541,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.packet_id",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1858433,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pitch",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1631188,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pos_x",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 2180669,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pos_y",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1948246,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.pos_z",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1746965,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.time_ms",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 2161827,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.timestamp",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1568777,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.vel_x",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1986146,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.vel_y",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1812093,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.vel_z",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 1874953,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::movement::MovementTable MovementRecord.yaw",
+          "batches": 322,
+          "rows": 2634029,
+          "build_ns": 2110966,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::movement::MovementTable",
+          "rows": 2634029,
+          "build_ns": 32014770,
+          "drop_ns": 8149,
+          "encode_ns": 665349320,
+          "close_ns": 2080671
+        },
+        {
+          "label": "thread movement",
+          "wall_ns": 1680151727,
+          "cpu_ns": 716968526
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.actor_net_guid",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 3675,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.archetype_path",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 342857,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.channel_index",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 9554,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.class_path",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 624825,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.event",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 48602,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.packet_id",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 3435,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_pitch",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 24066,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_roll",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 23515,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_vx",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 21331,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_vy",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 21531,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_vz",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 23765,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_x",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 22703,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_y",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 21612,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_yaw",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 23976,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.spawn_z",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 47230,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::actors::ActorsTable ActorRecord.time_ms",
+          "batches": 1,
+          "rows": 4600,
+          "build_ns": 151925,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::actors::ActorsTable",
+          "rows": 4600,
+          "build_ns": 1462005,
+          "drop_ns": 396337,
+          "encode_ns": 1139067,
+          "close_ns": 1145156
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.group",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 17887,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.id",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 11117,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.metadata",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 2814,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_name",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 7652,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_seconds",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 961,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_size",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 361,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.payload_tag",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 1001,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.raw_payload",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 6159,
+          "value_bytes": 13392
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.time1",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 982,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.time2",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 380,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.word0",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 1642,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::events::EventsTable EventRecord.word1",
+          "batches": 1,
+          "rows": 254,
+          "build_ns": 2304,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::events::EventsTable",
+          "rows": 254,
+          "build_ns": 65767,
+          "drop_ns": 17396,
+          "encode_ns": 359152,
+          "close_ns": 233776
+        },
+        {
+          "label": "table vrf_export::tables::partials::PartialsTable",
+          "rows": 0,
+          "build_ns": 0,
+          "drop_ns": 0,
+          "encode_ns": 0,
+          "close_ns": 17176
+        },
+        {
+          "label": "column vrf_export::tables::net_guids::NetGuidsTable NetGuidRecord.net_guid",
+          "batches": 3,
+          "rows": 20566,
+          "build_ns": 10266,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::net_guids::NetGuidsTable NetGuidRecord.outer_net_guid",
+          "batches": 3,
+          "rows": 20566,
+          "build_ns": 42514,
+          "value_bytes": 0
+        },
+        {
+          "label": "column vrf_export::tables::net_guids::NetGuidsTable NetGuidRecord.path",
+          "batches": 3,
+          "rows": 20566,
+          "build_ns": 613978,
+          "value_bytes": 0
+        },
+        {
+          "label": "table vrf_export::tables::net_guids::NetGuidsTable",
+          "rows": 20566,
+          "build_ns": 670674,
+          "drop_ns": 249309,
+          "encode_ns": 1634620,
+          "close_ns": 1120089
+        }
+      ],
+      "output_fingerprint": "f277ba4296d08872115cea99af8510ab38e6ddf521daf2583b79b3abe0b6688d",
+      "equivalent": true
+    }
+  ],
+  "unmeasured": [
+    "allocation counts",
+    "allocated bytes",
+    "isolated disk I/O time"
+  ],
+  "provenance_after": {
+    "baseline": {
+      "sha256": "182bf7c98de925f374b26bccf279507fe89f91c22ef2de9ff5f151cfe3b77f38",
+      "bytes": 38828984
+    },
+    "profile": {
+      "sha256": "5dd4bc3d8e6f26e4783fc7deb38a21c9151a39f36db00696f7431337e3e6de88",
+      "bytes": 39585504
+    },
+    "input": {
+      "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "bytes": 61015648
+    }
+  },
+  "equivalent": true,
+  "output": {
+    "tables": {
+      "actors.parquet": {
+        "bytes": 87545,
+        "sha256": "92d09756cf4a723af4287ca974cef88d0a512db0e4cad53f1a63e42031f3731e"
+      },
+      "events.parquet": {
+        "bytes": 14801,
+        "sha256": "98373fab8deeb28abd823269718b5cef81b679bbd7be16ca709e8f2408aaa7eb"
+      },
+      "fields.parquet": {
+        "bytes": 16182850,
+        "sha256": "1f2523163d6d1127b88557ec23f9ab2e904ad1fe02a36bdd1fdbbc2a61d9403c"
+      },
+      "movement.parquet": {
+        "bytes": 24917591,
+        "sha256": "6d58428843e2729cf18270045d24c0e00cc1428ac289847b6a2c860402edad3b"
+      },
+      "net_guids.parquet": {
+        "bytes": 140325,
+        "sha256": "59d05749ccd076ace8cfa7832d4a5040d5f88c7f6a462d35783125db10ab6552"
+      },
+      "partials.parquet": {
+        "bytes": 2505,
+        "sha256": "8945eaca3d7e4f22c6fec2835b867f06e9023e14651d22874e1512fd11181d6d"
+      },
+      "checkpoint_actors.parquet": {
+        "bytes": 32426,
+        "sha256": "20b6206ecd12f9ac2c9045cb8b05632b806b4e44bd68eeb4b3e40804e5496122"
+      },
+      "checkpoint_blocks.parquet": {
+        "bytes": 149291,
+        "sha256": "7ab65e55538ff5daf91c32953adb2a4a0748840d333d41735f4e046fd5856422"
+      },
+      "checkpoint_export_fields.parquet": {
+        "bytes": 113797,
+        "sha256": "dd1f8688d33f2a868f423cc034945b30503e4bf27f371ebadfbea7f4eb76fdc0"
+      },
+      "checkpoint_export_groups.parquet": {
+        "bytes": 16991,
+        "sha256": "b04551eb2ff9867e37d382efeece9514319a922fc0a22fa1f11787ad7133596d"
+      },
+      "checkpoint_fields.parquet": {
+        "bytes": 1739291,
+        "sha256": "6a42d730d77221d722b90ce57665c48ead426de4e7158a9e4fc355a93b0efeed"
+      },
+      "checkpoint_guid_entries.parquet": {
+        "bytes": 315643,
+        "sha256": "02935b9404740b5fdca110a80b20bb7ab3176db40e743f5f7f48c6c383a0d0a0"
+      },
+      "checkpoint_net_guids.parquet": {
+        "bytes": 271066,
+        "sha256": "f47be39e8a0ccdec7c5d1893a84dd90f6c70e82528539249b1bb5921ae978c88"
+      }
+    },
+    "manifest_sha256": "e6167a7ec03abb4da6e38ed0c423da1d2b5f2cfc7e9baef53da327a0c462bbc3",
+    "counters": {
+      "chunks": 22,
+      "unknown_chunks": 0,
+      "frame_external_data_blobs": 0,
+      "frame_external_data_bytes": 0,
+      "frame_game_specific_bytes": 0,
+      "frame_non_finite_times": 0,
+      "packets": 681831,
+      "export_groups": 500,
+      "content_blocks": 792498,
+      "rep_layout_blocks": 355205,
+      "class_net_cache_blocks": 437293,
+      "fields": 584487,
+      "rpcs": 428523,
+      "actor_opens": 2424,
+      "actor_closes": 2176,
+      "partial_rows": 0,
+      "partial_bits": 0,
+      "fields_emitted": 1657000,
+      "rpcs_emitted": 428523,
+      "sink_actor_opens": 2424,
+      "sink_actor_closes": 2176,
+      "sink_content_blocks": 792498,
+      "bunches": 681831,
+      "malformed_packets": 0,
+      "skipped_bits": 33939219,
+      "movement_rows": 2634029,
+      "net_guid_rows": 20566,
+      "event_rows": 254,
+      "struct_blobs_decoded": 243,
+      "struct_blobs_failed": 0,
+      "movement_rpc_errors": 0,
+      "movement_component_streams": 2616931,
+      "movement_component_complete": 2616931,
+      "movement_component_errors": 0,
+      "movement_component_empty": 0,
+      "movement_component_envelopes": 2616931,
+      "movement_component_payload_bytes": 90191658,
+      "movement_component_unused_bits": 9432555,
+      "movement_component_input_headers": 2616931,
+      "movement_component_discrepancy_headers": 2189286,
+      "array_elements_decoded": 23986,
+      "array_fields_emitted": 85517,
+      "array_errors": 0,
+      "array_truncations": 0,
+      "array_unconsumed_root_bits": 0,
+      "array_unconsumed_nested_bits": 0,
+      "array_implicit_terminations": 0,
+      "array_leaf_decode_errors": 0,
+      "targeting_world_locations_decoded": 70,
+      "route_children_player_information": 403,
+      "route_children_tracked_rewards": 10499,
+      "route_children_selected_v2": 4100,
+      "route_children_kill_data": 1744,
+      "route_children_server_active_effects": 3494,
+      "route_children_requested_ignore_actors": 3827,
+      "route_children_active_blinds": 0,
+      "route_children_projectile_path": 1248,
+      "route_children_focus_projectiles": 0,
+      "tracked_rewards_opaque_empty_variants": 7,
+      "active_blinds_empty_trailers": 0,
+      "focus_projectiles_empty_trailers": 0,
+      "truncated_rpcs": 0,
+      "rpc_param_walks": 138221,
+      "event_layout_mismatches": 0,
+      "event_payloads_decoded": 254,
+      "event_payload_unknown_groups": 0,
+      "cnc_rpcs_emitted": 8198,
+      "cnc_bruteforce_payloads_attempted": 7854,
+      "cnc_bruteforce_payloads_unwalked": 0,
+      "rep_layout_cnc_tails_decoded": 344,
+      "rep_layout_cnc_tails_preserved": 55,
+      "cp_chunks": 21,
+      "cp_partial_rows": 0,
+      "cp_partial_bits": 0,
+      "cp_trailing_bytes": 0,
+      "cp_guid_entries": 100639,
+      "cp_literal_paths": 77219,
+      "cp_indexed_paths": 23420,
+      "cp_resolved_path_indices": 23420,
+      "cp_group_records": 10296,
+      "cp_exported_fields": 61164,
+      "cp_frames": 21,
+      "cp_frame_packets": 4920,
+      "cp_frame_external_data_blobs": 0,
+      "cp_frame_external_data_bytes": 0,
+      "cp_frame_game_specific_bytes": 0,
+      "cp_frame_non_finite_times": 0,
+      "cp_field_rows": 439892,
+      "cp_actor_rows_written": 3970,
+      "cp_net_guid_rows_written": 100639,
+      "cp_block_rows_written": 27930,
+      "cp_guid_entry_rows_written": 100639,
+      "cp_export_group_rows_written": 10296,
+      "cp_export_field_rows_written": 61164,
+      "cp_overlay_decoded_ok": 74913,
+      "cp_overlay_decode_errors": 0,
+      "cp_overlay_raw_skip": 5863,
+      "cp_overlay_not_in_table": 19717,
+      "cp_overlay_no_field_name": 3519,
+      "cp_overlay_handle_conflicts_refused": 0,
+      "cp_effect_blobs_decoded": 0,
+      "cp_struct_blobs_decoded": 241,
+      "cp_struct_blobs_failed": 0,
+      "cp_fields_emitted": 439892,
+      "cp_rpcs_emitted": 200,
+      "cp_sink_actor_opens": 3970,
+      "cp_sink_actor_closes": 0,
+      "cp_sink_content_blocks": 27930,
+      "cp_array_errors": 0,
+      "cp_truncated_rpcs": 0,
+      "cp_movement_rpc_errors": 0,
+      "cp_array_elements_decoded": 39751,
+      "cp_array_fields_emitted": 324172,
+      "cp_array_truncations": 0,
+      "cp_array_unconsumed_root_bits": 0,
+      "cp_array_unconsumed_nested_bits": 0,
+      "cp_array_implicit_terminations": 0,
+      "cp_array_leaf_decode_errors": 0,
+      "cp_targeting_world_locations_decoded": 0,
+      "cp_route_children_player_information": 6300,
+      "cp_route_children_tracked_rewards": 9394,
+      "cp_route_children_selected_v2": 86100,
+      "cp_route_children_kill_data": 17556,
+      "cp_route_children_server_active_effects": 5458,
+      "cp_route_children_requested_ignore_actors": 0,
+      "cp_route_children_active_blinds": 0,
+      "cp_route_children_projectile_path": 0,
+      "cp_route_children_focus_projectiles": 0,
+      "cp_rpc_param_walks": 0,
+      "cp_tracked_rewards_opaque_empty_variants": 0,
+      "cp_active_blinds_empty_trailers": 0,
+      "cp_focus_projectiles_empty_trailers": 0,
+      "cp_movement_component_streams": 0,
+      "cp_movement_component_complete": 0,
+      "cp_movement_component_errors": 0,
+      "cp_movement_component_empty": 0,
+      "cp_movement_component_envelopes": 0,
+      "cp_movement_component_payload_bytes": 0,
+      "cp_movement_component_unused_bits": 0,
+      "cp_movement_component_input_headers": 0,
+      "cp_movement_component_discrepancy_headers": 0,
+      "cp_cnc_rpcs_emitted": 200,
+      "cp_cnc_bruteforce_payloads_attempted": 0,
+      "cp_cnc_bruteforce_payloads_unwalked": 0,
+      "cp_rep_layout_cnc_tails_decoded": 200,
+      "cp_rep_layout_cnc_tails_preserved": 0,
+      "overlay_decoded_ok": 1068423,
+      "overlay_decode_errors": 0,
+      "overlay_raw_skip": 29753,
+      "overlay_not_in_table": 161660,
+      "overlay_no_field_name": 1819,
+      "overlay_rows_offered": 1261655,
+      "effect_blobs_decoded": 61451
+    },
+    "output_bytes": 44676355,
+    "parquet_bytes": 43984122
+  },
+  "summary": {
+    "baseline": {
+      "wall_seconds": 2.0126841250021243,
+      "cpu_user_seconds": 4.699258,
+      "cpu_system_seconds": 0.35473099999999996,
+      "cpu_total_seconds": 4.986517,
+      "cpu_utilization_percent": 247.75457500042322,
+      "peak_rss_bytes": 134283264,
+      "input_mib_per_second": 28.91117174008761,
+      "io_input_blocks": 0,
+      "io_output_blocks": 87392,
+      "output_bytes": 44676355,
+      "parquet_bytes": 43984122
+    },
+    "profile": {
+      "wall_seconds": 1.8845259449954028,
+      "cpu_user_seconds": 4.247451,
+      "cpu_system_seconds": 0.248444,
+      "cpu_total_seconds": 4.550211,
+      "cpu_utilization_percent": 242.27642721868494,
+      "peak_rss_bytes": 135954432,
+      "input_mib_per_second": 30.877291210032304,
+      "io_input_blocks": 0,
+      "io_output_blocks": 87416,
+      "output_bytes": 44676355,
+      "parquet_bytes": 43984122
+    }
+  },
+  "finished_utc": "2026-11-16T14:01:31.576853+00:00"
+}

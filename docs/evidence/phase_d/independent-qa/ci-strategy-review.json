@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "decision": "ACCEPT_REQUIRED_CI_STRATEGY_PENDING_FINAL_EXECUTED_LOGS",
+  "reviewer": "D independent QA",
+  "source_files_sha256": {
+    ".github/workflows/ci.yml": "1585cfaad21f4bdef64211598811c4ce53b0fcc7509513df1fab598960b32d45",
+    ".github/workflows/overhaul.yml": "2f632c1210bc76e53e176d6c27ac033b9353bddee2803ae52d6cf1434cba991f",
+    ".github/workflows/release.yml": "3b679cb5eff9e49cbc94ab499a18dada2d5a75061e6d963930b36725b98af7da",
+    "tools/package_release.py": "086ac7032ee25678efc91fb251404e18c40aa3f499944d31040ccbb34832eebb"
+  },
+  "source_runtime_pin": "ff8596b546736ea4300e013248609c7c3987e231",
+  "requirements": {
+    "rust_1_86_windows": [
+      "format",
+      "clippy warnings denied",
+      "27 core/singleton feature checks",
+      "strict rustdoc",
+      "workspace runtime/doc tests via measured docs",
+      "core-only runtime tests",
+      "container tests without Oodle",
+      "Rust/PyArrow Parquet interoperability",
+      "3public fixture corpus and typed/raw evidence"
+    ],
+    "rust_1_86_linux": [
+      "all-feature workspace runtime/doc tests",
+      "core-only runtime/doc tests",
+      "3public fixture source and exported checkpoint/counter verification",
+      "independent typed/raw comparisons with positive observed identities and zero decode failures/mismatches"
+    ],
+    "rust_stable_windows": [
+      "all-feature workspace tests",
+      "core-only runtime tests"
+    ],
+    "python": [
+      "Python3.12 and3.13 on Windows and Ubuntu",
+      "warnings-as-errors",
+      "full tools tests",
+      "ASCII/generated/checksum/scoped-type/baseline/docs guards"
+    ],
+    "windows_package": [
+      "fresh optimized MSVC CLI build and CLI/movement runtime tests",
+      "deterministic archive/provenance/PE/checksum validation",
+      "extracted help smoke",
+      "pinned public12.10 replay export and corpus/typed raw verification using extracted executable"
+    ],
+    "workflow": [
+      "pinned actionlint validation",
+      "CI complete requires every dependency success including skipped as failure",
+      "Overhaul complete requires reusable CI success"
+    ]
+  },
+  "final_log_review_rules": [
+    "Check exact final run head and actual checkout commit/tree separately; PR checkout is a synthetic merge commit.",
+    "Read full actual Windows/Linux logs for execution and test summaries, not job status alone.",
+    "Require every substantive named step success; distinguish job cleanup from validation steps.",
+    "Count workspace/core/release test runs separately; do not sum repeated test names into unique-test claims.",
+    "Check package archive/source provenance uses the tested checkout and CI-only tag label; no release publication is implied.",
+    "Check final integration push and PR58 head separately, including Draft/Open/Unmerged and auto_merge null."
+  ],
+  "gates_not_run_by_this_receipt": [
+    "Final PR74 CI logs",
+    "Final integration push CI logs",
+    "Final PR58 CI logs/package artifacts"
+  ],
+  "publication_guard": "Only tag-triggered release workflow publishes; this task must create no tag or release."
+}

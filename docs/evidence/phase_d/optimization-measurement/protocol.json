@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "predeclared_utc": "2026-11-16T14:05:25.611624+00:00",
+  "hypothesis": "Reserve bounded nullable-binary value capacity before Arrow construction, reducing reallocations without changing values, nulls, order or Parquet bytes. Fresh diagnostic raw_bits build wall opportunity is35.601ms main+7.710ms checkpoints on12.09; intervals overlap, so this is not an expected end-to-end gain.",
+  "baseline_source": "ff8596b546736ea4300e013248609c7c3987e231",
+  "actual_candidate_build_source": "df93e66f48d196ed3a1e4fada5da1ec97e61617e",
+  "remote_candidate_source_mirror": "1848dc9910662d0247b3f1cebaedd939b01fc33b",
+  "local_remote_tree": "8bd1c22aaec09b6be89939996c6bc5c5fe11a29d",
+  "source_correspondence": "Coordinator independently checked remote mirror tree; A also checked local build source tree. Actual binary remains attributed to local df93 source.",
+  "executables": {
+    "baseline": {
+      "name": "vrfkit",
+      "bytes": 38828984,
+      "sha256": "182bf7c98de925f374b26bccf279507fe89f91c22ef2de9ff5f151cfe3b77f38"
+    },
+    "candidate": {
+      "name": "vrfkit",
+      "bytes": 38824248,
+      "sha256": "e3a93d678ff9d262eed181c70f930b8d8275b24d514e7e5c9c5c06677c3d9eb3"
+    }
+  },
+  "inputs": [
+    {
+      "build": "12.05",
+      "sha256": "f5512818e79bd61d30ed8b7bbc34703e49f0e5a762acc96bf83fed08868c1b8b",
+      "bytes": 54702346,
+      "timed": true
+    },
+    {
+      "build": "12.09",
+      "sha256": "925fe2d1dfce6dff071df724bff03faa7220ffd209bdf795b76888b65157efff",
+      "bytes": 61015648,
+      "timed": true
+    },
+    {
+      "build": "13.00",
+      "sha256": "fd49091dd43171bb060eb6bbae50ed6677aa1077344572c5bf65f0c6fe2b4c1a",
+      "bytes": 431908,
+      "timed": false
+    }
+  ],
+  "untimed_preflight": "Both binaries on12.05,12.09,13.00, main and checkpoints:12 exports/6 strict parity cases. Retain experiment outputs for QA.13.00 is a small functional regression gate; no short-input performance claim.",
+  "timed_matrix": "12.05 and12.09, main and checkpoints:4 conditions. Each has new baseline/baseline A/A control then baseline/experiment A/B.",
+  "warmup_pairs": 1,
+  "measured_pairs": 6,
+  "primary_timed_exports": 112,
+  "pair_order": "AB,BA,AB,BA,AB,BA; both warmups and all measured runs pass unchanged strict gates.",
+  "noise_rule": "Retain all observations. Direction reversals or effects inside same-binary variation are INCONCLUSIVE. Range comparisons are descriptive, not confidence intervals or proof of equivalence.",
+  "confirmation_budget": "Primary only by default. At most one additional label-reversed12.09 checkpoint comparison with matched A/A if a concrete material primary gain/regression lies outside same-binary variation. No extra candidate, favorable-outlier deletion, or arbitrary retries.",
+  "acceptance": "Only independently reviewed correctness plus demonstrated useful wall/CPU/resource benefit permits consideration for integration. Allocation mechanism alone does not establish end-to-end speed.",
+  "timeout_per_export_seconds": 120,
+  "scope": "Same host and session, default release features, warm cache, full export, no exclusive-host guarantee. Official ff8596 harness unmodified."
+}
