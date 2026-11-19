@@ -51,6 +51,7 @@ route is admitted on a build only when, on every available replay of it:
 | 13.01--13.06 | -- | every route | -- | -- |
 | 13.08 | 1 | every route but the path | 26,121 (16,363) | 144,435 (94,792) |
 | 13.09 | 2 | every route | 51,670 (33,059) | 252,290 (164,660) |
+| 13.10 | 27 | every route | 451,740 (278,923) | 2,224,578 (1,433,520) |
 
 "The path" is `MulticastSetPath.NetworkedProjectilePath`. Across the 51
 11.06--13.00 replays the admitted routes add 784,478 main and 4,562,377 checkpoint rows,
@@ -98,6 +99,29 @@ checkpoint snapshot unresolved. "Typed" in the table counts the children the
 route types, effect-array JSON and projectile-path values included.
 ActiveBlinds has no checkpoint children on either build: all 477 checkpoint
 parents are empty arrays.
+
+### 13.10
+
+Measured on 27 private replays (kept out of the tree) with the same four
+criteria, main stream and checkpoints. Every route handle is declared with
+its 13.x name and checksum in the main manifest and in every checkpoint of
+every replay that declares the group; three replays declare no
+`BlindManagerComponent` group and 18 no `MulticastSetPath` group, and emit
+no child for that route. A probe with the gate open left every array counter
+at zero (errors, truncations, root/nested residuals, implicit ends, leaf
+errors) in both streams of all 27; against the closed gate every base row
+survives in order and the only added rows are route children, equal to the
+`Route children` totals. The independent Python checker re-derived every
+child of every parent with zero mismatches on 27/27, and failed on a changed
+value, a deleted child and a corrupted raw window.
+`validate_ability_array_evidence.py --compare-typed --require-routes` passes:
+679 ActiveBlinds elements (6,082 children, every `SourceID` the 297-bit
+inline form) and 1,296 path elements (3,888 children). Every route emits
+main-stream children; RequestedIgnoreActors, ActiveBlinds and the path have
+no checkpoint children (all 1,988 checkpoint ActiveBlinds parents are empty
+arrays). `extract_kill_observations.py` and `extract_kill_ledger.py` then
+join 2,784 of 2,803 character deaths, with no identity or checkpoint
+snapshot unresolved.
 
 ### Why routes stay off
 

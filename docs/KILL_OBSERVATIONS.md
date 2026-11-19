@@ -65,7 +65,7 @@ hashed before and after; a changed input fails the run.
 
 ## Measured builds
 
-Both tools accept 11.06--12.09, 13.01--13.06, 13.08 and 13.09 (`MEASURED_BUILDS`) and refuse
+Both tools accept 11.06--12.09, 13.01--13.06 and 13.08--13.10 (`MEASURED_BUILDS`) and refuse
 12.10, 12.11, 13.00 and any future build before reading a row, even one whose
 declarations happen to match: parser support is not enough, and those three
 builds emit no KillData children.
@@ -77,6 +77,7 @@ builds emit no KillData children.
 | 38 (13.06) | 5,408 | 5,373 | 5,370 | 38 / 3 | 8 | 53,563 | 7-30 |
 | 1 (13.08) | 171 | 169 | 169 | 2 / 0 | 0 | 1,881 | 8-20 |
 | 2 (13.09) | 308 | 307 | 307 | 1 / 0 | 0 | 3,079 | 8-11 |
+| 27 (13.10) | 2,803 | 2,784 | 2,784 | 19 / 0 | 5 | 21,874 | 8-18 |
 
 In every run no join was ambiguous, no checkpoint snapshot was unresolved,
 every finisher revision changed the state (all `false` to `true`), and every
