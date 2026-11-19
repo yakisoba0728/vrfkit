@@ -101,7 +101,7 @@ The 13.10 transform passes the block oracle, and the CombatReport and damage
 RPC array layouts decode with zero main and checkpoint array leaf errors
 ([details](docs/BUILD_VERIFICATION.md#1310)).
 Structured-array child rows are admitted per build and per route: all
-measured routes on 13.01--13.06 and 13.09, all but the projectile path on 13.08, a measured subset on 11.06--13.00
+measured routes on 13.01--13.06, 13.09 and 13.10, all but the projectile path on 13.08, a measured subset on 11.06--13.00
 ([legacy route table](docs/LEGACY_BUILD_SUPPORT.md#measured-array-routes)).
 
 All branches are `++Ares-Core+release-<build>`. Adding a build is one

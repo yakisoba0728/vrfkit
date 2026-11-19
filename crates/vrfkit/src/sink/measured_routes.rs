@@ -80,7 +80,8 @@ impl MeasuredArrayRoutes {
     ///   9-bit hardcoded-name `SourceID`s from 12.05; refusals move `array_leaf_decode_errors`.
     /// - Any route with no child observed on a build (the path on 11.06, 12.06, 12.07, 13.08).
     ///
-    /// 13.08 rests on one replay and 13.09 on two, main stream and checkpoints.
+    /// 13.08 rests on one replay, 13.09 on two and 13.10 on 27, main stream and
+    /// checkpoints.
     pub(super) fn for_branch(branch: &str) -> Self {
         use MeasuredArrayRoute::{
             ActiveBlinds, AllPlayersObfuscatedPlayerInformation as PlayerInfo, KillData,
@@ -141,7 +142,8 @@ impl MeasuredArrayRoutes {
             | "++Ares-Core+release-13.04"
             | "++Ares-Core+release-13.05"
             | "++Ares-Core+release-13.06"
-            | "++Ares-Core+release-13.09" => Self::ALL,
+            | "++Ares-Core+release-13.09"
+            | "++Ares-Core+release-13.10" => Self::ALL,
             // The one sample declares no MulticastSetPath group: the path is unobserved.
             "++Ares-Core+release-13.08" => Self::of(&[
                 PlayerInfo,
@@ -261,8 +263,7 @@ mod tests {
         ("++Ares-Core+release-13.06", ALL),
         ("++Ares-Core+release-13.08", B1308),
         ("++Ares-Core+release-13.09", ALL),
-        // No array route has been independently measured on 13.10 yet.
-        ("++Ares-Core+release-13.10", &[]),
+        ("++Ares-Core+release-13.10", ALL),
     ];
 
     #[test]

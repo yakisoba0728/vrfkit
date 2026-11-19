@@ -43,6 +43,7 @@ MEASURED_BUILDS = {
     "++Ares-Core+release-13.06",
     "++Ares-Core+release-13.08",
     "++Ares-Core+release-13.09",
+    "++Ares-Core+release-13.10",
 }
 DECL = {
     3: ("Victim", 3990035472),
