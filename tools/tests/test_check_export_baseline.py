@@ -592,6 +592,23 @@ class ManifestCheckTests(TempDirTestCase):
         del quality["checkpoints"]
         self.assertEqual(self.errors(quality, main_only, checkpoints=False), "")
 
+    def test_manifest_movement_accounting_is_checked_in_each_pass(self):
+        """Summary and manifest agree on every count, but the components do
+        not add up: only the manifest movement contract can see it."""
+        for scope_name, prefix in (("main", ""), ("checkpoint", "cp_")):
+            with self.subTest(scope=scope_name):
+                quality = manifest_quality()
+                sink = quality["checkpoints"]["sink"] if prefix else quality["sink"]
+                sink["movement_component_streams"] += 1
+                counters = dict(AGREEING_COUNTERS)
+                counters[prefix + "movement_component_streams"] += 1
+                self.assertEqual(
+                    self.errors(quality, counters),
+                    f"manifest {scope_name}: native movement counters: attempted != complete + errors")
+                del sink["movement_rpc_errors"]
+                self.assertIn(f"manifest {scope_name}: missing or invalid native movement "
+                              f"counter: movement_rpc_errors", self.errors(quality, counters))
+
     def test_a_missing_or_non_count_value_is_named_not_read(self):
         for what, path in (
                 ("tracked rewards opaque-empty", ("sink", "tracked_rewards_opaque_empty_variants")),
