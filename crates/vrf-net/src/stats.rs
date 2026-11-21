@@ -269,6 +269,7 @@ pub enum SkipReason {
 /// Full context snapshot at the point a content block was skipped or malformed,
 /// so one event dump can identify the root cause.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct DiagnosticEvent {
     /// Why this event was recorded.
     pub reason: SkipReason,
@@ -316,6 +317,7 @@ pub struct DiagnosticEvent {
 
 /// Snapshot of all bunch header flags for diagnostic reporting.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct BunchFlagSnapshot {
     pub b_open: bool,
     pub b_close: bool,
@@ -330,6 +332,7 @@ pub struct BunchFlagSnapshot {
 
 /// Snapshot of the content block header fields for diagnostic reporting.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ContentBlockHeaderSnapshot {
     pub has_rep_layout: bool,
     pub is_actor: bool,

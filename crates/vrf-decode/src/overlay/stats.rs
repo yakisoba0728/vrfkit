@@ -16,6 +16,7 @@ use crate::ftext::FTextTreeError;
 /// its own cause through exhaustive matches with no wildcard: a new error
 /// variant has to be classified before it compiles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
 pub enum DecodeErrorKind {
     /// BitReader reached EOF before the decoder finished consuming: the type
     /// needs more bits than the field carries.
@@ -121,6 +122,7 @@ pub struct OverlayErrorReport {
 
 /// One row from the error report, sorted by descending count.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct OverlayErrorRow {
     pub count: u64,
     pub group_path: String,

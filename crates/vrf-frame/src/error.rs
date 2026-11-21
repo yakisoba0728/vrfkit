@@ -3,6 +3,7 @@ use thiserror::Error;
 /// A chunk malformed at the framing level; content-block errors live in
 /// `vrf-net`.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum FrameError {
     #[error("bit-IO error during frame parsing: {0}")]
     Bit(String),

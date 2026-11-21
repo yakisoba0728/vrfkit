@@ -15,6 +15,7 @@ const SPAWNED_CHARACTER_CHECKSUM: u32 = 1_413_303_948;
 /// A validated body reference, borrowing the complete unmodified field row.
 /// This does not resolve an account or establish a kill credit.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct SpawnedCharacterObservation<'a> {
     pub player_state_net_guid: u32,
     pub character: ActorReference,
@@ -116,6 +117,7 @@ pub enum IdentityUnresolved {
 
 /// One current body relation and the original evidence visible at its boundary.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct BodyIdentity<'a> {
     pub character_net_guid: u32,
     pub player_state_net_guid: u32,
@@ -142,6 +144,7 @@ pub enum IdentityResolution<'a> {
 
 /// An unchanged movement row and its aligned wire source, with optional identity.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct MovementIdentity<'a> {
     pub movement: &'a MovementRecord,
     pub provenance: &'a MovementProvenance,

@@ -29,6 +29,7 @@ use crate::limits::{
 
 /// Parsed replay info from the file's leading section.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ReplayInfo {
     /// Match duration in milliseconds.
     pub length_in_ms: i32,

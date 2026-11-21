@@ -5,6 +5,7 @@ use vrf_bitio::BitError;
 
 /// Errors that can occur while reading or maintaining the dynamic schema.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum SchemaError {
     /// The underlying bit stream was truncated or malformed.
     #[error("bit-level read failed: {0}")]

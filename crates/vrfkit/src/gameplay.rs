@@ -129,6 +129,7 @@ pub enum GameplayKind {
 
 /// Native source data, borrowed without copying the raw payload.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct NativeEventSource<'a> {
     pub id: &'a str,
     pub group: &'a str,
@@ -156,6 +157,7 @@ pub enum GameplaySource<'a> {
 
 /// A borrowed, optional interpretation of an unchanged raw observation.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct GameplayEvent<'a> {
     pub kind: GameplayKind,
     pub source: GameplaySource<'a>,

@@ -4,6 +4,7 @@ mod common;
 
 use common::*;
 use smallvec::smallvec;
+use vrf_container::parse_event_chunk;
 use vrfkit::gameplay::{
     ActorReference, ActorReferenceStatus, GameplayError, GameplayEvidence, GameplayKind,
     GameplaySource, RoundPhase, native_event, round_phase_event,
@@ -30,17 +31,24 @@ fn payload(tag: u32, words: &[u32], name: &str, seconds: f32, wide: bool) -> Vec
     bytes
 }
 
-fn event<'a>(group: &str, bytes: &'a [u8]) -> EventChunk<'a> {
-    EventChunk {
-        id: "synthetic-native-event".into(),
-        group: group.into(),
-        metadata: "wire-metadata".into(),
-        time1: 1250,
-        time2: 1260,
-        size_in_bytes: bytes.len() as i32,
-        payload: bytes,
-        trailing_bytes: 0,
-    }
+/// An Event chunk body around `bytes`; `EventChunk` is non-exhaustive, so a
+/// fixture comes from the container parser like a reader's would.
+fn event_body(group: &str, bytes: &[u8]) -> Vec<u8> {
+    let mut body = Vec::new();
+    add_fstring(&mut body, "synthetic-native-event");
+    add_fstring(&mut body, group);
+    add_fstring(&mut body, "wire-metadata");
+    add_u32(&mut body, 1250);
+    add_u32(&mut body, 1260);
+    add_i32(&mut body, bytes.len() as i32);
+    body.extend(bytes);
+    body
+}
+
+fn event(body: &[u8]) -> EventChunk<'_> {
+    let raw = parse_event_chunk(body).unwrap();
+    assert_eq!(raw.trailing_bytes, 0);
+    raw
 }
 
 fn phase_field() -> FieldRecord {
@@ -114,7 +122,8 @@ fn five_native_groups_preserve_values_and_borrowed_provenance() {
                 1.25,
                 wide,
             );
-            let raw = event(group, &bytes);
+            let body = event_body(group, &bytes);
+            let raw = event(&body);
             let projected = native_event(&raw).unwrap().unwrap();
             assert_eq!(projected.kind, expected);
             assert_eq!(projected.time_ms(), 1250);
@@ -131,7 +140,7 @@ fn five_native_groups_preserve_values_and_borrowed_provenance() {
                 (source.id, source.group, source.metadata),
                 (raw.id.as_str(), raw.group.as_str(), raw.metadata.as_str())
             );
-            assert_eq!(source.raw_payload.as_ptr(), bytes.as_ptr());
+            assert_eq!(source.raw_payload.as_ptr(), raw.payload.as_ptr());
             assert_eq!(source.raw_payload, bytes);
         }
     }
@@ -161,7 +170,8 @@ fn unsupported_native_groups_stay_uninterpreted() {
         "switchTeams",
         "RoundStarted",
     ] {
-        assert!(native_event(&event(group, &[0xff])).unwrap().is_none());
+        let body = event_body(group, &[0xff]);
+        assert!(native_event(&event(&body)).unwrap().is_none());
     }
 }
 
@@ -176,7 +186,8 @@ fn native_shape_mutations_fail_without_losing_raw_payload() {
     );
     for end in 0..original.len() {
         let truncated = &original[..end];
-        let raw = event("characterDeath", truncated);
+        let body = event_body("characterDeath", truncated);
+        let raw = event(&body);
         assert_eq!(
             native_event(&raw).unwrap_err(),
             GameplayError::PayloadLayout
@@ -197,7 +208,8 @@ fn native_shape_mutations_fail_without_losing_raw_payload() {
     let length = i32::from_le_bytes(unterminated[12..16].try_into().unwrap()) - 1;
     unterminated[12..16].copy_from_slice(&length.to_le_bytes());
     for bytes in [bad_tag, bad_name, bad_arity, extra, unterminated] {
-        let raw = event("characterDeath", &bytes);
+        let body = event_body("characterDeath", &bytes);
+        let raw = event(&body);
         assert_eq!(
             native_event(&raw).unwrap_err(),
             GameplayError::PayloadLayout
@@ -209,12 +221,13 @@ fn native_shape_mutations_fail_without_losing_raw_payload() {
 #[test]
 fn native_declarations_and_time_are_checked_separately() {
     let bytes = payload(2, &[4], "EReplayEventGroup::RoundStart", 1.25, false);
+    let body = event_body("roundStarted", &bytes);
     for size in [-1, bytes.len() as i32 - 1, bytes.len() as i32 + 1] {
-        let mut raw = event("roundStarted", &bytes);
+        let mut raw = event(&body);
         raw.size_in_bytes = size;
         assert_eq!(native_event(&raw).unwrap_err(), GameplayError::PayloadSize);
     }
-    let mut raw = event("roundStarted", &bytes);
+    let mut raw = event(&body);
     raw.trailing_bytes = 1;
     assert_eq!(
         native_event(&raw).unwrap_err(),
@@ -223,7 +236,7 @@ fn native_declarations_and_time_are_checked_separately() {
     for seconds in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 1.3, -1.25] {
         let bytes = payload(2, &[4], "EReplayEventGroup::RoundStart", seconds, false);
         assert_eq!(
-            native_event(&event("roundStarted", &bytes)).unwrap_err(),
+            native_event(&event(&event_body("roundStarted", &bytes))).unwrap_err(),
             GameplayError::PayloadTime
         );
     }
@@ -233,7 +246,8 @@ fn native_declarations_and_time_are_checked_separately() {
 fn zero_and_quantized_native_time_remain_wire_values() {
     for (seconds, milliseconds) in [(0.0, 0), (1.2509, 1250)] {
         let bytes = payload(4, &[], "EReplayEventGroup::SpikePlanted", seconds, false);
-        let mut raw = event("spikePlanted", &bytes);
+        let body = event_body("spikePlanted", &bytes);
+        let mut raw = event(&body);
         raw.time1 = milliseconds;
         let projected = native_event(&raw).unwrap().unwrap();
         assert_eq!(projected.time_ms(), milliseconds);

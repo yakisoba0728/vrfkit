@@ -7,9 +7,10 @@ use vrf_bitio::BitError;
 
 use crate::chunk::ChunkType;
 
-/// Exhaustive, and whole even where no path constructs a variant: removing one
-/// or adding `#[non_exhaustive]` breaks downstream exhaustive matches.
+/// Whole even where no path constructs a variant: removing one breaks
+/// downstream matches. Non-exhaustive, so a new failure is not a breaking change.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ContainerError {
     #[error("file magic mismatch: expected 0x43F4EFDD, got 0x{actual:08X}")]
     FileMagicMismatch { actual: u32 },

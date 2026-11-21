@@ -28,6 +28,7 @@ use crate::limits::MAX_FSTRING_BYTES;
 /// requires exact consumption, and [`parse_known_event_payload`] also requires
 /// the measured tag and name.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct EventChunk<'a> {
     /// Server-assigned event id, `<replay-guid>_<32 hex digits>` in every
     /// corpus file. Emitted as the wire gives it; no structure is assumed.

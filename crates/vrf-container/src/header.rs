@@ -45,6 +45,7 @@ use crate::limits::{
 
 /// Replay version embedded in the header.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ReplayVersion {
     pub major: u16,
     pub minor: u16,
@@ -57,6 +58,7 @@ pub struct ReplayVersion {
 
 /// Parsed replay header from the first chunk.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ReplayHeader {
     /// Pinned at 19.
     pub network_version: u32,
