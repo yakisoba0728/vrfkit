@@ -1,8 +1,10 @@
 """Package and verify the Windows x64 CLI before publishing a tagged release.
 
 The ZIP is deterministic for identical inputs. Verification binds its contents
-to the requested tag and source commit; smoke tests run the extracted binary.
-No command in this tool creates tags, releases, or uploads assets.
+to the requested tag and source commit, and the tag to the Cargo workspace
+version; smoke tests run the extracted binary. `version` prints that workspace
+version, from which CI builds the placeholder tag of an untagged run. No command
+in this tool creates tags, releases, or uploads assets.
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ import re
 import struct
 import subprocess
 import tempfile
+import tomllib
 import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
@@ -34,6 +37,25 @@ def validate_identity(tag: str, commit: str) -> bool:
     return match[1] is not None
 
 
+def workspace_version(repository: Path = REPO) -> str:
+    """`[workspace.package] version` from the repository's Cargo.toml."""
+    with (repository / "Cargo.toml").open("rb") as stream:
+        manifest = tomllib.load(stream)
+    version = manifest.get("workspace", {}).get("package", {}).get("version")
+    if not isinstance(version, str) or not version:
+        raise ValueError("Cargo.toml has no [workspace.package] version")
+    return version
+
+
+def require_workspace_version(tag: str, repository: Path = REPO) -> None:
+    """The tag must name the version the binary was built as. Build metadata
+    (`+...`) does not identify a SemVer version, so it is ignored on both
+    sides; a prerelease suffix is part of the version and must match."""
+    version = workspace_version(repository)
+    if tag.removeprefix("v").split("+", 1)[0] != version.split("+", 1)[0]:
+        raise ValueError(f"tag {tag} does not name the Cargo workspace version {version}")
+
+
 def require_windows_x64(data: bytes) -> None:
     if len(data) < 64 or data[:2] != b"MZ":
         raise ValueError("executable is not a Windows PE image")
@@ -48,8 +70,10 @@ def archive_name(tag: str) -> str:
     return f"vrfkit-{tag}-windows-x64.zip"
 
 
-def verify_package(directory: Path, tag: str, commit: str, *, smoke: bool = False) -> Path:
+def verify_package(directory: Path, tag: str, commit: str, *, smoke: bool = False,
+                   repository: Path = REPO) -> Path:
     validate_identity(tag, commit)
+    require_workspace_version(tag, repository)
     archive = directory / archive_name(tag)
     expected = hashlib.sha256(archive.read_bytes()).hexdigest() + "  " + archive.name + "\n"
     if archive.with_suffix(".zip.sha256").read_text(encoding="ascii") != expected:
@@ -82,6 +106,7 @@ def verify_package(directory: Path, tag: str, commit: str, *, smoke: bool = Fals
 def create_package(executable: Path, directory: Path, tag: str, commit: str,
                    *, repository: Path = REPO) -> Path:
     validate_identity(tag, commit)
+    require_workspace_version(tag, repository)
     binary = executable.read_bytes()
     require_windows_x64(binary)
     metadata = {"tag": tag, "commit": commit, "target": "x86_64-pc-windows-msvc",
@@ -99,18 +124,27 @@ def create_package(executable: Path, directory: Path, tag: str, commit: str,
             bundle.writestr(entry, payload, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     archive.with_suffix(".zip.sha256").write_text(f"{digest}  {archive.name}\n", encoding="ascii", newline="\n")
-    return verify_package(directory, tag, commit, smoke=True)
+    return verify_package(directory, tag, commit, smoke=True, repository=repository)
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("create", "verify"))
-    parser.add_argument("--tag", required=True)
-    parser.add_argument("--commit", required=True)
-    parser.add_argument("--directory", type=Path, required=True)
+    parser.add_argument("command", choices=("create", "verify", "version"))
+    parser.add_argument("--tag")
+    parser.add_argument("--commit")
+    parser.add_argument("--directory", type=Path)
     parser.add_argument("--exe", type=Path)
     parser.add_argument("--smoke", action="store_true", help="run the extracted EXE (Windows only)")
     args = parser.parse_args(argv)
+    if args.command == "version":
+        try:
+            print(workspace_version())
+        except (OSError, ValueError) as error:  # TOMLDecodeError is a ValueError
+            parser.exit(1, f"release package: {error}\n")
+        return 0
+    missing = [flag for flag in ("tag", "commit", "directory") if getattr(args, flag) is None]
+    if missing:
+        parser.error(f"{args.command} requires " + ", ".join("--" + flag for flag in missing))
     try:
         if args.command == "create":
             if args.exe is None:

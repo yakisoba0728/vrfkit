@@ -1,7 +1,10 @@
 """Release assets must fail verification when their bytes or identity change."""
+import contextlib
 import hashlib
+import io
 import json
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -21,6 +24,47 @@ def pe_image():
     struct.pack_into("<H", data, 132, 0x8664)
     struct.pack_into("<H", data, 152, 0x20B)
     return bytes(data)
+
+
+def write_cargo(root, version):
+    (root / "Cargo.toml").write_text(
+        f'[workspace]\nmembers = []\n\n[workspace.package]\nversion = "{version}"\n',
+        encoding="utf-8")
+
+
+class WorkspaceVersionTests(TempDirTestCase):
+    def check(self, tag, version):
+        root = self.tmp()
+        write_cargo(root, version)
+        release.require_workspace_version(tag, root)
+
+    def test_tag_must_name_the_workspace_version(self):
+        for tag, version in (("v0.6.0", "0.6.0"), ("v0.6.0-rc.1", "0.6.0-rc.1"),
+                             ("v0.6.0+build.5", "0.6.0"), ("v0.6.0-rc.1+ci.abc", "0.6.0-rc.1"),
+                             ("v0.6.0", "0.6.0+meta")):
+            with self.subTest(tag=tag, version=version):
+                self.check(tag, version)
+        for tag, version in (("v0.5.2", "0.6.0"), ("v0.6.0-rc.1", "0.6.0"),
+                             ("v0.6.0", "0.6.0-rc.1"), ("v0.6.0-rc.2", "0.6.0-rc.1"),
+                             ("v0.6.1+0.6.0", "0.6.0"), ("v1.6.0", "0.6.0")):
+            with self.subTest(tag=tag, version=version):
+                with self.assertRaisesRegex(ValueError, "does not name the Cargo workspace version"):
+                    self.check(tag, version)
+
+    def test_missing_version_is_an_error_not_a_match(self):
+        root = self.tmp()
+        (root / "Cargo.toml").write_text("[workspace]\nmembers = []\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, r"no \[workspace.package\] version"):
+            release.require_workspace_version("v0.6.0", root)
+
+    def test_version_command_prints_this_repository_version(self):
+        # Read independently of the tool: a regex, not tomllib.
+        text = (release.REPO / "Cargo.toml").read_text(encoding="utf-8")
+        section = text.split("[workspace.package]", 1)[1].split("\n[", 1)[0]
+        expected = re.search(r'(?m)^version\s*=\s*"([^"]+)"', section)[1]
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(release.main(["version"]), 0)
+        self.assertEqual(out.getvalue(), expected + "\n")
 
 
 class ReleaseIdentityTests(unittest.TestCase):
@@ -65,7 +109,11 @@ class ReleasePackageTests(TempDirTestCase):
         self.exe.write_bytes(pe_image())
         for name in ("LICENSE", "NOTICE.md"):
             (self.root / name).write_text("Notice for " + name, encoding="utf-8")
+        write_cargo(self.root, self.TAG[1:])
         self.output = self.root / "output"
+
+    def verify(self, tag, commit, **kwargs):
+        return release.verify_package(self.output, tag, commit, repository=self.root, **kwargs)
 
     def create(self, directory=None):
         def execute(args, **kwargs):
@@ -94,7 +142,7 @@ class ReleasePackageTests(TempDirTestCase):
 
     def test_round_trip_verifies_provenance_and_required_files(self):
         archive = self.create()
-        self.assertEqual(release.verify_package(self.output, self.TAG, self.COMMIT), archive)
+        self.assertEqual(self.verify(self.TAG, self.COMMIT), archive)
         with zipfile.ZipFile(archive) as bundle:
             self.assertEqual(set(bundle.namelist()), release.CONTENTS)
             metadata = json.loads(bundle.read("build-info.json"))
@@ -125,49 +173,49 @@ class ReleasePackageTests(TempDirTestCase):
         archive = self.create()
         archive.write_bytes(archive.read_bytes() + b"changed")
         with self.assertRaisesRegex(ValueError, "checksum"):
-            release.verify_package(self.output, self.TAG, self.COMMIT)
+            self.verify(self.TAG, self.COMMIT)
 
     def test_checksum_cannot_refer_to_a_different_filename(self):
         archive = self.create()
         checksum = archive.with_suffix(".zip.sha256")
         checksum.write_text(checksum.read_text(encoding="ascii").replace(archive.name, "other.zip"), encoding="ascii")
         with self.assertRaisesRegex(ValueError, "filename"):
-            release.verify_package(self.output, self.TAG, self.COMMIT)
+            self.verify(self.TAG, self.COMMIT)
 
     def test_package_cannot_be_reused_for_another_commit(self):
         self.create()
         with self.assertRaisesRegex(ValueError, "provenance"):
-            release.verify_package(self.output, self.TAG, "b" * 40)
+            self.verify(self.TAG, "b" * 40)
 
     def test_changed_metadata_is_rejected_even_with_a_matching_zip_checksum(self):
         self.create()
         self.rewrite(lambda entries: entries.update({"build-info.json": b'{}'}))
         with self.assertRaisesRegex(ValueError, "provenance"):
-            release.verify_package(self.output, self.TAG, self.COMMIT)
+            self.verify(self.TAG, self.COMMIT)
 
     def test_changed_binary_is_rejected_even_with_a_matching_zip_checksum(self):
         self.create()
         self.rewrite(lambda entries: entries.update({"vrfkit.exe": pe_image() + b"changed"}))
         with self.assertRaisesRegex(ValueError, "provenance"):
-            release.verify_package(self.output, self.TAG, self.COMMIT)
+            self.verify(self.TAG, self.COMMIT)
 
     def test_extra_path_in_zip_is_rejected_before_extraction(self):
         self.create()
         self.rewrite(lambda entries: entries.update({"../extra.exe": pe_image()}))
         with self.assertRaisesRegex(ValueError, "entries"):
-            release.verify_package(self.output, self.TAG, self.COMMIT, smoke=True)
+            self.verify(self.TAG, self.COMMIT, smoke=True)
 
     def test_missing_zip_entry_is_rejected(self):
         self.create()
         self.rewrite(lambda entries: entries.pop("LICENSE"))
         with self.assertRaisesRegex(ValueError, "entries"):
-            release.verify_package(self.output, self.TAG, self.COMMIT)
+            self.verify(self.TAG, self.COMMIT)
 
     def test_empty_notice_is_rejected(self):
         self.create()
         self.rewrite(lambda entries: entries.update({"NOTICE.md": b" \n"}))
         with self.assertRaisesRegex(ValueError, "empty"):
-            release.verify_package(self.output, self.TAG, self.COMMIT)
+            self.verify(self.TAG, self.COMMIT)
 
     def test_failed_or_incomplete_help_cannot_pass_smoke_test(self):
         self.create()
@@ -175,16 +223,39 @@ class ReleasePackageTests(TempDirTestCase):
                        subprocess.CompletedProcess([], 0, "vrfkit inspect", "")):
             with self.subTest(result=result), patch.object(release.subprocess, "run", return_value=result):
                 with self.assertRaisesRegex(ValueError, "smoke"):
-                    release.verify_package(self.output, self.TAG, self.COMMIT, smoke=True)
+                    self.verify(self.TAG, self.COMMIT, smoke=True)
 
     def test_smoke_timeout_is_not_success(self):
         self.create()
         with patch.object(release.subprocess, "run", side_effect=subprocess.TimeoutExpired("vrfkit", 30)):
             with self.assertRaises(subprocess.TimeoutExpired):
-                release.verify_package(self.output, self.TAG, self.COMMIT, smoke=True)
+                self.verify(self.TAG, self.COMMIT, smoke=True)
 
     def test_cli_verification_failure_exits_nonzero(self):
-        with self.assertRaises(SystemExit) as raised:
-            release.main(["verify", "--tag", self.TAG, "--commit", self.COMMIT,
+        # The repository's own version, so the failure is the missing package.
+        tag = "v" + release.workspace_version()
+        with self.assertRaises(SystemExit) as raised, contextlib.redirect_stderr(io.StringIO()) as err:
+            release.main(["verify", "--tag", tag, "--commit", self.COMMIT,
                           "--directory", str(self.output)])
         self.assertEqual(raised.exception.code, 1)
+        self.assertNotIn("workspace version", err.getvalue())
+
+    def test_mismatched_tag_is_refused_before_creating_output(self):
+        write_cargo(self.root, "1.2.4")
+        with self.assertRaisesRegex(ValueError, "workspace version 1.2.4"):
+            self.create()
+        self.assertFalse(self.output.exists())
+
+    def test_verification_rejects_a_package_whose_tag_is_not_the_workspace_version(self):
+        self.create()
+        self.assertTrue(self.verify(self.TAG, self.COMMIT))
+        write_cargo(self.root, "1.2.3")
+        with self.assertRaisesRegex(ValueError, "workspace version 1.2.3"):
+            self.verify(self.TAG, self.COMMIT)
+
+    def test_create_and_verify_cli_without_identity_is_a_usage_error(self):
+        for command in ("create", "verify"):
+            with self.subTest(command=command), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    release.main([command])
+                self.assertEqual(raised.exception.code, 2)

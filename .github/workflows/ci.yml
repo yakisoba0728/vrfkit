@@ -344,7 +344,11 @@ jobs:
       - name: package and run the extracted executable
         shell: pwsh
         run: |
-          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "v0.0.0-ci.$env:GITHUB_SHA" }
+          # Packaging requires the tag to name the Cargo workspace version; an
+          # untagged run uses that version with build metadata, never a fake one.
+          $version = python -W error tools/package_release.py version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "v$version+ci.$env:GITHUB_SHA" }
           $dist = Join-Path $env:RUNNER_TEMP 'release-dist'
           python -W error tools/package_release.py create --exe target/x86_64-pc-windows-msvc/release/vrfkit.exe --directory $dist --tag $tag --commit $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
