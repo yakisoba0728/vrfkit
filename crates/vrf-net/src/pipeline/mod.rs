@@ -515,6 +515,9 @@ impl ReplicationReader {
         if header.b_partial {
             stage.stats.partial_bunches += 1;
             let staged = stage_fragment(payload, fragment_stage);
+            // The accumulator's PayloadOverrun refusal needs a slice shorter
+            // than the declared bits; staging never produces one.
+            debug_assert_eq!(staged.len(), (bit_count as usize).div_ceil(8));
 
             // The accumulator is the one reassembly authority, so it sees none
             // of the packet reader's partial verdicts (see `RawPacketReader`):
@@ -579,8 +582,9 @@ impl ReplicationReader {
                 Some(PartialSequenceKind::NonByteAlignedFragment) => {
                     stage.stats.partial_non_byte_aligned += 1;
                 }
-                // Pipeline staging supplies the complete declared bit window;
-                // the public accumulator also defends direct callers.
+                // Unreachable: `staged` is exactly `bit_count.div_ceil(8)`
+                // bytes (asserted above). Counted, not a panic, so a staging
+                // regression reads as this cause rather than a residual.
                 Some(PartialSequenceKind::PayloadOverrun) => {
                     stage.stats.partial_payload_overrun += 1;
                 }
