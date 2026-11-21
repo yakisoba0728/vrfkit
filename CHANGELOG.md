@@ -99,6 +99,16 @@ Rust API:
   see [JSONL](docs/JSONL.md).
 - `tools/benchmark_resources.py`: paired export comparisons with CPU, RSS and
   output-equality gates; see [resource benchmarks](docs/RESOURCE_BENCHMARKS.md).
+- `vrfkit --help`/`-h` (also after any subcommand) and `vrfkit --version`/`-V`,
+  both exit 0. `vrfkit <subcommand> --help` used to read `--help` as the
+  replay path.
+- I/O errors name the path: `I/O error: <path>: <OS message>` for the input
+  replay (CLI and `ReplayReader::read_path*`), the `diag --json` output and
+  export staging/table files, and `<path>: is a directory, not a replay file`
+  for a directory given as the replay.
+- `validate` prints `=== Stream failures (0 shown) ===` and
+  `=== Diagnostic Events (0 total) ===` when those sections are empty, so
+  `--diagnostics` with nothing retained is visible.
 
 ### Fixed
 
@@ -125,6 +135,16 @@ Rust API:
   a wrapped `u32` packet number.
 - Partial payload overruns are classified (`partial_payload_overrun`) instead
   of counting as unclassified.
+- Corrupt compressed data is reported as an error instead of a panic. The
+  Oodle decoder (oozextract) panics on some malformed streams; a single
+  flipped byte in a compressed chunk made `validate`, `diag`, `export` and
+  the Reader exit 101. The panic is now caught and returned as
+  `ContainerError::OodleDecompression("decoder panicked: ...")`
+  (`ReadError::Replay`, wrapped in `ReplayError::Checkpoint` inside a
+  snapshot); the CLI exits 1 without a panic report.
+- `export --out .` (or `..`, or a root) is refused with the actual rule: the
+  destination must end in a directory name, because the export is staged in a
+  sibling named after it. It was described as "not a filesystem root".
 
 ### Tools and CI
 
@@ -136,7 +156,9 @@ Rust API:
   (`pass`/`fail`). `--output` holds `incomplete` or `error` after a run that
   did not finish, and an existing `--output` that is not one of its reports
   is refused (exit 2) instead of replaced, as is the specification, the tool
-  itself, a `.parquet` file or a `manifest.json`.
+  itself, a `.parquet` file or a `manifest.json`. A missing export root or an
+  unreadable or malformed specification is one `error:` line and exit 2
+  instead of a traceback, and still leaves an `error` report at `--output`.
 - `package_release.py` refuses a tag that does not name the Cargo workspace
   version, and a new `version` command prints that version. Untagged CI runs
   package as `v<version>+ci.<commit>`.

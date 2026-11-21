@@ -185,6 +185,12 @@ Return `Err(your_error)` from a callback to stop delivery. `ReadError::Consumer`
 returns the original error type and value; no later callback runs. A frame
 reader may finish unwinding its current chunk, but a later parser error does
 not replace the consumer error. Parser and I/O errors use `ReadError::Replay`.
+A panic inside the third-party Oodle decompressor on corrupt compressed data is
+caught and reported as a container error
+(`ContainerError::OodleDecompression("decoder panicked: ...")`, wrapped in
+`ReplayError::Checkpoint` inside a snapshot); the process-global panic hook
+still prints the codec's panic message unless the application replaces it, and
+a build with `panic = "abort"` cannot catch it.
 The decompression helper notices cancellation at its next send. It may finish
 its current decompression or scan intervening non-ReplayData headers first;
 callback cancellation does not promise immediate termination of all I/O.

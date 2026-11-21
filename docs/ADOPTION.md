@@ -129,11 +129,11 @@ shows main-stream body/movement association without joining native Events to
 accounts. These are source examples, with no extra Cargo feature required:
 
 ```bash
-cargo +1.86.0 run -p vrfkit --no-default-features --locked \
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked \
   --example stream_checkpoints -- match.vrf
-cargo +1.86.0 run -p vrfkit --no-default-features --locked \
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked \
   --example gameplay_identity -- match.vrf
-cargo +1.86.0 run -p vrfkit --no-default-features --locked \
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked \
   --example read_bounded_stdin -- 67108864 --checkpoints < match.vrf
 ```
 
@@ -232,6 +232,10 @@ That does not make the output a lossless replay archive:
 - The optional gameplay projections cover their listed observations. They do
   not infer missing events, full rounds, damage details, site/planter/defuser
   identities from spike Event payloads, or complete ability semantics.
+- The `.vrf` format carries no checksum, so a corrupted file can pass
+  validation with `Decode errors: 0` and still yield different values: in one
+  hands-on check a single flipped bit changed the yaw of two movement rows by
+  exactly 180 degrees, with exit 0.
 
 Before selecting a parser, compare the required input/output contracts in the
 [pinned ValorantReplayParser comparison](REFERENCE_COMPARISON.md#integration-contracts-at-the-pinned-revision).

@@ -258,6 +258,12 @@ what it holds.
 
 #### Lines to actually watch in the summary
 
+The `export` summary (`=== Export complete ===` and everything below it) is
+written to **stderr**; `export` writes nothing to stdout. `validate` and
+`inspect` print their reports to stdout (progress lines such as `reading ...`
+go to stderr), and `diag` prints its JSON to stdout unless `--json` is given.
+Redirect `2>` to capture an export summary.
+
 ```
   Sink tally:       1296660 fields / 342990 RPCs / 2028 opens / 1799 closes / 608080 content blocks
   Malformed pkts:   0        <- nonzero means framing is broken
@@ -586,8 +592,10 @@ RPCs, and they do not enter the block validation numerator. With
 An accumulator's source columns describe its first fragment, while its
 `bit_count` covers the assembled buffer. Main and checkpoint totals are in the
 export summary (`Partial raw rows`, `Checkpoint partial raw`) and in the
-manifest's `quality` object (`partial_rows` / `partial_bits`,
-`checkpoint_partial_rows` / `checkpoint_partial_bits`).
+manifest: `quality.partial_rows` / `quality.partial_bits`, and
+`quality.checkpoints.checkpoint_partial_rows` /
+`quality.checkpoints.checkpoint_partial_bits` (`quality.checkpoints` is `null`
+without `--checkpoints`).
 
 ### `checkpoint_fields.parquet`
 
@@ -697,7 +705,7 @@ Every loss and fallback counter for the run, including the checkpoint pass when
 |---|---|
 | `content_blocks_lost` | Content blocks whose payload never reached the tables. **Non-zero means the exported tables are missing replicated state.** |
 | `unknown_chunks` | Chunks of a type no reader knows, printed as `Unknown chunks:` by `export` and `validate`. |
-| `net`, `sink` (and under `checkpoints`) | Every replication and sink counter, zeros included: among them the nine `partial_*` cause counters and `fields_emitted` (the `fields.parquet` rows, the `Sink tally` figure). |
+| `net`, `sink` (and under `checkpoints`) | Every replication and sink counter, zeros included: among them the ten `partial_*` cause counters (`partial_missing_initial` with its `_final`, `_reliable` and `_bits` breakdowns, `partial_overlapping_initial`, `partial_mismatched_continuation`, `partial_non_byte_aligned`, `partial_payload_overrun`, `partial_channel_close`, `partial_resource_limit_failures`) and `fields_emitted` (the `fields.parquet` rows, the `Sink tally` figure). The derived `partial_unclassified_errors` / `partial_overclassified_errors` residuals are not manifest keys: they appear in `diag` JSON and on the `Partial causes:` line of `export` and `validate`. |
 | `event_payloads_decoded` | Event payloads whose exact known arity, tag, public enum name and time relation populated the structural overlay. |
 | `event_payload_unknown_groups` | Event groups outside that measured vocabulary; their raw payload remains preserved. |
 | `event_layout_mismatches` | Known groups that failed any structural guard; all nullable overlay columns remain empty. |
