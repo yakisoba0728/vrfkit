@@ -30,7 +30,7 @@ Component envelopes: 3 validated / 90 payload bytes / 5 unused bits
 Component headers: 3 input / 2 discrepancy
 ActiveBlinds trailers: 3 empty deltas
 FocusProjectiles trailers: 0 empty deltas
-FocusProjectiles refused: 0 declaration mismatches
+FocusProjectiles refused: 0 parent updates with a mismatched declaration
 """
 
 #: Measured on a live export: 742738 + 0 + 72644 + 171605 + 1996 = 988983
@@ -64,7 +64,7 @@ CLEAN_WITH_CHECKPOINTS = LIVE_EXPORT + """
   Checkpoint component headers: 0 input / 0 discrepancy
   Checkpoint ActiveBlinds trailers: 1 empty deltas
   Checkpoint FocusProjectiles trailers: 0 empty deltas
-  Checkpoint FocusProjectiles refused: 0 declaration mismatches
+  Checkpoint FocusProjectiles refused: 0 parent updates with a mismatched declaration
   Checkpoint CNC:   3 RPC rows
   Checkpoint CNC brute force: 0 attempted / 0 unwalked
 """
@@ -285,7 +285,7 @@ Component envelopes: 5 validated / 150 payload bytes / 7 unused bits
 Component headers: 5 input / 4 discrepancy
 ActiveBlinds trailers: 2 empty deltas
 FocusProjectiles trailers: 0 empty deltas
-FocusProjectiles refused: 0 declaration mismatches
+FocusProjectiles refused: 0 parent updates with a mismatched declaration
 """
 
 # Printed only when the gate passed --checkpoints on, as vrfkit does.
@@ -304,7 +304,7 @@ CHECKPOINTS = """
   Checkpoint component headers: 0 input / 0 discrepancy
   Checkpoint ActiveBlinds trailers: 1 empty deltas
   Checkpoint FocusProjectiles trailers: 0 empty deltas
-  Checkpoint FocusProjectiles refused: 0 declaration mismatches
+  Checkpoint FocusProjectiles refused: 0 parent updates with a mismatched declaration
   Checkpoint CNC brute force: 0 attempted / 0 unwalked
 """
 

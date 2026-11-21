@@ -443,11 +443,11 @@ class CheckpointGuidCrossCheckTests(TempDirTestCase):
                    "  Checkpoint component headers: 0 input / 0 discrepancy\n"
                    "  ActiveBlinds trailers: 0 empty deltas\n"
                    "  FocusProjectiles trailers: 0 empty deltas\n"
-                   "  FocusProjectiles refused: 0 declaration mismatches\n"
+                   "  FocusProjectiles refused: 0 parent updates with a mismatched declaration\n"
                    "  Route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles\n"
                    "  Checkpoint ActiveBlinds trailers: 0 empty deltas\n"
                    "  Checkpoint FocusProjectiles trailers: 0 empty deltas\n"
-                   "  Checkpoint FocusProjectiles refused: 0 declaration mismatches\n"
+                   "  Checkpoint FocusProjectiles refused: 0 parent updates with a mismatched declaration\n"
                    "  Checkpoint route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles\n"
                    "  Trailing bytes:   {trailing}\n"
                    f"GUID entries: {len(DECLARATIONS)}\n"
@@ -734,7 +734,7 @@ Component envelopes: 0 validated / 0 payload bytes / 0 unused bits
 Component headers: 0 input / 0 discrepancy
 ActiveBlinds trailers: 0 empty deltas
 FocusProjectiles trailers: 0 empty deltas
-FocusProjectiles refused: 0 declaration mismatches
+FocusProjectiles refused: 0 parent updates with a mismatched declaration
 Route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles
 """
 

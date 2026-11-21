@@ -252,7 +252,7 @@ pub(super) fn print(
         totals.sink.focus_projectiles_empty_trailers
     );
     eprintln!(
-        "  FocusProjectiles refused: {} declaration mismatches",
+        "  FocusProjectiles refused: {} parent updates with a mismatched declaration",
         totals.sink.focus_projectiles_declaration_refusals
     );
     eprintln!("  Truncated RPCs:   {}", totals.sink.truncated_rpcs);
@@ -475,7 +475,7 @@ fn print_checkpoints(cp: &CheckpointStats) {
         cp.sink.focus_projectiles_empty_trailers
     );
     eprintln!(
-        "  Checkpoint FocusProjectiles refused: {} declaration mismatches",
+        "  Checkpoint FocusProjectiles refused: {} parent updates with a mismatched declaration",
         cp.sink.focus_projectiles_declaration_refusals
     );
     eprintln!(

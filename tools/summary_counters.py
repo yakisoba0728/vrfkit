@@ -105,8 +105,9 @@ LINES = (
     # Empty deltas whose trailing zero byte was spared: a measured tolerance.
     ("ActiveBlinds trailers: {} empty deltas", "active_blinds_empty_trailers", "PG"),
     ("FocusProjectiles trailers: {} empty deltas", "focus_projectiles_empty_trailers", "PG"),
-    # The routed parent whose handle or member declaration differ: refused, raw kept.
-    ("FocusProjectiles refused: {} declaration mismatches",
+    # One per routed parent update whose handle or member declaration differ:
+    # refused, raw kept. Not a count of distinct declarations.
+    ("FocusProjectiles refused: {} parent updates with a mismatched declaration",
      "focus_projectiles_declaration_refusals", "PG"),
     ("Truncated RPCs: {}", "truncated_rpcs", "G"),
     ("RPC param walks: {}", "rpc_param_walks", "PG"),
@@ -167,7 +168,7 @@ LINES = (
      "PG"),
     ("Checkpoint FocusProjectiles trailers: {} empty deltas", "cp_focus_projectiles_empty_trailers",
      "PG"),
-    ("Checkpoint FocusProjectiles refused: {} declaration mismatches",
+    ("Checkpoint FocusProjectiles refused: {} parent updates with a mismatched declaration",
      "cp_focus_projectiles_declaration_refusals", "PG"),
     ("Checkpoint movement components: {} attempted / {} complete / {} errors / {} empty",
      "cp_movement_component_streams cp_movement_component_complete "
