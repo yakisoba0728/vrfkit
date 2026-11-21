@@ -438,6 +438,29 @@ fn a_compressed_archive_with_the_decoder_reaches_the_codec() {
     ));
 }
 
+/// A stream the codec panics on is an error, not a panic, on both archive
+/// paths; the caught panic's message is kept.
+#[cfg(feature = "oodle")]
+#[test]
+fn a_codec_panic_is_reported_as_a_decompression_error() {
+    let archive = archive_that_panics_the_codec();
+    let payload = replay_data(archive.len() as i32, 64, &archive);
+    let result = std::panic::catch_unwind(|| decompress_replay_data(&payload, true, false));
+    let Ok(Err(ContainerError::OodleDecompression(message))) = result else {
+        panic!("expected a decompression error, got {result:?}");
+    };
+    assert!(message.starts_with("decoder panicked: "), "{message}");
+
+    #[cfg(feature = "checkpoint")]
+    {
+        let result = std::panic::catch_unwind(|| decompress_checkpoint(&archive, true, false));
+        assert!(
+            matches!(result, Ok(Err(ContainerError::OodleDecompression(ref m))) if m.starts_with("decoder panicked: ")),
+            "{result:?}"
+        );
+    }
+}
+
 #[test]
 fn preamble_no_header_chunk_rejected() {
     let data = replay_info(&Info::default());

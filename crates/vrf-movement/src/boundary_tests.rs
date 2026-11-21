@@ -19,7 +19,7 @@ fn missing_array_terminator_is_counted_when_outer_rpc_is_complete() {
 }
 
 #[test]
-fn component_remainder_is_accounted_when_sized_section_is_complete() {
+fn unobserved_sized_window_is_refused_with_or_without_extra_bits() {
     for extra_bits in [0, 8] {
         // Given: a complete eleven-bit section, optionally followed by 0xff.
         let mut stream = BitWriter::new();
@@ -41,18 +41,12 @@ fn component_remainder_is_accounted_when_sized_section_is_complete() {
         // When: the enclosing component is decoded through the real RPC.
         let result = decode_movement_rpc(&mut reader, |_| panic!("no move exists")).unwrap();
 
-        // Then: every bit beyond the complete section is accounted for.
-        assert_eq!(result.error_count, 0);
-        let accounted = result.sized_section_tail_bits
-            + result.open_section_tail_bits
-            + result.envelope_trailer_bits
-            + result.sized_section_trailer_bits;
-        assert_eq!(accounted, u64::from(extra_bits));
-        assert_eq!(result.sized_section_trailer_bits, u64::from(extra_bits));
-        assert_eq!(result.sized_section_trailers, u32::from(extra_bits > 0));
-        assert_eq!(result.sized_section_tail_bits, 0);
-        assert_eq!(result.open_section_tail_bits, 0);
-        assert_eq!(result.envelope_trailer_bits, 0);
+        // Then: this unobserved grammar cannot report success. The parent
+        // RPC must retain its complete payload, including every extra bit.
+        assert_eq!(result.error_count, 1);
+        assert_eq!(result.component_streams, 1);
+        assert_eq!(result.component_errors, 1);
+        assert_eq!(result.component_complete, 0);
     }
 }
 

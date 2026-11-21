@@ -6,7 +6,7 @@ use vrf_bitio::BitReader;
 
 use crate::error::MovementError;
 use crate::moves::parse_movement_section;
-use crate::types::{MovementMove, RpcDecodeResult};
+use crate::types::{MovementContext, MovementMove, RpcDecodeResult};
 
 /// Maximum number of character updates in a single RPC batch.
 const MAX_REMOTE_CHARACTER_UPDATES: u32 = 256;
@@ -23,6 +23,20 @@ pub fn decode_movement_rpc(
     reader: &mut BitReader<'_>,
     mut emit: impl FnMut(MovementMove),
 ) -> Result<RpcDecodeResult, MovementError> {
+    decode_movement_rpc_with_context(reader, |movement, _| emit(movement))
+}
+
+/// Decode the same moves as [`decode_movement_rpc`], retaining their exact
+/// array, update and component occurrence context. No move is merged or
+/// reordered. Repeated indices remain separate arrivals; callers must not
+/// infer final replacement semantics from emitted moves alone, since a later
+/// empty or failed component need not emit a row.
+///
+/// `reader` must be bounded to the RPC payload's exact declared bit length.
+pub fn decode_movement_rpc_with_context(
+    reader: &mut BitReader<'_>,
+    mut emit: impl FnMut(MovementMove, MovementContext),
+) -> Result<RpcDecodeResult, MovementError> {
     let mut result = RpcDecodeResult::default();
     // The discarded first bit; without it the payload is empty.
     if reader.at_end() {
@@ -30,6 +44,7 @@ pub fn decode_movement_rpc(
     }
     let _ = reader.read_bit()?;
 
+    let mut array_ordinal = 0;
     while !reader.at_end() {
         let encoded_handle = reader.read_int_packed()?;
         if encoded_handle == 0 {
@@ -44,7 +59,8 @@ pub fn decode_movement_rpc(
         }
 
         let mut sub = reader.sub_reader(u64::from(payload_bits))?;
-        decode_updates_array(&mut sub, &mut result, &mut emit)?;
+        decode_updates_array(&mut sub, array_ordinal, &mut result, &mut emit)?;
+        array_ordinal += 1;
     }
 
     // A 0 handle before the end leaves the rest unread. A drift can make the
@@ -58,8 +74,9 @@ pub fn decode_movement_rpc(
 
 fn decode_updates_array(
     reader: &mut BitReader<'_>,
+    array_ordinal: u32,
     result: &mut RpcDecodeResult,
-    emit: &mut impl FnMut(MovementMove),
+    emit: &mut impl FnMut(MovementMove, MovementContext),
 ) -> Result<(), MovementError> {
     let update_count = reader.read_int_packed()?;
     if update_count > MAX_REMOTE_CHARACTER_UPDATES {
@@ -67,6 +84,7 @@ fn decode_updates_array(
     }
     result.update_count = update_count;
 
+    let mut update_ordinal = 0;
     loop {
         // Capacity is not the number of changed elements: only a zero index
         // ends a sparse array cleanly, even when no elements changed.
@@ -89,10 +107,20 @@ fn decode_updates_array(
         // An index (`encoded_index - 1`) past the declared count, or a failed
         // framing read (a handle, a length, or a field longer than the window),
         // after which the next index cannot be located: the rest is lost, counted.
-        if encoded_index > update_count || decode_single_update(reader, result, emit).is_err() {
+        let context = MovementContext {
+            array_ordinal,
+            update_ordinal,
+            update_index: encoded_index - 1,
+            component_ordinal: 0,
+            move_index: 0,
+        };
+        if encoded_index > update_count
+            || decode_single_update(reader, context, result, emit).is_err()
+        {
             result.error_count += 1;
             break;
         }
+        update_ordinal += 1;
     }
 
     Ok(())
@@ -100,8 +128,9 @@ fn decode_updates_array(
 
 fn decode_single_update(
     reader: &mut BitReader<'_>,
+    mut context: MovementContext,
     result: &mut RpcDecodeResult,
-    emit: &mut impl FnMut(MovementMove),
+    emit: &mut impl FnMut(MovementMove, MovementContext),
 ) -> Result<(), MovementError> {
     let mut shooter_guid: Option<u32> = None;
     while !reader.at_end() {
@@ -120,7 +149,9 @@ fn decode_single_update(
                 } else {
                     // Not a u32. The field is consumed, so the framing
                     // survives, but the update has no character to attribute
-                    // moves to: a loss, not "no moves".
+                    // later moves to, even if an earlier occurrence was
+                    // valid: a loss, not "no moves".
+                    shooter_guid = None;
                     result.error_count += 1;
                 }
             }
@@ -130,8 +161,19 @@ fn decode_single_update(
                     // `sub_reader` has already moved `reader` past the whole
                     // stream, so a failure inside it cannot misplace the next
                     // handle: count it and go on.
-                    if decode_component_data_stream(&mut sub, guid, result, emit).is_err() {
+                    context.move_index = 0;
+                    let mut component_emit = |movement| {
+                        emit(movement, context);
+                        context.move_index += 1;
+                    };
+                    result.component_streams += 1;
+                    if decode_component_data_stream(&mut sub, guid, result, &mut component_emit)
+                        .is_err()
+                    {
                         result.error_count += 1;
+                        result.component_errors += 1;
+                    } else {
+                        result.component_complete += 1;
                     }
                 } else {
                     // No GUID: handle 2 was not 32 bits (counted above) or has
@@ -139,6 +181,7 @@ fn decode_single_update(
                     // the moves are dropped. An update hitting both adds two.
                     result.error_count += 1;
                 }
+                context.component_ordinal += 1;
             }
             _ => {
                 reader.skip_bits(u64::from(payload_bits))?;
@@ -149,77 +192,92 @@ fn decode_single_update(
     Ok(())
 }
 
-/// The leading u16 is an envelope byte count iff it is non-zero and the
-/// envelope fits, else movementBitCount. The choice is final: an inner failure
-/// never rolls back to the other reading.
+/// Native byte array: a signed 32-bit byte count, exactly that many payload
+/// bytes and one unused-bit-count byte. The logical payload excludes the high
+/// unused bits, then contains movement, an absolute input end bit and headers.
 fn decode_component_data_stream(
     reader: &mut BitReader<'_>,
     shooter_guid: u32,
     result: &mut RpcDecodeResult,
     emit: &mut impl FnMut(MovementMove),
 ) -> Result<(), MovementError> {
-    let first_u16 = read_u16_checked(reader)?;
-
-    let byte_count = u64::from(first_u16);
-    if byte_count > 0 && reader.bits_remaining() >= byte_count * 8 {
-        // Wrapped: the envelope's payload starts with its own movementBitCount.
-        let mut inner = reader.sub_reader(byte_count * 8)?;
-        // What follows the envelope is never read; tallied here, before the
-        // section can fail, with the stream counted even when nothing follows.
-        result.envelope_trailer_streams += 1;
-        result.envelope_trailer_bits += reader.bits_remaining();
-        let bit_count = read_u16_checked(&mut inner)?;
-        parse_movement_with_bit_count(&mut inner, bit_count, shooter_guid, result, emit)
-    } else {
-        parse_movement_with_bit_count(reader, first_u16, shooter_guid, result, emit)
-    }
-}
-
-/// Read a u16, failing with `TruncatedComponentHeader` rather than a bare Eof.
-fn read_u16_checked(reader: &mut BitReader<'_>) -> Result<u16, MovementError> {
-    if reader.bits_remaining() < 16 {
+    if reader.bits_remaining() < 32 {
         return Err(MovementError::TruncatedComponentHeader {
             available_bits: reader.bits_remaining(),
         });
     }
-    Ok(reader.read_u16()?)
+    let count = reader.read_i32()?;
+    if count < 0 {
+        return Err(MovementError::NegativeComponentByteCount { count });
+    }
+    let byte_count = count as u32;
+    let payload_bits = u64::from(byte_count) * 8;
+    if reader.bits_remaining() != payload_bits + 8 {
+        return Err(MovementError::ComponentLengthMismatch {
+            byte_count,
+            available_bits: reader.bits_remaining(),
+        });
+    }
+    let mut payload = reader.sub_reader(payload_bits)?;
+    let unused_bits = reader.read_u8()?;
+    if unused_bits > 7 || (byte_count == 0 && unused_bits != 0) {
+        return Err(MovementError::InvalidUnusedBitCount {
+            byte_count,
+            unused_bits,
+        });
+    }
+    result.component_envelopes += 1;
+    result.component_payload_bytes += u64::from(byte_count);
+    result.component_unused_bits += u64::from(unused_bits);
+    if byte_count == 0 {
+        result.component_empty += 1;
+        return Ok(());
+    }
+
+    let mut components = payload.sub_reader(payload_bits - u64::from(unused_bits))?;
+    parse_movement_section(&mut components, shooter_guid, result, emit)?;
+    let end_bit = components.read_u16()?;
+    let minimum = components.position() + 8;
+    if u64::from(end_bit) < minimum || u64::from(end_bit) > components.len_bits() {
+        return Err(MovementError::InvalidInputBoundary {
+            end_bit,
+            minimum,
+            payload_bits: components.len_bits(),
+        });
+    }
+    let mut input = components.sub_reader(u64::from(end_bit) - components.position())?;
+    read_component_header(&mut input, 0xA3, "input")?;
+    result.component_input_headers += 1;
+    require_component_end(&input, "input")?;
+    if !components.at_end() {
+        read_component_header(&mut components, 0xA4, "discrepancy")?;
+        result.component_discrepancy_headers += 1;
+    }
+    require_component_end(&components, "discrepancy")?;
+    Ok(())
 }
 
-/// Parse the movement section in a window of `movement_bit_count` bits, or of
-/// all that remain when that is 0 or larger (an open window), tallying a tail.
-fn parse_movement_with_bit_count(
+fn read_component_header(
     reader: &mut BitReader<'_>,
-    movement_bit_count: u16,
-    shooter_guid: u32,
-    result: &mut RpcDecodeResult,
-    emit: &mut impl FnMut(MovementMove),
+    expected: u8,
+    component: &'static str,
 ) -> Result<(), MovementError> {
-    let remaining = reader.bits_remaining();
-
-    let uses_all_remaining = movement_bit_count == 0 || u64::from(movement_bit_count) > remaining;
-    let bits = if uses_all_remaining {
-        remaining
-    } else {
-        u64::from(movement_bit_count)
-    };
-
-    let mut movement_reader = reader.sub_reader(bits)?;
-    // Outside the sized window, but still inside the component or envelope.
-    // Count before parsing so a failed section cannot hide its trailer.
-    let trailer_bits = reader.bits_remaining();
-    if trailer_bits > 0 {
-        result.sized_section_trailers += 1;
-        result.sized_section_trailer_bits += trailer_bits;
+    let actual = reader.read_u8()?;
+    if actual != expected {
+        return Err(MovementError::UnknownComponentMagic { component, actual });
     }
-    let tail_bits = parse_movement_section(&mut movement_reader, shooter_guid, result, emit)?;
-    if tail_bits > 0 {
-        if uses_all_remaining {
-            result.open_section_tails += 1;
-            result.open_section_tail_bits += tail_bits;
-        } else {
-            result.sized_section_tails += 1;
-            result.sized_section_tail_bits += tail_bits;
-        }
+    Ok(())
+}
+
+fn require_component_end(
+    reader: &BitReader<'_>,
+    component: &'static str,
+) -> Result<(), MovementError> {
+    if !reader.at_end() {
+        return Err(MovementError::UnparsedComponentBody {
+            component,
+            remaining_bits: reader.bits_remaining(),
+        });
     }
     Ok(())
 }

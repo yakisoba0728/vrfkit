@@ -22,15 +22,35 @@ from typing import NamedTuple
 from atomic_io import atomic_write_text
 
 ROUTE_CHILDREN = ("Route children: {} player info / {} rewards / {} selected / {} kills / "
-                  "{} active effects / {} ignore actors / {} blinds / {} projectile path")
+                  "{} active effects / {} ignore actors / {} blinds / {} projectile path / {} focus projectiles")
 ROUTES = tuple(f"route_children_{name}" for name in (
     "player_information", "tracked_rewards", "selected_v2", "kill_data",
-    "server_active_effects", "requested_ignore_actors", "active_blinds", "projectile_path"))
+    "server_active_effects", "requested_ignore_actors", "active_blinds", "projectile_path",
+    "focus_projectiles"))
+
+# Added with the exact 12.05 FocusProjectiles route. Archived private
+# baselines predate these counts; their absence must not become measured zero.
+FOCUS_PROJECTILES_COUNTERS = ("route_children_focus_projectiles", "focus_projectiles_empty_trailers",
+                              "focus_projectiles_declaration_refusals")
+
+# Current native ComponentDataStream counters. Legacy names identify archived
+# measurements only: they must never be interpreted as native envelope data.
+MOVEMENT_COUNTERS = tuple("movement_component_" + name for name in (
+    "streams", "complete", "errors", "empty", "envelopes", "payload_bytes",
+    "unused_bits", "input_headers", "discrepancy_headers"))
+LEGACY_MOVEMENT_COUNTERS = tuple("movement_" + name for name in (
+    "sized_section_tails", "sized_section_tail_bits", "open_section_tails",
+    "open_section_tail_bits", "sized_section_trailers", "sized_section_trailer_bits",
+    "envelope_trailers", "envelope_trailer_bits"))
+LEGACY_PINNED_MOVEMENT_COUNTERS = tuple(key for key in LEGACY_MOVEMENT_COUNTERS
+                                      if "sized_section_trailer" not in key)
+OBSOLETE_MOVEMENT_CONTRACT = (
+    "obsolete movement counter contract: native component envelopes require genuine "
+    "remeasurement; archived tail/trailer counts cannot be converted")
 
 #: Who reads a line. P: check_export_baseline.py pins every key (the committed
-#: `*_02d4d478.json` hold exactly these). G: check_decode_errors_corpus.py
-#: gates on it. M: fresh movement-boundary measurements, validated and printed
-#: without inventing values in historical baselines. `cp_` keys are the
+#: historical `*_02d4d478.json` retain their older contract). G:
+#: check_decode_errors_corpus.py gates on it. `cp_` keys are the
 #: `=== Checkpoints ===` block, printed only
 #: under `--checkpoints`, so a default run never reads them.
 LINES = (
@@ -63,16 +83,14 @@ LINES = (
     # `decoded` keeps a stopped decoder (0 decoded, 0 failed) from reading clean.
     ("Struct blobs: {} decoded / {} failed", "struct_blobs_decoded struct_blobs_failed", "PG"),
     ("Movement errors: {}", "movement_rpc_errors", "G"),
-    # A measured tally in sized and open windows, not a loss verdict.
-    ("Movement tails: {} sized ({} bits) / {} open ({} bits)",
-     "movement_sized_section_tails movement_sized_section_tail_bits "
-     "movement_open_section_tails movement_open_section_tail_bits", "PG"),
-    ("Movement section trailers: {} streams / {} bits",
-     "movement_sized_section_trailers movement_sized_section_trailer_bits", "GM"),
-    # Bits after each byte-wrapped movement envelope, which nothing reads:
-    # verify_build_corpus.py fails a replay whose bits are not 24 per stream.
-    ("Envelope trailers: {} streams / {} bits",
-     "movement_envelope_trailers movement_envelope_trailer_bits", "PG"),
+    ("Movement components: {} attempted / {} complete / {} errors / {} empty",
+     "movement_component_streams movement_component_complete movement_component_errors "
+     "movement_component_empty", "PG"),
+    ("Component envelopes: {} validated / {} payload bytes / {} unused bits",
+     "movement_component_envelopes movement_component_payload_bytes "
+     "movement_component_unused_bits", "PG"),
+    ("Component headers: {} input / {} discrepancy",
+     "movement_component_input_headers movement_component_discrepancy_headers", "PG"),
     ("Array decode: {} elements / {} fields / {} errors / {} truncations",
      "array_elements_decoded array_fields_emitted array_errors array_truncations", "G"),
     ("Array residual: {} root bits / {} nested bits / {} implicit ends",
@@ -86,6 +104,11 @@ LINES = (
     ("Reward opaque: {} empty variants", "tracked_rewards_opaque_empty_variants", "PG"),
     # Empty deltas whose trailing zero byte was spared: a measured tolerance.
     ("ActiveBlinds trailers: {} empty deltas", "active_blinds_empty_trailers", "PG"),
+    ("FocusProjectiles trailers: {} empty deltas", "focus_projectiles_empty_trailers", "PG"),
+    # One per routed parent update whose handle or member declaration differ:
+    # refused, raw kept. Not a count of distinct declarations.
+    ("FocusProjectiles refused: {} parent updates with a mismatched declaration",
+     "focus_projectiles_declaration_refusals", "PG"),
     ("Truncated RPCs: {}", "truncated_rpcs", "G"),
     ("RPC param walks: {}", "rpc_param_walks", "PG"),
     ("Event layout err: {}", "event_layout_mismatches", "P"),
@@ -143,13 +166,18 @@ LINES = (
      "cp_tracked_rewards_opaque_empty_variants", "PG"),
     ("Checkpoint ActiveBlinds trailers: {} empty deltas", "cp_active_blinds_empty_trailers",
      "PG"),
-    ("Checkpoint movement tails: {} sized ({} bits) / {} open ({} bits)",
-     "cp_movement_sized_section_tails cp_movement_sized_section_tail_bits "
-     "cp_movement_open_section_tails cp_movement_open_section_tail_bits", "PG"),
-    ("Checkpoint movement section trailers: {} streams / {} bits",
-     "cp_movement_sized_section_trailers cp_movement_sized_section_trailer_bits", "GM"),
-    ("Checkpoint envelope trailers: {} streams / {} bits",
-     "cp_movement_envelope_trailers cp_movement_envelope_trailer_bits", "PG"),
+    ("Checkpoint FocusProjectiles trailers: {} empty deltas", "cp_focus_projectiles_empty_trailers",
+     "PG"),
+    ("Checkpoint FocusProjectiles refused: {} parent updates with a mismatched declaration",
+     "cp_focus_projectiles_declaration_refusals", "PG"),
+    ("Checkpoint movement components: {} attempted / {} complete / {} errors / {} empty",
+     "cp_movement_component_streams cp_movement_component_complete "
+     "cp_movement_component_errors cp_movement_component_empty", "PG"),
+    ("Checkpoint component envelopes: {} validated / {} payload bytes / {} unused bits",
+     "cp_movement_component_envelopes cp_movement_component_payload_bytes "
+     "cp_movement_component_unused_bits", "PG"),
+    ("Checkpoint component headers: {} input / {} discrepancy",
+     "cp_movement_component_input_headers cp_movement_component_discrepancy_headers", "PG"),
     ("Checkpoint CNC: {} RPC rows", "cp_cnc_rpcs_emitted", "P"),
     ("Checkpoint CNC brute force: {} attempted / {} unwalked",
      "cp_cnc_bruteforce_payloads_attempted cp_cnc_bruteforce_payloads_unwalked", "PG"),
@@ -197,6 +225,50 @@ def lines(reader: str, checkpoint: bool) -> tuple[Line, ...]:
 
 def keys(reader: str, checkpoint: bool) -> tuple[str, ...]:
     return tuple(key for line in lines(reader, checkpoint) for key in line.keys)
+
+
+def obsolete_movement_contract(counters: dict, prefix: str = "") -> bool:
+    return any(prefix + key in counters for key in LEGACY_MOVEMENT_COUNTERS)
+
+
+def movement_contract_errors(counters: dict, prefix: str = "", *,
+                             require_work: bool = False) -> list[str]:
+    """Validate native component bookkeeping, without treating padding as lost data.
+
+    Only components with a known character GUID are attempted. Structural and
+    unknown-body failures can follow emitted moves, so header counts include
+    recognized headers in otherwise failed components. Orphan components and
+    outer framing failures contribute to movement_rpc_errors separately.
+    """
+    if obsolete_movement_contract(counters, prefix):
+        return [OBSOLETE_MOVEMENT_CONTRACT]
+    names = (*MOVEMENT_COUNTERS, "movement_rpc_errors")
+    invalid = [prefix + key for key in names
+               if type(counters.get(prefix + key)) is not int or counters[prefix + key] < 0]
+    if invalid:
+        return [f"missing or invalid native movement counter: {key}" for key in invalid]
+    values = {key.removeprefix("movement_component_"): counters[prefix + key]
+              for key in MOVEMENT_COUNTERS}
+    streams, complete, errors = (values[key] for key in ("streams", "complete", "errors"))
+    envelopes, empty = values["envelopes"], values["empty"]
+    problems = []
+    if streams != complete + errors:
+        problems.append("attempted != complete + errors")
+    if not empty <= complete <= envelopes <= streams:
+        problems.append("expected empty <= complete <= validated envelopes <= attempted")
+    if errors > counters[prefix + "movement_rpc_errors"]:
+        problems.append("component errors exceed movement RPC errors")
+    if values["unused_bits"] > 7 * (envelopes - empty):
+        problems.append("unused bits exceed seven per nonempty validated envelope")
+    if values["payload_bytes"] < envelopes - empty:
+        problems.append("payload bytes are fewer than nonempty validated envelopes")
+    if not complete - empty <= values["input_headers"] <= envelopes - empty:
+        problems.append("input header count does not cover completed nonempty components")
+    if values["discrepancy_headers"] > values["input_headers"]:
+        problems.append("discrepancy headers exceed input headers")
+    if require_work and (not streams or not values["input_headers"]):
+        problems.append("no movement component decoding evidence")
+    return [f"{prefix}native movement counters: {problem}" for problem in problems]
 
 
 def read(text: str, wanted) -> dict[str, int | None]:

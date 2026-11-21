@@ -33,9 +33,16 @@ regressions, integrated checks and the remaining Windows/private-corpus limits.
   ([DATA.md](DATA.md#replicatedmovementlocation-is-world-units-at-a-per-class-level)):
   four need their rotator width from the native class, and Cypher's cage
   projectile needs its table `Skip` retyped with its 13.01 successor.
-- Type `Clay_PC_C.FocusProjectiles` through a measured array route: 24,409 of
-  25,197 main payloads parse exactly and all 12,837 elements resolve to Raze
-  actors; the other 788 carry the empty-array zero trailer the route must admit.
+- Extend `Clay_PC_C.FocusProjectiles` only when additional build-specific
+  evidence supports it. 0.6.0 added the exact
+  [12.05 measured route](PHASE_C_FOCUS_PROJECTILES.md), preserving raw parents
+  and accepting the proved empty-array zero trailer. The earlier broad audit
+  found 24,409 of 25,197 main payloads parsed exactly and all 12,837 elements
+  resolved to Raze actors; the other 788 carried an empty-array zero trailer.
+  Those historical figures are not a fresh audit of the route or evidence for
+  enabling this route on other builds. Further support needs exact live
+  declarations, complete payload consumption and independent malformed and
+  row-preservation comparisons.
 
 ## Considered and not done
 

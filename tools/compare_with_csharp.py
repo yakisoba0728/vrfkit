@@ -19,10 +19,11 @@ import itertools
 import json
 import statistics
 import sys
-from collections import Counter, defaultdict, deque
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterator
 
+import pyarrow as pa
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
@@ -77,7 +78,9 @@ def compare_totals(cs_manifest: dict, vk_manifest: dict) -> str:
         lines.append(f"{label:<20} {cs_disp} {vk_disp} {match:>6}")
 
     row("Packets",       cs_stats.get("packet_count"),        vk_stats.get("packet_count"))
-    row("Bunches",       cs_stats.get("packets_with_bunches", cs_stats.get("bunch_count")),
+    # A packet can contain several bunches. The reference emits both counters;
+    # packets_with_bunches is neither the preferred value nor a valid fallback.
+    row("Bunches",       cs_stats.get("bunch_count"),
                          vk_stats.get("bunch_count", vk_counts.get("bunch_count")))
     row("Actor opens",   cs_counts.get("actor_spawned"),      vk_counts.get("actor_opens"))
     row("Actor closes",  cs_counts.get("actor_closed"),       vk_counts.get("actor_closes"))
@@ -283,8 +286,11 @@ def _xyz(value) -> list:
 
 
 def compare_movement(cs_movement_path: Path, vk_movement_path: Path) -> str:
-    """Compare the first MOVEMENT_SAMPLE C# movement rows with vrfkit's, joined
-    on (time_ms, character GUID): exact, then +-1 ms."""
+    """Compare sampled moves by packet, character and movement timestamp.
+
+    Older exports without identity metadata use display time (+-1 ms). An
+    ambiguous identity is reported, never selected by position or velocity.
+    """
     lines = ["## 5. Movement value comparison\n"]
 
     if not cs_movement_path.exists():
@@ -319,28 +325,66 @@ def compare_movement(cs_movement_path: Path, vk_movement_path: Path) -> str:
     # movement.parquet's schema is fixed and non-nullable (vrf-export's movement_schema).
     columns = ["time_ms", "character_net_guid", "pos_x", "pos_y", "pos_z", "yaw", "pitch",
                "vel_x", "vel_y", "vel_z"]
+    identity_columns = {"packet_id", "timestamp"}.issubset(vk_columns)
+
+    def has_identity(row):
+        return (identity_columns and row.get("packet_id") is not None
+                and row.get("timestamp") is not None)
+
+    candidate_filter = ((ds.field("time_ms") >= max(0, min_time - 1))
+                        & (ds.field("time_ms") <= max_time + 1))
+    if identity_columns:
+        columns += ["packet_id", "timestamp"]
+        strong_packet_ids = {row["packet_id"] for _t, _g, row in cs_sample if has_identity(row)}
+        if strong_packet_ids:
+            # Display time is not part of the strong identity. Retain every
+            # candidate packet even when its display timestamp disagrees.
+            candidate_filter |= ds.field("packet_id").isin(
+                pa.array(sorted(strong_packet_ids), type=pa.uint64()))
     vk_tbl = read_parquet(
-        vk_movement_path, columns=columns,
-        filters=(ds.field("time_ms") >= min_time) & (ds.field("time_ms") <= max_time + 1))
+        vk_movement_path, columns=columns, filters=candidate_filter)
     vk = {name: vk_tbl.column(name).to_pylist() for name in columns}
-    vk_rows: defaultdict[tuple[int, int], deque[int]] = defaultdict(deque)
+    vk_rows: defaultdict[tuple[int, int], list[int]] = defaultdict(list)
+    vk_identity: defaultdict[tuple, list[int]] = defaultdict(list)
     for i, key in enumerate(zip(vk["time_ms"], vk["character_net_guid"])):
         vk_rows[key].append(i)
+        if identity_columns:
+            vk_identity[(vk["packet_id"][i], vk["character_net_guid"][i], vk["timestamp"][i])].append(i)
+
+    def available(indices, *, legacy=False):
+        return [index for index in indices if index not in used
+                and (not legacy or index not in reserved)]
 
     # A value the C# row lacks is not compared, never read as 0.
     errors: dict[str, list[float]] = {"Position (max axis)": [], "Yaw": [], "Pitch": [],
                                       "Velocity (max axis)": []}
-    joined = missed = 0
-    for t, g, cs_row in cs_sample:
-        vk_idx = None
-        for key in ((t, g), (t - 1, g), (t + 1, g)):
-            candidates = vk_rows.get(key)
-            if candidates:
-                vk_idx = candidates.popleft()
-                break
-        if vk_idx is None:
+    joined = missed = ambiguous = unmatched_identity = 0
+    identity_rows = sum(has_identity(row) for _t, _g, row in cs_sample)
+    used: set[int] = set()
+    reserved: set[int] = set()
+    # Reserve strong identities before any legacy row can consume a candidate.
+    for t, g, cs_row in sorted(cs_sample, key=lambda sample: not has_identity(sample[2])):
+        strong = has_identity(cs_row)
+        if strong:
+            candidates = available(vk_identity.get((cs_row["packet_id"], g, cs_row["timestamp"]), ()))
+        else:
+            candidates = available(vk_rows.get((t, g), ()), legacy=True)
+            if not candidates:
+                candidates = available([*vk_rows.get((t - 1, g), ()), *vk_rows.get((t + 1, g), ())],
+                                       legacy=True)
+        if not candidates:
             missed += 1
+            unmatched_identity += strong
             continue
+        if len(candidates) != 1:
+            if strong:
+                # Duplicated identities remain ambiguous to other strong rows,
+                # but cannot be repurposed as a weaker display-time match.
+                reserved.update(candidates)
+            ambiguous += 1
+            continue
+        vk_idx = candidates[0]
+        used.add(vk_idx)
         joined += 1
         for label, cs_vals, columns in (
             ("Position (max axis)", _xyz(cs_row.get("position")), ("pos_x", "pos_y", "pos_z")),
@@ -353,8 +397,13 @@ def compare_movement(cs_movement_path: Path, vk_movement_path: Path) -> str:
                                          for c, col in zip(cs_vals, columns)))
 
     lines.append(f"  Joined: {joined:,} / {len(cs_sample):,} ({100*joined/len(cs_sample):.1f}%)")
-    lines.append(f"  Missed (no match even ±1ms): {missed:,}")
-    lines.append("  Join method: exact (time_ms, character_net_guid), fallback ±1ms")
+    lines.append(f"  Missed (no match under selected join): {missed:,}")
+    lines.append(f"  Ambiguous (multiple candidate rows): {ambiguous:,}")
+    lines.append(f"  Exact identity rows: {identity_rows:,}")
+    lines.append(f"  Unmatched exact identities: {unmatched_identity:,}")
+    lines.append(f"  Legacy rows (identity metadata absent): {len(cs_sample) - identity_rows:,}")
+    lines.append("  Join method: exact (packet_id, character_net_guid, movement timestamp)")
+    lines.append("  Legacy only: exact (time_ms, character_net_guid), then ±1ms; ambiguous candidates are not compared")
 
     lines.append(f"\n  Error statistics (over {joined:,} joined rows):")
     for label, vals in errors.items():
@@ -367,6 +416,7 @@ def compare_movement(cs_movement_path: Path, vk_movement_path: Path) -> str:
                      f"median={statistics.median(vals):.4f}")
 
     lines.append("")
+    lines.append("  Comparison only: numeric tolerances are not applied; nonzero differences require interpretation.")
     return "\n".join(lines)
 
 

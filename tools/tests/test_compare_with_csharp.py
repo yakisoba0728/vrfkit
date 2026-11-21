@@ -17,6 +17,27 @@ PAIR_A = ("/Script/ShooterGame.Thing", "Health")
 PAIR_B = ("/Script/ShooterGame.Thing", "Armor")
 
 
+class TotalCountTests(unittest.TestCase):
+    def bunch_row(self, csharp_stats, vrfkit_count):
+        report = guard.compare_totals({"stats": csharp_stats},
+                                      {"stats": {"bunch_count": vrfkit_count}})
+        return next(line for line in report.splitlines() if line.startswith("Bunches"))
+
+    def test_bunches_use_bunch_count_not_packets_containing_bunches(self):
+        # Both names are emitted independently by the reference schema v9.
+        row = self.bunch_row({"packets_with_bunches": 8, "bunch_count": 21}, 21)
+        self.assertRegex(row, r"Bunches\s+21\s+21\s+\u2713")
+
+    def test_packets_with_bunches_cannot_substitute_for_missing_bunch_count(self):
+        row = self.bunch_row({"packets_with_bunches": 8}, 8)
+        self.assertRegex(row, r"Bunches\s+\?\s+8\s+\?")
+        self.assertNotIn("\u2713", row)
+
+    def test_zero_bunch_count_is_not_treated_as_missing(self):
+        row = self.bunch_row({"packets_with_bunches": 0, "bunch_count": 0}, 0)
+        self.assertRegex(row, r"Bunches\s+0\s+0\s+\u2713")
+
+
 class CoverageProblemTests(unittest.TestCase):
     def test_an_overlapping_comparison_has_no_problems(self):
         self.assertEqual(guard.coverage_problems({PAIR_A}, {PAIR_A, PAIR_B}), [])
@@ -210,6 +231,9 @@ class MovementMultiplicityTests(TempDirTestCase):
                 "vel_z": pa.array([r.get("vel_z", 0.0) for r in vrfkit_rows]),
             }
         )
+        for name, kind in (("packet_id", pa.uint64()), ("timestamp", pa.float64())):
+            if any(name in row for row in vrfkit_rows):
+                table = table.append_column(name, pa.array([row.get(name) for row in vrfkit_rows], type=kind))
         pq.write_table(table, parquet)
         inputs, real_read = [], pq.read_table
 
@@ -245,7 +269,7 @@ class MovementMultiplicityTests(TempDirTestCase):
         self.assertIn("Joined: 1 / 2", report)
         self.assertRegex(report, r"Missed .*: 1")
 
-    def test_duplicate_rows_on_both_sides_are_all_compared(self):
+    def test_legacy_duplicate_rows_are_reported_as_ambiguous(self):
         report = self.compare(
             [self.csharp_row(1), self.csharp_row(2)],
             [
@@ -253,7 +277,8 @@ class MovementMultiplicityTests(TempDirTestCase):
                 {"time_ms": 100, "character_net_guid": 42, "pos_x": 2},
             ],
         )
-        self.assertIn("Joined: 2 / 2", report)
+        self.assertIn("Joined: 0 / 2", report)
+        self.assertIn("Ambiguous (multiple candidate rows): 2", report)
 
     def test_a_value_the_reference_lacks_is_not_compared_as_zero(self):
         row = self.csharp_row(1)
@@ -262,3 +287,118 @@ class MovementMultiplicityTests(TempDirTestCase):
                                        "pos_x": 1, "yaw": 170.0}])
         self.assertIn("Yaw: no data", report)
         self.assertIn("Pitch (1 rows)", report)
+
+    def test_earliest_reference_row_can_join_one_millisecond_earlier(self):
+        # Synthetic boundary case: not a claim about an observed replay error.
+        report = self.compare([self.csharp_row(1)], [
+            {"time_ms": 99, "character_net_guid": 42, "pos_x": 1}])
+        self.assertIn("Joined: 1 / 1", report)
+        self.assertIn("Position (max axis) (1 rows): max=0.0000", report)
+
+    def test_zero_timestamp_remains_valid_with_unsigned_parquet_time(self):
+        row = self.csharp_row(1)
+        row["time_ms"] = 0
+        report = self.compare([row], [{"time_ms": 0, "character_net_guid": 42, "pos_x": 1}])
+        self.assertIn("Joined: 1 / 1", report)
+
+    def test_earliest_row_outside_one_millisecond_window_remains_unmatched(self):
+        report = self.compare([self.csharp_row(1)], [
+            {"time_ms": 98, "character_net_guid": 42, "pos_x": 1}])
+        self.assertIn("Joined: 0 / 1", report)
+
+    def test_packet_identity_disambiguates_rows_with_the_same_display_time(self):
+        row = {**self.csharp_row(2), "packet_id": 2, "timestamp": 10.0}
+        report = self.compare([row], [
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 1, "packet_id": 1, "timestamp": 10.0},
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 2, "packet_id": 2, "timestamp": 10.0}])
+        self.assertIn("Joined: 1 / 1", report)
+        self.assertIn("Position (max axis) (1 rows): max=0.0000", report)
+
+    def test_exact_identity_is_not_filtered_by_display_time(self):
+        # Display time may disagree even when the packet and move identity agree.
+        for rust_time, packet_id in ((0, 7), (10_000, 7), (10_000, 2**64 - 1)):
+            with self.subTest(rust_time=rust_time, packet_id=packet_id):
+                row = {**self.csharp_row(2), "packet_id": packet_id, "timestamp": 10.0}
+                report = self.compare([row], [
+                    {"time_ms": rust_time, "character_net_guid": 42, "pos_x": 9,
+                     "packet_id": packet_id, "timestamp": 10.0},
+                    {"time_ms": 100, "character_net_guid": 42, "pos_x": 2,
+                     "packet_id": 6, "timestamp": 10.0}])
+                self.assertIn("Joined: 1 / 1", report)
+                self.assertIn("Unmatched exact identities: 0", report)
+                # The identical position on a different packet must not win.
+                self.assertIn("Position (max axis) (1 rows): max=7.0000", report)
+
+    def test_movement_timestamp_selects_the_sample_within_a_packet(self):
+        row = {**self.csharp_row(2), "packet_id": 1, "timestamp": 11.0}
+        report = self.compare([row], [
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 1, "packet_id": 1, "timestamp": 10.0},
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 2, "packet_id": 1, "timestamp": 11.0}])
+        self.assertIn("Joined: 1 / 1", report)
+        self.assertIn("Position (max axis) (1 rows): max=0.0000", report)
+
+    def test_present_but_unmatched_identity_never_falls_back_to_display_time(self):
+        row = {**self.csharp_row(1), "packet_id": 2, "timestamp": 10.0}
+        report = self.compare([row], [
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 1, "packet_id": 1, "timestamp": 10.0}])
+        self.assertIn("Joined: 0 / 1", report)
+        self.assertIn("Unmatched exact identities: 1", report)
+
+    def test_ambiguous_exact_identity_is_not_selected_by_matching_value(self):
+        row = {**self.csharp_row(2), "packet_id": 1, "timestamp": 10.0}
+        report = self.compare([row], [
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 2, "packet_id": 1, "timestamp": 10.0},
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 7, "packet_id": 1, "timestamp": 10.0}])
+        self.assertIn("Joined: 0 / 1", report)
+        self.assertIn("Ambiguous (multiple candidate rows): 1", report)
+
+    def test_ambiguous_identity_candidates_cannot_be_reused_by_legacy_rows(self):
+        strong = {**self.csharp_row(2), "packet_id": 1, "timestamp": 10.0}
+        legacy = self.csharp_row(9)
+        report = self.compare([legacy, strong], [
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 2,
+             "packet_id": 1, "timestamp": 10.0},
+            {"time_ms": 101, "character_net_guid": 42, "pos_x": 7,
+             "packet_id": 1, "timestamp": 10.0}])
+        self.assertIn("Joined: 0 / 2", report)
+        self.assertIn("Ambiguous (multiple candidate rows): 1", report)
+        self.assertRegex(report, r"Missed .*: 1")
+        self.assertIn("Position (max axis): no data", report)
+
+    def test_ambiguous_identity_reservation_keeps_unrelated_legacy_candidates(self):
+        strong = {**self.csharp_row(2), "packet_id": 1, "timestamp": 10.0}
+        legacy = self.csharp_row(9)
+        report = self.compare([legacy, strong, strong], [
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 2,
+             "packet_id": 1, "timestamp": 10.0},
+            {"time_ms": 101, "character_net_guid": 42, "pos_x": 7,
+             "packet_id": 1, "timestamp": 10.0},
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 9,
+             "packet_id": 2, "timestamp": 11.0}])
+        self.assertIn("Joined: 1 / 3", report)
+        self.assertIn("Ambiguous (multiple candidate rows): 2", report)
+        self.assertIn("Unmatched exact identities: 0", report)
+        self.assertIn("Position (max axis) (1 rows): max=0.0000", report)
+
+    def test_missing_identity_metadata_uses_legacy_fallback(self):
+        row = {**self.csharp_row(1), "packet_id": 2}  # no movement timestamp
+        report = self.compare([row], [
+            {"time_ms": 99, "character_net_guid": 42, "pos_x": 1, "packet_id": 1, "timestamp": 10.0}])
+        self.assertIn("Joined: 1 / 1", report)
+        self.assertIn("Legacy rows (identity metadata absent): 1", report)
+
+    def test_both_neighboring_legacy_candidates_are_ambiguous(self):
+        report = self.compare([self.csharp_row(1)], [
+            {"time_ms": 99, "character_net_guid": 42, "pos_x": 1},
+            {"time_ms": 101, "character_net_guid": 42, "pos_x": 2}])
+        self.assertIn("Joined: 0 / 1", report)
+        self.assertIn("Ambiguous (multiple candidate rows): 1", report)
+
+    def test_exact_identity_rows_are_reserved_before_legacy_rows(self):
+        legacy = self.csharp_row(2)
+        strong = {**self.csharp_row(1), "packet_id": 1, "timestamp": 10.0}
+        report = self.compare([legacy, strong], [
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 1, "packet_id": 1, "timestamp": 10.0},
+            {"time_ms": 100, "character_net_guid": 42, "pos_x": 2, "packet_id": 2, "timestamp": 10.0}])
+        self.assertIn("Joined: 2 / 2", report)
+        self.assertIn("Position (max axis) (2 rows): max=0.0000", report)

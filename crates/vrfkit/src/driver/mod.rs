@@ -15,23 +15,23 @@ mod writers;
 
 use std::fs;
 use std::io::{BufWriter, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Instant;
 
 use vrf_container::{
     event_payload_seconds_matches_time, known_event_word_count, parse_event_chunk,
-    parse_known_event_payload, parse_preamble,
+    parse_known_event_payload,
 };
 use vrf_export::{
-    ActorWriter, EventRecord, EventWriter, FieldWriter, MovementWriter, NetGuidRecord,
-    NetGuidWriter, PartialRecord, PartialWriter,
+    ActorWriter, EventRecord, EventWriter, FieldWriter, MovementWriter, NetGuidWriter,
+    PartialRecord, PartialWriter,
 };
-use vrf_schema::NetGuidCache;
 
-use crate::error::CliError;
+use crate::error::{CliError, io_at};
 use crate::manifest::{self, ManifestQuality};
-use crate::pass::{Chunk, Pass, Replay, for_each_chunk};
+use crate::pass::{Chunk, Pass, Replay, net_guid_rows};
+use crate::reader_input::FileInput;
 use publish::OutputTransaction;
 pub(crate) use summary::RunTotals;
 use writers::WriterThread;
@@ -65,10 +65,12 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     let start = Instant::now();
 
     eprintln!("reading {vrf_path}...");
-    let data = fs::read(vrf_path)?;
-    let file_size = data.len();
-
-    let preamble = parse_preamble(&data)?;
+    let (preamble, input) = FileInput::open(Path::new(vrf_path))?;
+    let file_size = usize::try_from(input.len())
+        .map_err(|_| std::io::Error::other("replay size exceeds address space"))?;
+    let checkpoint_input = with_checkpoints
+        .then(|| input.checkpoints(Path::new(vrf_path)))
+        .transpose()?;
     let replay = Replay::new(&preamble);
     eprintln!(
         "branch: {}, flags: 0x{:04X}, compressed: {}, duration: {} ms",
@@ -76,11 +78,13 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     );
 
     let destination = PathBuf::from(out_dir);
-    let output = OutputTransaction::begin(&destination)?;
+    let output = OutputTransaction::begin(&destination, Path::new(vrf_path))?;
     let out_path = output.path();
 
     let create = |name: &str| -> Result<BufWriter<fs::File>, CliError> {
-        Ok(BufWriter::new(fs::File::create(out_path.join(name))?))
+        let path = out_path.join(name);
+        let file = fs::File::create(&path).map_err(|error| io_at(&path, error))?;
+        Ok(BufWriter::new(file))
     };
 
     let mut actor_writer = ActorWriter::new(create("actors.parquet")?)?;
@@ -102,12 +106,19 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     let mut pass = Pass::new(&replay)?;
     let mut totals = RunTotals::default();
 
-    // The checkpoint pass shares only the chunk list with this one, so it runs
-    // beside it; a main-pass error waits for it and wins.
+    // Independent file cursors keep checkpoint decoding beside the main pass
+    // without retaining the full input; a main-pass error waits for it and wins.
     let (main, checkpoints) = thread::scope(|scope| {
         let worker = checkpoint_writers
-            .map(|writers| scope.spawn(|| checkpoints::run(&data, &replay, writers)));
-        let main = for_each_chunk(&data, &replay, |chunk| {
+            .zip(checkpoint_input)
+            .map(|(writers, checkpoint_input)| {
+                scope.spawn(|| {
+                    checkpoints::run(&replay, writers, |on_checkpoint| {
+                        checkpoint_input.for_each_chunk(on_checkpoint)
+                    })
+                })
+            });
+        let main = input.for_each_chunk(&replay, &mut |chunk| {
             match chunk {
                 Chunk::Event(payload) => write_event(payload, &mut event_writer, &mut totals)?,
                 Chunk::ReplayData(frames, unread) => {
@@ -307,19 +318,4 @@ fn push_partials<W: Write + Send>(
         record
     }))?;
     Ok(())
-}
-
-/// The cache's GUID table as rows, sorted: the cache is a HashMap and the file
-/// must be byte-reproducible.
-fn net_guid_rows(cache: &NetGuidCache) -> Vec<NetGuidRecord> {
-    let mut entries = cache.net_guid_entries();
-    entries.sort_unstable_by_key(|entry| entry.net_guid);
-    entries
-        .into_iter()
-        .map(|entry| NetGuidRecord {
-            net_guid: entry.net_guid,
-            path: entry.path.to_owned(),
-            outer_net_guid: entry.outer_net_guid,
-        })
-        .collect()
 }

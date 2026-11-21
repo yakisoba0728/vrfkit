@@ -47,14 +47,20 @@ DEFAULT_EXE = REPO / "target" / "release" / "vrfkit.exe"
 #: The summary counters the baselines pin, main pass and `--checkpoints` pass.
 COUNTERS = sc.keys("P", checkpoint=False)
 CHECKPOINT_COUNTERS = sc.keys("P", checkpoint=True)
+# Archived private measurements retain their exact key set and values. These
+# sets are for archive schema validation only, never current comparisons.
+LEGACY_COUNTERS = tuple(key for key in COUNTERS if key not in (*sc.MOVEMENT_COUNTERS, *sc.FOCUS_PROJECTILES_COUNTERS)) \
+    + sc.LEGACY_PINNED_MOVEMENT_COUNTERS
+LEGACY_CHECKPOINT_COUNTERS = tuple(key for key in CHECKPOINT_COUNTERS
+                                  if key.removeprefix("cp_") not in (*sc.MOVEMENT_COUNTERS, *sc.FOCUS_PROJECTILES_COUNTERS)) \
+    + tuple("cp_" + key for key in sc.LEGACY_PINNED_MOVEMENT_COUNTERS)
 #: The frame-walk tallies, after the manifest's `frame_` / `checkpoint_frame_`.
 FRAME_SKIP_KEYS = ("external_data_blobs", "external_data_bytes", "game_specific_bytes",
                    "non_finite_times")
-#: Sink tallies of bits nothing reads, reconciled from pinned counters or
-#: fresh measurements with the manifest's `sink` blocks (checkpoint: `cp_`).
-SINK_TALLY_KEYS = ("movement_envelope_trailers", "movement_envelope_trailer_bits",
-                   "movement_sized_section_trailers", "movement_sized_section_trailer_bits",
-                   "active_blinds_empty_trailers")
+#: Native component and opaque-delta tallies, reconciled with the manifest's
+#: `sink` blocks (checkpoint summary keys use `cp_`).
+SINK_TALLY_KEYS = (*sc.MOVEMENT_COUNTERS, "active_blinds_empty_trailers",
+                   *sc.FOCUS_PROJECTILES_COUNTERS)
 
 
 PARQUET_FILES = ("fields", "movement", "actors", "net_guids", "events", "partials")
@@ -356,7 +362,7 @@ def _frames(quality, checkpoints):
 MANIFEST_CHECKS = (
     ("tracked rewards opaque-empty", _sink("tracked_rewards_opaque_empty_variants")),
     ("targeting world-location", _sink("targeting_world_locations_decoded")),
-    ("sink unread-bits tally", _sink(*SINK_TALLY_KEYS)),
+    ("sink component/opaque tally", _sink(*SINK_TALLY_KEYS)),
     ("frame-skip", _frames),
     ("checkpoint trailing-bytes", lambda quality, checkpoints: {
         "cp_trailing_bytes": quality["checkpoints"]["checkpoint_trailing_bytes"]}
@@ -372,6 +378,15 @@ def manifest_errors(out_dir: Path, counters: dict, checkpoints: bool) -> list[st
     except (OSError, ValueError, KeyError, TypeError) as exc:
         return [f"manifest omits its quality data: {exc}"]
     errors = []
+    scopes = [("main", quality)]
+    if checkpoints:
+        scopes.append(("checkpoint", quality.get("checkpoints")))
+    for name, scope in scopes:
+        if not isinstance(scope, dict) or not isinstance(scope.get("sink"), dict):
+            errors.append(f"manifest omits {name} sink quality data")
+            continue
+        errors.extend(f"manifest {name}: {error}" for error in
+                      sc.movement_contract_errors(scope["sink"]))
     for what, pick in MANIFEST_CHECKS:
         try:
             values = pick(quality, checkpoints)
@@ -419,8 +434,7 @@ def measure(exe: Path, replay: Path, out_dir: Path, checkpoints: bool = False) -
     if code != 0:
         raise SystemExit(f"export failed (exit {code}): {sc.tail(text, 5, 400)}")
     pinned = COUNTERS + (CHECKPOINT_COUNTERS if checkpoints else ())
-    movement_lines = sc.lines("M", False) + (sc.lines("M", True) if checkpoints else ())
-    counters = sc.read(text, pinned + tuple(key for line in movement_lines for key in line.keys))
+    counters = sc.read(text, pinned)
     try:
         parquet = parquet_shape(
             out_dir, PARQUET_FILES + (CHECKPOINT_PARQUET_FILES if checkpoints else ()), sha=True)
@@ -433,13 +447,13 @@ def measure(exe: Path, replay: Path, out_dir: Path, checkpoints: bool = False) -
         print(format_guid_crosscheck(guid_counts))
     if errors:
         raise SystemExit("; ".join(errors))
-    for line in movement_lines:
-        print(sc.render(line, counters))
     return {"counters": {key: counters[key] for key in pinned}, "parquet": parquet}
 
 
 def diff(baseline: dict, current: dict) -> list[str]:
     """Every way the pinned numbers and the current ones disagree."""
+    if sc.obsolete_movement_contract(baseline["counters"]):
+        return [sc.OBSOLETE_MOVEMENT_CONTRACT]
     out = []
     for key in sorted(set(baseline["counters"]) | set(current["counters"])):
         want = baseline["counters"].get(key)
@@ -482,6 +496,10 @@ def main() -> int:
     if sc.no_exe(args.exe):
         return 2
     stored = sc.load_baseline(args.baseline)
+    obsolete = sc.obsolete_movement_contract(stored.get("counters", {}))
+    if not args.update and obsolete:
+        print(sc.OBSOLETE_MOVEMENT_CONTRACT, file=sys.stderr)
+        return 1
     refusal = args.update and sc.machine_path(args.replay, stored.get("replay"), "replay",
                                               args.baseline)
     if refusal:
@@ -491,7 +509,7 @@ def main() -> int:
     if replay is None or not replay.exists():
         return sc.missing_input("no replay named (pass --replay or store one in the baseline)"
                                 if replay is None else f"replay not present ({replay})",
-                                args.require_input)
+                                args.require_input or obsolete)
 
     current = measure(args.exe, replay, args.out or REPO / "out" / "export_check",
                       checkpoints=args.checkpoints)

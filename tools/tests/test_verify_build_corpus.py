@@ -37,10 +37,14 @@ def manifest():
                 overlay_no_field_name=5, struct_blobs_decoded=2,
                 rpc_suffix_bits_dropped=4, overlay_handle_conflicts_refused=1,
                 cnc_bruteforce_payloads_attempted=6, cnc_bruteforce_payloads_unwalked=0,
-                movement_sized_section_tails=0, movement_sized_section_tail_bits=0,
-                movement_open_section_tails=0, movement_open_section_tail_bits=0,
-                movement_envelope_trailers=3, movement_envelope_trailer_bits=72,
+                movement_component_streams=3, movement_component_complete=3,
+                movement_component_errors=0, movement_component_empty=0,
+                movement_component_envelopes=3, movement_component_payload_bytes=90,
+                movement_component_unused_bits=5, movement_component_input_headers=3,
+                movement_component_discrepancy_headers=2,
                 active_blinds_empty_trailers=1,
+                route_children_focus_projectiles=2, focus_projectiles_empty_trailers=3,
+                focus_projectiles_declaration_refusals=4,
                 sink_rpcs_emitted=40, sink_actor_opens=7, sink_actor_closes=5,
                 sink_content_blocks=100)
     quality = dict.fromkeys(("content_blocks_lost", "event_trailing_bytes",
@@ -54,19 +58,15 @@ def manifest():
 
 
 class ManifestTests(unittest.TestCase):
-    def test_sized_section_remainders_fail_independently_in_each_pass(self):
+    def test_obsolete_movement_contract_is_refused_in_each_pass(self):
         for scope in ("main", "checkpoint"):
-            for key, value in (("movement_sized_section_trailers", 1),
-                               ("movement_sized_section_trailer_bits", 8)):
-                # Given: one remainder count, independently nonzero.
-                data = manifest()
-                target = data["quality"] if scope == "main" else data["quality"]["checkpoints"]
-                target["sink"][key] = value
-                # When: the independent manifest audit measures both passes.
-                counts, failures = audit.manifest_counts(data)
-                # Then: the new shape cannot disappear behind the other zero.
-                self.assertEqual(counts[f"{scope}_{key}"], value)
-                self.assertIn(f"{scope}_{key}={value}", failures)
+            for key in audit.summary_counters.LEGACY_MOVEMENT_COUNTERS:
+                with self.subTest(scope=scope, key=key):
+                    data = manifest()
+                    target = data["quality"] if scope == "main" else data["quality"]["checkpoints"]
+                    target["sink"][key] = 0
+                    with self.assertRaisesRegex(ValueError, "obsolete movement counter contract"):
+                        audit.manifest_counts(data)
 
     def test_preserved_unknown_rpc_is_not_loss(self):
         counts, failures = audit.manifest_counts(manifest())
@@ -75,6 +75,9 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(counts["main_overlay_offered"], 100)
         self.assertEqual(counts["main_skipped_bits"], 20)
         self.assertEqual(counts["checkpoint_rpc_suffix_bits_dropped"], 4)
+        self.assertEqual(counts["main_route_children_focus_projectiles"], 2)
+        self.assertEqual(counts["checkpoint_focus_projectiles_empty_trailers"], 3)
+        self.assertEqual(counts["main_focus_projectiles_declaration_refusals"], 4)
 
     def test_each_failure_counter_is_observed_in_each_pass(self):
         for scope in ("main", "checkpoint"):
@@ -137,27 +140,23 @@ class ManifestTests(unittest.TestCase):
                 with self.assertRaises(KeyError):
                     audit.manifest_counts(data)
 
-    def test_envelope_trailer_bits_must_be_24_per_stream_in_each_pass(self):
-        """A trailer that grew, shrank or vanished fails the replay. 0 streams
-        passes the checkpoint pass, which no movement RPC reaches, but not the
-        main pass: a renumbered movement handle decodes nothing, and 0 = 24 x 0."""
+    def test_native_counter_contract_and_positive_work_are_required_in_each_pass(self):
         for scope in ("main", "checkpoint"):
-            for streams, bits in ((3, 71), (3, 73), (3, 0), (0, 24)):
-                with self.subTest(scope=scope, streams=streams, bits=bits):
+            for key, value in (("movement_component_streams", 4),
+                               ("movement_component_envelopes", 2),
+                               ("movement_component_unused_bits", 22),
+                               ("movement_component_input_headers", 2),
+                               ("movement_component_discrepancy_headers", 4)):
+                with self.subTest(scope=scope, key=key):
                     data = manifest()
                     target = data["quality"] if scope == "main" else data["quality"]["checkpoints"]
-                    target["sink"].update(movement_envelope_trailers=streams,
-                                          movement_envelope_trailer_bits=bits)
-                    self.assertIn(
-                        f"{scope}_movement_envelope_trailer_bits={bits} != 24 x "
-                        f"{scope}_movement_envelope_trailers={streams}",
-                        audit.manifest_counts(data)[1])
+                    target["sink"][key] = value
+                    self.assertTrue(audit.manifest_counts(data)[1])
             data = manifest()
             target = data["quality"] if scope == "main" else data["quality"]["checkpoints"]
-            target["sink"].update(movement_envelope_trailers=0,
-                                  movement_envelope_trailer_bits=0)
+            target["sink"].update(dict.fromkeys(audit.summary_counters.MOVEMENT_COUNTERS, 0))
             self.assertEqual(audit.manifest_counts(data)[1],
-                             ["main_movement_envelope_trailers=0: no movement stream decoded"]
+                             ["main: native movement counters: no movement component decoding evidence"]
                              if scope == "main" else [], scope)
 
     def test_sink_event_tallies_must_equal_the_framing_counts(self):

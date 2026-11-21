@@ -36,7 +36,7 @@ use vrf_bitio::BitReader;
 
 use crate::cache::NetGuidCache;
 use crate::error::{Result, SchemaError};
-use crate::export::{NetFieldExport, NetFieldExportGroup, render_fname};
+use crate::export::{NetFieldExport, render_fname};
 use crate::guid::{ExportFlags, NetworkGuid};
 
 /// Cap on a path-name FString, so a corrupt prefix cannot size an allocation.
@@ -114,8 +114,7 @@ pub fn read_net_field_exports(reader: &mut BitReader<'_>, cache: &mut NetGuidCac
                 });
             }
 
-            let group = NetFieldExportGroup::new(path_name, path_name_index, num_fields);
-            cache.add_export_group(group)?;
+            cache.declare_export_group(path_name, path_name_index, num_fields)?;
         } else if cache.get_group_by_index(path_name_index).is_none() {
             return Err(SchemaError::UnknownPathIndex {
                 index: path_name_index,

@@ -321,11 +321,12 @@ mod tests {
         let field = failure(StreamKind::RepLayout, StreamFailureCause::ReadError, 9);
         agg.note_failure(&field, "A".into());
         agg.note_failure(&rpc, "B".into());
-        let net = |field, rpc, preserved| NetStats {
-            field_stream_failures: field,
-            rpc_stream_failures: rpc,
-            unresolved_rpc_payloads_preserved: preserved,
-            ..NetStats::default()
+        let net = |field, rpc, preserved| {
+            let mut stats = NetStats::default();
+            stats.field_stream_failures = field;
+            stats.rpc_stream_failures = rpc;
+            stats.unresolved_rpc_payloads_preserved = preserved;
+            stats
         };
         assert!(agg.reconciles(&net(1, 1, 1)));
         for wrong in [net(1, 2, 1), net(0, 1, 1), net(1, 1, 0)] {

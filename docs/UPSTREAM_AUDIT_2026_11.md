@@ -30,7 +30,15 @@ The residual exposure is `OVERLAY_HANDLE_TABLE`. It maps `MulticastNotifyDamage_
 
 This could not be measured here. The public 12.08/12.10/12.11/13.00 fixtures declare no damage RPC group at all, and no 12.09 replay was available. Two things are known:
 
-- `tools/fixtures/build_verification.json` records `main_overlay_handle_conflicts_refused` of 1-5 per 3-replay sample on 14 of the 16 builds 11.06-12.09 (0 on 11.09 and 12.05) and 0 on every build 12.10 onward. The boundary matches upstream's. The counter has no per-group breakdown, so whether those refusals are damage parameters is not known.
+- Handle-conflict refusals are not 0 from 12.10 onward. Summing `quality.sink.overlay_handle_conflicts_refused` over the 1,011 private-corpus `manifest.json` files exported by the 0.6.0 code (grouped by `replay_build`; `quality.checkpoints.sink` is 0 on all of them) gives 18,896 refusals in 51 replays:
+
+  | Builds | Replays (nonzero) | Refusals | Every refused row |
+  |---|---:|---:|---|
+  | 11.06-12.09 | 48 (24; none on 11.09, 12.05) | 35 (1-5 per build) | `MulticastNotifyDamage_Base` handle 25: wire `AssistsList` (77-258 bits), table `bEquippableUsedInFocusMode` |
+  | 13.01-13.09 | 936 (0) | 0 | -- |
+  | 13.10 | 27 (27) | 18,861 | handle 8 of `MulticastNotifyDamage_Point` (12,518) and `_Base` (6,343): wire `DamageIconOverride` (8 bits), table `DamageType` |
+
+  The corpus has no 12.10, 12.11 or 13.00 replay. The rows were identified by a temporary `eprintln!` in `apply_overlay_inner`'s refusal branch (group, handle, wire name, checksum, bits; not committed) run through `validate` on those 51 replays: its count matched the manifest on every replay. Each refusal is the intended fail-closed outcome, not a lost type: the wire declares a real name the table does not type, at a handle the table assigns to another member, so the row stays raw instead of being decoded as that member. The displaced members still arrive by name and are typed on every row of these exports (`DamageType` 12,518/12,518 and 6,343/6,343 on 13.10; `bEquippableUsedInFocusMode` 14,355/14,355 on 11.06-12.09). `DamageIconOverride` is raw by decision (all observed payloads zero; see [DATA.md](DATA.md)) and `AssistsList` is `Raw` on `_Point`.
 - `typed_mismatches: 0` in that file compares against an independent decoder that uses the **same** type assignment. It cannot catch a wrong-name/right-width row and is not evidence here. `KILL_OBSERVATIONS.md` reads `KillData`, not the damage RPCs, so it is not evidence either.
 
 To close this, run on each private 12.09 (and 11.06-12.08) export:

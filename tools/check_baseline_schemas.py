@@ -11,7 +11,11 @@ import sys
 from collections import Counter
 from pathlib import Path, PureWindowsPath
 
-from check_export_baseline import CHECKPOINT_COUNTERS, CHECKPOINT_PARQUET_FILES, COUNTERS, PARQUET_FILES
+from check_export_baseline import (
+    CHECKPOINT_COUNTERS, CHECKPOINT_PARQUET_FILES, COUNTERS, LEGACY_CHECKPOINT_COUNTERS,
+    LEGACY_COUNTERS, PARQUET_FILES,
+)
+import summary_counters as sc
 
 REPO = Path(__file__).resolve().parent.parent
 BASELINES = REPO / "tools" / "baselines"
@@ -124,6 +128,11 @@ def validate_export_baseline(path: Path, data: dict) -> list[str]:
     if not isinstance(counters, dict):
         problems.append(f"{path.name}: counters must be an object")
         counters = {}
+    # Validate historical artifacts as historical artifacts. Comparing one
+    # with a current executable is separately refused by check_export_baseline.
+    if sc.obsolete_movement_contract(counters):
+        expected_counters = set(LEGACY_COUNTERS) | (set(LEGACY_CHECKPOINT_COUNTERS)
+                                                   if checkpoint else set())
     _keys(path, counters, set(expected_counters), problems)
     for key, value in counters.items():
         if not _nonnegative_int(value):
@@ -230,7 +239,9 @@ def validate_repository(root: Path = BASELINES) -> list[str]:
     checkpoint = loaded["checkpoint_02d4d478.json"]
     if export.get("replay") != checkpoint.get("replay"):
         problems.append("export/checkpoint baselines name different replays")
-    for key in MAIN_COUNTERS:
+    main_keys = set(export.get("counters", {})) | {
+        key for key in checkpoint.get("counters", {}) if not key.startswith("cp_")}
+    for key in main_keys:
         if export.get("counters", {}).get(key) != checkpoint.get("counters", {}).get(key):
             problems.append(f"export/checkpoint counter {key} disagrees")
     for name in MAIN_PARQUET:

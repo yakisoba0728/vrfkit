@@ -1,10 +1,10 @@
 //! `inspect` subcommand -- print replay info, header, and chunk summary.
 
-use std::fs;
+use std::path::Path;
 
 use vrf_container::{ChunkIterator, ChunkType, parse_preamble};
 
-use crate::error::CliError;
+use crate::error::{CliError, read_input};
 
 fn friendly_name(value: &str, redact_identifiers: bool) -> &str {
     if redact_identifiers {
@@ -15,7 +15,7 @@ fn friendly_name(value: &str, redact_identifiers: bool) -> &str {
 }
 
 pub fn run(path: &str, redact_identifiers: bool) -> Result<(), CliError> {
-    let data = fs::read(path)?;
+    let data = read_input(Path::new(path))?;
     let preamble = parse_preamble(&data)?;
 
     let info = &preamble.info;

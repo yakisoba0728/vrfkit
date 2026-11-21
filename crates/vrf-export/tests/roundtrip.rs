@@ -238,6 +238,77 @@ fn field_binary_preservation() {
     assert_eq!(bit_count.value(0), 256 * 8);
 }
 
+#[test]
+fn group_path_runs_keep_exact_parquet_bytes_across_batches() {
+    use std::sync::Arc;
+
+    use arrow_array::builder::StringDictionaryBuilder;
+    use arrow_schema::Schema;
+    use vrf_export::ExportError;
+    use vrf_export::writer::MAX_BUFFERED_ROWS;
+
+    struct ElementwiseFields;
+    impl Table for ElementwiseFields {
+        type Row = FieldRecord;
+        const DEFAULT_ROW_GROUP_SIZE: usize = FieldsTable::DEFAULT_ROW_GROUP_SIZE;
+        const DICTIONARY_COLUMNS: &'static [&'static str] = FieldsTable::DICTIONARY_COLUMNS;
+
+        fn schema() -> Arc<Schema> {
+            FieldsTable::schema()
+        }
+
+        fn build_batch(rows: &[FieldRecord]) -> Result<RecordBatch, ExportError> {
+            let batch = FieldsTable::build_batch(rows)?;
+            let mut columns = batch.columns().to_vec();
+            let mut builder = StringDictionaryBuilder::<Int32Type>::with_capacity(
+                rows.len(),
+                256,
+                rows.len() * 20,
+            );
+            builder.extend(rows.iter().map(|row| Some(row.group_path.as_ref())));
+            columns[batch.schema().index_of("group_path").unwrap()] = Arc::new(builder.finish());
+            RecordBatch::try_new(batch.schema(), columns)
+                .map_err(|error| ExportError::Parquet(error.into()))
+        }
+    }
+
+    fn encode<T: Table<Row = FieldRecord>>(rows: &[FieldRecord], group_size: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut writer = TableWriter::<T, _>::with_row_group_size(&mut bytes, group_size).unwrap();
+        writer.push_batch(rows.iter().cloned()).unwrap();
+        writer.finish().unwrap();
+        bytes
+    }
+
+    let shared: Arc<str> = Arc::from("shared group");
+    let rows: Vec<_> = (0..2 * MAX_BUFFERED_ROWS + 19)
+        .map(|i| FieldRecord {
+            // Runs cross both the Arrow batch and custom row-group boundary;
+            // equal strings also arrive through different allocations.
+            group_path: match i % 23 {
+                0..=7 => shared.clone(),
+                8..=15 => Arc::from("same text, distinct allocation"),
+                16..=20 => Arc::from(""),
+                _ => Arc::from(format!("singleton-{i}")),
+            },
+            ..make_field_record(i as u32)
+        })
+        .collect();
+    for group_size in [
+        1_024,
+        MAX_BUFFERED_ROWS + 7,
+        FieldsTable::DEFAULT_ROW_GROUP_SIZE,
+    ] {
+        let actual = encode::<FieldsTable>(&rows, group_size);
+        let expected = encode::<ElementwiseFields>(&rows, group_size);
+        assert_eq!(actual.len(), expected.len());
+        assert!(
+            actual == expected,
+            "Parquet bytes differ at row-group size {group_size}"
+        );
+    }
+}
+
 // --- movement -------------------------------------------------------------
 
 #[test]
@@ -823,10 +894,7 @@ mod dictionary_encoding {
     }
 
     fn identity(i: u32) -> CheckpointIdentity {
-        CheckpointIdentity {
-            checkpoint_index: i / 4,
-            checkpoint_id: Arc::from(format!("checkpoint-{}", i / 4)),
-        }
+        CheckpointIdentity::new(i / 4, format!("checkpoint-{}", i / 4))
     }
 
     fn field_rows() -> Vec<FieldRecord> {

@@ -5,6 +5,7 @@ use vrf_bitio::BitError;
 
 /// Errors that can occur while reading or maintaining the dynamic schema.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum SchemaError {
     /// The underlying bit stream was truncated or malformed.
     #[error("bit-level read failed: {0}")]
@@ -23,6 +24,16 @@ pub enum SchemaError {
     /// A live group declared more slots than the checkpoint form permits.
     #[error("net-field export declares {count} field slots, maximum is {max}")]
     FieldCountOverflow { count: u32, max: u32 },
+
+    /// A declaration would exceed a schema resource budget. This is a policy
+    /// refusal, not a claim about the game's format; the resource names the
+    /// configured cache limit or the checkpoint path-expansion limit.
+    #[error("schema {resource} require {requested}, configured limit is {limit}")]
+    ResourceLimit {
+        resource: &'static str,
+        requested: usize,
+        limit: usize,
+    },
 
     /// `path_group` and `index_group` are the canonical paths the incoming path
     /// and index select.

@@ -117,12 +117,32 @@ handing out `&str` makes the common no-alias case allocation-free; returning a
 
 Code: `NetGuidCache::index_group` in `crates/vrf-schema/src/cache.rs`.
 
-A new group registers only itself; a merge or a reused index still rebuilds.
+A new group registers only itself; a changed identity or a reused index still
+rebuilds. Merging fields under the same canonical path and index leaves those
+lookup keys intact.
 Rebuilding every group on every add cost a checkpoint of n groups n(n+1)/2
 registrations: 3.6-4.5 million per export where 14-17 thousand are needed.
 `export --checkpoints` on three 84-89 MB 13.05/13.06 replays, 7 alternating
 A/B pairs each: 0.76-1.09 s faster (paired medians), Parquet byte-identical,
 peak commit unchanged.
+
+### Reusing an unchanged export-group declaration
+
+`declare_export_group` first checks identity and the aggregate resource budget.
+An unchanged canonical path and index can then retain its populated slots and
+grow only when needed, without constructing a temporary empty field vector.
+`add_export_group` still merges supplied descriptors, but skips rebuilding
+indexes when the identity is unchanged. Both paths preserve the generation
+bump and resource accounting.
+
+The 2026-11-16 experiment measured a large
+reduction in work for repeated declarations. Its six public fixtures contained
+**zero repeated declarations** in their main streams and 76 checkpoint streams.
+Full-export timings changed direction on a follow-up run, and an identical-binary
+control also varied substantially. This change therefore has a measured benefit
+for repeated-declaration API and wire workloads; **ordinary replay throughput
+and peak-RSS benefits have not been established**. The linked report retains
+every series, including the initial slower results.
 
 ## Replication pipeline (vrf-net)
 

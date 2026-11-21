@@ -23,6 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{CHECKPOINT_TABLES, MAIN_TABLES, MANIFEST};
 use crate::diagnose::usable_parent;
+use crate::error::io_at;
 
 static NEXT_OUTPUT_PATH: AtomicU64 = AtomicU64::new(0);
 
@@ -46,19 +47,31 @@ pub(super) struct OutputTransaction {
 impl OutputTransaction {
     /// Create an empty, uniquely named staging directory beside `destination`,
     /// after refusing a destination that holds anything an export does not
-    /// write ([`foreign_entries`]) and naming what earlier exports left beside
-    /// it ([`report_leftovers`]).
-    pub(super) fn begin(destination: &Path) -> io::Result<Self> {
-        Self::begin_reporting_to(destination, &mut io::stderr())
+    /// write ([`foreign_entries`]), protecting `input` from replacement, and
+    /// naming what earlier exports left beside it ([`report_leftovers`]).
+    pub(super) fn begin(destination: &Path, input: &Path) -> io::Result<Self> {
+        Self::begin_reporting_to(destination, input, &mut io::stderr())
     }
 
     /// [`begin`](Self::begin), with the leftover warnings written to
     /// `warnings`, so a test reads exactly the lines an operator would.
-    fn begin_reporting_to(destination: &Path, warnings: &mut dyn Write) -> io::Result<Self> {
+    fn begin_reporting_to(
+        destination: &Path,
+        input: &Path,
+        warnings: &mut dyn Write,
+    ) -> io::Result<Self> {
+        // Staging and the prior-output backup are siblings named after the
+        // last component, so `.`, `..` and a root (no such component) are refused.
         let file_name = destination.file_name().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "export destination must be a named directory, not a filesystem root",
+                format!(
+                    "export destination {} does not end in a directory name: `.`, `..` and \
+                     filesystem roots are refused because the export is staged in a sibling \
+                     named after the last path component and renamed into place; name the \
+                     directory itself or a new subdirectory (e.g. --out export)",
+                    destination.display()
+                ),
             )
         })?;
         if destination.exists() && !destination.is_dir() {
@@ -97,11 +110,43 @@ impl OutputTransaction {
             ));
         }
 
+        // A replay can have an export-owned filename, so the name allowlist
+        // alone cannot protect it. Resolve aliases before creating staging.
+        match fs::canonicalize(destination) {
+            Ok(directory)
+                if fs::canonicalize(input)
+                    .map_err(|error| io_at(input, error))?
+                    .starts_with(&directory) =>
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "export destination {} contains the input replay {}; choose a different \
+                         output directory",
+                        destination.display(),
+                        input.display()
+                    ),
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_at(destination, error)),
+        }
+
         let parent = usable_parent(destination);
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).map_err(|error| io_at(parent, error))?;
         // Before this run's staging exists, so a run never reports itself.
         report_leftovers(destination, parent, file_name, warnings);
-        let staging = create_unique_directory(parent, file_name, STAGING)?;
+        // The failing path is a generated sibling; name what the user passed too.
+        let staging = create_unique_directory(parent, file_name, STAGING).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "export destination {}: could not create its staging directory: {error}",
+                    destination.display()
+                ),
+            )
+        })?;
         Ok(Self {
             destination: destination.to_path_buf(),
             staging,
@@ -474,7 +519,7 @@ fn create_unique_directory(
         match fs::create_dir(&candidate) {
             Ok(()) => return Ok(candidate),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
+            Err(error) => return Err(io_at(&candidate, error)),
         }
     }
 }
@@ -566,8 +611,12 @@ mod tests {
     /// `begin`, with the leftover warnings captured instead of printed.
     fn begin_capturing(destination: &Path) -> (OutputTransaction, String) {
         let mut warnings = Vec::new();
-        let transaction = OutputTransaction::begin_reporting_to(destination, &mut warnings)
-            .expect("begin an export transaction");
+        let transaction = OutputTransaction::begin_reporting_to(
+            destination,
+            &std::env::current_exe().unwrap(),
+            &mut warnings,
+        )
+        .expect("begin an export transaction");
         let warnings = String::from_utf8(warnings).expect("warnings are UTF-8");
         (transaction, warnings)
     }
@@ -578,7 +627,8 @@ mod tests {
         let destination = prior_output(&root, "export");
 
         {
-            let transaction = OutputTransaction::begin(&destination).unwrap();
+            let transaction =
+                OutputTransaction::begin(&destination, &std::env::current_exe().unwrap()).unwrap();
             fs::write(transaction.path().join("manifest.json"), b"new partial").unwrap();
             // Fault injection: returning before publication drops the guard.
         }
@@ -595,7 +645,8 @@ mod tests {
         let root = TestDir::new();
         let destination = prior_output(&root, "export");
 
-        let transaction = OutputTransaction::begin(&destination).unwrap();
+        let transaction =
+            OutputTransaction::begin(&destination, &std::env::current_exe().unwrap()).unwrap();
         fs::write(transaction.path().join("manifest.json"), b"new complete").unwrap();
         // Fault injection after staging: make the second rename fail, after
         // publication has already moved the old destination aside.
@@ -872,9 +923,13 @@ mod tests {
         fs::write(impostor.join("part-0.parquet"), b"someone else's dataset").unwrap();
         fs::write(destination.join(MANIFEST), b"old complete").unwrap();
 
-        let error = OutputTransaction::begin_reporting_to(&destination, &mut Vec::new())
-            .err()
-            .expect("a directory is never export output");
+        let error = OutputTransaction::begin_reporting_to(
+            &destination,
+            &std::env::current_exe().unwrap(),
+            &mut Vec::new(),
+        )
+        .err()
+        .expect("a directory is never export output");
         assert!(
             error.to_string().contains(&format!(
                 "1 entry an export does not write ({})",

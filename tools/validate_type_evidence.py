@@ -20,6 +20,13 @@ can disagree. A directory is searched recursively, skipping the leftovers of
 an interrupted ``vrfkit export`` (see export_scan.py) and refusing a table
 with no ``manifest.json`` beside it; a table file or ``--export-id`` is read
 as given.
+
+The report's ``status`` is ``pass`` or ``fail``, matching the exit code. With
+``--output``, a run that does not finish leaves ``incomplete`` or ``error``
+there, with no counts. An existing ``--output`` is replaced only if it parses
+as one of this tool's reports. Input that cannot be used -- a missing export
+root, no finished field table, an unreadable or malformed specification --
+is one ``error:`` line on stderr and exit 2, like the argument refusals.
 """
 
 from __future__ import annotations
@@ -37,6 +44,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from atomic_io import atomic_write_text, refuse_input_path
 from export_scan import generated_ancestor, leftover_note, skipped_report
 
 
@@ -432,6 +440,12 @@ def exported_value(row: dict, type_name: str):
     return value
 
 
+class InputError(ValueError):
+    """An export root or specification this tool cannot use: reported as one
+    line with exit 2, not a traceback. A ValueError, so callers that caught
+    the earlier errors still do."""
+
+
 def parquet_files(root: Path, export_ids=None, skipped=None):
     """Yield the field tables to read below `root`, filtering only a recursive
     search (see the module docstring); skipped directories go into `skipped`
@@ -444,7 +458,7 @@ def parquet_files(root: Path, export_ids=None, skipped=None):
             tables = [root / export_id / name for name in ("fields.parquet", "checkpoint_fields.parquet")
                       if (root / export_id / name).exists()]
             if not tables:
-                raise ValueError(f"--export-id {export_id}: no field table in {root / export_id}")
+                raise InputError(f"--export-id {export_id}: no field table in {root / export_id}")
             yield from tables
         return
     for name in ("fields.parquet", "checkpoint_fields.parquet"):
@@ -455,7 +469,7 @@ def parquet_files(root: Path, export_ids=None, skipped=None):
                     skipped.add(leftover)
                 continue
             if not (path.parent / "manifest.json").is_file():
-                raise ValueError(
+                raise InputError(
                     f"{path} has no manifest.json beside it; vrfkit writes the manifest last, "
                     "so this is not a finished export (an interrupted export or a partial copy)")
             yield path
@@ -474,27 +488,32 @@ def spec_rows(table: pa.Table, groups: pa.Array, fields: pa.Array) -> pa.Table:
 def check_specifications(specifications: list[dict]) -> dict:
     """`{(group, field, checksum or None): type}`; a malformed, duplicate or
     scoped-beside-unscoped entry raises."""
+    if not isinstance(specifications, list):
+        raise InputError('evidence specification must be a list of entries or {"entries": [...]}')
     if not specifications:
-        raise ValueError("evidence specification is empty")
+        raise InputError("evidence specification is empty")
     for spec in specifications:
-        if set(spec) not in ({"group", "field", "type"}, {"group", "field", "type", "checksum"}) or not spec["group"] or not spec["field"]:
-            raise ValueError(f"invalid evidence specification: {spec!r}")
+        if (not isinstance(spec, dict)
+                or set(spec) not in ({"group", "field", "type"}, {"group", "field", "type", "checksum"})
+                or not isinstance(spec["group"], str) or not isinstance(spec["field"], str)
+                or not spec["group"] or not spec["field"]):
+            raise InputError(f"invalid evidence specification: {spec!r}")
         if "checksum" in spec and (type(spec["checksum"]) is not int or not 0 < spec["checksum"] <= 0xFFFFFFFF):
-            raise ValueError("checksum scope must be a nonzero u32")
-        if spec["type"] not in TYPED_COLUMNS:
-            raise ValueError(f"unsupported evidence type: {spec['type']!r}")
+            raise InputError("checksum scope must be a nonzero u32")
+        if not isinstance(spec["type"], str) or spec["type"] not in TYPED_COLUMNS:
+            raise InputError(f"unsupported evidence type: {spec['type']!r}")
     expected = {(s["group"], s["field"], s.get("checksum")): s["type"] for s in specifications}
     if len(expected) != len(specifications):
-        raise ValueError("duplicate group/field specification")
+        raise InputError("duplicate group/field specification")
     for group, field, checksum in expected:
         if checksum is not None and (group, field, None) in expected:
-            raise ValueError("overlapping scoped and unscoped specification")
+            raise InputError("overlapping scoped and unscoped specification")
     return expected
 
 
 def validate(export_root: Path, specifications: list[dict], export_ids=None, compare_typed=False) -> dict:
     if not export_root.exists():
-        raise ValueError(f"export root does not exist: {export_root}")
+        raise InputError(f"export root does not exist: {export_root}")
     expected = check_specifications(specifications)
 
     def label_for(key):
@@ -514,7 +533,7 @@ def validate(export_root: Path, specifications: list[dict], export_ids=None, com
     skipped = set()
     paths = list(parquet_files(export_root, export_ids, skipped))
     if not paths:
-        raise ValueError(f"no field parquet files below {export_root}{leftover_note(skipped)}")
+        raise InputError(f"no field parquet files below {export_root}{leftover_note(skipped)}")
     wanted_groups = pa.array(sorted({group for group, _field, _checksum in expected}))
     wanted_fields = pa.array(sorted({field for _group, field, _checksum in expected}))
     columns = ["group_path", "field_name", "handle", "compatible_checksum", "bit_count", "raw_bits"]
@@ -594,18 +613,51 @@ def load_specifications(path: Path) -> list[dict]:
     """A specification list, or `scoped_type_evidence.json` (`{"entries":
     [...]}`), whose RPC parameter group `Class:Function` is exported as group
     `Class_ClassNetCache`, field `Function.field`."""
-    document = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise InputError(f"cannot read evidence specification {path}: {exc.strerror or exc}") from exc
+    except ValueError as exc:  # JSONDecodeError, or bytes that are not UTF-8
+        raise InputError(f"evidence specification {path} is not valid JSON: {exc}") from exc
     if not isinstance(document, dict):
         return document
+    entries = document.get("entries")
+    if not isinstance(entries, list):
+        raise InputError(f'evidence specification {path} is an object without an "entries" list')
     specifications = []
-    for entry in document["entries"]:
-        group, field = entry["group"], entry["field"]
-        if ":" in group:
-            group, function = group.split(":", 1)
-            group, field = f"{group}_ClassNetCache", f"{function}.{field}"
-        specifications.append({"group": group, "field": field,
-                               "checksum": entry["checksum"], "type": entry["type"]})
+    for entry in entries:
+        try:
+            group, field = entry["group"], entry["field"]
+            if ":" in group:
+                group, function = group.split(":", 1)
+                group, field = f"{group}_ClassNetCache", f"{function}.{field}"
+            specifications.append({"group": group, "field": field,
+                                   "checksum": entry["checksum"], "type": entry["type"]})
+        except (KeyError, TypeError) as exc:
+            raise InputError(f"invalid scoped evidence entry in {path}: {entry!r}") from exc
     return specifications
+
+
+REPORT_NAME = "validate_type_evidence"
+# Every report written before the ``report`` marker carried these keys.
+LEGACY_REPORT_KEYS = frozenset({"fields", "missing", "failure_count", "provenance"})
+
+
+def is_own_report(path: Path) -> bool:
+    """Whether `path` holds a report this tool wrote, so replacing it loses
+    nothing a rerun cannot regenerate."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(document, dict) and (document.get("report") == REPORT_NAME
+                                           or LEGACY_REPORT_KEYS <= document.keys())
+
+
+def unfinished_report(status: str, error: str) -> str:
+    """A report with no counts, so a consumer reading `failure_count` fails."""
+    return json.dumps({"report": REPORT_NAME, "status": status, "error": error},
+                      indent=2, ensure_ascii=True) + "\n"
 
 
 def main(argv=None):
@@ -619,8 +671,34 @@ def main(argv=None):
                         help="list specified identities with no row under `missing` without failing; "
                              "observing none still fails")
     args = parser.parse_args(argv)
-    specifications = load_specifications(args.evidence)
-    report = validate(args.export_root, specifications, args.export_ids, args.compare_typed)
+    if args.output:
+        if args.output.suffix.lower() == ".parquet" or args.output.name == "manifest.json":
+            parser.error("--output must not name an export table or manifest")
+        try:
+            refuse_input_path(args.output, (args.evidence, Path(__file__)))
+        except ValueError as exc:
+            parser.error(str(exc))
+        if args.output.exists() and not is_own_report(args.output):
+            parser.error(f"--output {args.output} exists and is not a {REPORT_NAME} report; "
+                         "refusing to replace it")
+        # Before reading any input: a run that raises must leave this behind,
+        # never an earlier pass.
+        atomic_write_text(args.output, unfinished_report("incomplete", "validation did not finish"))
+    try:
+        specifications = load_specifications(args.evidence)
+        report = validate(args.export_root, specifications, args.export_ids, args.compare_typed)
+    except InputError as exc:
+        if args.output:
+            atomic_write_text(args.output, unfinished_report("error", f"{type(exc).__name__}: {exc}"))
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        if args.output:
+            atomic_write_text(args.output, unfinished_report("error", f"{type(exc).__name__}: {exc}"))
+        raise
+    failed = bool((report["missing"] and not args.allow_missing) or not report["fields"]
+                  or report["failure_count"] or report["typed_mismatch_count"])
+    report = {"report": REPORT_NAME, "status": "fail" if failed else "pass", **report}
     report["provenance"] = {
         "export_root": str(args.export_root.resolve()),
         "parquet_files": report.pop("parquet_files"),
@@ -630,12 +708,11 @@ def main(argv=None):
     }
     rendered = json.dumps(report, indent=2, ensure_ascii=True) + "\n"
     if args.output:
-        args.output.write_text(rendered, encoding="utf-8")
+        atomic_write_text(args.output, rendered)
     print(rendered, end="")
     if not report["fields"]:
         print("no specified identity was observed", file=sys.stderr)
-    return 1 if ((report["missing"] and not args.allow_missing) or not report["fields"]
-                 or report["failure_count"] or report["typed_mismatch_count"]) else 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

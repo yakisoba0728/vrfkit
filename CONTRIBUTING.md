@@ -107,6 +107,15 @@ need a corpus — see [Environment](#environment) below.
   be observed and every independently decoded value must match; the fixtures
   cover only the fields they contain. The report and logs are kept 14 days as
   an artifact, failures included; replays and Parquet are not uploaded.
+- **`linux-rust`** (Ubuntu 24.04, Rust 1.86): all-feature workspace tests,
+  core-only CLI tests, and the same three pinned, SHA-256-checked public
+  fixtures as Windows. It runs the corpus baselines, main and checkpoint
+  export audit, and the independent typed/raw evidence comparison. The
+  aggregate `linux-public-replay-verification` reports are retained 14 days,
+  including failures; replay files, Parquet and detailed per-replay logs are
+  not uploaded by this job. The `vrfkit-source` artifact retains a tracked
+  source snapshot, its commit ID and SHA-256 for 3 days; replay and Parquet
+  paths are explicitly excluded from that snapshot.
 - **`python-checks`** (Python 3.12 and 3.13, Windows and Ubuntu): the ASCII,
   generator and baseline-schema checks, the tools suite and
   `check_docs.py --fast`.
@@ -120,6 +129,10 @@ need a corpus — see [Environment](#environment) below.
 `CI complete` succeeds only when every job above succeeds; a failure,
 cancellation or skip cannot pass it. The 13.02, 13.04, 13.05 and 13.06
 baselines have no public fixture and are still yours to run.
+
+These checks live in the reusable `ci.yml`, so Linux runtime and replay
+validation are required on main, main-targeted PRs, manual runs and tagged
+release validation (`release.yml` calls `ci.yml` for a `v*` tag).
 
 ### Replay evidence for parser changes
 
@@ -147,18 +160,29 @@ can document a local run.
 
 ## Tagged Windows releases
 
-Pushing a tag such as `v0.1.0` runs the same `ci.yml` as the branch/PR checks
+Pushing a tag such as `v0.6.0` runs the same `ci.yml` as the branch/PR checks
 through `workflow_call`. The tag must be SemVer with a leading `v`; optional
-prerelease and build suffixes are allowed. The release job runs only after all
+prerelease and build suffixes are allowed. It must also name the
+`[workspace.package] version` in `Cargo.toml`: without the leading `v` and
+ignoring any `+build` metadata on either side, tag and version must be equal,
+so a prerelease tag needs the same prerelease workspace version.
+`tools/package_release.py` refuses a mismatch when creating and when verifying
+the package; `python tools/package_release.py version` prints the version to
+tag. Untagged CI runs package as `v<version>+ci.<commit-sha>`, so the check
+runs on every PR too. The release job runs only after all
 checks succeed for that exact tagged commit. Only that publishing job receives
 `contents: write`; tests and builds retain read-only repository permissions.
 
 Version numbers follow the CLI, which is what a release ships. A release bumps
 the patch version unless it breaks how `vrfkit` is invoked or what it writes;
 such a break bumps the minor version. New manifest keys and new summary lines
-do not count as breaks. The library crates are not published, so their Rust
-API is internal and may change in any release. Every crate carries the
-workspace version.
+do not count as breaks. The workspace crates are not yet published to crates.io. The `vrfkit` crate
+provides a public source API; consumers should pin an exact source revision.
+Source API compatibility is not currently promised across revisions, so
+document Rust API changes and migration steps even when CLI arguments and
+output schemas are unchanged. Every crate carries the workspace version.
+Define the registry package compatibility policy before the first crates.io
+release.
 
 The Windows package job is also required on every PR and manual CI run. It
 builds and tests the optimized CLI for `x86_64-pc-windows-msvc` (and
@@ -177,7 +201,7 @@ second build. Prerelease tags produce GitHub prereleases. Release notes are
 generated automatically. Runs for the same tag are serialized; an existing
 release is not overwritten. Packaging rejects existing output directories.
 
-To validate a candidate before tagging or merging, run the **CI** workflow
+To validate a release commit before tagging or merging, run the **CI** workflow
 manually on its branch and inspect the `windows-release` and
 `release-replay-verification` artifacts. Branch, PR and manual CI runs do not
 publish releases. No release is made merely by merging the workflow.
@@ -223,6 +247,12 @@ replay not present`. That is deliberate — the corpus lives outside the repo, s
 a contributor without one is not blocked — but it means an unset variable reads
 as a pass at a glance. If you meant to run them, read the output and check it
 says how many replays it walked.
+
+`check_export_baseline.py` rejects an obsolete movement-counter baseline before
+that missing-input skip. The archived private export/checkpoint baselines need
+genuine remeasurement for the [native component migration](docs/NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration);
+their historical numbers must not be converted into new counters. The old
+summary/manifest fields were removed in 0.6.0, a minor version bump.
 
 ## The load-bearing invariants (do not break)
 

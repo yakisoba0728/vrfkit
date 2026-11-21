@@ -435,17 +435,25 @@ class CheckpointGuidCrossCheckTests(TempDirTestCase):
                    "  Checkpoint frame skips: 0 external blobs / 0 external bytes"
                    " / 0 game-specific bytes\n"
                    "  Frame times:      0 non-finite\n  Checkpoint frame times: 0 non-finite\n"
-                   "  Envelope trailers: 0 streams / 0 bits\n"
-                   "  Checkpoint envelope trailers: 0 streams / 0 bits\n"
-                   "  Movement section trailers: 0 streams / 0 bits\n"
-                   "  Checkpoint movement section trailers: 0 streams / 0 bits\n"
+                   "  Movement components: 0 attempted / 0 complete / 0 errors / 0 empty\n"
+                   "  Checkpoint movement components: 0 attempted / 0 complete / 0 errors / 0 empty\n"
+                   "  Component envelopes: 0 validated / 0 payload bytes / 0 unused bits\n"
+                   "  Checkpoint component envelopes: 0 validated / 0 payload bytes / 0 unused bits\n"
+                   "  Component headers: 0 input / 0 discrepancy\n"
+                   "  Checkpoint component headers: 0 input / 0 discrepancy\n"
                    "  ActiveBlinds trailers: 0 empty deltas\n"
+                   "  FocusProjectiles trailers: 0 empty deltas\n"
+                   "  FocusProjectiles refused: 0 parent updates with a mismatched declaration\n"
+                   "  Route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles\n"
                    "  Checkpoint ActiveBlinds trailers: 0 empty deltas\n"
+                   "  Checkpoint FocusProjectiles trailers: 0 empty deltas\n"
+                   "  Checkpoint FocusProjectiles refused: 0 parent updates with a mismatched declaration\n"
+                   "  Checkpoint route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles\n"
                    "  Trailing bytes:   {trailing}\n"
                    f"GUID entries: {len(DECLARATIONS)}\n"
                    f"GUID paths: {literals} literals / {indices} indices / {indices} resolved\n")
         sink = {"tracked_rewards_opaque_empty_variants": 0, "targeting_world_locations_decoded": 0,
-                **dict.fromkeys(guard.SINK_TALLY_KEYS, 0)}
+                "movement_rpc_errors": 0, **dict.fromkeys(guard.SINK_TALLY_KEYS, 0)}
         frames = {f"frame_{key}": 0 for key in guard.FRAME_SKIP_KEYS}
         manifest = {"quality": {"sink": sink, **frames, "checkpoints": dict(
             sink=sink, checkpoint_actor_rows_dropped=0, checkpoint_trailing_bytes=0,
@@ -493,13 +501,23 @@ class ContentIdentityTests(unittest.TestCase):
 #: A manifest `quality` block carrying every MANIFEST_CHECKS count, distinct
 #: values in each pass, and the summary counters that agree with it.
 MAIN_SINK = {"tracked_rewards_opaque_empty_variants": 4470,
-             "targeting_world_locations_decoded": 12, "movement_envelope_trailers": 11,
-             "movement_sized_section_trailers": 2, "movement_sized_section_trailer_bits": 8,
-             "movement_envelope_trailer_bits": 264, "active_blinds_empty_trailers": 13}
+             "targeting_world_locations_decoded": 12, "active_blinds_empty_trailers": 13,
+             "route_children_focus_projectiles": 31, "focus_projectiles_empty_trailers": 2,
+             "focus_projectiles_declaration_refusals": 5,
+             "movement_component_streams": 11, "movement_component_complete": 11,
+             "movement_component_errors": 0, "movement_component_empty": 1,
+             "movement_component_envelopes": 11, "movement_component_payload_bytes": 300,
+             "movement_component_unused_bits": 40, "movement_component_input_headers": 10,
+             "movement_component_discrepancy_headers": 9}
 CP_SINK = {"tracked_rewards_opaque_empty_variants": 7, "targeting_world_locations_decoded": 0,
-           "movement_sized_section_trailers": 3, "movement_sized_section_trailer_bits": 19,
-           "movement_envelope_trailers": 21, "movement_envelope_trailer_bits": 504,
-           "active_blinds_empty_trailers": 23}
+           "active_blinds_empty_trailers": 23,
+           "route_children_focus_projectiles": 41, "focus_projectiles_empty_trailers": 3,
+           "focus_projectiles_declaration_refusals": 6,
+           "movement_component_streams": 21, "movement_component_complete": 21,
+           "movement_component_errors": 0, "movement_component_empty": 2,
+           "movement_component_envelopes": 21, "movement_component_payload_bytes": 570,
+           "movement_component_unused_bits": 70, "movement_component_input_headers": 19,
+           "movement_component_discrepancy_headers": 17}
 MAIN_FRAMES = {"external_data_blobs": 2, "external_data_bytes": 9, "game_specific_bytes": 0,
                "non_finite_times": 6}
 CP_FRAMES = {"external_data_blobs": 1, "external_data_bytes": 4, "game_specific_bytes": 5,
@@ -507,8 +525,8 @@ CP_FRAMES = {"external_data_blobs": 1, "external_data_bytes": 4, "game_specific_
 
 
 def manifest_quality():
-    return {"sink": dict(MAIN_SINK), **{f"frame_{k}": v for k, v in MAIN_FRAMES.items()},
-            "checkpoints": {"sink": dict(CP_SINK), "checkpoint_trailing_bytes": 14,
+    return {"sink": dict(MAIN_SINK, movement_rpc_errors=0), **{f"frame_{k}": v for k, v in MAIN_FRAMES.items()},
+            "checkpoints": {"sink": dict(CP_SINK, movement_rpc_errors=0), "checkpoint_trailing_bytes": 14,
                             **{f"checkpoint_frame_{k}": v for k, v in CP_FRAMES.items()}}}
 
 
@@ -522,28 +540,36 @@ class ManifestCheckTests(TempDirTestCase):
     """Each MANIFEST_CHECKS count must equal the summary's in both passes,
     zeros included, and be a count the manifest actually holds."""
 
-    def test_movement_section_trailers_are_read_independently_in_both_passes(self):
-        # Given: distinct pass values, plus an error quoting a forged line.
-        text = ("Movement err: Movement section trailers: 9 streams / 99 bits\n"
-                "Movement section trailers: 2 streams / 8 bits\n"
-                "Checkpoint movement section trailers: 3 streams / 19 bits\n")
-        # When: reading the movement-only summary counters.
-        counts = guard.sc.read(text, guard.sc.keys("M", False) + guard.sc.keys("M", True))
-        # Then: the published values, not the quoted diagnostic, are consumed.
-        self.assertEqual(counts, {
-            "movement_sized_section_trailers": 2, "movement_sized_section_trailer_bits": 8,
-            "cp_movement_sized_section_trailers": 3,
-            "cp_movement_sized_section_trailer_bits": 19})
+    def test_focus_manifest_counts_cannot_be_missing_or_disagree_with_the_summary(self):
+        for checkpoint in (False, True):
+            for key in guard.sc.FOCUS_PROJECTILES_COUNTERS:
+                quality = manifest_quality()
+                scope = quality["checkpoints"] if checkpoint else quality
+                del scope["sink"][key]
+                self.assertIn("manifest omits sink component/opaque tally quality data",
+                              self.errors(quality, AGREEING_COUNTERS))
+                summary_key = ("cp_" if checkpoint else "") + key
+                changed = dict(AGREEING_COUNTERS)
+                changed[summary_key] += 1
+                self.assertIn(f"manifest {summary_key}=",
+                              self.errors(manifest_quality(), changed))
 
-    def test_movement_section_trailers_preserve_missing_and_zero_counts(self):
-        for text, expected in (("", None), ("Movement section trailers: 0 streams / 0 bits", 0)):
-            # Given: an absent line or an explicitly printed zero.
-            # When: only the main pass is enabled.
-            counts = guard.sc.read(text, guard.sc.keys("M", False))
-            # Then: absence differs from zero, and checkpoint data is not invented.
-            self.assertEqual(counts, {
-                "movement_sized_section_trailers": expected,
-                "movement_sized_section_trailer_bits": expected})
+    def test_native_envelopes_are_read_independently_in_both_passes(self):
+        text = ("Movement err: Component envelopes: 9 validated / 99 payload bytes / 4 unused bits\n"
+                "Component envelopes: 2 validated / 80 payload bytes / 5 unused bits\n"
+                "Checkpoint component envelopes: 3 validated / 190 payload bytes / 7 unused bits\n")
+        wanted = ("movement_component_envelopes", "movement_component_payload_bytes",
+                  "movement_component_unused_bits")
+        counts = guard.sc.read(text, wanted + tuple("cp_" + key for key in wanted))
+        self.assertEqual(counts, dict(zip(wanted + tuple("cp_" + key for key in wanted),
+                                          (2, 80, 5, 3, 190, 7))))
+
+    def test_native_envelopes_preserve_missing_and_zero_counts(self):
+        wanted = ("movement_component_envelopes", "movement_component_payload_bytes",
+                  "movement_component_unused_bits")
+        for text, expected in (("", None),
+                               ("Component envelopes: 0 validated / 0 payload bytes / 0 unused bits", 0)):
+            self.assertEqual(guard.sc.read(text, wanted), dict.fromkeys(wanted, expected))
 
     def errors(self, quality, counters, checkpoints=True):
         root = self.tmp()
@@ -566,13 +592,30 @@ class ManifestCheckTests(TempDirTestCase):
         del quality["checkpoints"]
         self.assertEqual(self.errors(quality, main_only, checkpoints=False), "")
 
+    def test_manifest_movement_accounting_is_checked_in_each_pass(self):
+        """Summary and manifest agree on every count, but the components do
+        not add up: only the manifest movement contract can see it."""
+        for scope_name, prefix in (("main", ""), ("checkpoint", "cp_")):
+            with self.subTest(scope=scope_name):
+                quality = manifest_quality()
+                sink = quality["checkpoints"]["sink"] if prefix else quality["sink"]
+                sink["movement_component_streams"] += 1
+                counters = dict(AGREEING_COUNTERS)
+                counters[prefix + "movement_component_streams"] += 1
+                self.assertEqual(
+                    self.errors(quality, counters),
+                    f"manifest {scope_name}: native movement counters: attempted != complete + errors")
+                del sink["movement_rpc_errors"]
+                self.assertIn(f"manifest {scope_name}: missing or invalid native movement "
+                              f"counter: movement_rpc_errors", self.errors(quality, counters))
+
     def test_a_missing_or_non_count_value_is_named_not_read(self):
         for what, path in (
                 ("tracked rewards opaque-empty", ("sink", "tracked_rewards_opaque_empty_variants")),
                 ("targeting world-location",
                  ("checkpoints", "sink", "targeting_world_locations_decoded")),
-                ("sink unread-bits tally",
-                 ("checkpoints", "sink", "movement_envelope_trailer_bits")),
+                ("sink component/opaque tally",
+                 ("checkpoints", "sink", "movement_component_unused_bits")),
                 ("frame-skip", ("frame_external_data_bytes",)),
                 ("checkpoint trailing-bytes", ("checkpoints", "checkpoint_trailing_bytes"))):
             for value in (None, True, -1, "0", 0.0, "absent"):
@@ -651,6 +694,26 @@ class MainTests(TempDirTestCase):
                 self.assertIn(marker, output)
                 measured.assert_not_called()
 
+    def test_obsolete_baseline_fails_before_missing_input_can_skip(self):
+        for name in ("export_02d4d478.json", "checkpoint_02d4d478.json"):
+            with self.subTest(name=name):
+                root = self.tmp()
+                original = (guard.REPO / "tools/baselines" / name).read_bytes()
+                baseline = root / "baseline.json"
+                baseline.write_bytes(original)
+                code, output, measured = self.run_main(root)
+                self.assertEqual(code, 1, output)
+                self.assertIn("obsolete movement counter contract", output)
+                self.assertIn("genuine remeasurement", output)
+                self.assertNotIn("SKIP:", output)
+                measured.assert_not_called()
+                self.assertEqual(baseline.read_bytes(), original)
+                code, output, measured = self.run_main(root, "--update")
+                self.assertEqual(code, 2, output)
+                self.assertIn("REQUIRED INPUT", output)
+                measured.assert_not_called()
+                self.assertEqual(baseline.read_bytes(), original)
+
 
 class TransactionalOutputTests(TempDirTestCase):
     SUMMARY = """
@@ -666,9 +729,13 @@ Reward opaque: 0 empty variants
 Target locations: 0 array children
 Frame skips: 0 external blobs / 0 external bytes / 0 game-specific bytes
 Frame times: 0 non-finite
-Envelope trailers: 0 streams / 0 bits
-Movement section trailers: 0 streams / 0 bits
+Movement components: 0 attempted / 0 complete / 0 errors / 0 empty
+Component envelopes: 0 validated / 0 payload bytes / 0 unused bits
+Component headers: 0 input / 0 discrepancy
 ActiveBlinds trailers: 0 empty deltas
+FocusProjectiles trailers: 0 empty deltas
+FocusProjectiles refused: 0 parent updates with a mismatched declaration
+Route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles
 """
 
     def run_fake_export(self, *, fail: bool):
@@ -700,7 +767,7 @@ ActiveBlinds trailers: 0 empty deltas
                 "stage.mkdir()\n"
                 "for name in ('actors', 'fields', 'movement', 'net_guids', 'events', 'partials'):\n"
                 "    pq.write_table(pa.table({'value': [1]}), stage / (name + '.parquet'))\n"
-                "(stage / 'manifest.json').write_text(json.dumps({'quality': {'sink': {'tracked_rewards_opaque_empty_variants': 0, 'targeting_world_locations_decoded': 0, 'movement_envelope_trailers': 0, 'movement_envelope_trailer_bits': 0, 'movement_sized_section_trailers': 0, 'movement_sized_section_trailer_bits': 0, 'active_blinds_empty_trailers': 0}, 'frame_external_data_blobs': 0, 'frame_external_data_bytes': 0, 'frame_game_specific_bytes': 0, 'frame_non_finite_times': 0}}), encoding='utf-8')\n"
+                "(stage / 'manifest.json').write_text(json.dumps({'quality': {'sink': {'tracked_rewards_opaque_empty_variants': 0, 'targeting_world_locations_decoded': 0, 'movement_rpc_errors': 0, **dict.fromkeys(('movement_component_streams', 'movement_component_complete', 'movement_component_errors', 'movement_component_empty', 'movement_component_envelopes', 'movement_component_payload_bytes', 'movement_component_unused_bits', 'movement_component_input_headers', 'movement_component_discrepancy_headers'), 0), 'active_blinds_empty_trailers': 0, 'route_children_focus_projectiles': 0, 'focus_projectiles_empty_trailers': 0, 'focus_projectiles_declaration_refusals': 0}, 'frame_external_data_blobs': 0, 'frame_external_data_bytes': 0, 'frame_game_specific_bytes': 0, 'frame_non_finite_times': 0}}), encoding='utf-8')\n"
                 "os.replace(out, backup)\n"
                 "os.replace(stage, out)\n"
                 "shutil.rmtree(backup)\n"
@@ -737,4 +804,7 @@ ActiveBlinds trailers: 0 empty deltas
         historical = json.loads(
             (guard.REPO / "tools/baselines/export_02d4d478.json").read_text(encoding="utf-8"))
 
-        self.assertEqual(set(result["counters"]), set(historical["counters"]))
+        self.assertEqual(set(result["counters"]), set(guard.COUNTERS))
+        self.assertEqual(set(historical["counters"]), set(guard.LEGACY_COUNTERS))
+        self.assertNotEqual(set(result["counters"]), set(historical["counters"]))
+        self.assertEqual(guard.diff(historical, result), [guard.sc.OBSOLETE_MOVEMENT_CONTRACT])

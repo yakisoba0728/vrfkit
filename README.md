@@ -1,19 +1,19 @@
 # vrfkit
 
 A Rust toolkit that parses VALORANT replay files (`.vrf`, Unreal Engine network
-replay format) and exports them to Parquet. A workspace of 10 crates (plus a
+replay format), streams records through a Rust API and exports them to Parquet. A workspace of 10 crates (plus a
 test-only `dev/vrf-testkit` and the `extract-component-classes` tool) and a
-Python `tools/` validation suite. `#![forbid(unsafe_code)]` is in every crate;
-there is no `unsafe` block anywhere in the workspace. The only native FFI the
-parser depends on is Oodle decompression, and that lives entirely in the
-external `oozextract` crate. Edition 2024, MSRV 1.86, Apache-2.0.
+Python `tools/` validation suite. Every workspace crate forbids unsafe Rust;
+that policy does not extend to third-party dependencies. Oodle-format
+decompression uses the Rust `oozextract` implementation. Default Parquet
+output uses native Zstd through `zstd-sys`. Edition 2024, MSRV 1.86, Apache-2.0.
 
 ![CI](https://github.com/yakisoba0728/vrfkit/actions/workflows/ci.yml/badge.svg)
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
 ![rust](https://img.shields.io/badge/rust-1.86%2B-orange.svg)
 ![edition](https://img.shields.io/badge/edition-2024-orange.svg)
 ![builds](https://img.shields.io/badge/builds-11.06--13.10-yellow.svg)
-![unsafe](https://img.shields.io/badge/unsafe-none-success.svg)
+![workspace unsafe policy](https://img.shields.io/badge/workspace%20unsafe-forbidden-success.svg)
 
 Derived from [ValorantReplayParser](https://github.com/michel-giehl/ValorantReplayParser)
 (MIT), with the original reference at
@@ -29,8 +29,8 @@ and through [`fbf24b6`](https://github.com/michel-giehl/ValorantReplayParser/com
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Test suites (2026-11-16):** **744 Rust tests (Windows)**,
-**743 Rust tests (non-Windows)** and **1081 Python tests**.
+**Test suites:** **901 Rust tests (Windows)**,
+**900 Rust tests (non-Windows)** and **1201 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -38,25 +38,115 @@ checked the same way on 3 replays, and 2 meet every criterion; all 5
 [build verification](docs/BUILD_VERIFICATION.md) for the measured scope, common
 checks and remaining limits.
 
+- First source build and Python/Rust recipes: [`docs/ADOPTION.md`](docs/ADOPTION.md)
+- Rust callbacks and ownership: [`docs/RUST_API.md`](docs/RUST_API.md)
+- Optional gameplay observations: [`docs/GAMEPLAY_API.md`](docs/GAMEPLAY_API.md)
+- JSONL conversion and encodings: [`docs/JSONL.md`](docs/JSONL.md)
+- Pinned comparison with ValorantReplayParser: [`docs/REFERENCE_COMPARISON.md`](docs/REFERENCE_COMPARISON.md)
+- Upgrading to 0.6.0: [output counters and Reader API](docs/PHASE_C_MIGRATION.md) and [error, network and publication changes](docs/FINAL_CONSOLIDATION_MIGRATION.md); release notes in [`CHANGELOG.md`](CHANGELOG.md)
 - Run it, every tool and every output column: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable, and whether it is typed: [`docs/DATA.md`](docs/DATA.md)
 - Build it, test it, open a PR: [`CONTRIBUTING.md`](CONTRIBUTING.md) (agents: [`CLAUDE.md`](CLAUDE.md))
 
+## Quick start
+
+These examples describe release **0.6.0**. Check out the `v0.6.0` tag; an
+older release package may expose different APIs, and `main` moves on after
+the release. Record the full source revision when reproducing a result or
+embedding the library.
+
+0.6.0 changes manifest counters, summary lines and the Rust API; see the
+[migration guide](docs/PHASE_C_MIGRATION.md) before upgrading a consumer.
+The version number does not claim a measured performance improvement.
+
+```bash
+git clone --branch v0.6.0 --single-branch https://github.com/yakisoba0728/vrfkit.git
+cd vrfkit
+git rev-parse HEAD
+
+# Install the pinned toolchain once if needed.
+rustup toolchain install 1.86.0 --profile minimal
+cargo +1.86.0 build --release -p vrfkit --locked
+
+./target/release/vrfkit inspect match.vrf
+./target/release/vrfkit validate match.vrf --diagnostics
+./target/release/vrfkit export match.vrf --out match-export --checkpoints
+```
+
+On Windows PowerShell, use `.\target\release\vrfkit.exe` for the executable.
+A source build does not automatically add the binary to `PATH`. The Rust API
+and Python tooling here are available from source; see tagged releases for the
+features of a particular packaged version. The workspace crates are not yet
+published to crates.io. The [adoption guide](docs/ADOPTION.md) covers an exact
+source pin, dependency flags and a first projected Python read.
+
+`inspect` parses container metadata and lists chunks without decoding packets.
+`validate` walks ReplayData content blocks and reports its structural verdict;
+it writes no files and does not establish checkpoint or semantic correctness.
+`export` writes the Parquet tables and manifest described under [Output](#output) into
+`--out`, which must be new, empty or a previous export: anything else in it
+is refused, never deleted.
+
+> Column schemas, the `tools/` scripts, the full validation suite, and
+> per-crate usage live in [`docs/USAGE.md`](docs/USAGE.md).
+> This document is about *why it is built this way*.
+
+### Rust applications
+
+Use `ReplayReader` for main-stream records and native Event payloads without
+writing Parquet. It borrows callback batches, preserves available raw windows
+and returns quality counters. `read_path` reads container chunks from a
+read-only, seekable file; it does not retain the complete replay. Individual
+chunks, metadata, parser state and any output you retain still consume memory.
+Checkpoint snapshots are skipped by default; `ReadOptions` can opt into
+separate checkpoint callbacks. `read_bounded` accepts finite nonseekable input
+with an explicit encoded-byte cap and parses after EOF. The
+[Rust API guide](docs/RUST_API.md) covers ownership, errors, buffering and
+quality checks. Run its aggregate-only examples:
+
+```bash
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked --example stream_replay -- match.vrf
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked --example gameplay_events -- match.vrf
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked --example stream_checkpoints -- match.vrf
+cargo +1.86.0 run --release -p vrfkit --no-default-features --locked --example gameplay_identity -- match.vrf
+```
+
+The optional [gameplay helpers](docs/GAMEPLAY_API.md) project validated native
+round starts, deaths and spike events, plus observed round-phase fields. They
+run only when called. A separate `MainIdentityTimeline` resolves proven body
+relationships and movement transport windows while retaining missing and
+ambiguous evidence. Native Event actor GUIDs are not automatically joined to
+accounts or kill credit. See the [migration guide](docs/PHASE_C_MIGRATION.md)
+for lifecycle rules and the explicit-cap stdin example.
+
 ## Why this exists
 
-Most replay parsers export only the fields whose type they know. vrfkit's
-design premise is the opposite: **export every value the replay carries.** This
-is possible because Unreal's property stream is self-describing -- each field
-carries a handle and a bit-length *before* its value, so field boundaries are
-walkable without knowing the type, and the handle-to-name map ships inside the
-replay itself (`NetFieldExportGroup`). Where that map is available, names can
-be resolved independently of types. Unknown properties retain raw payloads;
-typed values are an additive overlay. This is a preservation strategy, not a
-claim that every stream is currently understood: framing failures and missing
-schema attribution are measured separately, and successful movement decodes
-can be represented by their rows instead of a duplicate raw RPC.
+vrfkit preserves raw replicated-property windows alongside decoded values.
+In framed RepLayout streams, a field carries a handle and bit length before
+its value, so a known field boundary can be preserved without knowing its
+type. The replay's `NetFieldExportGroup` declarations resolve handles to names
+where that schema is available. Unknown properties retain raw payloads, and
+unresolved RPCs can retain their whole payload; typed values are an additive
+overlay.
+
+This is a preservation strategy with explicit accounting. Framing failures,
+missing schema attribution and semantic coverage remain separate measurements.
+Successful movement decodes can be represented by their rows instead of a
+duplicate raw RPC, and synthesized child rows may have no independent raw
+window. This is not a lossless replay archive. See the
+[adoption limits](docs/ADOPTION.md#support-and-preservation-limits)
+for the tested inputs, exact-output comparisons and remaining unknowns.
 
 ## Supported VALORANT builds
+
+The table below retains the historical, revision-specific audits linked in
+[build verification](docs/BUILD_VERIFICATION.md). Separate public-replay runs
+during 0.6.0 development checked six public inputs, then ten public inputs
+across seven builds including 99 checkpoints, then five fresh public inputs
+across five builds and 59 checkpoints. Those are executions at their recorded source revisions. The 0.6.0 source
+was additionally run on 1,011 archived private replays of 24 builds, all
+strictly clean; see
+[0.6.0 revalidation](docs/BUILD_VERIFICATION.md#060-revalidation).
 
 | 🎮 Build | 🌿 Branch | ✅ Clean/checked | 🔎 Verified by |
 |---|---|---:|---|
@@ -100,8 +190,10 @@ it ([details](docs/BUILD_VERIFICATION.md#1308)).
 The 13.10 transform passes the block oracle, and the CombatReport and damage
 RPC array layouts decode with zero main and checkpoint array leaf errors
 ([details](docs/BUILD_VERIFICATION.md#1310)).
-Structured-array child rows are admitted per build and per route: all
-measured routes on 13.01--13.06, 13.09 and 13.10, all but the projectile path on 13.08, a measured subset on 11.06--13.00
+Structured-array child rows are admitted per build and per route: eight of
+the nine measured routes (all but `FocusProjectiles`) on 13.01--13.06, 13.09
+and 13.10, those eight but the projectile path on 13.08, and a measured subset
+on 11.06--13.00, where only 12.05 adds `FocusProjectiles`
 ([legacy route table](docs/LEGACY_BUILD_SUPPORT.md#measured-array-routes)).
 
 All branches are `++Ares-Core+release-<build>`. Adding a build is one
@@ -148,9 +240,16 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
   the kill log: 132/132 in order on one 13.01 replay, 9,677/9,677 over 71
   replays on 13.02.
 - **Reproducible** — Parquet output is byte-for-byte identical run to run.
-- **No `unsafe`** — `#![forbid(unsafe_code)]` in every crate; the only FFI is
-  Oodle, isolated in an external crate.
-- **744 Rust tests (Windows)** / **743 Rust tests (non-Windows)** plus
+- **Rust reader API** -- synchronous borrowed record batches and native Event
+  payloads, opt-in isolated checkpoint snapshots, and explicit quality counters;
+  see the [library guide](docs/RUST_API.md).
+- **Bounded schema declarations** -- configurable group and field-slot budgets
+  reject excess declarations before allocating dense slots; see
+  [schema resource limits](docs/SCHEMA_LIMITS.md) for the scope and migration.
+- **Workspace unsafe-code policy** — `#![forbid(unsafe_code)]` in every crate.
+  Dependencies have separate policies; default Parquet compression includes
+  native Zstd. The core-only Reader excludes Arrow, Parquet and Zstd.
+- **901 Rust tests (Windows)** / **900 Rust tests (non-Windows)** plus
   a layered validation suite (framing / bytes / decode
   errors / semantics).
 
@@ -170,27 +269,6 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - [Generated files](#generated-files)
 - [License](#license)
 
-## Quick start
-
-```bash
-cargo +1.86.0 build --release -p vrfkit --features export --locked
-
-vrfkit inspect  <file.vrf>                          # header / branch / chunk summary
-vrfkit validate <file.vrf> [--diagnostics]          # grammar oracle, writes nothing
-vrfkit export   <file.vrf> --out <dir> [--checkpoints]
-```
-
-`inspect` prints replay info, header, branch, and a chunk summary; it does no
-parsing and returns immediately. `validate` walks every content block through
-the RepLayout grammar and reports a pass rate; it writes no files. `export`
-writes the Parquet tables and manifest described under [Output](#output) into
-`--out`, which must be new, empty or a previous export: anything else in it
-is refused, never deleted.
-
-> Column schemas, the `tools/` scripts, the full validation suite, and
-> per-crate usage live in [`docs/USAGE.md`](docs/USAGE.md).
-> This document is about *why it is built this way*.
-
 ## Output
 
 The main export writes six Parquet tables plus `manifest.json`; `--checkpoints`
@@ -198,14 +276,47 @@ adds seven checkpoint tables. The tables, their columns, the join rules and
 the traps (a per-round tick, `open` / `close` / `dormant`, an `FDateTime`
 timestamp) are in [`docs/USAGE.md` section 3](docs/USAGE.md#3-output).
 
+### JSONL for Python and other consumers
+
+Convert any existing main or checkpoint Parquet table with selected columns:
+
+```bash
+python -m pip install -r requirements.txt
+python tools/export_jsonl.py --export match-export --table fields \
+  --columns bit_count raw_bits value_i64 value_f64 value_bool value_str --out fields.jsonl
+```
+
+For a direct Python read, the [batch recipe](docs/ADOPTION.md#python-parquet-and-jsonl)
+projects the same columns and prints aggregate counts from one batch at a time.
+The [JSONL format](docs/JSONL.md) includes a schema header, exact integer tokens,
+hexadecimal binary values and explicit nulls. Conversion uses bounded row batches
+and publishes the completed file atomically. It preserves selected values and
+row order; it does not infer gameplay events or retain Parquet physical encoding.
+
 ## Status
 
-Work in progress. Currently verified: `cargo +1.86.0 test --workspace --locked`
-**743 passing (non-Windows)**; the Windows suite contains **744 tests (Windows)**.
-The full Python suite has **1081 passing** tests. The documentation guard
+The current release is **0.6.0**. Controlled measurements during its
+development found performance superiority inconclusive, and the single
+optimization experiment was withdrawn; 0.6.0 carries correctness and resource
+fixes, and no ordinary-replay speedup is implied.
+The [changelog](CHANGELOG.md) and
+[migration guide](docs/PHASE_C_MIGRATION.md) describe the API and output
+changes.
+
+Fresh local `cargo +1.86.0 test --workspace --locked` passes all
+**900 Rust tests (non-Windows)**, with zero failures or ignored tests. The
+Windows suite contains **901 Rust tests (Windows)**. The full Python suite has
+**1201 passing** tests in the fresh local run. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.
+
+The [native movement component correction](docs/NATIVE_MOVEMENT_COMPONENTS.md)
+has a separate six-public-replay main/checkpoint validation and explicit
+summary/manifest counter migration. Its
+[private-corpus revalidation](docs/BUILD_VERIFICATION.md#060-revalidation)
+found 0 component errors in 1,011 replays; the earlier build-audit totals are
+not measurements of this decoder.
 
 Tagged Windows releases provide a ZIP and SHA-256 checksum. The release
 workflow runs the complete CI on the tagged commit, checks the packaged binary
@@ -221,8 +332,16 @@ The crates, their layers and feature flags are in
 [`docs/USAGE.md` section 4](docs/USAGE.md#4-using-it-as-a-library), and the
 layered validation suite and what each layer misses in
 [section 6](docs/USAGE.md#6-validation-suite). Timing
-is `tools/bench_export.py`; the optimizations kept and rejected, with their
-measurements, are in [`docs/PERFORMANCE_NOTES.md`](docs/PERFORMANCE_NOTES.md).
+is `tools/bench_export.py`. For paired CPU, memory and exact-output comparisons,
+see [resource benchmarks](docs/RESOURCE_BENCHMARKS.md). The optimizations kept
+and rejected, with their measurements, are in
+[`docs/PERFORMANCE_NOTES.md`](docs/PERFORMANCE_NOTES.md).
+
+Same-input comparisons with the pinned C# reference are documented in
+[reference comparison scope](docs/REFERENCE_COMPARISON.md): exact movement
+identities, count units, unresolved matches and differences in exported work.
+Neither parser is treated as ground truth, and no equal-work speed ratio is
+claimed from their default exports.
 
 ## The Event chunk -- the server's own timeline
 

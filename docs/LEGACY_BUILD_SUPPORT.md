@@ -27,6 +27,12 @@ route is admitted on a build only when, on every available replay of it:
 - the route emits at least one child on that build. A route never observed
   there is unobserved, not verified, and stays off.
 
+In the table, "every route" means the eight routes other than
+`FocusProjectiles`. That ninth route, `Clay_PC_C.FocusProjectiles`, is
+admitted on 12.05 only and was added after these measurements, so no row
+count below includes it; its evidence is in
+[the FocusProjectiles route](PHASE_C_FOCUS_PROJECTILES.md).
+
 | Build | Replays | Admitted routes | Main rows added (typed) | Checkpoint rows added (typed) |
 |---|---:|---|---:|---:|
 | 11.06 | 3 | KillData, ServerActiveEffects, RequestedIgnoreActors | 31,342 (26,504) | 57,320 (50,918) |
@@ -40,7 +46,7 @@ route is admitted on a build only when, on every available replay of it:
 | 12.02 | 3 | as 11.09 | 40,056 (31,735) | 333,768 (225,019) |
 | 12.03 | 3 | as 11.09 | 35,325 (28,012) | 308,703 (206,901) |
 | 12.04 | 3 | every route but ActiveBlinds | 80,512 (48,281) | 464,924 (306,815) |
-| 12.05 | 3 | every route but ActiveBlinds | 66,178 (39,720) | 341,460 (220,047) |
+| 12.05 | 3 | every route but ActiveBlinds, plus FocusProjectiles (not counted here) | 66,178 (39,720) | 341,460 (220,047) |
 | 12.06 | 3 | every route but ActiveBlinds and the path | 61,880 (38,151) | 280,502 (180,526) |
 | 12.07 | 3 | every route but ActiveBlinds and the path | 66,924 (40,451) | 363,603 (235,470) |
 | 12.08 | 3 | every route but ActiveBlinds | 73,881 (46,395) | 340,929 (219,927) |

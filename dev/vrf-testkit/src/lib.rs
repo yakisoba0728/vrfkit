@@ -309,6 +309,23 @@ pub fn archive_with_unread_input(plain: &[u8], unread: usize) -> Vec<u8> {
     archive
 }
 
+/// An Oodle archive declaring 64 bytes of output whose one Mermaid quantum makes
+/// oozextract 0.5.4 panic instead of returning an error: block header
+/// `0x0C 0x0A` (Mermaid), quantum header `00 00 07` (8 bytes follow), chunk
+/// header `88 00 05` (LZ, mode 1, `src_used` 5), five zero bytes. Mermaid's LZ
+/// table asserts `src_used >= 10` (`mermaid.rs` `read_lz_table`), and nothing
+/// before it checks.
+pub fn archive_that_panics_the_codec() -> Vec<u8> {
+    let body = [
+        0x0C, 0x0A, 0x00, 0x00, 0x07, 0x88, 0x00, 0x05, 0, 0, 0, 0, 0,
+    ];
+    let mut archive = Vec::new();
+    add_i32(&mut archive, 64); // decompressed size
+    add_i32(&mut archive, body.len() as i32); // compressed size
+    archive.extend_from_slice(&body);
+    archive
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

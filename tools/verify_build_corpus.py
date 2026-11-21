@@ -46,13 +46,10 @@ SINK_ZERO = (
     "array_truncations", "array_errors", "array_unconsumed_nested_bits",
     "array_unconsumed_root_bits", "array_implicit_terminations",
     "array_leaf_decode_errors", "truncated_rpcs",
-    # Zero in both passes of all 1,018 corpus replays (24 builds): the brute
-    # force rests on one empirical constant (fc=34), and a movement-section
-    # tail is a tally no measured build produces, so nonzero is a new shape.
+    # The brute force rests on one empirical constant (fc=34). Native
+    # component errors include malformed envelopes and unrepresented bodies.
     "cnc_bruteforce_payloads_unwalked",
-    "movement_sized_section_tails", "movement_open_section_tails",
-    # A separate boundary: bits outside a fitting sized movement window.
-    "movement_sized_section_trailers", "movement_sized_section_trailer_bits",
+    "movement_component_errors",
 )
 #: Each sink event tally and the NetStats counter it must equal: vrf-net calls
 #: the sink beside its own increment, so a difference is broken bookkeeping.
@@ -63,11 +60,6 @@ SINK_NET_EQUAL = (
     ("sink_actor_closes", "actor_closes"),
     ("sink_content_blocks", "content_blocks"),
 )
-#: Unread bits after each byte-wrapped movement envelope: 24 in all
-#: 156,407,150 streams of vrf-movement's 80-replay sample (11.06-13.06).
-ENVELOPE_TRAILER_BITS = 24
-
-
 def require_count(obj, key):
     value = obj[key]
     if type(value) is not int or value < 0:
@@ -88,6 +80,10 @@ def manifest_counts(manifest):
         if counts[key]:
             failures.append(f"{key}={counts[key]}")
     for prefix, scope in (("main", quality), ("checkpoint", quality["checkpoints"])):
+        failures.extend(f"{prefix}: {error}" for error in summary_counters.movement_contract_errors(
+            scope["sink"], require_work=prefix == "main"))
+        if summary_counters.obsolete_movement_contract(scope["sink"]):
+            raise ValueError(summary_counters.OBSOLETE_MOVEMENT_CONTRACT)
         for category, zero_keys in (("net", NET_ZERO), ("sink", SINK_ZERO)):
             source = scope[category]
             keys = set(zero_keys)
@@ -100,11 +96,9 @@ def manifest_counts(manifest):
                              "struct_blobs_decoded", "rpc_suffix_bits_dropped",
                              "overlay_handle_conflicts_refused",
                              "cnc_bruteforce_payloads_attempted",
-                             "movement_sized_section_tail_bits",
-                             "movement_open_section_tail_bits",
-                             "movement_envelope_trailers",
-                             "movement_envelope_trailer_bits",
-                             "active_blinds_empty_trailers"))
+                             *summary_counters.MOVEMENT_COUNTERS,
+                             "active_blinds_empty_trailers",
+                             *summary_counters.FOCUS_PROJECTILES_COUNTERS))
             for key in sorted(keys):
                 name = f"{prefix}_{key}"
                 counts[name] = require_count(source, key)
@@ -115,14 +109,6 @@ def manifest_counts(manifest):
             framed = counts[f"{prefix}_{net_key}"] = require_count(scope["net"], net_key)
             if tally != framed:
                 failures.append(f"{prefix}_{sink_key}={tally} != {prefix}_{net_key}={framed}")
-        streams = counts[f"{prefix}_movement_envelope_trailers"]
-        bits = counts[f"{prefix}_movement_envelope_trailer_bits"]
-        if bits != ENVELOPE_TRAILER_BITS * streams:
-            failures.append(f"{prefix}_movement_envelope_trailer_bits={bits} != "
-                            f"{ENVELOPE_TRAILER_BITS} x {prefix}_movement_envelope_trailers={streams}")
-        # Main only: no checkpoint RPC reaches the movement decoder.
-        if prefix == "main" and not streams:
-            failures.append("main_movement_envelope_trailers=0: no movement stream decoded")
         lost = counts[f"{prefix}_rpc_stream_failures"] - counts[f"{prefix}_unresolved_rpc_payloads_preserved"]
         counts[f"{prefix}_rpc_loss"] = lost
         if lost != 0:

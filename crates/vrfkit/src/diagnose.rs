@@ -21,7 +21,7 @@ use vrf_frame::FrameSkips;
 use vrf_net::stats::NetStats;
 use vrf_schema::read_checkpoint_tables;
 
-use crate::error::CliError;
+use crate::error::{CliError, io_at, read_input};
 use crate::pass::{Chunk, Pass, Replay, for_each_chunk};
 use crate::sink::{ExportStats, FailureAggregate, MAX_FAILURE_CELLS};
 
@@ -56,7 +56,7 @@ pub fn run(path: &str, json_path: Option<&str>, include_payloads: bool) -> Resul
         reject_input_output_alias(path, output)?;
     }
     eprintln!("reading {path}...");
-    let data = fs::read(path)?;
+    let data = read_input(Path::new(path))?;
     let file_size = data.len();
     let preamble = parse_preamble(&data)?;
     let replay = Replay::new(&preamble);
@@ -191,7 +191,7 @@ pub fn run(path: &str, json_path: Option<&str>, include_payloads: bool) -> Resul
 /// Refuse an output path that resolves to the replay itself: the JSON is built
 /// in memory and written last, so a successful run could replace its source.
 fn reject_input_output_alias(input: &str, output: &str) -> Result<(), CliError> {
-    let input = fs::canonicalize(input)?;
+    let input = fs::canonicalize(input).map_err(|error| io_at(Path::new(input), error))?;
     let output = canonicalize_destination(output)?;
     if input == output {
         return Err(CliError::Usage(
@@ -206,9 +206,10 @@ fn canonicalize_destination(path: &str) -> Result<PathBuf, CliError> {
         Ok(path) => Ok(path),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let (parent, name) = json_parent_and_name(Path::new(path))?;
-            Ok(fs::canonicalize(parent)?.join(name))
+            let parent = fs::canonicalize(parent).map_err(|error| io_at(parent, error))?;
+            Ok(parent.join(name))
         }
-        Err(error) => Err(error.into()),
+        Err(error) => Err(io_at(Path::new(path), error).into()),
     }
 }
 
@@ -247,7 +248,7 @@ fn write_json_file(path: &str, json: &str) -> Result<(), CliError> {
                 break;
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
+            Err(error) => return Err(io_at(path, error).into()),
         }
     }
     let Some((mut file, temp)) = created else {
@@ -264,22 +265,22 @@ fn write_json_file(path: &str, json: &str) -> Result<(), CliError> {
     {
         drop(file);
         let _ = fs::remove_file(&temp);
-        return Err(error.into());
+        return Err(io_at(path, error).into());
     }
     drop(file);
 
-    #[cfg(windows)]
-    if path.try_exists()? {
-        if let Err(error) = fs::remove_file(path) {
-            let _ = fs::remove_file(&temp);
-            return Err(error.into());
-        }
-    }
-    if let Err(error) = fs::rename(&temp, path) {
+    if let Err(error) = publish_json_file(&temp, path) {
         let _ = fs::remove_file(&temp);
-        return Err(error.into());
+        return Err(io_at(path, error).into());
     }
     Ok(())
+}
+
+/// Keep the prior report intact if the staged file cannot be published.
+fn publish_json_file(staged: &Path, destination: &Path) -> std::io::Result<()> {
+    // rename replaces an existing file on Windows too. Removing it first
+    // would discard the prior complete report if the rename then failed.
+    fs::rename(staged, destination)
 }
 
 /// Walk one Checkpoint chunk as `export --checkpoints` does, minus the
@@ -459,8 +460,8 @@ fn json_number_or_null<T: std::fmt::Display>(value: Option<T>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        NetStats, build_label, json_number_or_null, net_members, push_json_string,
-        reject_input_output_alias, write_json_file,
+        NetStats, build_label, json_number_or_null, net_members, publish_json_file,
+        push_json_string, reject_input_output_alias, write_json_file,
     };
 
     /// Each counter under its own name with its own value, then the three
@@ -484,7 +485,7 @@ mod tests {
             ("content_blocks_lost", stats.lost_content_blocks()),
         ]);
         assert_eq!(net_members(&stats), expected);
-        assert_eq!(expected.len(), 48);
+        assert_eq!(expected.len(), 49);
     }
 
     #[test]
@@ -545,6 +546,35 @@ mod tests {
 
         assert_eq!(std::fs::read(&source).unwrap(), b"original replay bytes");
         assert_eq!(std::fs::read(&output).unwrap(), b"{\"ok\":true}\n");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn failed_json_publication_preserves_the_prior_report() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vrfkit-diag-failed-publication-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        let output = dir.join("report.json");
+        let staged = dir.join("staged.tmp");
+        std::fs::write(&output, b"previous complete report").unwrap();
+        std::fs::write(&staged, b"new complete report").unwrap();
+        // Fault injection at the publication boundary, without a timing race.
+        std::fs::remove_file(&staged).unwrap();
+
+        let error = publish_json_file(&staged, &output).unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(
+            std::fs::read(&output).ok().as_deref(),
+            Some(b"previous complete report".as_slice())
+        );
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

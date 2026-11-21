@@ -4,6 +4,7 @@ import io
 import json
 import struct
 from pathlib import Path
+from unittest import mock
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -333,6 +334,116 @@ class SpecificationFileTests(TempDirTestCase):
         self.assertEqual(codes, (1, 0, 1))
         self.assertEqual(output.getvalue().count('"g::absent"'), 2)
         self.assertEqual(errors.getvalue(), "no specified identity was observed\n")
+
+    def test_a_failed_run_never_leaves_an_earlier_report_at_output(self):
+        root = self.tmp()
+        write_int_export(root / "a")
+        spec, report = root / "spec.json", root / "report.json"
+        spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main([str(root), str(spec), "--output", str(report)]), 0)
+        passed = json.loads(report.read_text(encoding="utf-8"))
+        self.assertEqual((passed["status"], passed["failure_count"]), ("pass", 0))
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(main([str(root / "absent"), str(spec), "--output", str(report)]), 2)
+        failed = json.loads(report.read_text(encoding="utf-8"))
+        self.assertEqual(failed["status"], "error")
+        self.assertIn("does not exist", failed["error"])
+        # No counts: a consumer that reads them fails instead of seeing a pass.
+        self.assertNotIn("failure_count", failed)
+        self.assertNotIn("fields", failed)
+
+    def test_an_unforeseen_exception_still_leaves_a_non_pass_report(self):
+        root = self.tmp()
+        write_int_export(root / "a")
+        spec, report = root / "spec.json", root / "report.json"
+        spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main([str(root), str(spec), "--output", str(report)]), 0)
+        seen = []
+
+        def interrupted(*args):
+            seen.append(json.loads(report.read_text(encoding="utf-8"))["status"])
+            raise KeyboardInterrupt
+
+        with mock.patch("validate_type_evidence.validate", interrupted), \
+                self.assertRaises(KeyboardInterrupt):
+            main([str(root), str(spec), "--output", str(report)])
+        # Published before any input was read, and not an exception handled
+        # by name: the placeholder itself is what is left.
+        self.assertEqual(seen, ["incomplete"])
+        self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["status"], "incomplete")
+
+    def test_output_never_replaces_a_file_that_is_not_its_own_report(self):
+        root = self.tmp()
+        write_int_export(root / "a")
+        spec = root / "spec.json"
+        spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
+        legacy = root / "legacy.json"
+        legacy.write_text(json.dumps({"fields": {}, "missing": [], "failure_count": 0,
+                                      "provenance": {}}), encoding="utf-8")
+        unrelated = {root / "match.vrf": b"\xdd\xef\xf4\x43replay",
+                     root / "notes.json": b'{"fields": {}}', root / "empty.json": b""}
+        for path, data in unrelated.items():
+            path.write_bytes(data)
+        for path in unrelated:
+            for export_root in (root, root / "absent"):
+                with self.subTest(output=path.name, root=export_root.name), \
+                        contextlib.redirect_stderr(io.StringIO()) as errors:
+                    with self.assertRaises(SystemExit) as exc:
+                        main([str(export_root), str(spec), "--output", str(path)])
+                    self.assertEqual(exc.exception.code, 2)
+                    self.assertIn("is not a validate_type_evidence report", errors.getvalue())
+        self.assertEqual({path: path.read_bytes() for path in unrelated}, unrelated)
+        # A report from before the status marker is still this tool's own.
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main([str(root), str(spec), "--output", str(legacy)]), 0)
+        self.assertEqual(json.loads(legacy.read_text(encoding="utf-8"))["status"], "pass")
+
+    def test_output_cannot_replace_the_specification_or_an_export_file(self):
+        root = self.tmp()
+        write_int_export(root / "a")
+        spec = root / "spec.json"
+        spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
+        before = {path: path.read_bytes() for path in (spec, root / "a" / "fields.parquet")}
+        for output in before:
+            with self.subTest(output=output.name), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as exc:
+                    main([str(root), str(spec), "--output", str(output)])
+                self.assertEqual(exc.exception.code, 2)
+        self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+    def test_unusable_input_is_one_error_line_and_exit_2(self):
+        """A missing export root, an unreadable or malformed specification:
+        one `error:` line, exit 2, nothing on stdout, and `--output` left at
+        `error`, never a traceback."""
+        root = self.tmp()
+        write_int_export(root / "a")
+        spec = root / "spec.json"
+        spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
+        malformed, no_entries, wrong_shape = root / "malformed.json", root / "object.json", root / "shape.json"
+        malformed.write_text("{not json", encoding="utf-8")
+        no_entries.write_text('{"version": 1}', encoding="utf-8")
+        wrong_shape.write_text('[1, 2]', encoding="utf-8")
+        cases = {
+            "missing root": ([str(root / "absent"), str(spec)], "export root does not exist"),
+            "missing spec": ([str(root), str(root / "absent.json")], "cannot read evidence specification"),
+            "malformed spec": ([str(root), str(malformed)], "is not valid JSON"),
+            "no entries": ([str(root), str(no_entries)], '"entries" list'),
+            "wrong shape": ([str(root), str(wrong_shape)], "invalid evidence specification"),
+        }
+        for name, (argv, message) in cases.items():
+            report = root / f"report-{name.replace(' ', '-')}.json"
+            with self.subTest(name), contextlib.redirect_stdout(io.StringIO()) as out, \
+                    contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(main([*argv, "--output", str(report)]), 2)
+            lines = err.getvalue().splitlines()
+            self.assertEqual(len(lines), 1, err.getvalue())
+            self.assertTrue(lines[0].startswith("error: ") and message in lines[0], lines[0])
+            self.assertEqual(out.getvalue(), "")
+            written = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(written["status"], "error")
+            self.assertIn(message, written["error"])
 
     def test_empty_specification_and_missing_root_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "empty"):

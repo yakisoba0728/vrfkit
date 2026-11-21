@@ -18,7 +18,7 @@ pub fn frame_skips(skips: &FrameSkips) -> String {
 #[cfg(feature = "export")]
 pub fn route_children(sink: &crate::sink::ExportStats) -> String {
     format!(
-        "{} player info / {} rewards / {} selected / {} kills / {} active effects / {} ignore actors / {} blinds / {} projectile path",
+        "{} player info / {} rewards / {} selected / {} kills / {} active effects / {} ignore actors / {} blinds / {} projectile path / {} focus projectiles",
         sink.route_children_player_information,
         sink.route_children_tracked_rewards,
         sink.route_children_selected_v2,
@@ -26,7 +26,8 @@ pub fn route_children(sink: &crate::sink::ExportStats) -> String {
         sink.route_children_server_active_effects,
         sink.route_children_requested_ignore_actors,
         sink.route_children_active_blinds,
-        sink.route_children_projectile_path
+        sink.route_children_projectile_path,
+        sink.route_children_focus_projectiles
     )
 }
 
@@ -45,11 +46,12 @@ pub fn partial_bunches(stats: &NetStats) -> String {
 /// `partial_errors` unexplained and what they count beyond it.
 pub fn partial_causes(stats: &NetStats) -> String {
     format!(
-        "{} missing initial / {} overlapping initial / {} mismatched continuation / {} unaligned / {} channel close / {} resource limit / {} unclassified / {} overclassified",
+        "{} missing initial / {} overlapping initial / {} mismatched continuation / {} unaligned / {} payload overrun / {} channel close / {} resource limit / {} unclassified / {} overclassified",
         stats.partial_missing_initial,
         stats.partial_overlapping_initial,
         stats.partial_mismatched_continuation,
         stats.partial_non_byte_aligned,
+        stats.partial_payload_overrun,
         stats.partial_channel_close,
         stats.partial_resource_limit_failures,
         stats.partial_unclassified_errors(),

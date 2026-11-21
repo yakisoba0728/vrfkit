@@ -207,8 +207,40 @@ pub(crate) fn decompress_oodle_archive(
 
 /// Run the Oodle codec over `input`, producing exactly `decompressed_size`
 /// bytes, and count the input bytes it never read.
+///
+/// The codec panics on some malformed streams (asserts, `unwrap`, slice
+/// indexing; a single flipped byte in a real archive is enough), so the call
+/// runs inside `catch_unwind` and a panic becomes
+/// [`ContainerError::OodleDecompression`]. The panic hook is left alone: the
+/// process-global hook belongs to the application, so the default one still
+/// prints the codec's panic message to stderr before the error is returned.
+/// Under `panic = "abort"` there is nothing to catch and the process exits.
 #[cfg(feature = "oodle")]
 fn inflate(input: &[u8], decompressed_size: usize) -> Result<(Vec<u8>, usize), ContainerError> {
+    // No `AssertUnwindSafe`: the closure captures only `input` (a shared
+    // `&[u8]`) and a `usize`, which the compiler checks are unwind-safe. The
+    // output buffer and the extractor are created inside and dropped with the
+    // unwind, so a half-written buffer can never be returned.
+    match std::panic::catch_unwind(|| inflate_unguarded(input, decompressed_size)) {
+        Ok(result) => result,
+        Err(payload) => {
+            let message = payload
+                .downcast_ref::<&str>()
+                .map(|s| (*s).to_owned())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "non-string panic payload".to_owned());
+            Err(ContainerError::OodleDecompression(format!(
+                "decoder panicked: {message}"
+            )))
+        }
+    }
+}
+
+#[cfg(feature = "oodle")]
+fn inflate_unguarded(
+    input: &[u8],
+    decompressed_size: usize,
+) -> Result<(Vec<u8>, usize), ContainerError> {
     let mut output = vec![0u8; decompressed_size];
 
     // A fresh Extractor per archive: it keeps bitknit/lzna state across calls

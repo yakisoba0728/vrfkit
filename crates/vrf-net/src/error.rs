@@ -35,7 +35,7 @@ pub enum NetError {
     UnresolvedFunctionCount,
 }
 
-/// Sub-classification of partial bunch sequence errors.
+/// Sub-classification of partial bunch sequence and input errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PartialSequenceKind {
     /// A continuation arrived without a preceding initial fragment.
@@ -46,6 +46,8 @@ pub enum PartialSequenceKind {
     MismatchedContinuation,
     /// A non-final fragment's payload was not byte-aligned.
     NonByteAlignedFragment,
+    /// The supplied bytes cannot hold the declared payload bit count.
+    PayloadOverrun,
 }
 
 impl core::fmt::Display for PartialSequenceKind {
@@ -55,6 +57,7 @@ impl core::fmt::Display for PartialSequenceKind {
             Self::OverlappingInitial => write!(f, "overlapping initial"),
             Self::MismatchedContinuation => write!(f, "mismatched continuation"),
             Self::NonByteAlignedFragment => write!(f, "non-byte-aligned non-final fragment"),
+            Self::PayloadOverrun => write!(f, "payload shorter than declared bit count"),
         }
     }
 }
