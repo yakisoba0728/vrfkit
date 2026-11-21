@@ -1,9 +1,9 @@
 # CLI file input
 
 `vrfkit validate` and `vrfkit export` read container chunks from read-only
-file handles. They share the file input source introduced for `ReplayReader`
-in Phase A, along with the existing decode pass. They no longer retain an
-owned copy of the complete replay. `inspect` and `diag` still use their
+file handles. They share the file input source of `ReplayReader::read_path`
+([Reader file input](READER_INPUT_STREAMING.md)), along with the existing
+decode pass. They do not retain an owned copy of the complete replay. `inspect` and `diag` still use their
 existing whole-file paths.
 
 ## Input and parallelism
@@ -21,15 +21,14 @@ fresh parser state for each snapshot and writes separate checkpoint tables.
 It retains one reusable encoded checkpoint buffer, plus the current decoded
 snapshot. Main data, checkpoint identity and output ordering are unchanged.
 
-The Phase B file-input refactor left native counters, Parquet schemas and
-manifest semantics unchanged. Phase C deliberately extends the exact Clay
-FocusProjectiles route and required counters; see
+Moving the CLI to file input left native counters, Parquet schemas and
+manifest semantics unchanged. The 12.05 Clay FocusProjectiles route and its
+required counters, a separate 0.6.0 change, do change output; see
 [the output migration](PHASE_C_MIGRATION.md#export-and-counter-migration).
 `source_size_bytes` is the input file's observed length, including skipped
 payloads. `validate` still counts checkpoints as skipped and its verdict
-covers the main ReplayData stream only. The file-input refactor itself did
-not add Reader checkpoint callbacks or nonseekable input. Phase C adds both
-as explicit library options; [the Reader contract](RUST_API.md) distinguishes
+covers the main ReplayData stream only. Reader checkpoint callbacks and
+nonseekable input are separate, explicit library options; [the Reader contract](RUST_API.md) distinguishes
 chunk-buffered paths from finite whole-input buffering with a required cap.
 
 ## Memory and errors
@@ -62,8 +61,8 @@ rollback. They compare all 13 Parquet files from compact and padded inputs,
 and check the manifest's actual source size and checkpoint count. Existing
 Reader, checkpoint, publication and unread-byte tests remain applicable.
 
-The Phase B comparison below used the exact candidate and Phase A baseline
-with identical export options. For the current source, use an explicit
+The comparison below used the file-input implementation and the preceding
+Reader-only revision as baseline, with identical export options. For the current source, use an explicit
 schema/output-compatible baseline;
 unmodified historical binaries lack the new required counter keys.
 Sparse skip tests establish the skipped-payload behavior; they do not
@@ -71,10 +70,8 @@ establish a memory bound for decoded chunks or a throughput improvement.
 
 ### Public input equivalence
 
-The candidate implementation was measured locally at
-`5b67cf29c2b14b887972548a7d5571b4118c724e`; its tree equals the published
-code checkpoint `47978d8635a7b7b301928df9ca811a8ea79a141d`.
-It was compared with Phase A integration
+The file-input implementation was measured at a tree equal to commit
+`47978d8635a7b7b301928df9ca811a8ea79a141d` and compared with
 `9c133fb423c521d7df25b6ef19cb546fa489de4e`. Fresh exports from both
 executables covered the six public 12.05, 12.08, 12.09, 12.10, 12.11 and
 13.00 inputs and their 76 checkpoints. All 78 Parquet tables were
@@ -87,8 +84,8 @@ path equivalence using the shared decoder; it is not a new independent
 reinterpretation of gameplay or the wire format. Timings captured during
 these functional runs are not used as performance evidence.
 
-The implementation adds four CLI input regressions. Full debug,
-cross-platform CI and independent acceptance are recorded separately.
+The implementation adds four CLI input regressions. Full debug builds and
+cross-platform CI are separate checks.
 
 ### Build identity and bounded-input proof
 
@@ -108,7 +105,7 @@ The 180 tracked runtime input files matched their recorded hashes after
 the build. The public comparisons above were rerun with this executable.
 
 A synthetic file with two 1 GiB sparse unknown chunks was then run under a
-512 MiB address-space limit. The Phase A `validate` executable failed with
+512 MiB address-space limit. The baseline `validate` executable failed with
 an allocation error. The new `validate` counted both chunks and returned its
 expected `NoContentBlocks` status; `export --checkpoints` succeeded and
 published its empty tables. This is a

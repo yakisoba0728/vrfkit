@@ -34,12 +34,12 @@ regressions, integrated checks and the remaining Windows/private-corpus limits.
   four need their rotator width from the native class, and Cypher's cage
   projectile needs its table `Skip` retyped with its 13.01 successor.
 - Extend `Clay_PC_C.FocusProjectiles` only when additional build-specific
-  evidence supports it. Phase C completed the exact
+  evidence supports it. 0.6.0 added the exact
   [12.05 measured route](PHASE_C_FOCUS_PROJECTILES.md), preserving raw parents
   and accepting the proved empty-array zero trailer. The earlier broad audit
   found 24,409 of 25,197 main payloads parsed exactly and all 12,837 elements
   resolved to Raze actors; the other 788 carried an empty-array zero trailer.
-  Those historical figures are not a fresh Phase C audit or evidence for
+  Those historical figures are not a fresh audit of the route or evidence for
   enabling this route on other builds. Further support needs exact live
   declarations, complete payload consumption and independent malformed and
   row-preservation comparisons.

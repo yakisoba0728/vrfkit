@@ -10,10 +10,8 @@ This complements `tools/bench_export.py`, the existing wall-time regression
 guard. It does not update that guard's committed baseline, publish artifacts,
 download a corpus, or run a competitor with a different work contract.
 
-The user explicitly delegated
-quantitative measurements to the agents in Phase D; the earlier user-only
-restriction is historical. Functional validation and measured performance remain separate
-acceptance gates.
+Functional validation and measured performance remain separate acceptance
+gates.
 
 ## Run a paired comparison
 

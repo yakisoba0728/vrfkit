@@ -231,7 +231,7 @@ chunks and explicit observed phase values, while its existing Python layer
 continues the richer analytical joins. These are different contracts; no
 event-coverage or performance superiority claim follows from this API.
 
-## Phase C author validation
+## Identity timeline validation
 
 The author check recorded 15 new
 identity/lifecycle/movement tests, the 12 prior gameplay tests, four detected
@@ -244,14 +244,14 @@ public-API regressions: two exposed retired claims incorrectly retaining
 ambiguity. All three pass after the correction, and an inclusive-cutoff
 mutation fails the same-packet uncertainty test as intended.
 
-## Phase B validation (historical)
+## Native projection validation (historical)
 
-The Phase B reproduction ran six
+A reproduction ran six
 fresh Reader executions and an independent Python/raw-byte comparison:
 560 native projections and 302 phase observations, with zero differences in
 values, multiplicity or order within each source stream. The native set
 includes 424 death declarations, 76 round starts and 60 spike events. The
-oracle exports are explicitly attributed to their historical Phase A source.
+oracle exports are explicitly attributed to their historical source revision.
 Twelve focused tests also exercise malformed inputs, raw preservation and
 cancellation. This evidence does not resolve actors to players, validate
 checkpoint gameplay or establish performance superiority.

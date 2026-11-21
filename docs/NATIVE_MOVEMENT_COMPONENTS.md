@@ -52,7 +52,8 @@ This observation covers the main stream of these six files; it skipped
 checkpoints and did not remeasure the private corpus. It reused Rust's movement
 value decoder, so it establishes structural and count evidence, **not an
 independent numeric-value comparison**. It does not claim production
-before/after Parquet parity; that remains a separate integration validation.
+before/after Parquet parity; that is the separate
+[post-fix public validation](#post-fix-public-validation) below.
 The reference implementation's limits of 16 moves and 8,192 payload bytes are
 policy limits, not established wire bounds, and are not imposed here. The
 20-move synthetic regression remains supported.
@@ -151,10 +152,8 @@ refuses an obsolete movement counter contract and does not normalize unequal
 counter contracts into equivalent benchmark work.
 
 Removing published manifest keys and summary lines is a CLI output breaking
-change. Under the repository's release policy, the next release containing
-this migration must increment the minor version (from 0.5.x to at least 0.6.0).
-This source change does not publish a release or claim that the historical
-private baselines have been rerun.
+change, so this migration ships in 0.6.0, a minor version bump from 0.5.x.
+The historical private baselines have not been rerun.
 
 ## Focused verification
 
@@ -176,15 +175,12 @@ A zero error count alone is not evidence that decoded values are correct.
 
 ## Post-fix public validation
 
-The release CLI built with Rust 1.86.0 from combined source
-`2e3526fb867c58400046b5d294aa58d01496e11a` was frozen before validation:
+A release CLI built with Rust 1.86.0 was frozen before validation:
 
 - Executable SHA-256:
   `e6b855ed2ea154260a30bca8606eefa15454e1b76cecca09a0e886e07d096a69`.
 - Parser source fingerprint:
   `0fc5b7c26fece8aab301d8f3da56b5831255833c2483dd92722cbd4e0ad312f4`.
-- Later documentation and comparator integration changes do not change the
-  published parser files.
 
 All six fixed public inputs (12.05, 12.08, 12.09, 12.10, 12.11 and 13.00)
 passed the common validation and checkpoint-enabled export audit. The
@@ -223,18 +219,9 @@ the accepted output, rather than claiming that the reference parser was rerun.
 No private replay, performance improvement or whole-format reconstruction
 claim follows from these results.
 
-## Phase A recovery and new verification
+## Second public execution
 
-The interrupted local candidate `97e6c59` was recovered onto verified GitHub
-integration `d44bcd2`, then committed locally as `603aa714`. The
-recovery recorded a fresh
-Rust 1.86 failure of the generated A3-body preservation regression before the
-fix and its successful execution afterward. The focused core/movement suites
-passed 171 tests, the complete Python suite passed 1,178 tests, and core Clippy,
-rustfmt, baseline-schema validation and the fast documentation guard passed.
-These checks do not substitute for independent Phase A QA or hosted Windows CI.
-
-A new six-public execution
+A second six-public execution
 again validates all 76 checkpoints, 1,958,155 scored main blocks and 60,169
 independent typed/raw comparisons. It freshly compares all 78 Parquet files
 byte for byte with the previously accepted output and finds no unexplained
@@ -242,8 +229,8 @@ manifest differences. All 22,561 unresolved main RPCs remain preserved, with
 zero RPC loss or movement errors. The real fixtures contain header-only A3/A4
 components; unsupported bodies are tested using generated inputs.
 
-This new execution reuses the frozen `2e3526f` executable after comparing all
-151 recorded parser-source files to the recovered tree. It is not a new binary
-build. The pre-native baseline exports are also reused
+This execution reuses the same frozen executable after comparing all 151
+recorded parser-source files to the source tree of the time. It is not a new
+binary build. The pre-native baseline exports are also reused
 without rewriting their commit attribution. Performance, private-corpus validation and a new
 full-match reference-parser execution are outside this correctness check.

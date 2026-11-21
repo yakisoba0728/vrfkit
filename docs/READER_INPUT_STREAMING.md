@@ -1,4 +1,4 @@
-# Reader file input: Phase A measurement
+# Reader file input: design and measurement
 
 `ReplayReader::read_path` and `read_path_with_schema_limits` now read
 container chunks from read-only file handles instead of retaining the whole
@@ -7,12 +7,9 @@ Both use the same decode pass, schema policy, records, source identities and
 consumer-error handling. The CLI's file loading and Parquet writers are
 unchanged by this change.
 
-This report is an **isolated Reader comparison on the pre-Native/pre-inline
-parser contract**, based on integration `d44bcd2`. It does not substitute for
-the Coordinator's later combined-source validation. Original measured local
-source checkpoints are: initial prototype
-`d78f30a`, corrected implementation `6a9ea4e`. Any subsequent publication or
-documentation commit is a distinct identity.
+This report is an **isolated Reader comparison on the parser contract
+before the native movement component change**, based on commit `d44bcd2`. It
+does not substitute for validation of the combined 0.6.0 source.
 
 ## Input and ownership design
 
@@ -54,8 +51,8 @@ slice prefetch pattern and is a remaining cancellation-work limitation.
 The same optimized Rust 1.86 executable has `buffered` and `file` modes. Each
 series uses one warmup pair and five measured pairs, alternating execution
 order. Each child runs in the existing fresh resource-measurement worker.
-Coordinator-assigned quiet windows excluded other agents' builds and tests.
-The host still exhibited temporal variation; quiet scheduling does not prove
+Runs were scheduled in quiet windows with no other builds or tests on the
+host. The host still exhibited temporal variation; quiet scheduling does not prove
 an otherwise stationary machine.
 
 The consumer counts every emitted row and raw field byte in both modes. Full
@@ -145,6 +142,5 @@ target/release/examples/reader_input_probe file /path/to/match.vrf --fingerprint
 ```
 
 The two fingerprint outputs must match exactly. The probe does not print
-player names or payload values. Default-feature and
-combined Native/Reader/optimization CI are separate acceptance gates recorded
-by the Coordinator.
+player names or payload values. Default-feature builds and CI on the
+combined source are separate checks.
