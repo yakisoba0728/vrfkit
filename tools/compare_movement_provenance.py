@@ -19,6 +19,7 @@ import sqlite3
 import struct
 import sys
 import tempfile
+import zlib
 from pathlib import Path
 
 from atomic_io import atomic_write_text, refuse_input_path, sha256_file
@@ -329,6 +330,15 @@ def compare(reference_path, rust_path, *, max_rows=10_000_000,
     return report
 
 
+def _error_report(error_type, error):
+    return {"schema_version": 1, "status": "error", "error_type": error_type,
+            "error": error, "comparison_complete": False}
+
+
+def _publish(path, report):
+    atomic_write_text(path, json.dumps(report, indent=2, allow_nan=False) + "\n")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("reference", type=Path, help="reference movement.ndjson (or .gz)")
@@ -345,17 +355,25 @@ def main(argv=None):
     except (OSError, ValueError) as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 2
+    # Replace any earlier report before reading input: an exception this
+    # handler does not name must leave `error` behind, never a previous `pass`.
+    try:
+        _publish(args.out, _error_report("Interrupted", "comparison did not finish"))
+    except (OSError, ValueError):
+        print("FAILED: aggregate report could not be published", file=sys.stderr)
+        return 2
     try:
         report = compare(args.reference, args.rust, max_rows=args.max_rows,
                          max_line_bytes=args.max_line_bytes, max_db_bytes=args.max_db_bytes,
                          work_dir=args.work_dir)
         report["tool_sha256"] = sha256_file(Path(__file__))
-    except (OSError, ValueError, KeyError, TypeError, sqlite3.Error) as exc:
-        report = {"schema_version": 1, "status": "error", "error_type": type(exc).__name__,
-                  "error": os.strerror(exc.errno) if isinstance(exc, OSError) and exc.errno else str(exc),
-                  "comparison_complete": False}
+    # A truncated gzip member raises EOFError; corrupt deflate data, zlib.error.
+    except (OSError, ValueError, KeyError, TypeError, EOFError, zlib.error,
+            sqlite3.Error) as exc:
+        report = _error_report(type(exc).__name__, os.strerror(exc.errno)
+                               if isinstance(exc, OSError) and exc.errno else str(exc))
     try:
-        atomic_write_text(args.out, json.dumps(report, indent=2, allow_nan=False) + "\n")
+        _publish(args.out, report)
     except (OSError, ValueError):
         print("FAILED: aggregate report could not be published", file=sys.stderr)
         return 2

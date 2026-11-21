@@ -1,11 +1,14 @@
+import contextlib
 import copy
 import gzip
 import hashlib
+import io
 import json
 import sqlite3
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -288,6 +291,50 @@ class MovementProvenanceComparisonTests(unittest.TestCase):
         self.assertEqual(comparator.main([str(self.reference), str(self.rust), "--out", str(out)]), 2)
         self.assertFalse(json.loads(out.read_text(encoding="utf-8"))["comparison_complete"])
 
+    def publish_pass(self):
+        """A real passing report at report.json, from separate good inputs."""
+        out = self.root / "report.json"
+        inputs = self.reference, self.rust
+        self.reference, self.rust = self.root / "good-reference.ndjson", self.root / "good-rust.jsonl"
+        self.write()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(comparator.main([str(self.reference), str(self.rust), "--out", str(out)]), 0)
+        self.assertEqual(json.loads(out.read_text(encoding="utf-8"))["status"], "pass")
+        self.reference, self.rust = inputs
+        return out
+
+    def test_damaged_gzip_input_exits_2_and_replaces_a_previous_pass(self):
+        self.write()
+        # A gzip header, then a deflate block of reserved type 3: zlib.error.
+        corrupt = bytes.fromhex("1f8b08000000000000ff") + bytes([0xff]) * 16
+        for name in ("reference", "rust"):
+            compressed = gzip.compress(getattr(self, name).read_bytes())
+            for damage, blob, error in (("truncated", compressed[:-12], "EOFError"),
+                                        ("corrupt", corrupt, "error")):
+                with self.subTest(input=name, damage=damage):
+                    out = self.publish_pass()
+                    plain = getattr(self, name)
+                    damaged = self.root / f"{damage}-{name}.jsonl.gz"
+                    damaged.write_bytes(blob)
+                    setattr(self, name, damaged)
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        code = comparator.main([str(self.reference), str(self.rust), "--out", str(out)])
+                    setattr(self, name, plain)
+                    report = json.loads(out.read_text(encoding="utf-8"))
+                    self.assertEqual(code, 2)
+                    self.assertEqual(report["status"], "error")
+                    self.assertEqual(report["error_type"], error)
+                    self.assertFalse(report["comparison_complete"])
+
+    def test_an_unanticipated_exception_cannot_leave_a_previous_pass(self):
+        self.write()
+        out = self.publish_pass()
+        with mock.patch.object(comparator, "compare", side_effect=RuntimeError("unforeseen")):
+            with self.assertRaises(RuntimeError):
+                comparator.main([str(self.reference), str(self.rust), "--out", str(out)])
+        report = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(report["status"], "error")
+        self.assertFalse(report["comparison_complete"])
 
 if __name__ == "__main__":
     unittest.main()
