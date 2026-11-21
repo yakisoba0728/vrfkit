@@ -239,6 +239,37 @@ class MovementProvenanceComparisonTests(unittest.TestCase):
         self.assertEqual(report["missing_reference_updates"], 1)
         self.assertEqual(report["status"], "fail")
 
+    def test_missing_and_extra_updates_fail_beside_a_clean_match(self):
+        """One matched update, one missing and one extra, with equal move
+        totals and no value mismatch: only the missing/extra gate can fail it."""
+        other = {"rpc_index": 1, "update_index": 8}
+        self.write(reference=[reference_move(), reference_move(update_index=9)],
+                   rust=[rust_move(0), rust_move(1), rust_move(0, **other), rust_move(1, **other)])
+        report = self.compare()
+        self.assertEqual(report["value_comparison"]["matched_updates"], 1)
+        self.assertFalse(any(report["value_comparison"]["mismatch_counts"].values()))
+        self.assertEqual(report["rust"]["rows"], report["reference"]["represented_moves"])
+        self.assertEqual((report["missing_reference_updates"], report["extra_rust_components"]), (1, 1))
+        self.assertEqual(report["status"], "fail")
+
+    def test_row_and_represented_move_totals_must_agree(self):
+        """Matched move counts imply equal totals, so this gate is a second
+        line: break the reference receipt and nothing else."""
+        self.write()
+        self.assertEqual(self.compare()["status"], "pass")
+        real = comparator.load_reference
+
+        def overcounted(connection, path, receipt, *args):
+            real(connection, path, receipt, *args)
+            receipt["represented_moves"] += 1
+
+        with mock.patch.object(comparator, "load_reference", overcounted):
+            report = self.compare()
+        self.assertEqual(report["value_comparison"]["matched_updates"], 1)
+        self.assertFalse(any(report["value_comparison"]["mismatch_counts"].values()))
+        self.assertEqual((report["missing_reference_updates"], report["extra_rust_components"]), (0, 0))
+        self.assertEqual(report["status"], "fail")
+
     def test_gzip_inputs_have_logical_content_hashes(self):
         self.write()
         expected = self.compare()
