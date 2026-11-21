@@ -20,6 +20,11 @@ can disagree. A directory is searched recursively, skipping the leftovers of
 an interrupted ``vrfkit export`` (see export_scan.py) and refusing a table
 with no ``manifest.json`` beside it; a table file or ``--export-id`` is read
 as given.
+
+The report's ``status`` is ``pass`` or ``fail``, matching the exit code. With
+``--output``, a run that does not finish leaves ``incomplete`` or ``error``
+there, with no counts. An existing ``--output`` is replaced only if it parses
+as one of this tool's reports.
 """
 
 from __future__ import annotations
@@ -609,6 +614,28 @@ def load_specifications(path: Path) -> list[dict]:
     return specifications
 
 
+REPORT_NAME = "validate_type_evidence"
+# Every report written before the ``report`` marker carried these keys.
+LEGACY_REPORT_KEYS = frozenset({"fields", "missing", "failure_count", "provenance"})
+
+
+def is_own_report(path: Path) -> bool:
+    """Whether `path` holds a report this tool wrote, so replacing it loses
+    nothing a rerun cannot regenerate."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(document, dict) and (document.get("report") == REPORT_NAME
+                                           or LEGACY_REPORT_KEYS <= document.keys())
+
+
+def unfinished_report(status: str, error: str) -> str:
+    """A report with no counts, so a consumer reading `failure_count` fails."""
+    return json.dumps({"report": REPORT_NAME, "status": status, "error": error},
+                      indent=2, ensure_ascii=True) + "\n"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("export_root", type=Path)
@@ -627,11 +654,22 @@ def main(argv=None):
             refuse_input_path(args.output, (args.evidence, Path(__file__)))
         except ValueError as exc:
             parser.error(str(exc))
-        # The report has no status field, so an earlier report left beside a
-        # run that raised would read as that run's result. Absent is honest.
-        args.output.unlink(missing_ok=True)
-    specifications = load_specifications(args.evidence)
-    report = validate(args.export_root, specifications, args.export_ids, args.compare_typed)
+        if args.output.exists() and not is_own_report(args.output):
+            parser.error(f"--output {args.output} exists and is not a {REPORT_NAME} report; "
+                         "refusing to replace it")
+        # Before reading any input: a run that raises must leave this behind,
+        # never an earlier pass.
+        atomic_write_text(args.output, unfinished_report("incomplete", "validation did not finish"))
+    try:
+        specifications = load_specifications(args.evidence)
+        report = validate(args.export_root, specifications, args.export_ids, args.compare_typed)
+    except Exception as exc:
+        if args.output:
+            atomic_write_text(args.output, unfinished_report("error", f"{type(exc).__name__}: {exc}"))
+        raise
+    failed = bool((report["missing"] and not args.allow_missing) or not report["fields"]
+                  or report["failure_count"] or report["typed_mismatch_count"])
+    report = {"report": REPORT_NAME, "status": "fail" if failed else "pass", **report}
     report["provenance"] = {
         "export_root": str(args.export_root.resolve()),
         "parquet_files": report.pop("parquet_files"),
@@ -645,8 +683,7 @@ def main(argv=None):
     print(rendered, end="")
     if not report["fields"]:
         print("no specified identity was observed", file=sys.stderr)
-    return 1 if ((report["missing"] and not args.allow_missing) or not report["fields"]
-                 or report["failure_count"] or report["typed_mismatch_count"]) else 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

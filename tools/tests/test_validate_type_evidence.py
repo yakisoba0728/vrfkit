@@ -4,6 +4,7 @@ import io
 import json
 import struct
 from pathlib import Path
+from unittest import mock
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -341,10 +342,63 @@ class SpecificationFileTests(TempDirTestCase):
         spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(main([str(root), str(spec), "--output", str(report)]), 0)
-        self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["failure_count"], 0)
+        passed = json.loads(report.read_text(encoding="utf-8"))
+        self.assertEqual((passed["status"], passed["failure_count"]), ("pass", 0))
         with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, "does not exist"):
             main([str(root / "absent"), str(spec), "--output", str(report)])
-        self.assertFalse(report.exists())
+        failed = json.loads(report.read_text(encoding="utf-8"))
+        self.assertEqual(failed["status"], "error")
+        self.assertIn("does not exist", failed["error"])
+        # No counts: a consumer that reads them fails instead of seeing a pass.
+        self.assertNotIn("failure_count", failed)
+        self.assertNotIn("fields", failed)
+
+    def test_an_unforeseen_exception_still_leaves_a_non_pass_report(self):
+        root = self.tmp()
+        write_int_export(root / "a")
+        spec, report = root / "spec.json", root / "report.json"
+        spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main([str(root), str(spec), "--output", str(report)]), 0)
+        seen = []
+
+        def interrupted(*args):
+            seen.append(json.loads(report.read_text(encoding="utf-8"))["status"])
+            raise KeyboardInterrupt
+
+        with mock.patch("validate_type_evidence.validate", interrupted), \
+                self.assertRaises(KeyboardInterrupt):
+            main([str(root), str(spec), "--output", str(report)])
+        # Published before any input was read, and not an exception handled
+        # by name: the placeholder itself is what is left.
+        self.assertEqual(seen, ["incomplete"])
+        self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["status"], "incomplete")
+
+    def test_output_never_replaces_a_file_that_is_not_its_own_report(self):
+        root = self.tmp()
+        write_int_export(root / "a")
+        spec = root / "spec.json"
+        spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
+        legacy = root / "legacy.json"
+        legacy.write_text(json.dumps({"fields": {}, "missing": [], "failure_count": 0,
+                                      "provenance": {}}), encoding="utf-8")
+        unrelated = {root / "match.vrf": b"\xdd\xef\xf4\x43replay",
+                     root / "notes.json": b'{"fields": {}}', root / "empty.json": b""}
+        for path, data in unrelated.items():
+            path.write_bytes(data)
+        for path in unrelated:
+            for export_root in (root, root / "absent"):
+                with self.subTest(output=path.name, root=export_root.name), \
+                        contextlib.redirect_stderr(io.StringIO()) as errors:
+                    with self.assertRaises(SystemExit) as exc:
+                        main([str(export_root), str(spec), "--output", str(path)])
+                    self.assertEqual(exc.exception.code, 2)
+                    self.assertIn("is not a validate_type_evidence report", errors.getvalue())
+        self.assertEqual({path: path.read_bytes() for path in unrelated}, unrelated)
+        # A report from before the status marker is still this tool's own.
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main([str(root), str(spec), "--output", str(legacy)]), 0)
+        self.assertEqual(json.loads(legacy.read_text(encoding="utf-8"))["status"], "pass")
 
     def test_output_cannot_replace_the_specification_or_an_export_file(self):
         root = self.tmp()
