@@ -271,8 +271,28 @@ fn io_failure_keeps_original_payload_even_on_the_exact_limit_probe() {
 
 #[test]
 fn callback_error_keeps_value_and_outranks_later_parse_failure() {
-    let mut data = main_input();
-    data.extend([1, 0, 0]); // later truncated chunk header
+    // The bad byte sits in the same ReplayData chunk, after the packet whose
+    // records the callback refuses: the walk parks that error and still
+    // reaches the frame failure, which must not replace it.
+    let mut data = preamble();
+    let mut frames = frame(9.0, &[], 0, &[&unresolved_packet()]);
+    frames.push(0xff);
+    data.extend(chunk(1, &replay_data(&frames, frames.len())));
+    let mut accepted = 0;
+    let failure = ReplayReader
+        .read_bounded(&mut &data[..], data.len(), ReadOptions::default(), |_| {
+            accepted += 1;
+            Ok::<(), Infallible>(())
+        })
+        .unwrap_err();
+    assert!(
+        matches!(failure, ReadError::Replay(ReplayError::Frame(_))),
+        "the fixture must hold a later frame failure: {failure:?}"
+    );
+    assert_eq!(
+        accepted, 2,
+        "metadata and the refused record batch precede it"
+    );
     let mut source = ObservedRead::new(&data);
     let eof = Rc::clone(&source.eof);
     let marker = Box::new(17);

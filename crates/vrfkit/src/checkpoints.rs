@@ -38,7 +38,7 @@ pub struct CheckpointMetadata {
     pub trailing_bytes: u64,
 }
 
-/// One checkpoint notification within [`crate::ReplayEvent::Checkpoint].
+/// One checkpoint notification within [`crate::ReplayEvent::Checkpoint`].
 ///
 /// Metadata comes first, followed by declarations in wire order, packet
 /// batches and final rejected partials, then one summary. All remain

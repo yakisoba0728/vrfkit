@@ -363,10 +363,23 @@ fn checkpoint_movement_keeps_provenance_raw_rpc_and_all_native_counters() {
         )
         .unwrap();
     assert_eq!(main_moves.len(), 4);
-    assert!(
-        !main_fields.is_empty(),
+    // Exact raw rows, so the checkpoint equality below carries preservation
+    // into both snapshots instead of comparing two equally lossy passes.
+    let rpc = movement_rpc(&[true]);
+    let expected_raw = pack(&rpc);
+    let raw_rpcs: Vec<_> = main_fields
+        .iter()
+        .filter(|field| field.field_name.as_deref() == Some(RPC) && field.bit_count > 0)
+        .collect();
+    assert_eq!(
+        raw_rpcs.len(),
+        2,
         "unresolved input body must retain raw RPCs"
     );
+    for field in raw_rpcs {
+        assert_eq!(field.bit_count, rpc.bit_len());
+        assert_eq!(field.raw_bits.as_deref(), Some(expected_raw.as_slice()));
+    }
     assert_eq!(summary.checkpoints.movement_rows, 8);
     assert_eq!(completed.len(), 2);
     for index in 0..2 {
