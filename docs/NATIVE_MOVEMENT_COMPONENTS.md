@@ -153,7 +153,9 @@ counter contracts into equivalent benchmark work.
 
 Removing published manifest keys and summary lines is a CLI output breaking
 change, so this migration ships in 0.6.0, a minor version bump from 0.5.x.
-The historical private baselines have not been rerun.
+The archived export baselines were not regenerated; the decoder itself was
+run on the private corpus, see
+[0.6.0 revalidation](BUILD_VERIFICATION.md#060-revalidation).
 
 ## Focused verification
 

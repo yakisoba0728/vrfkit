@@ -143,10 +143,10 @@ The table below retains the historical, revision-specific audits linked in
 [build verification](docs/BUILD_VERIFICATION.md). Separate public-replay runs
 during 0.6.0 development checked six public inputs, then ten public inputs
 across seven builds including 99 checkpoints, then five fresh public inputs
-across five builds and 59 checkpoints. Those are historical executions at
-their recorded source revisions; none establishes new private-corpus
-coverage, and metadata inspection and actual replay execution remain separate
-evidence.
+across five builds and 59 checkpoints. Those are executions at their recorded source revisions. The 0.6.0 source
+was additionally run on 1,011 archived private replays of 24 builds, all
+strictly clean; see
+[0.6.0 revalidation](docs/BUILD_VERIFICATION.md#060-revalidation).
 
 | 🎮 Build | 🌿 Branch | ✅ Clean/checked | 🔎 Verified by |
 |---|---|---:|---|
@@ -313,8 +313,10 @@ each supported build.
 
 The [native movement component correction](docs/NATIVE_MOVEMENT_COMPONENTS.md)
 has a separate six-public-replay main/checkpoint validation and explicit
-summary/manifest counter migration. Its private-corpus revalidation remains
-outstanding; historical build-audit totals are not new measurements of this decoder.
+summary/manifest counter migration. Its
+[private-corpus revalidation](docs/BUILD_VERIFICATION.md#060-revalidation)
+found 0 component errors in 1,011 replays; the earlier build-audit totals are
+not measurements of this decoder.
 
 Tagged Windows releases provide a ZIP and SHA-256 checksum. The release
 workflow runs the complete CI on the tagged commit, checks the packaged binary

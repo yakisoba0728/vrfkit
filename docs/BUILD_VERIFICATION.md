@@ -1,11 +1,10 @@
 # Common build verification
 
-This document and its committed report retain historical measurements at the
-source revisions named below. They have not been rerun against the native
-movement component counter contract. The current correction has a separate
-[six-public-replay main/checkpoint validation](NATIVE_MOVEMENT_COMPONENTS.md#post-fix-public-validation);
-the private corpus and its archived export baselines have not been remeasured
-with it.
+This document and its committed report retain measurements at the source
+revisions named in each section. The 0.6.0 decoder and counter contract were
+measured separately on the archived private corpus; see
+[0.6.0 revalidation](#060-revalidation). The archived export baselines under
+`tools/baselines` were not regenerated.
 
 All **1,018 unique available replays**, spanning **24 supported builds**, were
 checked with parser commit `259ed10c7e0c9d87c852f80fab7535d38d2e187f`. The two
@@ -189,6 +188,56 @@ These comparisons establish byte/value agreement, not complete gameplay
 semantics: among 40,863 `ChangedComponent` observations, one is the zero
 sentinel and three nonzero references lack a final GUID path. No reference
 or player attribution is invented for them.
+
+## 0.6.0 revalidation
+
+The 0.6.0 source (`8118350f0d632c1169e0f90c4da8887389e4828a`, release build,
+Rust 1.86) was run against the archived private corpus: **1,011 unique
+replays** of **24 builds** (11.06-12.09, 13.01, 13.02, 13.04-13.06, 13.08-13.10;
+every file matched its catalogued size and SHA-256 before the run). This is a
+new measurement of the native movement component decoder and the 0.6.0
+counter contract; the tables above remain measurements of their own
+revisions.
+
+| Build | Checked | Strictly clean |
+|---|---:|---:|
+| 11.06-12.09 (16 builds) | 3 each | 3 each |
+| 13.01 | 215 | 215 |
+| 13.02 | 204 | 204 |
+| 13.04 | 108 | 108 |
+| 13.05 | 401 | 401 |
+| 13.06 | 6 | 6 |
+| 13.08 | 1 | 1 |
+| 13.09 | 1 | 1 |
+| 13.10 | 27 | 27 |
+| **Total** | **1,011** | **1,011** |
+
+- `tools/verify_build_corpus.py` exits 0 with empty failure and
+  `build_errors` lists; `tools/check_decode_errors_corpus.py --checkpoints`
+  and `tools/validate_corpus.py` exit 0 on each build folder and on the whole
+  set (`replays read: 1011/1011`, `OK: 1011/1011`). All were run with
+  `VRFKIT_REQUIRE_CORPUS=1`.
+- Main-stream movement components: **1,940,388,746** attempted, the same
+  number complete, 0 errors, 0 empty, on all 24 builds. No checkpoint reaches
+  the movement decoder (0 attempted), so the checkpoint movement gate is not
+  exercised by this corpus.
+- `focus_projectiles_declaration_refusals` and `partial_payload_overrun` are 0
+  in every main and checkpoint manifest. `FocusProjectiles` emits 53 children
+  and 3 empty trailers on one 12.05 replay and 0 children on every other
+  build. No export hit a schema resource limit; the largest main-stream group
+  count is 602 (limit 4,096).
+- Against the released v0.5.1 executable, on 95 replays (all 83 of the builds
+  with at most 27 replays, and the first three by file name of 13.01, 13.02,
+  13.04 and 13.05): all 13 Parquet tables are byte-identical except
+  `fields.parquet` of the one 12.05 replay, which differs only by the 53 new
+  child rows; the manifests differ only by the documented counter keys.
+- The comparison was checked to fail: changing one `f64` by 1 ULP, one `i64`
+  by 1, or deleting one movement row is reported with a nonzero exit.
+
+Not covered: the 13.08 replay with the case-only path difference described
+above is not in this archive, so that finding was not re-observed; 12.10,
+12.11 and 13.00 have no replay in it; the main-stream field-slot total is not
+exposed by the executable.
 
 ## Method
 
