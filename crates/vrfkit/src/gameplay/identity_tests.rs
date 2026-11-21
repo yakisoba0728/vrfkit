@@ -62,10 +62,18 @@ fn known() -> MainIdentityTimeline {
     timeline
 }
 
+/// The outcome with its exact unresolved reason: the reasons are the contract.
 fn status(timeline: &MainIdentityTimeline, guid: u32, packet: u32) -> &'static str {
     match timeline.resolve_before_packet(ActorReference { net_guid: guid }, packet) {
         IdentityResolution::Null => "null",
-        IdentityResolution::Unresolved(_) => "unresolved",
+        IdentityResolution::Unresolved(reason) => match reason {
+            IdentityUnresolved::NoReference => "no reference",
+            IdentityUnresolved::UnobservedPacket => "unobserved",
+            IdentityUnresolved::InvalidTimeline => "invalid",
+            IdentityUnresolved::Lifecycle => "lifecycle",
+            IdentityUnresolved::PreviousLifetime => "previous lifetime",
+            IdentityUnresolved::ConcurrentChange => "concurrent",
+        },
         IdentityResolution::Ambiguous { .. } => "ambiguous",
         IdentityResolution::Resolved(_) => "resolved",
     }
@@ -242,14 +250,14 @@ fn later_evidence_never_backfills_earlier_or_same_packet_boundaries() {
             &[],
         )
         .unwrap();
-    assert_eq!(status(&timeline, BODY, 2), "unresolved");
+    assert_eq!(status(&timeline, BODY, 2), "no reference");
     timeline
         .observe_packet(2, &[], &[declaration(2, STATE, BODY)])
         .unwrap();
-    assert_eq!(status(&timeline, BODY, 1), "unresolved");
-    assert_eq!(status(&timeline, BODY, 2), "unresolved");
+    assert_eq!(status(&timeline, BODY, 1), "no reference");
+    assert_eq!(status(&timeline, BODY, 2), "no reference");
     assert_eq!(status(&timeline, BODY, 3), "resolved");
-    assert_eq!(status(&timeline, BODY, 4), "unresolved");
+    assert_eq!(status(&timeline, BODY, 4), "unobserved");
     assert_eq!(status(&timeline, 0, 4), "null");
     let IdentityResolution::Resolved(body) =
         timeline.resolve_before_packet(ActorReference { net_guid: BODY }, 3)
@@ -269,7 +277,7 @@ fn timeline_owns_reused_callback_buffers_and_requires_observed_lifetimes() {
     timeline
         .observe_packet(1, &[], std::slice::from_ref(&field))
         .unwrap();
-    assert_eq!(status(&timeline, BODY, 2), "unresolved");
+    assert_eq!(status(&timeline, BODY, 2), "lifecycle");
     field.raw_bits.as_mut().unwrap()[0] = 0;
     field.value_i64 = Some(0);
     timeline
@@ -279,7 +287,7 @@ fn timeline_owns_reused_callback_buffers_and_requires_observed_lifetimes() {
             &[],
         )
         .unwrap();
-    assert_eq!(status(&timeline, BODY, 3), "unresolved"); // State lifetime starts after the write.
+    assert_eq!(status(&timeline, BODY, 3), "previous lifetime"); // State lifetime starts after the write.
     timeline
         .observe_packet(3, &[], &[declaration(3, STATE, BODY)])
         .unwrap();
@@ -293,13 +301,13 @@ fn null_then_reconnect_keeps_historical_relation_without_current_backfill() {
         .observe_packet(2, &[], &[declaration(2, STATE, 0)])
         .unwrap();
     assert_eq!(status(&timeline, BODY, 2), "resolved");
-    assert_eq!(status(&timeline, BODY, 3), "unresolved");
+    assert_eq!(status(&timeline, BODY, 3), "no reference");
     timeline
         .observe_packet(3, &[actor(3, 75, 75, "open")], &[declaration(3, STATE, 75)])
         .unwrap();
-    assert_eq!(status(&timeline, BODY, 4), "unresolved");
+    assert_eq!(status(&timeline, BODY, 4), "no reference");
     assert_eq!(status(&timeline, 75, 4), "resolved");
-    assert_eq!(status(&timeline, 75, 2), "unresolved");
+    assert_eq!(status(&timeline, 75, 2), "no reference");
     assert_eq!(status(&timeline, BODY, 2), "resolved");
 }
 
@@ -356,11 +364,11 @@ fn close_and_active_channel_replacement_retire_lifetimes() {
         let mut timeline = known();
         timeline.observe_packet(2, &[event], &[]).unwrap();
         assert_eq!(status(&timeline, BODY, 2), "resolved");
-        assert_eq!(status(&timeline, BODY, 3), "unresolved");
+        assert_eq!(status(&timeline, BODY, 3), "lifecycle");
         timeline
             .observe_packet(3, &[actor(3, BODY, 72, "open")], &[])
             .unwrap();
-        assert_eq!(status(&timeline, BODY, 4), "unresolved");
+        assert_eq!(status(&timeline, BODY, 4), "previous lifetime");
         timeline
             .observe_packet(4, &[], &[declaration(4, STATE, BODY)])
             .unwrap();
@@ -378,7 +386,7 @@ fn same_packet_close_reopen_and_unknown_earlier_close_cannot_reuse_a_reference()
             &[declaration(2, STATE, BODY)],
         )
         .unwrap();
-    assert_eq!(status(&timeline, BODY, 3), "unresolved");
+    assert_eq!(status(&timeline, BODY, 3), "previous lifetime");
     timeline
         .observe_packet(3, &[], &[declaration(3, STATE, BODY)])
         .unwrap();
@@ -397,7 +405,7 @@ fn same_packet_close_reopen_and_unknown_earlier_close_cannot_reuse_a_reference()
     timeline
         .observe_packet(3, &[actor(3, BODY, BODY, "open")], &[])
         .unwrap();
-    assert_eq!(status(&timeline, BODY, 4), "unresolved");
+    assert_eq!(status(&timeline, BODY, 4), "previous lifetime");
 }
 
 #[test]
@@ -408,8 +416,43 @@ fn repeated_open_without_dormancy_is_unresolved_on_same_or_other_channel() {
             .observe_packet(2, &[actor(2, BODY, channel, "open")], &[])
             .unwrap();
         assert_eq!(status(&timeline, BODY, 2), "resolved");
-        assert_eq!(status(&timeline, BODY, 3), "unresolved");
+        assert_eq!(status(&timeline, BODY, 3), "lifecycle");
     }
+}
+
+#[test]
+fn closed_player_state_declaration_is_a_lifecycle_absence_not_no_reference() {
+    let mut timeline = known();
+    timeline
+        .observe_packet(2, &[actor(2, STATE, STATE, "close")], &[])
+        .unwrap();
+    assert_eq!(status(&timeline, BODY, 2), "resolved");
+    // The declaration exists; only the PlayerState lifetime holding it ended.
+    assert_eq!(status(&timeline, BODY, 3), "lifecycle");
+    // A body nobody declared is still no reference beside it.
+    assert_eq!(status(&timeline, 75, 3), "no reference");
+}
+
+#[test]
+fn a_closed_actor_leaves_no_stale_channel_to_end_its_next_lifetime() {
+    let mut timeline = known();
+    timeline
+        .observe_packet(2, &[actor(2, BODY, BODY, "close")], &[])
+        .unwrap();
+    timeline
+        .observe_packet(
+            3,
+            &[actor(3, BODY, 72, "open")],
+            &[declaration(3, STATE, BODY)],
+        )
+        .unwrap();
+    assert_eq!(status(&timeline, BODY, 4), "resolved");
+    // Another actor opening on the closed lifetime's old channel must not
+    // close the reopened body on channel 72.
+    timeline
+        .observe_packet(4, &[actor(4, 99, BODY, "open")], &[])
+        .unwrap();
+    assert_eq!(status(&timeline, BODY, 5), "resolved");
 }
 
 #[test]

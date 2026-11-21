@@ -378,6 +378,7 @@ impl MainIdentityTimeline {
         }
         let mut candidates = Vec::new();
         let mut retired_reference = false;
+        let mut ended_reference = false;
         let character_previous_end = self
             .lifetime_before(character.net_guid, packet)
             .and_then(|life| life.previous_end);
@@ -394,6 +395,7 @@ impl MainIdentityTimeline {
                         .is_some_and(|end| end.packet_id < packet)
                 });
                 if ended {
+                    ended_reference = true;
                     continue;
                 }
                 // Only a strictly later end proves this declaration retired.
@@ -420,6 +422,8 @@ impl MainIdentityTimeline {
         let Some(declaration) = candidates.first().copied() else {
             return Unresolved(if retired_reference {
                 IdentityUnresolved::PreviousLifetime
+            } else if ended_reference {
+                IdentityUnresolved::Lifecycle
             } else {
                 IdentityUnresolved::NoReference
             });

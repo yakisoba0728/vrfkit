@@ -23,6 +23,9 @@ to the recovered Phase A-D candidate:
   member-declaration mismatch: new required sink key
   `focus_projectiles_declaration_refusals`, printed as
   `FocusProjectiles refused:` and `Checkpoint FocusProjectiles refused:`.
+- `MainIdentityTimeline` reports a body whose only declaration sits on an
+  ended PlayerState lifetime as `IdentityUnresolved::Lifecycle`, not
+  `NoReference`.
 
 The two public partial-error enums add `PayloadOverrun`; exhaustive matches
 need a new case. See the [final migration](docs/FINAL_CONSOLIDATION_MIGRATION.md)
