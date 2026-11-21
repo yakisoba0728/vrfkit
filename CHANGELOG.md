@@ -1,104 +1,152 @@
 # Changelog
 
-## Unreleased: 0.6.0 candidate
+## 0.6.0
 
-The integration branch uses version 0.6.0 to prepare the breaking output and
-source API migration. This is an engineering candidate, not a published
-release. PR #58 remains draft, open and unmerged.
+0.6.0 changes what `vrfkit export` writes to the manifest and summary, so it
+is a minor version bump. It also turns the `vrfkit` crate into a library with
+a public Rust reader API. Read the two migration guides before updating a
+consumer or a strict output validator:
 
-The final consolidation adds corrections
-to the recovered Phase A-D candidate:
+- [Output counters and the Reader API](docs/PHASE_C_MIGRATION.md)
+- [Error, network and publication changes](docs/FINAL_CONSOLIDATION_MIGRATION.md)
 
-- Refuse export destinations containing the input replay before staging,
-  including inputs whose names match generated output tables.
-- Preserve the prior diagnostic JSON on a failed Windows replacement by
-  removing the delete-before-rename step.
-- Clear stale movement identity after a malformed repeated shooter GUID,
-  retaining preceding valid rows and the complete raw RPC.
-- Bound cumulative resolved checkpoint GUID paths to 256 MiB per archive
-  before indexed-string copying, observer delivery and cache insertion.
-- Reject short direct partial-bunch buffers explicitly and compute packet
-  bit lengths with checked wide arithmetic.
-- Count 12.05 `FocusProjectiles` parents refused for a parent-handle or
-  member-declaration mismatch: new required sink key
-  `focus_projectiles_declaration_refusals`, printed as
-  `FocusProjectiles refused:` and `Checkpoint FocusProjectiles refused:`.
-- `MainIdentityTimeline` reports a body whose only declaration sits on an
-  ended PlayerState lifetime as `IdentityUnresolved::Lifecycle`, not
-  `NoReference`.
-- `MovementProvenance::source` is `None` when the framed context carries a
-  negative packet ID, instead of a wrapped `u32` packet number.
-- New `NetStats::partial_payload_overrun` (manifest `net` key) classifies
-  partial payload overruns; the `Partial causes:` / `Checkpoint causes:`
-  lines gain a `N payload overrun` term after `unaligned`.
-- `ReplayError` is `#[non_exhaustive]`; exhaustive matches need a wildcard.
-- An unsupported branch is `ReplayError::UnsupportedBranch { branch, message }`
-  instead of `Usage`, with unchanged text.
-- A container or frame failure inside a checkpoint is
-  `ReplayError::Checkpoint { checkpoint_index, checkpoint_id, error }`,
-  printed as `checkpoint <id>: <error>` (`checkpoint #<index>: ...` before
-  the id is read); main-stream failures stay bare.
-- `ReadOptions` and `SchemaLimits` are `#[non_exhaustive]`; build them with
-  `default()` and the new `with_*` methods instead of struct literals.
-- `CheckpointIdentity` is `#[non_exhaustive]` with `CheckpointIdentity::new`.
-- `NetStats`, `Preamble`, `CheckpointTables` and `ValidationVerdict` are
-  `#[non_exhaustive]`. See the
-  [final migration](docs/FINAL_CONSOLIDATION_MIGRATION.md#rust-api).
+The Windows CLI is still the only packaged distribution. Rust consumers pin a
+source revision such as the `v0.6.0` tag; the Python tools are source-only.
+Nothing is published to crates.io or PyPI. No speed, CPU, memory or
+throughput improvement is claimed for this release.
 
-The two public partial-error enums add `PayloadOverrun`; exhaustive matches
-need a new case. See the [final migration](docs/FINAL_CONSOLIDATION_MIGRATION.md)
-for error, checkpoint and publication behavior. No speculative wire-type
-correction or new ordinary-replay performance claim is included.
+### Breaking changes
 
-- All ten production workspace crates and their lockfile entries use 0.6.0;
-  the two unpublished development tools retain their independent metadata.
-- The native movement migration replaces eight obsolete tail/trailer counters
-  with nine component counters. Both main and checkpoint consumers must use
-  the new names; historical values cannot be converted into the new counts.
-- Reader and CLI file input, optional gameplay projections, dictionary-run
-  construction and JSONL tooling from the earlier phases are included.
-- The Phase C additions and migration below are included. Review
-  [the API and counter migration](docs/PHASE_C_MIGRATION.md) before updating
-  callers or strict export validators.
-- Phase D measurements completed with strict output
-  equality, but performance superiority remains inconclusive. The one bounded
-  raw-byte reservation experiment was withdrawn; no Phase D runtime optimization
-  is included.
-- The Windows CLI remains the packaged distribution target. Rust consumers
-  use a pinned source revision; Python tools remain source-only. No crates.io
-  or PyPI package is prepared or published by this version change.
+Export output (manifest keys and summary lines):
 
-## Phase C engineering history (not separately released)
+- Native movement components: the eight movement tail/trailer counters are
+  removed and nine `movement_component_*` counters are added, in the main
+  and checkpoint `sink` blocks. The summary's tail/trailer lines are replaced
+  by `Movement components:`, `Component envelopes:` and `Component headers:`
+  (and their `Checkpoint` twins). Old values cannot be converted into the new
+  counts. See
+  [native movement components](docs/NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration).
+- New required `sink` keys, main and checkpoint, present at zero:
+  `route_children_focus_projectiles`, `focus_projectiles_empty_trailers` and
+  `focus_projectiles_declaration_refusals`. The `Route children:` line gains
+  a final `N focus projectiles` item, and new lines
+  `FocusProjectiles trailers: N empty deltas` and
+  `FocusProjectiles refused: N declaration mismatches` (plus `Checkpoint`
+  twins) are printed.
+- New manifest `net` key `partial_payload_overrun`; the `Partial causes:` and
+  `Checkpoint causes:` lines gain an `N payload overrun` item after
+  `unaligned`. The raw-partial reason strings include `payload_overrun`.
+- A container or frame failure inside a checkpoint is reported as
+  `checkpoint <id>: <error>` (`checkpoint #<index>: <error>` before the id is
+  read). Main-stream failures keep their bare text.
+- Strict baseline validators require the new keys; an archived baseline from
+  an earlier executable fails the current harness.
 
-These entries describe integration-branch engineering. No tag,
-release or registry publication is implied.
+Rust API:
+
+- `NetStats`, `Preamble`, `CheckpointTables` and `CheckpointIdentity` are
+  `#[non_exhaustive]`. Start `NetStats` from `default()` and assign fields;
+  build `CheckpointIdentity` with `CheckpointIdentity::new`.
+- `vrf_net::error::PartialSequenceKind` and
+  `vrf_net::pipeline::PartialPayloadReason` add `PayloadOverrun`;
+  `NetStats` adds `partial_payload_overrun`.
+- `RpcDecodeResult` drops its eight tail/trailer fields for nine component
+  fields, and `MovementError` adds six variants.
+- The new `vrfkit` library types `ReplayError`, `ReadOptions`, `SchemaLimits`
+  and `ValidationVerdict` are `#[non_exhaustive]`. Code written against a
+  pre-release source revision of this API must match `ReplayError` with a
+  wildcard, handle `ReplayError::UnsupportedBranch { branch, message }`
+  (previously `Usage`, same text) and
+  `ReplayError::Checkpoint { checkpoint_index, checkpoint_id, error }`, and
+  build options with `default()` plus `with_checkpoints`,
+  `with_schema_limits`, `with_max_groups` and `with_max_field_slots`
+  instead of struct literals.
 
 ### Added
 
-- Optional Reader checkpoint callbacks, separate snapshot state and summaries,
-  and a shared Reader/CLI checkpoint decoder. Existing Reader calls continue
-  to skip snapshots by default.
-- Evidence-preserving main-stream body identity and movement association with
-  explicit null, unresolved and ambiguous outcomes.
-- Finite nonseekable `Read` input with a required encoded-byte cap through
-  `ReplayReader::read_bounded`, plus aggregate-only examples.
-- Exact 12.05 Clay FocusProjectiles child decoding with the raw parent retained.
+- `vrfkit` library: `ReplayReader` streams borrowed main-stream records and
+  native Event payloads through callbacks without writing Parquet. With
+  `default-features = false` it has no Arrow, Parquet or Zstd dependency. See
+  [Rust API](docs/RUST_API.md).
+- Optional checkpoint callbacks (`ReadOptions::default().with_checkpoints(true)`)
+  with separate snapshot state and summaries; existing calls still skip
+  snapshots.
+- `ReplayReader::read_bounded` for finite nonseekable `Read` input with a
+  required encoded-byte cap.
+- Configurable schema budgets (`SchemaLimits`) that refuse excess group and
+  field-slot declarations before allocating; see
+  [schema limits](docs/SCHEMA_LIMITS.md).
+- Optional gameplay projections (`native_event`, `round_phase_event`) and
+  `MainIdentityTimeline` for body identity and movement association, with
+  explicit null, unresolved and ambiguous outcomes; see
+  [Gameplay API](docs/GAMEPLAY_API.md).
+- Movement provenance through the Reader, and
+  `tools/compare_movement_provenance.py` for comparing it with the reference
+  parser; see [movement comparison](docs/MOVEMENT_COMPARISON.md).
+- `validate` and `export` read replay chunks from the file instead of holding
+  the whole replay; `export --checkpoints` uses its own checkpoint cursor. See
+  [CLI input](docs/CLI_INPUT_STREAMING.md).
+- The 12.05 `Clay_PC_C.FocusProjectiles` array route: exact child rows before
+  the unchanged raw parent, on that build only; see
+  [the route](docs/PHASE_C_FOCUS_PROJECTILES.md).
+- `tools/export_jsonl.py`: selected Parquet columns to schema-described JSONL;
+  see [JSONL](docs/JSONL.md).
+- `tools/benchmark_resources.py`: paired export comparisons with CPU, RSS and
+  output-equality gates; see [resource benchmarks](docs/RESOURCE_BENCHMARKS.md).
 
-### Compatibility and corrections
+### Fixed
 
-- The native movement-component counter migration and new required
-  `route_children_focus_projectiles` / `focus_projectiles_empty_trailers`
-  keys require updated downstream validators. The measured 12.05 fixture
-  gains 53 main child rows. See [migration](docs/PHASE_C_MIGRATION.md).
-- The new identity timeline rejects stale prior-lifetime declarations as
-  current ambiguity candidates while retaining historical observations;
-  same-packet ordering uncertainty remains explicit.
-- Unmodified historical binaries are not valid baselines for the current
-  strict output harness.
+- `export` refuses an output directory that contains the input replay, also
+  when the replay is named like an export table, before staging.
+- A failed Windows replacement of the `diag --json` report keeps the previous
+  report; the delete-before-rename step is gone.
+- A malformed repeated shooter GUID clears the current movement identity;
+  earlier valid rows and the complete raw RPC are kept.
+- Resolved checkpoint GUID paths are bounded to 256 MiB per archive before
+  indexed-string copying, observer delivery and cache insertion.
+- Short direct partial-bunch buffers are refused explicitly, and packet bit
+  lengths use checked wide arithmetic.
+- The native movement decoder validates component envelopes and keeps
+  unsupported component bodies as raw RPCs instead of reading them as
+  tail/trailer bits.
+- 12.05 `FocusProjectiles` parents refused for a parent-handle or
+  member-declaration mismatch are counted
+  (`focus_projectiles_declaration_refusals`) instead of leaving no trace.
+- `MainIdentityTimeline` reports a body whose only declaration sits on an
+  ended PlayerState lifetime as `IdentityUnresolved::Lifecycle`, not
+  `NoReference`.
+- `MovementProvenance::source` is `None` for a negative packet ID instead of
+  a wrapped `u32` packet number.
+- Partial payload overruns are classified (`partial_payload_overrun`) instead
+  of counting as unclassified.
 
-### Not measured or published
+### Tools and CI
 
-- No Phase C speed, CPU, peak-RSS, allocation or throughput improvement is
-  claimed. Performance comparisons remain user-run.
-- Main merges, version changes, tags, releases and registry uploads are
-  excluded from this engineering phase.
+- `compare_movement_provenance.py` exits 2 with an `error` report for a
+  truncated or corrupt gzip input, and replaces any previous report with an
+  `error` report before reading input, so a failed run never leaves an
+  earlier `pass` behind.
+- `validate_type_evidence.py --output` removes the previous report before
+  validating and publishes the new one atomically. It refuses an `--output`
+  that is the specification, the tool itself, a `.parquet` file or a
+  `manifest.json`.
+- `package_release.py` refuses a tag that does not name the Cargo workspace
+  version, and a new `version` command prints that version. Untagged CI runs
+  package as `v<version>+ci.<commit>`.
+- CI runs Linux MSRV tests and public-replay validation through a reusable
+  `ci.yml`, which tagged releases also call. The branch-only workflows are
+  removed.
+- Tests that could not fail were made able to fail (reader assertions,
+  movement-comparison gates, benchmark counter equality, movement accounting
+  in the corpus guards, the JSONL batch-column check).
+
+## 0.5.1
+
+- VALORANT 13.10 replays are supported: its payload transform is
+  registered, and the CombatReport regional arrays and damage life-change
+  members follow the handles 13.10 declares.
+- The structured-array routes admitted on 13.01--13.06 are admitted on 13.10
+  too, so its ActiveBlinds, KillData assist and other route children are
+  emitted, and the kill extractors accept the build.
+- CombatReport `DamageIcon` references and the 13.10 `TemporaryDeath`
+  life-change array are typed.
