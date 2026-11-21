@@ -397,6 +397,38 @@ fn first_structural_failure_follows_file_order_even_with_main_prefetch() {
     }
 }
 
+/// The bad chunk above decompresses and fails later in the walk; this one
+/// fails inside decompression, which the file path runs on its prefetch
+/// thread. That thread's error must arrive, not "decompression thread stopped".
+#[test]
+fn prefetch_decompression_failure_matches_the_slice_path() {
+    let mut body = Vec::new();
+    add_u32(&mut body, 0); // time1
+    add_u32(&mut body, 60_000); // time2
+    add_i32(&mut body, 8); // SizeInBytes: longer than the one byte present
+    add_i32(&mut body, 8); // MemorySizeInBytes
+    body.push(0xff);
+    let mut data = preamble();
+    data.extend(chunk(1, &body));
+    let dir = scratch("reader-checkpoints", "prefetch-decompress");
+    let path = dir.join("input.vrf");
+    std::fs::write(&path, &data).unwrap();
+    for options in [ReadOptions::default(), options()] {
+        let memory = ReplayReader
+            .read_with_options(&data, options, |_| Ok::<(), Infallible>(()))
+            .unwrap_err();
+        let file = ReplayReader
+            .read_path_with_options(&path, options, |_| Ok::<(), Infallible>(()))
+            .unwrap_err();
+        assert_eq!(memory.to_string(), file.to_string());
+        assert!(
+            memory.to_string().contains("uncompressed replay data"),
+            "{memory}"
+        );
+        assert!(!file.to_string().contains("thread stopped"), "{file}");
+    }
+}
+
 #[test]
 fn checkpoint_consumer_error_keeps_identity_and_outranks_later_frame_failure() {
     let packet = unresolved_packet();
