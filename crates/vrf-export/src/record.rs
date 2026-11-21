@@ -114,7 +114,8 @@ pub struct MovementSource {
 /// final value after later empty, failed or replacing properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MovementProvenance {
-    /// Absent only if a consumer decodes without framed transport context.
+    /// Absent if a consumer decodes without framed transport context, or if
+    /// that context carries a negative packet ID.
     pub source: Option<MovementSource>,
     /// Zero-based RemoteCharacterUpdates property occurrence in this RPC.
     pub array_ordinal: u32,

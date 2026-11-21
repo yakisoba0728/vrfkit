@@ -267,16 +267,20 @@ impl ExportSink<'_> {
         let packet_id = self.packet_id;
         let movement = &mut self.records.movement;
         let result = if self.records.capture_movement_provenance {
-            let source = self.current_movement_context.map(|context| MovementSource {
-                initial_packet_id: context.initial_packet_id as u32,
-                completion_packet_id: context.completion_packet_id as u32,
-                channel_index: self.current_channel,
-                actor_net_guid: self.current_actor_guid,
-                object_net_guid: self.current_object_guid,
-                bunch_index: context.bunch_index,
-                block_index: context.block_index,
-                rpc_index,
-                rpc_handle: handle,
+            // A negative wire packet ID has no u32 identity: the source is
+            // absent, never a wrapped plausible packet number.
+            let source = self.current_movement_context.and_then(|context| {
+                Some(MovementSource {
+                    initial_packet_id: u32::try_from(context.initial_packet_id).ok()?,
+                    completion_packet_id: u32::try_from(context.completion_packet_id).ok()?,
+                    channel_index: self.current_channel,
+                    actor_net_guid: self.current_actor_guid,
+                    object_net_guid: self.current_object_guid,
+                    bunch_index: context.bunch_index,
+                    block_index: context.block_index,
+                    rpc_index,
+                    rpc_handle: handle,
+                })
             });
             let provenance = &mut self.records.movement_provenance;
             vrf_movement::decode_movement_rpc_with_context(&mut rpc_reader, |mv, context| {
@@ -1624,6 +1628,41 @@ mod tests {
             std::mem::swap(&mut sink.stats, &mut cumulative_stats);
         }
         assert_eq!(cumulative_stats.rpcs_emitted, starting_rpc_total + 6);
+    }
+
+    #[test]
+    fn negative_packet_ids_leave_the_movement_source_absent() {
+        let bits = movement_rpc_fixture(1, false);
+        let bytes = pack(&bits);
+        for (initial, completion) in [(-1, 41), (7, -1), (i32::MIN, i32::MIN)] {
+            let mut rig = movement_test_rig();
+            rig.records.capture_movement_provenance = true;
+            let mut sink = rig.sink();
+            sink.packet_id = 41;
+            sink.on_content_block_with_context(
+                7,
+                NetworkGuid(89),
+                &actor_block(false),
+                &ContentBlockContext {
+                    initial_packet_id: initial,
+                    completion_packet_id: completion,
+                    bunch_index: 2,
+                    block_index: 0,
+                },
+            );
+            sink.set_current_group_path(Arc::from("/Script/Test.Movement_ClassNetCache"));
+            sink.on_rpc(
+                0,
+                bits.len() as u32,
+                BitReader::with_bit_len(&bytes, bits.len() as u64).unwrap(),
+            );
+            assert_eq!(sink.records.movement.len(), 1, "{initial} {completion}");
+            assert_eq!(sink.records.movement_provenance.len(), 1);
+            assert_eq!(
+                sink.records.movement_provenance[0].source, None,
+                "{initial} {completion}"
+            );
+        }
     }
 
     #[test]

@@ -26,6 +26,8 @@ to the recovered Phase A-D candidate:
 - `MainIdentityTimeline` reports a body whose only declaration sits on an
   ended PlayerState lifetime as `IdentityUnresolved::Lifecycle`, not
   `NoReference`.
+- `MovementProvenance::source` is `None` when the framed context carries a
+  negative packet ID, instead of a wrapped `u32` packet number.
 
 The two public partial-error enums add `PayloadOverrun`; exhaustive matches
 need a new case. See the [final migration](docs/FINAL_CONSOLIDATION_MIGRATION.md)
