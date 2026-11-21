@@ -10,7 +10,9 @@ Legend: ✅ typed (value decoded) · ◐ raw or derivable · ❌ unavailable in 
 stated observation scope. Absence in a sample is not proof of format-wide absence.
 
 Current validation is [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md): one
-acceptance rule on 1,018 replays of 24 builds. Structured-array children are
+acceptance rule on 1,018 replays of the 24 builds through 13.06, applied in
+separate runs to 3 13.08, 5 13.09 and 28 13.10 replays (27 builds in all).
+Structured-array children are
 admitted per build and per route ([below](#structured-array-children)).
 Physical row ratios are not semantic completeness.
 
@@ -716,9 +718,10 @@ cannot resolve prints `NO CARRIER` rather than a guess.
 A measured array route expands one exact (group, parent, checksum) identity
 into additive child rows that follow the raw parent, which is kept. A route
 runs only on the builds `MeasuredArrayRoutes::for_branch`
-(`crates/vrfkit/src/sink/measured_routes.rs`) admits: every route on
-13.01--13.06, 13.09 and 13.10, all but the projectile path on 13.08, a measured
-subset on 11.06--13.00
+(`crates/vrfkit/src/sink/measured_routes.rs`) admits. There are nine routes:
+eight (every route but `FocusProjectiles`) run on 13.01--13.06, 13.09 and
+13.10; those eight but the projectile path on 13.08; a measured subset on
+11.06--13.00. `FocusProjectiles` runs on 12.05 only
 ([route table](LEGACY_BUILD_SUPPORT.md#measured-array-routes)).
 
 | Array | Members | Column | Meaning |
@@ -735,6 +738,7 @@ subset on 11.06--13.00
 | `KillData` | `WeaponTheme` | `value_str` | A true prefix, then a terminated FString (not an FName) |
 | `RequestedIgnoreActors` | its child | `value_i64` | Packed NetGUID |
 | `TrackedRewards` | `LocalizedRewardName` | `value_str` | The FText history tree as JSON, below |
+| `FocusProjectiles` (12.05 `Clay_PC_C` only) | `FocusProjectiles` | `value_i64` | IntPacked NetGUID; on the public fixture these matched actor opens of projectile archetypes, but the final GUID path map does not resolve them. Requires the parent at handle 45 and the declarations `FocusProjectiles` at 45 (checksum 957945936) and 46 (checksum 831657485); a mismatch stays raw and moves `focus_projectiles_declaration_refusals`. Other builds and other classes stay one raw parent row. See [the route](PHASE_C_FOCUS_PROJECTILES.md) |
 
 A reference of 0 is a null reference; a null `value_i64` means nothing was
 decoded. Checkpoint rows also join on `checkpoint_index`. A malformed window

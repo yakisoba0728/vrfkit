@@ -1,9 +1,13 @@
-# Phase C: measured FocusProjectiles array route
+# 0.6.0: the 12.05 FocusProjectiles array route
+
+0.6.0 decodes Clay's `FocusProjectiles` array into child rows on build 12.05
+only. This page states what the route accepts, what it emits, which counters
+report it, and the evidence behind it.
 
 ## Evidence and support boundary
 
-The previously deferred `Clay_PC_C.FocusProjectiles` route now has bounded
-public-input evidence. The route is enabled only for the exact branch string
+The `Clay_PC_C.FocusProjectiles` route has bounded public-input evidence.
+The route is enabled only for the exact branch string
 `++Ares-Core+release-12.05` and group
 `/Game/Characters/Clay/Clay_PC.Clay_PC_C`. Both declarations must be present:
 
@@ -12,8 +16,8 @@ public-input evidence. The route is enabled only for the exact branch string
 | Parent array | 45 | `FocusProjectiles` | 957945936 |
 | Object reference member | 46 | `FocusProjectiles` | 831657485 |
 
-The independent check re-read a historical Phase B export of one public 12.05 replay; it does
-not claim a new full-corpus audit.
+The independent check re-read an earlier export of one public 12.05 replay;
+it does not claim a new full-corpus audit.
 
 That input contains 102 main parents: 53 populated deltas and 49 empty
 deltas. Three empty deltas carry one extra zero byte. The 53 member windows
@@ -23,9 +27,8 @@ does not resolve these references, so no final-path lookup or gameplay
 credit is inferred. Eighteen checkpoint parents are ordinary empty deltas;
 no populated checkpoint child is observed in this fixture.
 
-Other builds remain unsupported by this route. The other decoder topics in
-the initial evidence review in the DX checkpoint remain deferred;
-this document supersedes only its FocusProjectiles evidence disposition.
+Other builds remain unsupported by this route, and on 12.05 the route
+applies only to the Clay group above.
 
 ## Decoder and output contract
 
@@ -42,8 +45,10 @@ zero/invalid member widths, overflowing GUIDs, and incomplete terminators.
 The generic array grammar is unchanged. The exact existing array walker then
 supplies the raw child windows. The full array must pass before any child is
 emitted. Rejected payloads retain their parent and increment the existing
-array-error counter; unqualified declarations remain raw without attempting
-the new route.
+array-error counter. A parent that reaches the route by group, name and
+checksum but whose parent handle is not 45, or whose handle-46 member name or
+checksum differs, stays raw, emits no child and increments
+`focus_projectiles_declaration_refusals`.
 
 Each accepted member adds a row immediately **before** its original parent,
 following the existing array-output order:
@@ -60,17 +65,20 @@ existing absent-raw representation and does not invent an empty array.
 
 ## Counter and baseline migration
 
-Two additive sink counters are present in both main and checkpoint manifest
-blocks, including zero values:
+Three additive sink counters are present in both main and checkpoint
+manifest blocks, including zero values. The fixture column records the
+evidence run, which predates the refusal counter:
 
 | Counter | Meaning | Expected main / checkpoint on the evidence fixture |
 | --- | --- | ---: |
 | `route_children_focus_projectiles` | Accepted additive child rows | 53 / 0 |
 | `focus_projectiles_empty_trailers` | Accepted empty deltas with one final zero byte | 3 / 0 |
+| `focus_projectiles_declaration_refusals` | Routed parents refused for a parent-handle or member-declaration mismatch | not recorded |
 
 The `Route children` summary gains a final `focus projectiles` value.
-`FocusProjectiles trailers` and its checkpoint counterpart are separate
-summary lines. Current summary parsers require these counts, and the
+`FocusProjectiles trailers: N empty deltas` and
+`FocusProjectiles refused: N declaration mismatches`, with their checkpoint
+counterparts, are separate summary lines. Current summary parsers require these counts, and the
 export-baseline checker reconciles them against the manifest. Missing lines,
 missing manifest keys and mismatches remain failures.
 
@@ -80,7 +88,7 @@ The native movement counter contract is unchanged. A comparison must remove
 only the independently verified new child rows and compare every original
 row, column and order; changed Parquet bytes alone are not a regression or
 an equivalence proof. Other stream data and previous typed values must still
-match. Final fresh-input comparison is part of integration QA.
+match.
 
 Historical private baselines are left byte-for-byte unchanged. Their
 legacy-only schema excludes these new counters because the historical run
@@ -90,7 +98,7 @@ baselines still require genuine remeasurement before current comparison.
 
 ## Local verification
 
-At the implementation checkpoint:
+When the route was added:
 
 ```sh
 cargo +1.86.0 test -p vrfkit --no-default-features --locked --lib sink::
@@ -113,6 +121,6 @@ to fail on checksum 831657484: two rows were emitted where only the raw
 parent was allowed (exit 101). Restoring the exact original source made the
 test pass (exit 0). No mutant is retained.
 
-Public replay export, exact fresh output comparison, full-feature builds and
-Windows/Linux CI are integration acceptance gates. The local checks above do
-not substitute for those checks. No performance measurements were run.
+The local checks above do not substitute for a public replay export, an
+exact fresh output comparison, full-feature builds or Windows/Linux CI. No
+performance measurements were run.
