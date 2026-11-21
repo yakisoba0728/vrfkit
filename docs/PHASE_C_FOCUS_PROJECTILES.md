@@ -77,7 +77,7 @@ evidence run, which predates the refusal counter:
 
 The `Route children` summary gains a final `focus projectiles` value.
 `FocusProjectiles trailers: N empty deltas` and
-`FocusProjectiles refused: N declaration mismatches`, with their checkpoint
+`FocusProjectiles refused: N parent updates with a mismatched declaration`, with their checkpoint
 counterparts, are separate summary lines. Current summary parsers require these counts, and the
 export-baseline checker reconciles them against the manifest. Missing lines,
 missing manifest keys and mismatches remain failures.

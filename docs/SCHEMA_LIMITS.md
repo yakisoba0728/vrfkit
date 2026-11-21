@@ -70,8 +70,8 @@ raises the allocation an input can request. Direct mutation through the public
 mutable group accessor is a trusted caller operation; admission limits cannot
 prevent that caller from allocating outside the declaration APIs.
 
-Downstream exhaustive `SchemaError` matches must handle the new
-`ResourceLimit` variant. No exported column or valid-value decoding changes.
+`SchemaError` is `#[non_exhaustive]`: downstream matches need a wildcard arm
+beside the new `ResourceLimit` variant. No exported column or valid-value decoding changes.
 
 The high-level `vrfkit::ReplayReader` accepts the same `SchemaLimits` through
 `read_with_schema_limits(data, limits, callback)` and

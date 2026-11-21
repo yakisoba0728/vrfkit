@@ -31,8 +31,8 @@ Export output (manifest keys and summary lines):
   `focus_projectiles_declaration_refusals`. The `Route children:` line gains
   a final `N focus projectiles` item, and new lines
   `FocusProjectiles trailers: N empty deltas` and
-  `FocusProjectiles refused: N declaration mismatches` (plus `Checkpoint`
-  twins) are printed.
+  `FocusProjectiles refused: N parent updates with a mismatched declaration`
+  (plus `Checkpoint` twins) are printed.
 - New manifest `net` key `partial_payload_overrun`; the `Partial causes:` and
   `Checkpoint causes:` lines gain an `N payload overrun` item after
   `unaligned`. The raw-partial reason strings include `payload_overrun`.
@@ -47,6 +47,12 @@ Rust API:
 - `NetStats`, `Preamble`, `CheckpointTables` and `CheckpointIdentity` are
   `#[non_exhaustive]`. Start `NetStats` from `default()` and assign fields;
   build `CheckpointIdentity` with `CheckpointIdentity::new`.
+- `ContainerError`, `FrameError` and `SchemaError` are `#[non_exhaustive]`;
+  exhaustive matches need a wildcard. `EventChunk`, `ReplayInfo`,
+  `ReplayHeader`, `ReplayVersion`, `OverlayErrorRow`, `DecodeErrorKind`,
+  `DiagnosticEvent`, `BunchFlagSnapshot` and `ContentBlockHeaderSnapshot` are
+  `#[non_exhaustive]` read-only results; build an `EventChunk` with
+  `vrf_container::parse_event_chunk`.
 - `vrf_net::error::PartialSequenceKind` and
   `vrf_net::pipeline::PartialPayloadReason` add `PayloadOverrun`;
   `NetStats` adds `partial_payload_overrun`.
@@ -126,10 +132,11 @@ Rust API:
   truncated or corrupt gzip input, and replaces any previous report with an
   `error` report before reading input, so a failed run never leaves an
   earlier `pass` behind.
-- `validate_type_evidence.py --output` removes the previous report before
-  validating and publishes the new one atomically. It refuses an `--output`
-  that is the specification, the tool itself, a `.parquet` file or a
-  `manifest.json`.
+- `validate_type_evidence.py` reports carry `report` and `status`
+  (`pass`/`fail`). `--output` holds `incomplete` or `error` after a run that
+  did not finish, and an existing `--output` that is not one of its reports
+  is refused (exit 2) instead of replaced, as is the specification, the tool
+  itself, a `.parquet` file or a `manifest.json`.
 - `package_release.py` refuses a tag that does not name the Cargo workspace
   version, and a new `version` command prints that version. Untagged CI runs
   package as `v<version>+ci.<commit>`.

@@ -47,6 +47,13 @@ exhaustive matches outside their crate need the replacements below.
   parsed); the CLI prints that text, so a checkpoint failure's message now
   starts with the checkpoint prefix. The same failure in the main stream
   stays a bare `Container` or `Frame` with unchanged text.
+- `ContainerError`, `FrameError`, `SchemaError`: match with a wildcard.
+- `EventChunk`, `ReplayInfo`, `ReplayHeader`, `ReplayVersion`,
+  `OverlayErrorRow`, `DecodeErrorKind`, `DiagnosticEvent`,
+  `BunchFlagSnapshot`, `ContentBlockHeaderSnapshot`, `NativeEventSource`,
+  `GameplayEvent`, `SpawnedCharacterObservation`, `BodyIdentity` and
+  `MovementIdentity` are read-only results; an `EventChunk` fixture comes
+  from `vrf_container::parse_event_chunk`.
 - `ReadOptions`: `ReadOptions::default().with_checkpoints(true)` and
   `.with_schema_limits(limits)` replace struct literals.
 - `SchemaLimits`: `SchemaLimits::default().with_max_groups(n)` and

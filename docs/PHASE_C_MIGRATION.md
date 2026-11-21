@@ -121,7 +121,7 @@ sink counters in main and checkpoint data, including their zero values:
 
 The summary prints them as the final `N focus projectiles` item of
 `Route children:`, `FocusProjectiles trailers: N empty deltas` and
-`FocusProjectiles refused: N declaration mismatches`, each with a
+`FocusProjectiles refused: N parent updates with a mismatched declaration`, each with a
 `Checkpoint` twin.
 
 The route adds typed child rows before their unchanged raw parent. On the

@@ -255,7 +255,7 @@ what it holds.
   Malformed pkts:   0        <- nonzero means framing is broken
   Struct blobs:     207 decoded / 0 failed
   Route children:   563 player info / 8527 rewards / 4100 selected / 1386 kills / 1364 active effects / 2670 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles
-  FocusProjectiles refused: 0 declaration mismatches
+  FocusProjectiles refused: 0 parent updates with a mismatched declaration
   RPC param walks:  113215
   Decode errors:    0        <- nonzero means an overlay type is wrong
 ```
@@ -272,7 +272,7 @@ child rows, and `RPC param walks` the RPC parameter walks that `Truncated
 RPCs` is a share of. `--checkpoints` prints the same lines as `Checkpoint
 route children:` and `Checkpoint RPC walks:`. `FocusProjectiles refused`
 (`Checkpoint FocusProjectiles refused`) counts 12.05 `FocusProjectiles`
-parents whose parent handle or member declaration differs from the measured
+parent updates (one per update, not per distinct declaration) whose parent handle or member declaration differs from the measured
 one; they stay raw and add no child. Both lines print even at zero.
 
 `Movement components` (`N attempted / N complete / N errors / N empty`),
@@ -699,7 +699,7 @@ Every loss and fallback counter for the run, including the checkpoint pass when
 | `active_blinds_empty_trailers` | In each `sink` block: empty `ActiveBlinds` deltas whose one trailing zero byte the strict array walker was spared; the parent row keeps it. Printed as `ActiveBlinds trailers:` (`Checkpoint ActiveBlinds trailers:`). |
 | `route_children_focus_projectiles` | In each `sink` block: child rows emitted by the exact measured 12.05 Clay `FocusProjectiles` route; the original raw parent remains. This required key is present even at zero. See [the route and evidence](PHASE_C_FOCUS_PROJECTILES.md). |
 | `focus_projectiles_empty_trailers` | In each `sink` block: empty deltas from that exact route with one final zero byte retained in the raw parent. Printed as `FocusProjectiles trailers:` (`Checkpoint FocusProjectiles trailers:`); this required key is present even at zero. |
-| `focus_projectiles_declaration_refusals` | In each `sink` block: parents routed on 12.05 by group, name and checksum but refused because the parent handle is not 45 or the handle-46 member's name or checksum differs; the raw parent remains and no child row is emitted. Printed as `FocusProjectiles refused:` (`Checkpoint FocusProjectiles refused:`); this required key is present even at zero. |
+| `focus_projectiles_declaration_refusals` | In each `sink` block: parent updates routed on 12.05 by group, name and checksum but refused because the parent handle is not 45 or the handle-46 member's name or checksum differs; the raw parent remains and no child row is emitted. Printed as `FocusProjectiles refused:` (`Checkpoint FocusProjectiles refused:`); this required key is present even at zero. |
 | `frame_non_finite_times` | DemoFrames whose time was NaN or infinite; their packets carry 0 ms. `checkpoints.checkpoint_frame_non_finite_times` counts the snapshot frames. Printed as `Frame times:` (`Checkpoint frame times:`), and by `validate`. |
 | `checkpoints.checkpoint_trailing_bytes` | Checkpoint bytes no reader consumed: bytes after an archive inside its chunk, and archive bytes the Oodle codec never read -- the checkpoint twin of `replay_data_trailing_bytes`. Printed as `Trailing bytes:` under `=== Checkpoints ===`, and by `diag --json` as `checkpoint_meta.trailing_bytes`. 0 in all 19,166 checkpoint archives of 1,014 replays, 11.06-13.06; `verify_build_corpus.py` fails a replay where it is not. |
 
@@ -1096,11 +1096,13 @@ with `--allow-missing`): an RPC parameter's `Class:Function` group is matched
 as the exported `Class_ClassNetCache` group and `Function.field` name. A
 passing primitive check does not make a specimen gameplay semantics.
 
-`--output <report.json>` is deleted before anything is read and the new report
-is published atomically, so a run that fails leaves no report rather than an
-earlier one that reads as a pass. Because the path is deleted, an `--output`
-that is the specification file, the tool itself, a `.parquet` file or a
-`manifest.json` is refused.
+The report carries `status` (`pass` or `fail`, matching the exit code). With
+`--output <report.json>`, a placeholder with `status` `incomplete` is written
+atomically before anything is read and replaced on completion; a run that
+does not finish leaves `incomplete` or `error` with no counts, never an
+earlier report that reads as a pass. An existing `--output` that is not one
+of this tool's reports is refused (exit 2) and left untouched, as is the
+specification file, the tool itself, a `.parquet` file or a `manifest.json`.
 
 `validate_ability_array_evidence.py <export-directory> [...] --compare-typed
 --require-routes` checks the measured `ActiveBlinds` and
@@ -1195,7 +1197,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-891 Rust tests (Windows), 890 Rust tests (non-Windows), and 1198 Python tests.
+891 Rust tests (Windows), 890 Rust tests (non-Windows), and 1200 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
