@@ -44,6 +44,7 @@ def manifest():
                 movement_component_discrepancy_headers=2,
                 active_blinds_empty_trailers=1,
                 route_children_focus_projectiles=2, focus_projectiles_empty_trailers=3,
+                focus_projectiles_declaration_refusals=4,
                 sink_rpcs_emitted=40, sink_actor_opens=7, sink_actor_closes=5,
                 sink_content_blocks=100)
     quality = dict.fromkeys(("content_blocks_lost", "event_trailing_bytes",
@@ -76,6 +77,7 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(counts["checkpoint_rpc_suffix_bits_dropped"], 4)
         self.assertEqual(counts["main_route_children_focus_projectiles"], 2)
         self.assertEqual(counts["checkpoint_focus_projectiles_empty_trailers"], 3)
+        self.assertEqual(counts["main_focus_projectiles_declaration_refusals"], 4)
 
     def test_each_failure_counter_is_observed_in_each_pass(self):
         for scope in ("main", "checkpoint"):

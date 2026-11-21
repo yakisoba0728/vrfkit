@@ -8,7 +8,8 @@ import check_baseline_schemas as schemas
 
 class BaselineSchemaTests(TempDirTestCase):
     def test_focus_counts_are_required_currently_and_never_invented_in_archives(self):
-        names = ("route_children_focus_projectiles", "focus_projectiles_empty_trailers")
+        names = ("route_children_focus_projectiles", "focus_projectiles_empty_trailers",
+                 "focus_projectiles_declaration_refusals")
         archived_path = schemas.BASELINES / "export_02d4d478.json"
         archived = json.loads(archived_path.read_text(encoding="utf-8"))
         self.assertEqual(schemas.validate_export_baseline(archived_path, archived), [])

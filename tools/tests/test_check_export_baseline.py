@@ -443,9 +443,11 @@ class CheckpointGuidCrossCheckTests(TempDirTestCase):
                    "  Checkpoint component headers: 0 input / 0 discrepancy\n"
                    "  ActiveBlinds trailers: 0 empty deltas\n"
                    "  FocusProjectiles trailers: 0 empty deltas\n"
+                   "  FocusProjectiles refused: 0 declaration mismatches\n"
                    "  Route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles\n"
                    "  Checkpoint ActiveBlinds trailers: 0 empty deltas\n"
                    "  Checkpoint FocusProjectiles trailers: 0 empty deltas\n"
+                   "  Checkpoint FocusProjectiles refused: 0 declaration mismatches\n"
                    "  Checkpoint route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles\n"
                    "  Trailing bytes:   {trailing}\n"
                    f"GUID entries: {len(DECLARATIONS)}\n"
@@ -501,6 +503,7 @@ class ContentIdentityTests(unittest.TestCase):
 MAIN_SINK = {"tracked_rewards_opaque_empty_variants": 4470,
              "targeting_world_locations_decoded": 12, "active_blinds_empty_trailers": 13,
              "route_children_focus_projectiles": 31, "focus_projectiles_empty_trailers": 2,
+             "focus_projectiles_declaration_refusals": 5,
              "movement_component_streams": 11, "movement_component_complete": 11,
              "movement_component_errors": 0, "movement_component_empty": 1,
              "movement_component_envelopes": 11, "movement_component_payload_bytes": 300,
@@ -509,6 +512,7 @@ MAIN_SINK = {"tracked_rewards_opaque_empty_variants": 4470,
 CP_SINK = {"tracked_rewards_opaque_empty_variants": 7, "targeting_world_locations_decoded": 0,
            "active_blinds_empty_trailers": 23,
            "route_children_focus_projectiles": 41, "focus_projectiles_empty_trailers": 3,
+           "focus_projectiles_declaration_refusals": 6,
            "movement_component_streams": 21, "movement_component_complete": 21,
            "movement_component_errors": 0, "movement_component_empty": 2,
            "movement_component_envelopes": 21, "movement_component_payload_bytes": 570,
@@ -538,7 +542,7 @@ class ManifestCheckTests(TempDirTestCase):
 
     def test_focus_manifest_counts_cannot_be_missing_or_disagree_with_the_summary(self):
         for checkpoint in (False, True):
-            for key in ("route_children_focus_projectiles", "focus_projectiles_empty_trailers"):
+            for key in guard.sc.FOCUS_PROJECTILES_COUNTERS:
                 quality = manifest_quality()
                 scope = quality["checkpoints"] if checkpoint else quality
                 del scope["sink"][key]
@@ -713,6 +717,7 @@ Component envelopes: 0 validated / 0 payload bytes / 0 unused bits
 Component headers: 0 input / 0 discrepancy
 ActiveBlinds trailers: 0 empty deltas
 FocusProjectiles trailers: 0 empty deltas
+FocusProjectiles refused: 0 declaration mismatches
 Route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effects / 0 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles
 """
 
@@ -745,7 +750,7 @@ Route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effe
                 "stage.mkdir()\n"
                 "for name in ('actors', 'fields', 'movement', 'net_guids', 'events', 'partials'):\n"
                 "    pq.write_table(pa.table({'value': [1]}), stage / (name + '.parquet'))\n"
-                "(stage / 'manifest.json').write_text(json.dumps({'quality': {'sink': {'tracked_rewards_opaque_empty_variants': 0, 'targeting_world_locations_decoded': 0, 'movement_rpc_errors': 0, **dict.fromkeys(('movement_component_streams', 'movement_component_complete', 'movement_component_errors', 'movement_component_empty', 'movement_component_envelopes', 'movement_component_payload_bytes', 'movement_component_unused_bits', 'movement_component_input_headers', 'movement_component_discrepancy_headers'), 0), 'active_blinds_empty_trailers': 0, 'route_children_focus_projectiles': 0, 'focus_projectiles_empty_trailers': 0}, 'frame_external_data_blobs': 0, 'frame_external_data_bytes': 0, 'frame_game_specific_bytes': 0, 'frame_non_finite_times': 0}}), encoding='utf-8')\n"
+                "(stage / 'manifest.json').write_text(json.dumps({'quality': {'sink': {'tracked_rewards_opaque_empty_variants': 0, 'targeting_world_locations_decoded': 0, 'movement_rpc_errors': 0, **dict.fromkeys(('movement_component_streams', 'movement_component_complete', 'movement_component_errors', 'movement_component_empty', 'movement_component_envelopes', 'movement_component_payload_bytes', 'movement_component_unused_bits', 'movement_component_input_headers', 'movement_component_discrepancy_headers'), 0), 'active_blinds_empty_trailers': 0, 'route_children_focus_projectiles': 0, 'focus_projectiles_empty_trailers': 0, 'focus_projectiles_declaration_refusals': 0}, 'frame_external_data_blobs': 0, 'frame_external_data_bytes': 0, 'frame_game_specific_bytes': 0, 'frame_non_finite_times': 0}}), encoding='utf-8')\n"
                 "os.replace(out, backup)\n"
                 "os.replace(stage, out)\n"
                 "shutil.rmtree(backup)\n"

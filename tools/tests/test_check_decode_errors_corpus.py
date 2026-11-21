@@ -30,6 +30,7 @@ Component envelopes: 3 validated / 90 payload bytes / 5 unused bits
 Component headers: 3 input / 2 discrepancy
 ActiveBlinds trailers: 3 empty deltas
 FocusProjectiles trailers: 0 empty deltas
+FocusProjectiles refused: 0 declaration mismatches
 """
 
 #: Measured on a live export: 742738 + 0 + 72644 + 171605 + 1996 = 988983
@@ -63,6 +64,7 @@ CLEAN_WITH_CHECKPOINTS = LIVE_EXPORT + """
   Checkpoint component headers: 0 input / 0 discrepancy
   Checkpoint ActiveBlinds trailers: 1 empty deltas
   Checkpoint FocusProjectiles trailers: 0 empty deltas
+  Checkpoint FocusProjectiles refused: 0 declaration mismatches
   Checkpoint CNC:   3 RPC rows
   Checkpoint CNC brute force: 0 attempted / 0 unwalked
 """
@@ -71,13 +73,14 @@ CLEAN_WITH_CHECKPOINTS = LIVE_EXPORT + """
 class ReadCountersTests(unittest.TestCase):
     def test_focus_counters_are_required_in_each_requested_pass(self):
         for prefix in ("", "Checkpoint "):
-            with self.subTest(prefix=prefix):
-                label = prefix + "FocusProjectiles trailers:"
-                text = "\n".join(line for line in CLEAN_WITH_CHECKPOINTS.splitlines()
-                                 if not line.strip().startswith(label))
-                counters, error = guard.read_counters(text, 0, require_checkpoints=True)
-                self.assertIsNone(counters)
-                self.assertIn(label, error)
+            for name in ("FocusProjectiles trailers:", "FocusProjectiles refused:"):
+                with self.subTest(prefix=prefix, name=name):
+                    label = prefix + name
+                    text = "\n".join(line for line in CLEAN_WITH_CHECKPOINTS.splitlines()
+                                     if not line.strip().startswith(label))
+                    counters, error = guard.read_counters(text, 0, require_checkpoints=True)
+                    self.assertIsNone(counters)
+                    self.assertIn(label, error)
         text = CLEAN_WITH_CHECKPOINTS.replace(" / 0 focus projectiles", "", 1)
         counters, error = guard.read_counters(text, 0, require_checkpoints=True)
         self.assertIsNone(counters)
@@ -266,6 +269,7 @@ Component envelopes: 5 validated / 150 payload bytes / 7 unused bits
 Component headers: 5 input / 4 discrepancy
 ActiveBlinds trailers: 2 empty deltas
 FocusProjectiles trailers: 0 empty deltas
+FocusProjectiles refused: 0 declaration mismatches
 """
 
 # Printed only when the gate passed --checkpoints on, as vrfkit does.
@@ -284,6 +288,7 @@ CHECKPOINTS = """
   Checkpoint component headers: 0 input / 0 discrepancy
   Checkpoint ActiveBlinds trailers: 1 empty deltas
   Checkpoint FocusProjectiles trailers: 0 empty deltas
+  Checkpoint FocusProjectiles refused: 0 declaration mismatches
   Checkpoint CNC brute force: 0 attempted / 0 unwalked
 """
 

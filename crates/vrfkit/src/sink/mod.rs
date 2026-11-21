@@ -151,6 +151,10 @@ pub struct ExportStats {
     /// Empty FocusProjectiles deltas carrying exactly one final zero byte.
     /// The measured route keeps that byte in its raw parent.
     pub focus_projectiles_empty_trailers: u64,
+    /// FocusProjectiles parents routed on the observed build whose parent
+    /// handle or handle-46 member declaration differ from the measured ones:
+    /// raw parent kept, no child rows.
+    pub focus_projectiles_declaration_refusals: u64,
     /// EffectContainer RPC parameters turned into a `value_str` JSON array:
     /// the decoder's only success signal there, as the overlay buckets are
     /// filled first. Failures land in `overlay.decoded_err`; the
@@ -297,7 +301,8 @@ export_counters! {
     "" ExportStats {
         fields_emitted, rpcs_emitted, actor_opens, actor_closes, content_blocks,
         tracked_rewards_opaque_empty_variants, active_blinds_empty_trailers,
-        focus_projectiles_empty_trailers, effect_blobs_decoded,
+        focus_projectiles_empty_trailers, focus_projectiles_declaration_refusals,
+        effect_blobs_decoded,
         struct_blobs_decoded, multi_contents_items_emitted, cnc_rpcs_emitted,
         cnc_bruteforce_payloads_attempted, cnc_bruteforce_payloads_unwalked,
         rep_layout_cnc_tails_decoded, rep_layout_cnc_tails_preserved, struct_blobs_failed,

@@ -19,6 +19,10 @@ to the recovered Phase A-D candidate:
   before indexed-string copying, observer delivery and cache insertion.
 - Reject short direct partial-bunch buffers explicitly and compute packet
   bit lengths with checked wide arithmetic.
+- Count 12.05 `FocusProjectiles` parents refused for a parent-handle or
+  member-declaration mismatch: new required sink key
+  `focus_projectiles_declaration_refusals`, printed as
+  `FocusProjectiles refused:` and `Checkpoint FocusProjectiles refused:`.
 
 The two public partial-error enums add `PayloadOverrun`; exhaustive matches
 need a new case. See the [final migration](docs/FINAL_CONSOLIDATION_MIGRATION.md)

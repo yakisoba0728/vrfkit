@@ -659,6 +659,8 @@ impl ExportSink<'_> {
 
     /// Expand only the measured parent and member declarations, before the
     /// unchanged raw parent. A malformed array emits no partial child list.
+    /// A routed parent whose handles or member declaration differ is counted,
+    /// so a refused route cannot read as "no Clay in the match".
     fn emit_focus_projectiles(&mut self, parent_handle: u32, raw: &[u8], bit_count: u32) {
         let (names, checksums) = Self::declared_handles(self.cache, &self.current_group_path);
         if parent_handle != 45
@@ -667,6 +669,7 @@ impl ExportSink<'_> {
             || declared_at(&names, 46) != Some("FocusProjectiles")
             || declared_at(&checksums, 46) != Some(831_657_485)
         {
+            self.stats.focus_projectiles_declaration_refusals += 1;
             return;
         }
         let Some(array_bits) = focus_projectile_array_bits(raw, bit_count) else {
@@ -1264,6 +1267,7 @@ mod tests {
         assert_eq!(stats.array_leaf_decode_errors, 0);
         assert_eq!(stats.route_children_focus_projectiles, 2);
         assert_eq!(stats.focus_projectiles_empty_trailers, 0);
+        assert_eq!(stats.focus_projectiles_declaration_refusals, 0);
     }
 
     #[test]
@@ -1297,6 +1301,9 @@ mod tests {
         }
     }
 
+    /// The route is chosen by the parent's group, name and checksum on the
+    /// observed build; the handle and member checks come after, so only those
+    /// five cases are refusals. The other five never reach the route.
     #[test]
     fn focus_projectiles_requires_both_exact_declarations_and_the_observed_build() {
         let raw = [2, 2, 94, 16, 14, 0, 0];
@@ -1305,37 +1312,46 @@ mod tests {
         let wrong_checksum = [(46, "FocusProjectiles", 831_657_484)];
         let wrong_handle = [(47, "FocusProjectiles", 831_657_485)];
         let right = [FOCUS_MEMBER];
-        for (parent_handle, identity, members, branch) in [
-            (44, FOCUS_PARENT, &right[..], Some(FOCUS_BUILD)),
+        for (parent_handle, identity, members, branch, refused) in [
+            (44, FOCUS_PARENT, &right[..], Some(FOCUS_BUILD), 1),
             (
                 45,
                 (FOCUS_GROUP, "FocusProjectiles", 957_945_937),
                 &right,
                 Some(FOCUS_BUILD),
+                0,
             ),
             (
                 45,
                 ("/Other/Clay_PC.Clay_PC_C", "FocusProjectiles", 957_945_936),
                 &right,
                 Some(FOCUS_BUILD),
+                0,
             ),
-            (45, FOCUS_PARENT, &wrong_name, Some(FOCUS_BUILD)),
-            (45, FOCUS_PARENT, &wrong_checksum, Some(FOCUS_BUILD)),
-            (45, FOCUS_PARENT, &wrong_handle, Some(FOCUS_BUILD)),
-            (45, FOCUS_PARENT, &[], Some(FOCUS_BUILD)),
-            (45, FOCUS_PARENT, &right, Some("++Ares-Core+release-12.04")),
-            (45, FOCUS_PARENT, &right, Some(MEASURED_BUILD)),
-            (45, FOCUS_PARENT, &right, None),
+            (45, FOCUS_PARENT, &wrong_name, Some(FOCUS_BUILD), 1),
+            (45, FOCUS_PARENT, &wrong_checksum, Some(FOCUS_BUILD), 1),
+            (45, FOCUS_PARENT, &wrong_handle, Some(FOCUS_BUILD), 1),
+            (45, FOCUS_PARENT, &[], Some(FOCUS_BUILD), 1),
+            (
+                45,
+                FOCUS_PARENT,
+                &right,
+                Some("++Ares-Core+release-12.04"),
+                0,
+            ),
+            (45, FOCUS_PARENT, &right, Some(MEASURED_BUILD), 0),
+            (45, FOCUS_PARENT, &right, None, 0),
         ] {
+            let case = format!("{parent_handle} {identity:?} {members:?} {branch:?}");
             let (records, stats) = export_array_at(parent_handle, identity, members, &bits, branch);
-            assert_eq!(
-                records.fields.len(),
-                1,
-                "{parent_handle} {identity:?} {members:?} {branch:?}"
-            );
+            assert_eq!(records.fields.len(), 1, "{case}");
             assert_eq!(records.fields[0].raw_bits.as_deref(), Some(raw.as_slice()));
             assert_eq!(stats.route_children_focus_projectiles, 0);
             assert_eq!(stats.focus_projectiles_empty_trailers, 0);
+            assert_eq!(
+                stats.focus_projectiles_declaration_refusals, refused,
+                "{case}"
+            );
             assert!(stats.array.is_clean());
         }
     }

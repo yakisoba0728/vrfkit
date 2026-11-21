@@ -30,7 +30,8 @@ ROUTES = tuple(f"route_children_{name}" for name in (
 
 # Added with the exact 12.05 FocusProjectiles route. Archived private
 # baselines predate these counts; their absence must not become measured zero.
-FOCUS_PROJECTILES_COUNTERS = ("route_children_focus_projectiles", "focus_projectiles_empty_trailers")
+FOCUS_PROJECTILES_COUNTERS = ("route_children_focus_projectiles", "focus_projectiles_empty_trailers",
+                              "focus_projectiles_declaration_refusals")
 
 # Current native ComponentDataStream counters. Legacy names identify archived
 # measurements only: they must never be interpreted as native envelope data.
@@ -104,6 +105,9 @@ LINES = (
     # Empty deltas whose trailing zero byte was spared: a measured tolerance.
     ("ActiveBlinds trailers: {} empty deltas", "active_blinds_empty_trailers", "PG"),
     ("FocusProjectiles trailers: {} empty deltas", "focus_projectiles_empty_trailers", "PG"),
+    # The routed parent whose handle or member declaration differ: refused, raw kept.
+    ("FocusProjectiles refused: {} declaration mismatches",
+     "focus_projectiles_declaration_refusals", "PG"),
     ("Truncated RPCs: {}", "truncated_rpcs", "G"),
     ("RPC param walks: {}", "rpc_param_walks", "PG"),
     ("Event layout err: {}", "event_layout_mismatches", "P"),
@@ -163,6 +167,8 @@ LINES = (
      "PG"),
     ("Checkpoint FocusProjectiles trailers: {} empty deltas", "cp_focus_projectiles_empty_trailers",
      "PG"),
+    ("Checkpoint FocusProjectiles refused: {} declaration mismatches",
+     "cp_focus_projectiles_declaration_refusals", "PG"),
     ("Checkpoint movement components: {} attempted / {} complete / {} errors / {} empty",
      "cp_movement_component_streams cp_movement_component_complete "
      "cp_movement_component_errors cp_movement_component_empty", "PG"),

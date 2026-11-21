@@ -251,6 +251,10 @@ pub(super) fn print(
         "  FocusProjectiles trailers: {} empty deltas",
         totals.sink.focus_projectiles_empty_trailers
     );
+    eprintln!(
+        "  FocusProjectiles refused: {} declaration mismatches",
+        totals.sink.focus_projectiles_declaration_refusals
+    );
     eprintln!("  Truncated RPCs:   {}", totals.sink.truncated_rpcs);
     eprintln!("  RPC param walks:  {}", totals.sink.rpc_param_walks);
     eprintln!(
@@ -469,6 +473,10 @@ fn print_checkpoints(cp: &CheckpointStats) {
     eprintln!(
         "  Checkpoint FocusProjectiles trailers: {} empty deltas",
         cp.sink.focus_projectiles_empty_trailers
+    );
+    eprintln!(
+        "  Checkpoint FocusProjectiles refused: {} declaration mismatches",
+        cp.sink.focus_projectiles_declaration_refusals
     );
     eprintln!(
         "  Checkpoint movement: {} failures",
