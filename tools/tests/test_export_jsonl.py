@@ -196,6 +196,24 @@ class ExportJsonlTests(TempDirTestCase):
                 export_jsonl.export_jsonl(export, output, batch_size=1)
         self.assertEqual(output.read_bytes(), b"old")
 
+    def test_batch_columns_differing_from_the_selection_do_not_publish(self):
+        """A reader returning other or extra columns must not be exported
+        positionally under the selected names."""
+        _, export, output = self.fixture()
+        output.write_bytes(b"old")
+        # Every row of the table, so only the column check stands in the way.
+        ordinal = pa.array(range(5), type=pa.uint64())
+        for batch in (pa.record_batch([ordinal], names=["renamed"]),
+                      pa.record_batch([ordinal, ordinal], names=["ordinal", "extra"])):
+            with self.subTest(names=batch.schema.names):
+                def other_batches(reader, batch=batch, **kwargs):
+                    yield batch
+
+                with mock.patch.object(pq.ParquetFile, "iter_batches", other_batches):
+                    with self.assertRaisesRegex(ValueError, "differ from the selected schema"):
+                        export_jsonl.export_jsonl(export, output, batch_size=1)
+                self.assertEqual(output.read_bytes(), b"old")
+
     def test_replace_failure_keeps_old_output_and_cleans_temporary_file(self):
         _, export, output = self.fixture()
         output.write_bytes(b"old")
