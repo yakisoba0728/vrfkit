@@ -37,6 +37,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from atomic_io import atomic_write_text, refuse_input_path
 from export_scan import generated_ancestor, leftover_note, skipped_report
 
 
@@ -619,6 +620,16 @@ def main(argv=None):
                         help="list specified identities with no row under `missing` without failing; "
                              "observing none still fails")
     args = parser.parse_args(argv)
+    if args.output:
+        if args.output.suffix.lower() == ".parquet" or args.output.name == "manifest.json":
+            parser.error("--output must not name an export table or manifest")
+        try:
+            refuse_input_path(args.output, (args.evidence, Path(__file__)))
+        except ValueError as exc:
+            parser.error(str(exc))
+        # The report has no status field, so an earlier report left beside a
+        # run that raised would read as that run's result. Absent is honest.
+        args.output.unlink(missing_ok=True)
     specifications = load_specifications(args.evidence)
     report = validate(args.export_root, specifications, args.export_ids, args.compare_typed)
     report["provenance"] = {
@@ -630,7 +641,7 @@ def main(argv=None):
     }
     rendered = json.dumps(report, indent=2, ensure_ascii=True) + "\n"
     if args.output:
-        args.output.write_text(rendered, encoding="utf-8")
+        atomic_write_text(args.output, rendered)
     print(rendered, end="")
     if not report["fields"]:
         print("no specified identity was observed", file=sys.stderr)

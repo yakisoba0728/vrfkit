@@ -334,6 +334,31 @@ class SpecificationFileTests(TempDirTestCase):
         self.assertEqual(output.getvalue().count('"g::absent"'), 2)
         self.assertEqual(errors.getvalue(), "no specified identity was observed\n")
 
+    def test_a_failed_run_never_leaves_an_earlier_report_at_output(self):
+        root = self.tmp()
+        write_int_export(root / "a")
+        spec, report = root / "spec.json", root / "report.json"
+        spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main([str(root), str(spec), "--output", str(report)]), 0)
+        self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["failure_count"], 0)
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, "does not exist"):
+            main([str(root / "absent"), str(spec), "--output", str(report)])
+        self.assertFalse(report.exists())
+
+    def test_output_cannot_replace_the_specification_or_an_export_file(self):
+        root = self.tmp()
+        write_int_export(root / "a")
+        spec = root / "spec.json"
+        spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
+        before = {path: path.read_bytes() for path in (spec, root / "a" / "fields.parquet")}
+        for output in before:
+            with self.subTest(output=output.name), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as exc:
+                    main([str(root), str(spec), "--output", str(output)])
+                self.assertEqual(exc.exception.code, 2)
+        self.assertEqual({path: path.read_bytes() for path in before}, before)
+
     def test_empty_specification_and_missing_root_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "empty"):
             validate(Path("."), [])
