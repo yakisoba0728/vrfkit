@@ -105,7 +105,11 @@ Rust API:
 - I/O errors name the path: `I/O error: <path>: <OS message>` for the input
   replay (CLI and `ReplayReader::read_path*`), the `diag --json` output and
   export staging/table files, and `<path>: is a directory, not a replay file`
-  for a directory given as the replay.
+  for a directory given as the replay. For `ReplayReader::read_path*` the
+  `io::ErrorKind` of `NotFound` and `PermissionDenied` is kept, but the OS
+  code is on the error's `source()` (the outer `raw_os_error()` is `None`),
+  and a directory reports `IsADirectory` (on Windows it was
+  `PermissionDenied`).
 - `validate` prints `=== Stream failures (0 shown) ===` and
   `=== Diagnostic Events (0 total) ===` when those sections are empty, so
   `--diagnostics` with nothing retained is visible.

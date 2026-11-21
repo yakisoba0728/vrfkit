@@ -101,9 +101,16 @@ fn output_errors_name_the_path() {
         let out = blocker.join("out");
         let run = vrfkit(&["export", path_arg(&input), "--out", path_arg(&out)]);
         assert_eq!(run.code, Some(1), "{}", run.stderr);
+        // Which step fails differs by platform (listing the destination on
+        // Linux, creating the staging directory on Windows), so the wording
+        // before the path differs; the path under the blocker is in both.
+        let error = run
+            .stderr
+            .lines()
+            .find(|line| line.starts_with("error: I/O error: "))
+            .unwrap_or_else(|| panic!("no I/O error line: {}", run.stderr));
         assert!(
-            run.stderr
-                .contains(&format!("I/O error: {}", blocker.display())),
+            error.contains(&blocker.display().to_string()),
             "{}",
             run.stderr
         );
