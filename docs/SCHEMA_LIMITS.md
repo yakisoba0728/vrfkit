@@ -109,9 +109,7 @@ and not a total process-RSS cap or a bound on live-stream GUID paths.
 The limit covers both cache strings and later owned summary-row expansion.
 Merely sharing cached strings would move the same amplification into those
 detached rows. This change rejects pathological expanded inputs explicitly;
-it does not silently truncate names or discard raw indexed identities. Fresh
-regression and public-fixture evidence is indexed in
-[final consolidation](FINAL_CONSOLIDATION_STATUS.md).
+it does not silently truncate names or discard raw indexed identities.
 
 ## Observed public-fixture margin
 

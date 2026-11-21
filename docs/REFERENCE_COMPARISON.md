@@ -20,7 +20,7 @@ that source. vrfkit's column describes this integration branch's API; the
 measured comparisons later in this document retain their original vrfkit
 revision and replay scope.
 
-The [final performance/reference review](evidence/final_consolidation/performance/README.md)
+The final performance/reference review
 freshly checked the same HEAD, release collection and five source contracts.
 It found no reference delta and performed no new reference replay benchmark.
 

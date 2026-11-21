@@ -5,10 +5,7 @@ borrowed main records and optional snapshots in Rust, and the Python tools for d
 analysis or JSONL conversion. These paths share the existing decoder and
 preservation policy; they expose different output and ownership contracts.
 
-The source remains an unpublished 0.6.0 candidate. Use the
-[final consolidation status](FINAL_CONSOLIDATION_STATUS.md) and its fixed
-acceptance receipt to identify the reviewed source and actual CI/package
-results. The [final migration](FINAL_CONSOLIDATION_MIGRATION.md) adds direct
+The source remains an unpublished 0.6.0 candidate. The [final migration](FINAL_CONSOLIDATION_MIGRATION.md) adds direct
 network error cases, checkpoint path admission and CLI publication corrections
 to the earlier API/counter migration. Registry publication remains separate.
 
@@ -151,8 +148,7 @@ those distinctions and [schema budgets](RUST_API.md#resource-limits).
 Before adopting a new source revision, review the
 [Phase C migration and release checklist](PHASE_C_MIGRATION.md). It covers
 checkpoint opt-in behavior, identity ordering, explicit input caps and the
-required counter/output changes. The [results ledger](PHASE_C_RESULTS.md)
-identifies observed acceptance separately from pending work.
+required counter/output changes.
 
 ## Python, Parquet and JSONL
 

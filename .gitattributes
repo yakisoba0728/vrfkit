@@ -1,7 +1,0 @@
-# Recorded evidence stays in Git and can be expanded in PR Files changed.
-# Keep executable QA helpers and narrative review documents visible by default.
-docs/evidence/**/*.json linguist-generated=true
-docs/evidence/**/*.jsonl linguist-generated=true
-docs/evidence/**/*.log linguist-generated=true
-# This verbatim archive retains Markdown hard breaks and its original ending.
-docs/evidence/final_consolidation/pr58-before.md linguist-generated=true whitespace=-blank-at-eol,-blank-at-eof

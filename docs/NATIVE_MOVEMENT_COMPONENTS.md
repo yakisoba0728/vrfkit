@@ -46,14 +46,12 @@ move count with the unchanged decoder. It did not alter the production cursor.
 Every component had an exact native envelope, a zero movement terminator and a
 header-only A3 input component. Every present A4 component was header-only.
 There were zero native structural failures and zero per-component move-count
-differences. Original input SHA-256 values remained unchanged. The aggregate
-receipt, input hashes, source hashes and per-build report hashes are in
-[`native-movement-envelope-observation.json`](evidence/native-movement-envelope-observation.json).
+differences. Original input SHA-256 values remained unchanged.
 
 This observation covers the main stream of these six files; it skipped
 checkpoints and did not remeasure the private corpus. It reused Rust's movement
 value decoder, so it establishes structural and count evidence, **not an
-independent numeric-value comparison**. The receipt does not claim production
+independent numeric-value comparison**. It does not claim production
 before/after Parquet parity; that remains a separate integration validation.
 The reference implementation's limits of 16 moves and 8,192 payload bytes are
 policy limits, not established wire bounds, and are not imposed here. The
@@ -185,15 +183,12 @@ The release CLI built with Rust 1.86.0 from combined source
   `e6b855ed2ea154260a30bca8606eefa15454e1b76cecca09a0e886e07d096a69`.
 - Parser source fingerprint:
   `0fc5b7c26fece8aab301d8f3da56b5831255833c2483dd92722cbd4e0ad312f4`.
-- [Build and per-file source receipt](evidence/native-movement-build.json)
-  binds the measured local commit to the published parser contents. Later
-  documentation and comparator integration changes do not change those files.
-- [Aggregate validation receipt](evidence/native-movement-public-validation.json):
-  `99b455920c778d55e78d9253fe8cd9ebfc06567f940e906d5124769f37c1bdd0`.
+- Later documentation and comparator integration changes do not change the
+  published parser files.
 
 All six fixed public inputs (12.05, 12.08, 12.09, 12.10, 12.11 and 13.00)
 passed the common validation and checkpoint-enabled export audit. The
-[complete report](evidence/native-movement-public-audit.json) records 76
+complete report records 76
 checkpoints, 1,958,155 scored main blocks and 60,169 independent typed/raw value
 comparisons, with zero mismatches or width failures. The outputs contain
 4,207,888 main field rows, 1,142,904 checkpoint field rows and 6,252,733 movement
@@ -201,8 +196,7 @@ rows. All 22,561 unresolved main RPC payloads remain preserved; RPC loss and
 movement error counters are zero.
 
 All **78 Parquet files are byte-identical** to the prior accepted combined
-export. The [exact parity receipt](evidence/native-movement-parquet-parity.json)
-includes every file hash and every allowed manifest difference. Its recursive
+export. The recursive
 comparison permits only the eight old counter removals and nine new counter
 additions in the two sink scopes, plus a finite, nonnegative top-level
 `elapsed_ms` change. No other manifest difference occurred. The new main
@@ -210,15 +204,14 @@ component counters also agree with the separate wire-observation counts; all
 non-movement common-audit counts are unchanged.
 
 The first discovery attempt covered only the three `.vrf` fixtures because the
-corpus scanner does not discover `.replay` names. That limited report is
-retained in the evidence chain. The complete rerun used read-only `.vrf`
+corpus scanner does not discover `.replay` names. The complete rerun used read-only `.vrf`
 symlinks resolving to all six original inputs; their filenames and bytes were
 not modified. Source, executable, harness and input hashes remained stable.
 
-The [independent code review](evidence/native-movement-independent-code-review.json)
+The independent code review
 includes the generated end-to-end Reader raw-preservation regression and a
 mutation that removes the A3 body-completion guard and reproduces the failure.
-The [separate public-output review](evidence/native-movement-independent-public-review.json)
+A separate public-output review
 independently checks all remaining manifest values and types, every unchanged
 non-movement counter, the 78 table hash/size records and the source/harness chain.
 It reviews the byte-comparison harness and retained evidence without claiming
@@ -234,14 +227,14 @@ claim follows from these results.
 
 The interrupted local candidate `97e6c59` was recovered onto verified GitHub
 integration `d44bcd2`, then committed locally as `603aa714`. The
-[recovery receipt](evidence/phase-a-native-recovery.json) records a fresh
+recovery recorded a fresh
 Rust 1.86 failure of the generated A3-body preservation regression before the
 fix and its successful execution afterward. The focused core/movement suites
 passed 171 tests, the complete Python suite passed 1,178 tests, and core Clippy,
 rustfmt, baseline-schema validation and the fast documentation guard passed.
 These checks do not substitute for independent Phase A QA or hosted Windows CI.
 
-A [new six-public execution](evidence/phase-a-native-public-validation.json)
+A new six-public execution
 again validates all 76 checkpoints, 1,958,155 scored main blocks and 60,169
 independent typed/raw comparisons. It freshly compares all 78 Parquet files
 byte for byte with the previously accepted output and finds no unexplained
@@ -251,8 +244,6 @@ components; unsupported bodies are tested using generated inputs.
 
 This new execution reuses the frozen `2e3526f` executable after comparing all
 151 recorded parser-source files to the recovered tree. It is not a new binary
-build. The pre-native baseline exports and original receipts are also reused
-without rewriting their commit attribution. The receipt names both histories,
-records the new execution's time and source fingerprint, and publishes each
-new before/after table hash. Performance, private-corpus validation and a new
-full-match reference-parser execution are outside this correctness receipt.
+build. The pre-native baseline exports are also reused
+without rewriting their commit attribution. Performance, private-corpus validation and a new
+full-match reference-parser execution are outside this correctness check.

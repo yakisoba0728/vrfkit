@@ -10,11 +10,9 @@ This complements `tools/bench_export.py`, the existing wall-time regression
 guard. It does not update that guard's committed baseline, publish artifacts,
 download a corpus, or run a competitor with a different work contract.
 
-For the same-output Phase C baseline and exact build provenance, see the
-[benchmark handoff](PHASE_B_BENCHMARK_HANDOFF.md). The user explicitly delegated
+The user explicitly delegated
 quantitative measurements to the agents in Phase D; the earlier user-only
-restriction is historical. The [Phase D ledger](PHASE_D_STATUS.md) identifies
-current work. Functional validation and measured performance remain separate
+restriction is historical. Functional validation and measured performance remain separate
 acceptance gates.
 
 ## Run a paired comparison
@@ -23,8 +21,7 @@ Build both revisions in separate worktrees, with the same Rust toolchain,
 features and release profile. Use **separate, initially absent Cargo target
 directories** too: a shared `CARGO_TARGET_DIR` can retain another worktree's
 artifacts. Select each executable from a successful Cargo `compiler-artifact`
-record and retain source/lockfile/compiler/binary hashes; see the handoff's
-[build procedure](PHASE_B_BENCHMARK_HANDOFF.md#2-isolate-and-record-both-builds).
+record and retain source/lockfile/compiler/binary hashes.
 Keep both executables unchanged for the entire
 comparison. Use absolute executable paths and new work/report paths:
 

@@ -63,8 +63,8 @@ and check the manifest's actual source size and checkpoint count. Existing
 Reader, checkpoint, publication and unread-byte tests remain applicable.
 
 The Phase B comparison below used the exact candidate and Phase A baseline
-with identical export options. For the current source, use the explicit
-schema/output-compatible baseline in the [user-run benchmark handoff](PHASE_B_BENCHMARK_HANDOFF.md);
+with identical export options. For the current source, use an explicit
+schema/output-compatible baseline;
 unmodified historical binaries lack the new required counter keys.
 Sparse skip tests establish the skipped-payload behavior; they do not
 establish a memory bound for decoded chunks or a throughput improvement.
@@ -82,8 +82,7 @@ byte-identical, and all nonvolatile manifest values and required summary
 counters matched. `validate` output matched after removing only its elapsed
 time line. Input hashes remained unchanged.
 
-The [sanitized comparison](evidence/phase-b-cli-public-parity.json) records
-the input, binary, table and normalized-manifest hashes. This tests input
+This tests input
 path equivalence using the shared decoder; it is not a new independent
 reinterpretation of gameplay or the wire format. Timings captured during
 these functional runs are not used as performance evidence.
@@ -97,8 +96,7 @@ An initial shared Cargo target reused the profiling worktree's old
 instrumented CLI even after `cargo build` reported `Fresh`. Its binary hash
 matched the profiling executable exactly. The initial focused tests, public
 comparisons and resource runs were therefore rejected as evidence for this
-implementation. They are retained as invalid diagnostic records, with the
-reason in the [build receipt](evidence/phase-b-cli-build.json). An earlier
+implementation. An earlier
 broad release-test build also had two concurrent fat-LTO compiler processes
 killed by SIGKILL; neither attempt is claimed as a full test-suite pass.
 
@@ -113,14 +111,7 @@ A synthetic file with two 1 GiB sparse unknown chunks was then run under a
 512 MiB address-space limit. The Phase A `validate` executable failed with
 an allocation error. The new `validate` counted both chunks and returned its
 expected `NoContentBlocks` status; `export --checkpoints` succeeded and
-published its empty tables. The [proof receipt](evidence/phase-b-cli-sparse-proof.json)
-records the exact size, limit, binary identities and exit codes. This is a
+published its empty tables. This is a
 skipped-input memory proof, not a bound on decoded chunks or a claim of
 real-replay throughput or peak-RSS improvement. Such measurements require
 separate, correctly attributed repeated runs.
-
-On Linux, reproduce the skipped-input proof with a new work directory:
-
-```bash
-python docs/evidence/cli_input_sparse_reproduce.py /path/to/phase-a-vrfkit /path/to/candidate-vrfkit /private/new-sparse-check
-```

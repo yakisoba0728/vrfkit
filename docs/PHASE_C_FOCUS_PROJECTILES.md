@@ -12,11 +12,8 @@ public-input evidence. The route is enabled only for the exact branch string
 | Parent array | 45 | `FocusProjectiles` | 957945936 |
 | Object reference member | 46 | `FocusProjectiles` | 831657485 |
 
-The independent evidence receipt is
-[focus_projectiles_1205.json](evidence/phase_c/focus_projectiles_1205.json).
-It re-reads a historical Phase B export of one public 12.05 replay; it does
-not claim a new full-corpus audit. Its source manifest and table hashes pin
-the input. It contains aggregate counts, not raw replay bytes or player IDs.
+The independent check re-read a historical Phase B export of one public 12.05 replay; it does
+not claim a new full-corpus audit.
 
 That input contains 102 main parents: 53 populated deltas and 49 empty
 deltas. Three empty deltas carry one extra zero byte. The 53 member windows
@@ -27,7 +24,7 @@ credit is inferred. Eighteen checkpoint parents are ordinary empty deltas;
 no populated checkpoint child is observed in this fixture.
 
 Other builds remain unsupported by this route. The other decoder topics in
-[the initial evidence review in the DX checkpoint](https://github.com/yakisoba0728/vrfkit/blob/93666fb2ee3e3665cd04ebd4dfbc1cc447263db4/docs/PHASE_C_DECODER_EVIDENCE.md) remain deferred;
+the initial evidence review in the DX checkpoint remain deferred;
 this document supersedes only its FocusProjectiles evidence disposition.
 
 ## Decoder and output contract
@@ -83,7 +80,7 @@ The native movement counter contract is unchanged. A comparison must remove
 only the independently verified new child rows and compare every original
 row, column and order; changed Parquet bytes alone are not a regression or
 an equivalence proof. Other stream data and previous typed values must still
-match. Final fresh-input comparison belongs to the integration QA receipt.
+match. Final fresh-input comparison is part of integration QA.
 
 Historical private baselines are left byte-for-byte unchanged. Their
 legacy-only schema excludes these new counters because the historical run
@@ -117,5 +114,5 @@ parent was allowed (exit 101). Restoring the exact original source made the
 test pass (exit 0). No mutant is retained.
 
 Public replay export, exact fresh output comparison, full-feature builds and
-Windows/Linux CI are integration acceptance gates. This local receipt does
+Windows/Linux CI are integration acceptance gates. The local checks above do
 not substitute for those checks. No performance measurements were run.

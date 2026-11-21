@@ -160,14 +160,11 @@ cargo +1.86.0 test -p vrf-net --locked
 cargo +1.86.0 test -p vrfkit --no-default-features --locked
 ```
 
-Real-replay and independent comparison results belong to the associated PR's
-pinned validation receipt. The synthetic tests do not establish support for
+The synthetic tests do not establish support for
 previously unobserved game builds or reference emission contracts.
 
-The [core validation receipt](evidence/movement-provenance-core.json) records
-the initial implementation checkpoint. Independent Reader integration testing
+Independent Reader integration testing
 subsequently found a packet-local RPC ordinal error caused by reusing a
-cumulative counter. The [correction receipt](evidence/movement-provenance-rpc-index-fix.json)
-preserves the failing reproduction, corrected source and new replay audit.
+cumulative counter.
 The initial measurements remain intact; they do not validate the later
 corrected binary or the separate Reader hookup by themselves.

@@ -1,5 +1,0 @@
-   Compiling checkpoint-path-budget-probe v0.0.0 (<probe>)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.36s
-     Running `target-architecture/debug/checkpoint-path-budget-probe`
-input_bytes=268195 entries=1025 accepted_entries=1025 retained_path_bytes=268697600
-FAIL: expected explicit checkpoint path budget refusal

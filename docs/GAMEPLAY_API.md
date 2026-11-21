@@ -233,20 +233,20 @@ event-coverage or performance superiority claim follows from this API.
 
 ## Phase C author validation
 
-The [author check record](evidence/phase_c/gameplay/README.md) records 15 new
+The author check recorded 15 new
 identity/lifecycle/movement tests, the 12 prior gameplay tests, four detected
 implementation mutations, strict core Clippy/rustdoc and a fresh public 12.10
 aggregate example. The example observed one declaration and 8,907 resolved
 movement associations. Independent value/order parity and final platform CI
 are separate required acceptance gates, not claims made by that example.
-The same record's lifecycle follow-up preserves three independently authored
+Its lifecycle follow-up preserves three independently authored
 public-API regressions: two exposed retired claims incorrectly retaining
 ambiguity. All three pass after the correction, and an inclusive-cutoff
 mutation fails the same-packet uncertainty test as intended.
 
 ## Phase B validation (historical)
 
-The [reproduction record](evidence/phase_b/gameplay/README.md) documents six
+The Phase B reproduction ran six
 fresh Reader executions and an independent Python/raw-byte comparison:
 560 native projections and 302 phase observations, with zero differences in
 values, multiplicity or order within each source stream. The native set

@@ -130,10 +130,10 @@ their own source hashes and complete input digests.
 
 | Public build | Unique latest updates compared | Rust individual moves | Missing / extra / duplicate keys | Latest-value mismatches |
 | --- | ---: | ---: | --- | ---: |
-| [12.09](evidence/movement-comparison-12.09.json) | 2,616,931 | 2,634,029 | 0 / 0 / 0 | 0 |
-| [12.10](evidence/movement-comparison-12.10.json) | 8,853 | 8,907 | 0 / 0 / 0 | 0 |
-| [12.11](evidence/movement-comparison-12.11.json) | 2,949 | 3,001 | 0 / 0 / 0 | 0 |
-| [13.00](evidence/movement-comparison-13.00.json) | 4,946 | 4,991 | 0 / 0 / 0 | 0 |
+| 12.09 | 2,616,931 | 2,634,029 | 0 / 0 / 0 | 0 |
+| 12.10 | 8,853 | 8,907 | 0 / 0 / 0 | 0 |
+| 12.11 | 2,949 | 3,001 | 0 / 0 / 0 | 0 |
+| 13.00 | 4,946 | 4,991 | 0 / 0 / 0 | 0 |
 
 The 12.09 input is the
 [public full match at a pinned revision](https://media.githubusercontent.com/media/Matthias1590/unsupported-replays/c5ba8419b96afa8e88e7afb3e594cf4cce9c75fe/replays/12.09/sample-1.replay),
@@ -155,14 +155,7 @@ complete key equality, and compared every latest scalar and f32 bit pattern.
 It imports neither this comparator nor SQLite, and uses Python's C float array
 for its separate f32 conversion path. Both complete sorted record arrays have
 SHA-256 `b3b7ff2709a935e0eea89e0c82886d3cb558d1d1164d4ae19ed49ef01f98a476`.
-Its [complete receipt](evidence/full-movement-array-audit.json) reproduces all
-counts, logical digests and numerical deltas. The source and negative controls
-are retained in [the independent audit](verification/full_movement_array_audit.py).
-On a little-endian Linux host with NumPy, rerun it as:
-
-```sh
-python docs/verification/full_movement_array_audit.py reference/movement.ndjson movement-provenance.jsonl.gz movement-comparison.json --out independent-check.json
-```
+It reproduces all counts, logical digests and numerical deltas.
 
 The independent pass used 413,864 KiB peak RSS; this is the QA helper's resource
 use, not a replay parser benchmark. Earlier moves' values are still outside

@@ -30,8 +30,7 @@ only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
 **Candidate suite totals (2026-11-17):** **886 Rust tests (Windows)**,
-**885 Rust tests (non-Windows)** and **1181 Python tests**. Final integrated
-execution and platform acceptance are recorded in the consolidation receipt.
+**885 Rust tests (non-Windows)** and **1181 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -41,16 +40,10 @@ checks and remaining limits.
 
 - First source build and Python/Rust recipes: [`docs/ADOPTION.md`](docs/ADOPTION.md)
 - Rust callbacks and ownership: [`docs/RUST_API.md`](docs/RUST_API.md)
-- Final consolidation, current QA and review gates: [`docs/FINAL_CONSOLIDATION_STATUS.md`](docs/FINAL_CONSOLIDATION_STATUS.md)
 - Optional gameplay observations: [`docs/GAMEPLAY_API.md`](docs/GAMEPLAY_API.md)
 - JSONL conversion and encodings: [`docs/JSONL.md`](docs/JSONL.md)
 - Pinned comparison with ValorantReplayParser: [`docs/REFERENCE_COMPARISON.md`](docs/REFERENCE_COMPARISON.md)
-- Phase C contracts and acceptance: [`docs/PHASE_C_RESULTS.md`](docs/PHASE_C_RESULTS.md)
 - API/counter migration and 0.6.0+ release checklist: [`docs/PHASE_C_MIGRATION.md`](docs/PHASE_C_MIGRATION.md)
-- Phase D 0.6.0 candidate and package gates: [`docs/PHASE_D_RELEASE_CHECKLIST.md`](docs/PHASE_D_RELEASE_CHECKLIST.md)
-- Phase B work and acceptance status: [`docs/PHASE_B_STATUS.md`](docs/PHASE_B_STATUS.md)
-- Reproducible performance comparison: [`docs/PHASE_B_BENCHMARK_HANDOFF.md`](docs/PHASE_B_BENCHMARK_HANDOFF.md)
-- Historical controlled measurements and limits: [`docs/PHASE_D_RESULTS.md`](docs/PHASE_D_RESULTS.md)
 - Final correction migration: [`docs/FINAL_CONSOLIDATION_MIGRATION.md`](docs/FINAL_CONSOLIDATION_MIGRATION.md)
 - Run it, every tool and every output column: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable, and whether it is typed: [`docs/DATA.md`](docs/DATA.md)
@@ -66,8 +59,7 @@ the library.
 The workspace version is **0.6.0**, an unpublished candidate for the native
 counter and Phase C API/output migration. That number does not establish
 release acceptance or a measured performance improvement. PR #58 remains a
-Draft; see the [candidate gates](docs/PHASE_D_RELEASE_CHECKLIST.md) and
-[migration guide](docs/PHASE_C_MIGRATION.md) before adopting it.
+Draft; see the [migration guide](docs/PHASE_C_MIGRATION.md) before adopting it.
 
 ```bash
 git clone --branch integration/vrfkit-overhaul --single-branch https://github.com/yakisoba0728/vrfkit.git
@@ -144,18 +136,17 @@ missing schema attribution and semantic coverage remain separate measurements.
 Successful movement decodes can be represented by their rows instead of a
 duplicate raw RPC, and synthesized child rows may have no independent raw
 window. This is not a lossless replay archive. See the
-[adoption limits](docs/ADOPTION.md#support-and-preservation-limits) and
-[current validation evidence](docs/FINAL_CONSOLIDATION_STATUS.md)
+[adoption limits](docs/ADOPTION.md#support-and-preservation-limits)
 for the tested inputs, exact-output comparisons and remaining unknowns.
 
 ## Supported VALORANT builds
 
 The table below retains the historical, revision-specific audits linked in
 [build verification](docs/BUILD_VERIFICATION.md). The initial overhaul checked
-six public inputs; later [Phase C acceptance](docs/PHASE_C_RESULTS.md) covered
+six public inputs; later Phase C acceptance covered
 ten public inputs across seven builds, including 99 checkpoints. Those are
 historical executions at the recorded source revisions. The
-[final consolidation](docs/FINAL_CONSOLIDATION_STATUS.md) separately reports
+final consolidation separately reports
 five fresh public inputs across five builds and 59 checkpoints. Neither run
 establishes new private-corpus coverage; metadata inspection and actual replay
 execution remain separate evidence.
@@ -305,21 +296,17 @@ row order; it does not infer gameplay events or retain Parquet physical encoding
 
 ## Status
 
-Current implementation and independent QA are tracked in
-[final consolidation](docs/FINAL_CONSOLIDATION_STATUS.md) and its fixed final
-acceptance receipt. [Phase D results](docs/PHASE_D_RESULTS.md) retain the prior
-controlled measurements: performance superiority remains inconclusive and
-the single optimization experiment was withdrawn. The unpublished 0.6.0
-candidate additionally receives the correctness/resource fixes documented in
-the consolidation ledger; no new ordinary-replay speedup is implied.
-[Phase C results](docs/PHASE_C_RESULTS.md), the [changelog](CHANGELOG.md) and
+Phase D controlled measurements found that performance superiority remains
+inconclusive and the single optimization experiment was withdrawn. The
+unpublished 0.6.0 candidate additionally receives correctness/resource fixes;
+no new ordinary-replay speedup is implied.
+The [changelog](CHANGELOG.md) and
 [migration guide](docs/PHASE_C_MIGRATION.md) describe the included API/output
 changes. Main merge and publication remain separate user decisions.
 
 Fresh local `cargo +1.86.0 test --workspace --locked` passes all
 **885 Rust tests (non-Windows)**, with zero failures or ignored tests. The
-Windows suite contains **886 Rust tests (Windows)**; exact final hosted
-execution belongs to the linked receipt. The full Python suite has
+Windows suite contains **886 Rust tests (Windows)**. The full Python suite has
 **1181 passing** tests in the fresh local run. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for

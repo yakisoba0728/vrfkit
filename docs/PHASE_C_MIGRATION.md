@@ -1,8 +1,8 @@
 # Phase C migration and release preparation
 
 Phase C is source-branch work. Pin the exact accepted integration revision
-from the [results receipt](PHASE_C_RESULTS.md) before adopting these APIs.
-Final functional acceptance is recorded there separately from release
+before adopting these APIs.
+Final functional acceptance is separate from release
 authorization. The next release must be **0.6.0 or later** because the native
 movement-counter migration and the additional Phase C required counters are
 not compatible with consumers that require the older schema. This work does
@@ -126,20 +126,16 @@ Strict baseline validators now require the new keys; treating a missing key
 as zero would conceal an older executable or incomplete export. Unmodified
 Phase A and Phase B binaries therefore fail the current harness even on a
 replay with no FocusProjectiles rows. Use an explicitly schema/output-matched
-baseline and retain all equality gates; see the
-[benchmark handoff](PHASE_B_BENCHMARK_HANDOFF.md).
+baseline and retain all equality gates.
 
 ## Release checklist: 0.6.0 or later
 
 This checklist prepares a future, separately authorized release. Completion
 of engineering gates does not authorize main, tags or package publication.
-The separately maintained [release and compatibility checklist](PHASE_C_RELEASE_CHECKLIST.md)
-provides the operational gates; this guide supplies the detailed API and
-counter migration. Actual task merges and final acceptance are recorded in
-[Phase C results](PHASE_C_RESULTS.md) and its fixed receipt.
+This guide supplies the detailed API and counter migration.
 
 - [ ] Record the final integration commit, runtime tree and exact final CI
-  checkout in the [Phase C receipt](PHASE_C_RESULTS.md), including any later
+  checkout, including any later
   documentation-only acceptance commit.
 - [ ] Confirm Windows/Linux, Rust 1.86, formatting, strict Clippy/rustdoc,
   feature matrix, Python, documentation, Rust/PyArrow, actual CLI and public
@@ -162,6 +158,6 @@ counter migration. Actual task merges and final acceptance are recorded in
   GitHub Release or registry publication; PR #58 stays draft/open/unmerged
   during Phase C.
 
-Performance evidence is a separate user-run handoff. No release note should
+Performance evidence is a separate user-run measurement. No release note should
 claim improved wall time, CPU, utilization, RSS, allocation behavior or
 throughput without the corresponding valid experiment.

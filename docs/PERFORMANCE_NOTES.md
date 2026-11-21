@@ -135,7 +135,7 @@ grow only when needed, without constructing a temporary empty field vector.
 indexes when the identity is unchanged. Both paths preserve the generation
 bump and resource accounting.
 
-The [2026-11-16 experiment](SCHEMA_REDECLARATION_BENCHMARK.md) measured a large
+The 2026-11-16 experiment measured a large
 reduction in work for repeated declarations. Its six public fixtures contained
 **zero repeated declarations** in their main streams and 76 checkpoint streams.
 Full-export timings changed direction on a follow-up run, and an identical-binary

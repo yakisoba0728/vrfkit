@@ -67,6 +67,4 @@ meaning, schema column or required counter is inferred by this correction.
 
 Ordinary replay equality, checkpoint separation, all nine native counters,
 both FocusProjectiles counters, typed/raw agreement and CLI failure behavior
-are verified by the independent tests linked from
-[the consolidation status](FINAL_CONSOLIDATION_STATUS.md). That receipt states
-the exact public input coverage and private-corpus limitation.
+are verified by independent tests.

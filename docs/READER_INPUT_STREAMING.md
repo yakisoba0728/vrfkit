@@ -10,8 +10,7 @@ unchanged by this change.
 This report is an **isolated Reader comparison on the pre-Native/pre-inline
 parser contract**, based on integration `d44bcd2`. It does not substitute for
 the Coordinator's later combined-source validation. Original measured local
-source checkpoints and executable hashes are retained in the
-[aggregate evidence](evidence/reader-input-2026-11-16.json): initial prototype
+source checkpoints are: initial prototype
 `d78f30a`, corrected implementation `6a9ea4e`. Any subsequent publication or
 documentation commit is a distinct identity.
 
@@ -146,15 +145,6 @@ target/release/examples/reader_input_probe file /path/to/match.vrf --fingerprint
 ```
 
 The two fingerprint outputs must match exactly. The probe does not print
-player names or payload values. For paired resources, use a new work path:
-
-```bash
-python docs/evidence/reader_input_reproduce.py target/release/examples/reader_input_probe /path/to/match.vrf /private/reader-pairs --repeats 5
-python docs/evidence/reader_input_reproduce.py target/release/examples/reader_input_probe /path/to/match.vrf /private/reader-control --repeats 5 --control
-```
-
-The reproduction helper wraps the same tested `benchmark_resources` worker
-used for the recorded series. Work directories contain private command paths
-and logs; review aggregate reports before publishing. Default-feature and
+player names or payload values. Default-feature and
 combined Native/Reader/optimization CI are separate acceptance gates recorded
 by the Coordinator.

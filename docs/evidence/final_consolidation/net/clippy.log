@@ -1,7 +1,0 @@
-   Compiling thiserror v2.0.19
-    Checking vrf-bitio v0.6.0 (/workspace/scratch/5a322f957689/worktrees/net/crates/vrf-bitio)
-    Checking vrf-schema v0.6.0 (/workspace/scratch/5a322f957689/worktrees/net/crates/vrf-schema)
-    Checking vrf-transform v0.6.0 (/workspace/scratch/5a322f957689/worktrees/net/crates/vrf-transform)
-    Checking vrf-testkit v0.0.0 (/workspace/scratch/5a322f957689/worktrees/net/dev/vrf-testkit)
-    Checking vrf-net v0.6.0 (/workspace/scratch/5a322f957689/worktrees/net/crates/vrf-net)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.28s

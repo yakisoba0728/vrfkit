@@ -1,7 +1,0 @@
-{
-  "scope": "INTERMEDIATE_CAPABILITY_PROBE_ONLY",
-  "control": "replace expected artifact SHA256 with zero digest",
-  "exit_code": 1,
-  "assertion_failure": "AssertionError: ('vrfkit-source', 'digest')",
-  "original_artifacts_modified": false
-}
