@@ -64,6 +64,8 @@ pub enum ContainerError {
     OodleCompressedSizeMismatch { archive_size: i32, expected: i32 },
     #[error("Oodle output size mismatch: expected {expected}, got {actual}")]
     OodleOutputSizeMismatch { expected: usize, actual: usize },
+    /// The codec rejected the stream, or panicked on it: a caught panic reads
+    /// `decoder panicked: <message>`.
     #[error("Oodle decompression error: {0}")]
     OodleDecompression(String),
     /// Not an empty buffer: a zero-length success would read as an empty chunk.
