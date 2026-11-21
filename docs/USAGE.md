@@ -174,7 +174,8 @@ are counted separately from lost streams.
 Pre-framing partial diagnostics have a separate attempted-bunch denominator
 (`partial_bunches`) and accepted-fragment counter (`partial_fragments`). Cause
 counts distinguish missing initial fragments, overlapping initials, mismatched
-continuations, alignment refusals, channel closure and resource limits.
+continuations, alignment refusals, payload overruns (`partial_payload_overrun`),
+channel closure and resource limits.
 Unclassified and overclassified residuals expose incomplete or duplicate
 attribution. These are error events: one attempted fragment can trigger more
 than one cause, so their sum is not a rejected-fragment percentage.

@@ -83,6 +83,10 @@ net_stats! {
     partial_mismatched_continuation,
     /// Non-final fragments rejected because their payload was not byte-aligned.
     partial_non_byte_aligned,
+    /// Fragments refused because their byte slice was shorter than their
+    /// declared bit count. Pipeline staging supplies the whole window, so this
+    /// is 0 there; it keeps the cause classified rather than a residual.
+    partial_payload_overrun,
     /// Buffered assemblies discarded by a destructive channel close.
     partial_channel_close,
     /// Partial fragments accumulated (initial + continuations).
@@ -198,6 +202,7 @@ impl NetStats {
             + self.partial_overlapping_initial
             + self.partial_mismatched_continuation
             + self.partial_non_byte_aligned
+            + self.partial_payload_overrun
             + self.partial_channel_close
             + self.partial_resource_limit_failures
     }
@@ -478,11 +483,12 @@ mod tests {
     #[test]
     fn unknown_partial_error_paths_remain_visible_as_a_residual() {
         let stats = NetStats {
-            partial_errors: 9,
+            partial_errors: 10,
             partial_missing_initial: 2,
             partial_overlapping_initial: 1,
             partial_mismatched_continuation: 1,
             partial_non_byte_aligned: 1,
+            partial_payload_overrun: 1,
             partial_channel_close: 1,
             partial_resource_limit_failures: 1,
             ..Default::default()

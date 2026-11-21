@@ -46,11 +46,12 @@ pub fn partial_bunches(stats: &NetStats) -> String {
 /// `partial_errors` unexplained and what they count beyond it.
 pub fn partial_causes(stats: &NetStats) -> String {
     format!(
-        "{} missing initial / {} overlapping initial / {} mismatched continuation / {} unaligned / {} channel close / {} resource limit / {} unclassified / {} overclassified",
+        "{} missing initial / {} overlapping initial / {} mismatched continuation / {} unaligned / {} payload overrun / {} channel close / {} resource limit / {} unclassified / {} overclassified",
         stats.partial_missing_initial,
         stats.partial_overlapping_initial,
         stats.partial_mismatched_continuation,
         stats.partial_non_byte_aligned,
+        stats.partial_payload_overrun,
         stats.partial_channel_close,
         stats.partial_resource_limit_failures,
         stats.partial_unclassified_errors(),

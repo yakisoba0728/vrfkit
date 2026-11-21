@@ -484,7 +484,7 @@ mod tests {
             ("content_blocks_lost", stats.lost_content_blocks()),
         ]);
         assert_eq!(net_members(&stats), expected);
-        assert_eq!(expected.len(), 48);
+        assert_eq!(expected.len(), 49);
     }
 
     #[test]

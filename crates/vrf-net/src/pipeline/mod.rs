@@ -581,7 +581,9 @@ impl ReplicationReader {
                 }
                 // Pipeline staging supplies the complete declared bit window;
                 // the public accumulator also defends direct callers.
-                Some(PartialSequenceKind::PayloadOverrun) => {}
+                Some(PartialSequenceKind::PayloadOverrun) => {
+                    stage.stats.partial_payload_overrun += 1;
+                }
                 None => {}
             }
 

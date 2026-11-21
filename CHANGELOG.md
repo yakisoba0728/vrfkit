@@ -28,6 +28,9 @@ to the recovered Phase A-D candidate:
   `NoReference`.
 - `MovementProvenance::source` is `None` when the framed context carries a
   negative packet ID, instead of a wrapped `u32` packet number.
+- New `NetStats::partial_payload_overrun` (manifest `net` key) classifies
+  partial payload overruns; the `Partial causes:` / `Checkpoint causes:`
+  lines gain a `N payload overrun` term after `unaligned`.
 
 The two public partial-error enums add `PayloadOverrun`; exhaustive matches
 need a new case. See the [final migration](docs/FINAL_CONSOLIDATION_MIGRATION.md)
