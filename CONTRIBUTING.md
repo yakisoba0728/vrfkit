@@ -132,8 +132,7 @@ baselines have no public fixture and are still yours to run.
 
 These checks live in the reusable `ci.yml`, so Linux runtime and replay
 validation are required on main, main-targeted PRs, manual runs and tagged
-release validation. `overhaul.yml` calls the same workflow for the integration
-branch and requires its success, without running a duplicate Linux job.
+release validation (`release.yml` calls `ci.yml` for a `v*` tag).
 
 ### Replay evidence for parser changes
 
@@ -161,9 +160,16 @@ can document a local run.
 
 ## Tagged Windows releases
 
-Pushing a tag such as `v0.1.0` runs the same `ci.yml` as the branch/PR checks
+Pushing a tag such as `v0.6.0` runs the same `ci.yml` as the branch/PR checks
 through `workflow_call`. The tag must be SemVer with a leading `v`; optional
-prerelease and build suffixes are allowed. The release job runs only after all
+prerelease and build suffixes are allowed. It must also name the
+`[workspace.package] version` in `Cargo.toml`: without the leading `v` and
+ignoring any `+build` metadata on either side, tag and version must be equal,
+so a prerelease tag needs the same prerelease workspace version.
+`tools/package_release.py` refuses a mismatch when creating and when verifying
+the package; `python tools/package_release.py version` prints the version to
+tag. Untagged CI runs package as `v<version>+ci.<commit-sha>`, so the check
+runs on every PR too. The release job runs only after all
 checks succeed for that exact tagged commit. Only that publishing job receives
 `contents: write`; tests and builds retain read-only repository permissions.
 
@@ -195,7 +201,7 @@ second build. Prerelease tags produce GitHub prereleases. Release notes are
 generated automatically. Runs for the same tag are serialized; an existing
 release is not overwritten. Packaging rejects existing output directories.
 
-To validate a candidate before tagging or merging, run the **CI** workflow
+To validate a release commit before tagging or merging, run the **CI** workflow
 manually on its branch and inspect the `windows-release` and
 `release-replay-verification` artifacts. Branch, PR and manual CI runs do not
 publish releases. No release is made merely by merging the workflow.
@@ -245,8 +251,8 @@ says how many replays it walked.
 `check_export_baseline.py` rejects an obsolete movement-counter baseline before
 that missing-input skip. The archived private export/checkpoint baselines need
 genuine remeasurement for the [native component migration](docs/NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration);
-their historical numbers must not be converted into new counters. Removing the
-old summary/manifest fields requires a minor version bump before a release.
+their historical numbers must not be converted into new counters. The old
+summary/manifest fields were removed in 0.6.0, a minor version bump.
 
 ## The load-bearing invariants (do not break)
 

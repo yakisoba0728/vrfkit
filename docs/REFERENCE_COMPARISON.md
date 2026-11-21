@@ -16,13 +16,13 @@ The reference for this comparison is ValorantReplayParser
 [`fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8`](https://github.com/michel-giehl/ValorantReplayParser/tree/fbf24b62c5a8b8b7a64df71b4cbaaf0a651ce5b8),
 the default-branch revision rechecked on 2026-11-16 in the
 [upstream audit](UPSTREAM_AUDIT_2026_11_16.md). Every reference link below pins
-that source. vrfkit's column describes this integration branch's API; the
+that source. vrfkit's column describes the 0.6.0 API; the
 measured comparisons later in this document retain their original vrfkit
 revision and replay scope.
 
-The final performance/reference review
-freshly checked the same HEAD, release collection and five source contracts.
-It found no reference delta and performed no new reference replay benchmark.
+A later review rechecked the same reference revision, its release collection
+and five source contracts. It found no reference delta and performed no new
+reference replay benchmark.
 
 | Contract | vrfkit | ValorantReplayParser at the pinned source |
 | --- | --- | --- |

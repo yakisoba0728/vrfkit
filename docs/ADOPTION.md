@@ -5,9 +5,10 @@ borrowed main records and optional snapshots in Rust, and the Python tools for d
 analysis or JSONL conversion. These paths share the existing decoder and
 preservation policy; they expose different output and ownership contracts.
 
-The source remains an unpublished 0.6.0 candidate. The [final migration](FINAL_CONSOLIDATION_MIGRATION.md) adds direct
-network error cases, checkpoint path admission and CLI publication corrections
-to the earlier API/counter migration. Registry publication remains separate.
+This guide describes release 0.6.0. Upgrading from an earlier version, read
+the [output counter and Reader API migration](PHASE_C_MIGRATION.md) and the
+[error, network and publication changes](FINAL_CONSOLIDATION_MIGRATION.md).
+The crates are not published to a registry.
 
 | Need | Entry point | Read next |
 | --- | --- | --- |
@@ -22,21 +23,20 @@ to the earlier API/counter migration. Registry publication remains separate.
 
 ## Select and record the source
 
-This guide describes `integration/vrfkit-overhaul`. Select that branch
-explicitly when cloning. Its source API and examples should not be assumed to
-exist in `main` or in an older tagged binary.
+This guide describes the `v0.6.0` tag. Select it explicitly when cloning.
+Its source API and examples should not be assumed to exist in an older tagged
+binary, or to stay unchanged on a later `main`.
 
 ```bash
-git clone --branch integration/vrfkit-overhaul --single-branch https://github.com/yakisoba0728/vrfkit.git
+git clone --branch v0.6.0 --single-branch https://github.com/yakisoba0728/vrfkit.git
 cd vrfkit
-git switch --detach
 git rev-parse HEAD
 rustup toolchain install 1.86.0 --profile minimal
 cargo +1.86.0 build --release -p vrfkit --locked
 ```
 
-Detaching keeps this checkout at the selected commit when the integration
-branch advances. Save the full revision printed above with your analysis.
+Cloning a tag leaves a detached checkout at the tagged commit. Save the full
+revision printed above with your analysis.
 The repository lockfile and Rust 1.86.0 pin the documented build inputs;
 record platform and enabled features too when comparing measurements.
 
@@ -85,7 +85,7 @@ cargo +1.86.0 add vrfkit --git https://github.com/yakisoba0728/vrfkit.git \
 ```
 
 This requires the selected commit to be available in the remote repository.
-An unpublished local verification snapshot is not a fetchable dependency.
+A commit that exists only in a local checkout is not a fetchable dependency.
 Keep the application's `Cargo.lock` and the source revision together. The
 workspace package version does not promise Rust source compatibility across
 revisions; review migration notes when changing the pin. Registry packaging
@@ -146,7 +146,7 @@ separate evidence. The [Rust contract](RUST_API.md#scope-and-quality) explains
 those distinctions and [schema budgets](RUST_API.md#resource-limits).
 
 Before adopting a new source revision, review the
-[Phase C migration and release checklist](PHASE_C_MIGRATION.md). It covers
+[0.6.0 migration guide](PHASE_C_MIGRATION.md). It covers
 checkpoint opt-in behavior, identity ordering, explicit input caps and the
 required counter/output changes.
 

@@ -29,8 +29,8 @@ and through [`fbf24b6`](https://github.com/michel-giehl/ValorantReplayParser/com
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Candidate suite totals (2026-11-17):** **891 Rust tests (Windows)**,
-**890 Rust tests (non-Windows)** and **1181 Python tests**.
+**Test suites:** **891 Rust tests (Windows)**,
+**890 Rust tests (non-Windows)** and **1198 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -43,26 +43,24 @@ checks and remaining limits.
 - Optional gameplay observations: [`docs/GAMEPLAY_API.md`](docs/GAMEPLAY_API.md)
 - JSONL conversion and encodings: [`docs/JSONL.md`](docs/JSONL.md)
 - Pinned comparison with ValorantReplayParser: [`docs/REFERENCE_COMPARISON.md`](docs/REFERENCE_COMPARISON.md)
-- API/counter migration and 0.6.0+ release checklist: [`docs/PHASE_C_MIGRATION.md`](docs/PHASE_C_MIGRATION.md)
-- Final correction migration: [`docs/FINAL_CONSOLIDATION_MIGRATION.md`](docs/FINAL_CONSOLIDATION_MIGRATION.md)
+- Upgrading to 0.6.0: [output counters and Reader API](docs/PHASE_C_MIGRATION.md) and [error, network and publication changes](docs/FINAL_CONSOLIDATION_MIGRATION.md); release notes in [`CHANGELOG.md`](CHANGELOG.md)
 - Run it, every tool and every output column: [`docs/USAGE.md`](docs/USAGE.md)
 - What's extractable, and whether it is typed: [`docs/DATA.md`](docs/DATA.md)
 - Build it, test it, open a PR: [`CONTRIBUTING.md`](CONTRIBUTING.md) (agents: [`CLAUDE.md`](CLAUDE.md))
 
 ## Quick start
 
-These examples describe the `integration/vrfkit-overhaul` source branch.
-Select it explicitly; `main` and an older release package may expose different
-APIs. Record the full source revision when reproducing a result or embedding
-the library.
+These examples describe release **0.6.0**. Check out the `v0.6.0` tag; an
+older release package may expose different APIs, and `main` moves on after
+the release. Record the full source revision when reproducing a result or
+embedding the library.
 
-The workspace version is **0.6.0**, an unpublished candidate for the native
-counter and Phase C API/output migration. That number does not establish
-release acceptance or a measured performance improvement. PR #58 remains a
-Draft; see the [migration guide](docs/PHASE_C_MIGRATION.md) before adopting it.
+0.6.0 changes manifest counters, summary lines and the Rust API; see the
+[migration guide](docs/PHASE_C_MIGRATION.md) before upgrading a consumer.
+The version number does not claim a measured performance improvement.
 
 ```bash
-git clone --branch integration/vrfkit-overhaul --single-branch https://github.com/yakisoba0728/vrfkit.git
+git clone --branch v0.6.0 --single-branch https://github.com/yakisoba0728/vrfkit.git
 cd vrfkit
 git rev-parse HEAD
 
@@ -142,14 +140,13 @@ for the tested inputs, exact-output comparisons and remaining unknowns.
 ## Supported VALORANT builds
 
 The table below retains the historical, revision-specific audits linked in
-[build verification](docs/BUILD_VERIFICATION.md). The initial overhaul checked
-six public inputs; later Phase C acceptance covered
-ten public inputs across seven builds, including 99 checkpoints. Those are
-historical executions at the recorded source revisions. The
-final consolidation separately reports
-five fresh public inputs across five builds and 59 checkpoints. Neither run
-establishes new private-corpus coverage; metadata inspection and actual replay
-execution remain separate evidence.
+[build verification](docs/BUILD_VERIFICATION.md). Separate public-replay runs
+during 0.6.0 development checked six public inputs, then ten public inputs
+across seven builds including 99 checkpoints, then five fresh public inputs
+across five builds and 59 checkpoints. Those are historical executions at
+their recorded source revisions; none establishes new private-corpus
+coverage, and metadata inspection and actual replay execution remain separate
+evidence.
 
 | 🎮 Build | 🌿 Branch | ✅ Clean/checked | 🔎 Verified by |
 |---|---|---:|---|
@@ -193,8 +190,10 @@ it ([details](docs/BUILD_VERIFICATION.md#1308)).
 The 13.10 transform passes the block oracle, and the CombatReport and damage
 RPC array layouts decode with zero main and checkpoint array leaf errors
 ([details](docs/BUILD_VERIFICATION.md#1310)).
-Structured-array child rows are admitted per build and per route: all
-measured routes on 13.01--13.06, 13.09 and 13.10, all but the projectile path on 13.08, a measured subset on 11.06--13.00
+Structured-array child rows are admitted per build and per route: eight of
+the nine measured routes (all but `FocusProjectiles`) on 13.01--13.06, 13.09
+and 13.10, those eight but the projectile path on 13.08, and a measured subset
+on 11.06--13.00, where only 12.05 adds `FocusProjectiles`
 ([legacy route table](docs/LEGACY_BUILD_SUPPORT.md#measured-array-routes)).
 
 All branches are `++Ares-Core+release-<build>`. Adding a build is one
@@ -296,18 +295,18 @@ row order; it does not infer gameplay events or retain Parquet physical encoding
 
 ## Status
 
-Phase D controlled measurements found that performance superiority remains
-inconclusive and the single optimization experiment was withdrawn. The
-unpublished 0.6.0 candidate additionally receives correctness/resource fixes;
-no new ordinary-replay speedup is implied.
+The current release is **0.6.0**. Controlled measurements during its
+development found performance superiority inconclusive, and the single
+optimization experiment was withdrawn; 0.6.0 carries correctness and resource
+fixes, and no ordinary-replay speedup is implied.
 The [changelog](CHANGELOG.md) and
-[migration guide](docs/PHASE_C_MIGRATION.md) describe the included API/output
-changes. Main merge and publication remain separate user decisions.
+[migration guide](docs/PHASE_C_MIGRATION.md) describe the API and output
+changes.
 
 Fresh local `cargo +1.86.0 test --workspace --locked` passes all
 **890 Rust tests (non-Windows)**, with zero failures or ignored tests. The
 Windows suite contains **891 Rust tests (Windows)**. The full Python suite has
-**1181 passing** tests in the fresh local run. The documentation guard
+**1198 passing** tests in the fresh local run. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.

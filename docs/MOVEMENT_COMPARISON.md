@@ -30,7 +30,11 @@ missing/extra/ambiguous updates or value/count disagreement. Exit 2 means the
 input contract, quality, configured resource limits or I/O prevented a complete
 comparison. The report distinguishes `pass`, `fail` and `error`; a count-only
 match or empty comparison cannot pass. Report publication is atomic, and an
-output path resolving to an input or implementation file is refused.
+output path resolving to an input or implementation file is refused. Before
+reading any input the tool replaces an existing report with an `error`
+report. A run that cannot complete the comparison -- a truncated or corrupt
+gzip input included -- exits 2 with an `error` report, and even an
+unexpected crash leaves that `error` report behind, never an earlier `pass`.
 
 ## Identity before values
 
@@ -121,8 +125,8 @@ reproducible acceptance claim.
 
 ## Executed public-input verification
 
-The source example at `44fcb31d36eb5bb2638ad630e44954d16c024235` generated
-the companion streams below. Its executable SHA-256 was
+The source example generated the companion streams below. Its executable
+SHA-256 was
 `39ab667a79fda997eeaeb4df4e67e618744f5c3099b6e32cb3416d355f1b3d61`.
 The complete pinned reference exports were reused without another reference
 decode. The strict comparator and a separate independent audit both retain

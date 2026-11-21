@@ -1,10 +1,11 @@
-# Final consolidation migration
+# 0.6.0 migration: errors, network callers and publication
 
-This continuation updates the unpublished 0.6.0 integration candidate. Pin the
-source revision reviewed in [PR #58](https://github.com/yakisoba0728/vrfkit/pull/58)
-and read the [final acceptance receipt](https://github.com/yakisoba0728/vrfkit/pull/58#issuecomment-6932599335)
-for the actual tested checkout and package identities. The earlier
-[Phase C API/counter migration](PHASE_C_MIGRATION.md) still applies.
+This guide covers the 0.6.0 changes outside the counter and Reader migration:
+`#[non_exhaustive]` Rust types and new error variants, partial-bunch
+overruns for direct network callers, the checkpoint GUID-path budget, CLI
+output-directory and report publication, and movement attribution. Read it
+together with the
+[output counter and Reader API migration](PHASE_C_MIGRATION.md).
 
 ## Direct network callers
 
@@ -25,8 +26,10 @@ a fresh assembly.
 The normal replication pipeline supplies complete declared byte windows. The
 pipeline counts any such refusal in `NetStats::partial_payload_overrun` (a new
 manifest `net` key, 0 on that path) so it is classified, not a residual. The
-CLI raw-partial reason mapping includes
-`payload_overrun`; consumers that enumerate reason strings should accept it.
+`Partial causes:` and `Checkpoint causes:` summary lines print it as
+`N payload overrun` after `N unaligned`. The CLI raw-partial reason mapping
+includes `payload_overrun`; consumers that enumerate reason strings or parse
+those lines should accept it.
 Direct packet-reader length arithmetic now uses checked wide operations;
 ordinary frame packet limits and sentinel interpretation are unchanged.
 
@@ -41,8 +44,9 @@ exhaustive matches outside their crate need the replacements below.
   inside a checkpoint snapshot is `ReplayError::Checkpoint { checkpoint_index,
   checkpoint_id, error }` wrapping the original error, displayed as
   `checkpoint <id>: <error>` (`checkpoint #<index>: ...` when the id never
-  parsed). The same failure in the main stream stays a bare `Container` or
-  `Frame`.
+  parsed); the CLI prints that text, so a checkpoint failure's message now
+  starts with the checkpoint prefix. The same failure in the main stream
+  stays a bare `Container` or `Frame` with unchanged text.
 - `ReadOptions`: `ReadOptions::default().with_checkpoints(true)` and
   `.with_schema_limits(limits)` replace struct literals.
 - `SchemaLimits`: `SchemaLimits::default().with_max_groups(n)` and

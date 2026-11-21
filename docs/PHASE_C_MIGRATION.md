@@ -1,12 +1,14 @@
-# Phase C migration and release preparation
+# 0.6.0 migration: output counters and Reader API
 
-Phase C is source-branch work. Pin the exact accepted integration revision
-before adopting these APIs.
-Final functional acceptance is separate from release
-authorization. The next release must be **0.6.0 or later** because the native
-movement-counter migration and the additional Phase C required counters are
-not compatible with consumers that require the older schema. This work does
-not bump versions or publish a package.
+This guide is for consumers upgrading to 0.6.0 from 0.5.x or from an earlier
+source revision. 0.6.0 is a minor version bump because the native
+movement-counter migration and the new required FocusProjectiles counters are
+not compatible with consumers that require the older manifest and summary
+schema. It also adds the Reader's checkpoint callbacks, optional body
+identity, and bounded nonseekable input. Pin the `v0.6.0` tag (or another
+exact revision) before adopting these APIs. The
+[error, network and publication changes](FINAL_CONSOLIDATION_MIGRATION.md)
+are a separate guide.
 
 ## Reader checkpoints
 
@@ -28,10 +30,10 @@ The Reader can emit provisional callbacks before detecting a later error.
 The error enum includes a typed checkpoint-schema error with checkpoint
 provenance. Downstream error handling should preserve the cause and distinguish
 input/decode errors from the application's callback error. `ReplayError` is
-not marked `#[non_exhaustive]`: an exhaustive match must add the new
-`CheckpointSchema` variant or a fallback arm. Existing extensible public
-event and summary types remain non-exhaustive; downstream matches need a
-fallback arm. The [Rust API contract](RUST_API.md) specifies ordering and
+`#[non_exhaustive]`, so a match needs a fallback arm; the
+[Rust API section](FINAL_CONSOLIDATION_MIGRATION.md#rust-api) of the other
+guide lists its variants. Existing extensible public event and summary types
+are non-exhaustive as well; downstream matches need a fallback arm. The [Rust API contract](RUST_API.md) specifies ordering and
 error precedence. CLI `export --checkpoints` retains its separate snapshot
 tables and main-pass error precedence.
 
@@ -108,13 +110,19 @@ cargo +1.86.0 run -p vrfkit --no-default-features --locked \
 
 The earlier [native movement-component migration](NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration)
 replaces the old tail/trailer interpretation with nine native counters. Keep
-all nine in CLI/manifest quality checks. Phase C additionally requires these
+all nine in CLI/manifest quality checks. 0.6.0 additionally requires these
 sink counters in main and checkpoint data, including their zero values:
 
 | Counter | Meaning |
 | --- | --- |
 | `route_children_focus_projectiles` | Child rows emitted by the exact evidence-qualified 12.05 Clay route |
 | `focus_projectiles_empty_trailers` | Empty deltas whose exactly one final zero byte is preserved in the raw parent while the measured array window is decoded |
+| `focus_projectiles_declaration_refusals` | 12.05 parents routed by group, name and checksum but refused because the parent handle is not 45 or the handle-46 member declaration differs; the raw parent remains and no child row is emitted |
+
+The summary prints them as the final `N focus projectiles` item of
+`Route children:`, `FocusProjectiles trailers: N empty deltas` and
+`FocusProjectiles refused: N declaration mismatches`, each with a
+`Checkpoint` twin.
 
 The route adds typed child rows before their unchanged raw parent. On the
 measured 12.05 public fixture this produces 53 new main child rows, with no
@@ -123,41 +131,23 @@ provenance must remain unchanged. Consumers must not assume a fixed historical
 field-row count or discard the raw parent when a child is present.
 
 Strict baseline validators now require the new keys; treating a missing key
-as zero would conceal an older executable or incomplete export. Unmodified
-Phase A and Phase B binaries therefore fail the current harness even on a
-replay with no FocusProjectiles rows. Use an explicitly schema/output-matched
-baseline and retain all equality gates.
+as zero would conceal an older executable or incomplete export. Executables
+that predate these keys, 0.5.1 included, therefore fail the current harness
+even on a replay with no FocusProjectiles rows. Use an explicitly
+schema/output-matched baseline and retain all equality gates.
 
-## Release checklist: 0.6.0 or later
+## Upgrade checklist
 
-This checklist prepares a future, separately authorized release. Completion
-of engineering gates does not authorize main, tags or package publication.
-This guide supplies the detailed API and counter migration.
+- [ ] Replace the eight removed movement tail/trailer counters with the nine
+  native component counters in every CLI/manifest check; do not convert old
+  values into new ones.
+- [ ] Accept the FocusProjectiles child rows and the three FocusProjectiles
+  counters, and the other new keys and summary items listed in the
+  [changelog](../CHANGELOG.md).
+- [ ] Review source API consumers for checkpoint events and errors, schema
+  limits, timeline ordering and explicit bounded-input caps.
+- [ ] Re-export a baseline with the 0.6.0 executable before comparing against
+  it; keep historical corpus evidence separate.
 
-- [ ] Record the final integration commit, runtime tree and exact final CI
-  checkout, including any later
-  documentation-only acceptance commit.
-- [ ] Confirm Windows/Linux, Rust 1.86, formatting, strict Clippy/rustdoc,
-  feature matrix, Python, documentation, Rust/PyArrow, actual CLI and public
-  replay gates on the accepted source; retain the independent QA evidence.
-- [ ] Reconcile intentional FocusProjectiles rows and both new counters,
-  preserve all nine native counters, and verify prior typed/raw output and
-  main/checkpoint separation. Keep historical corpus evidence separate.
-- [ ] Review source API consumers for checkpoint events/errors, schema limits,
-  timeline ordering and explicit bounded-input caps; update examples and
-  any external schema validators.
-- [ ] Select a version at least 0.6.0; update workspace/package metadata,
-  lockfile and version references consistently in the future release change.
-- [ ] Review [CHANGELOG](../CHANGELOG.md), migration notes and the exact
-  supported-build/evidence scope. Do not imply broad new build coverage.
-- [ ] Follow the [tagged Windows release procedure](../CONTRIBUTING.md#tagged-windows-releases):
-  run CI on the exact release commit, verify the packaged executable and
-  public replay, retain its checksum, and publish the tested ZIP without
-  rebuilding it.
-- [ ] Obtain the separately required authorization before main merge, tag,
-  GitHub Release or registry publication; PR #58 stays draft/open/unmerged
-  during Phase C.
-
-Performance evidence is a separate user-run measurement. No release note should
-claim improved wall time, CPU, utilization, RSS, allocation behavior or
-throughput without the corresponding valid experiment.
+No release note for 0.6.0 claims improved wall time, CPU, utilization, RSS,
+allocation behavior or throughput.

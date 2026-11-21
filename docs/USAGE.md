@@ -5,9 +5,9 @@ The CLI, output schemas, library use, `tools/` scripts, and validation suite.
 Design rationale is in [`../README.md`](../README.md).
 For a first checkout, source pin and executable Rust/Python recipes, start
 with the [adoption guide](ADOPTION.md).
-Review the
-[final migration](FINAL_CONSOLIDATION_MIGRATION.md) and the earlier
-[API/counter migration](PHASE_C_MIGRATION.md) when upgrading an existing consumer.
+When upgrading an existing consumer to 0.6.0, review the
+[output counter and Reader API migration](PHASE_C_MIGRATION.md) and the
+[error, network and publication changes](FINAL_CONSOLIDATION_MIGRATION.md).
 
 ## Table of contents
 
@@ -24,9 +24,9 @@ Review the
 
 ## 1. Build
 
-The API and examples documented here come from `integration/vrfkit-overhaul`.
-Use the [source checkout instructions](ADOPTION.md#select-and-record-the-source)
-and record `git rev-parse HEAD`; an unqualified checkout of `main` can have a
+The API and examples documented here are those of release 0.6.0 (tag
+`v0.6.0`). Use the [source checkout instructions](ADOPTION.md#select-and-record-the-source)
+and record `git rev-parse HEAD`; a later checkout of `main` can have a
 different interface. Source API compatibility is not promised across revisions,
 and the crates are not yet published to crates.io.
 
@@ -251,27 +251,45 @@ what it holds.
 #### Lines to actually watch in the summary
 
 ```
+  Sink tally:       1296660 fields / 342990 RPCs / 2028 opens / 1799 closes / 608080 content blocks
   Malformed pkts:   0        <- nonzero means framing is broken
   Struct blobs:     207 decoded / 0 failed
-  Decode errors:    0        <- nonzero means an overlay type is wrong
-  Sink tally:       1296660 fields / 342990 RPCs / 2028 opens / 1799 closes / 608080 content blocks
-  Route children:   563 player info / 8527 rewards / 4100 selected / 1386 kills / 1364 active effects / 2670 ignore actors / 0 blinds / 0 projectile path
+  Route children:   563 player info / 8527 rewards / 4100 selected / 1386 kills / 1364 active effects / 2670 ignore actors / 0 blinds / 0 projectile path / 0 focus projectiles
+  FocusProjectiles refused: 0 declaration mismatches
   RPC param walks:  113215
+  Decode errors:    0        <- nonzero means an overlay type is wrong
 ```
+
+(The lines appear in this order with others between them; `Decode errors`
+belongs to the overlay block printed after the counters. The values are
+`02d4d478`'s, a 13.01 replay, from `tools/baselines/export_02d4d478.json`;
+that archived baseline predates the FocusProjectiles counters, whose zeros
+here follow from the route being admitted on 12.05 only.)
 
 `Sink tally` counts what the sink wrote (its `fields` equals the
 `fields.parquet` rows); `Route children` counts each measured array route's
 child rows, and `RPC param walks` the RPC parameter walks that `Truncated
 RPCs` is a share of. `--checkpoints` prints the same lines as `Checkpoint
-route children:` and `Checkpoint RPC walks:`.
+route children:` and `Checkpoint RPC walks:`. `FocusProjectiles refused`
+(`Checkpoint FocusProjectiles refused`) counts 12.05 `FocusProjectiles`
+parents whose parent handle or member declaration differs from the measured
+one; they stay raw and add no child. Both lines print even at zero.
 
-`Movement section trailers` and `Checkpoint movement section trailers` count
-components and bits left outside a fitting, nonzero `movementBitCount` window.
-They are separate from the unread bits inside a sized/open section and from
-the byte-envelope trailers. Both lines print even at zero. The common build
-audit and decode-error corpus guard reject nonzero section trailers.
-The baseline guard validates and prints these fresh counts against the
-manifest without adding guessed measurements to older baseline snapshots.
+`Movement components` (`N attempted / N complete / N errors / N empty`),
+`Component envelopes` (`N validated / N payload bytes / N unused bits`) and
+`Component headers` (`N input / N discrepancy`), and their `Checkpoint
+movement components` / `Checkpoint component envelopes` / `Checkpoint
+component headers` twins, report the native movement component counters
+described in
+[native movement components](NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration).
+Every line prints even at zero. `tools/summary_counters.py` checks their
+bookkeeping -- attempted = complete + errors, empty <= complete <= validated
+envelopes <= attempted, component errors no more than `Movement errors`,
+plausible unused-bit, payload-byte and header counts -- and rejects the
+obsolete tail/trailer counter names. The decode-error corpus guard, the
+export-baseline checker and the common build audit fail on any violation. The
+baseline guard validates and prints these fresh counts against the manifest
+without adding guessed measurements to older baseline snapshots.
 
 `Struct blobs` is the output of the dedicated decoders for `RoundResults` /
 `TeamEconomy` / `RoundInfos`. These decoders are **additive**, so failing
@@ -1078,6 +1096,12 @@ with `--allow-missing`): an RPC parameter's `Class:Function` group is matched
 as the exported `Class_ClassNetCache` group and `Function.field` name. A
 passing primitive check does not make a specimen gameplay semantics.
 
+`--output <report.json>` is deleted before anything is read and the new report
+is published atomically, so a run that fails leaves no report rather than an
+earlier one that reads as a pass. Because the path is deleted, an `--output`
+that is the specification file, the tool itself, a `.parquet` file or a
+`manifest.json` is refused.
+
 `validate_ability_array_evidence.py <export-directory> [...] --compare-typed
 --require-routes` checks the measured `ActiveBlinds` and
 `MulticastSetPath.NetworkedProjectilePath` routes. It independently reads each
@@ -1171,7 +1195,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-891 Rust tests (Windows), 890 Rust tests (non-Windows), and 1181 Python tests.
+891 Rust tests (Windows), 890 Rust tests (non-Windows), and 1198 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
@@ -1293,7 +1317,8 @@ evidence; the native decoder has a separately documented public validation scope
 The per-build table is the README's
 ([Supported VALORANT builds](../README.md#supported-valorant-builds)), and every
 row uses the [common audit](BUILD_VERIFICATION.md). The historical 1,018
-replays through 13.06 were all strictly clean; the 13.10 sample is 1/1 clean.
+replays through 13.06 were all strictly clean; in separate runs, 2 of 3 13.08,
+5 of 5 13.09 and 28 of 28 13.10 replays are clean.
 Every
 replay passes block validation and checkpoint export; all observed evidence
 values match the independent Python decoder. `Clean/checked` also requires
@@ -1403,9 +1428,18 @@ Creation also runs the extracted binary with `--help`; use `--smoke` to repeat
 that execution when verifying on Windows. Verification without `--smoke` is
 portable and does not execute the Windows binary.
 
+The tag must name the `[workspace.package] version` in `Cargo.toml`: after
+dropping the leading `v`, the tag and the version must be equal once any
+`+build` metadata is removed from both. A prerelease suffix is part of the
+version, so `v0.6.0-rc.1` needs a workspace version of `0.6.0-rc.1`. Both
+`create` (before writing anything) and `verify` refuse a mismatch.
+`package_release.py version` prints the workspace version; CI packages an
+untagged run as `v<version>+ci.<commit-sha>`.
+
 ```powershell
-python tools/package_release.py create --exe target/x86_64-pc-windows-msvc/release/vrfkit.exe --directory '<new-package-directory>' --tag v0.1.0 --commit '<full-40-character-commit-sha>'
-python tools/package_release.py verify --directory '<package-directory>' --tag v0.1.0 --commit '<full-40-character-commit-sha>' --smoke
+$version = python tools/package_release.py version
+python tools/package_release.py create --exe target/x86_64-pc-windows-msvc/release/vrfkit.exe --directory '<new-package-directory>' --tag "v$version" --commit '<full-40-character-commit-sha>'
+python tools/package_release.py verify --directory '<package-directory>' --tag "v$version" --commit '<full-40-character-commit-sha>' --smoke
 ```
 
 The ZIP contains the executable, license, third-party notice and
