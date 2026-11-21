@@ -224,44 +224,42 @@ pub fn run(path: &str, diagnostics: bool) -> Result<Verdict, CliError> {
     }
 
     // The counters above say how many payload-stage failures; these say which.
+    // Both headers print at zero: a section that appears only when non-empty
+    // cannot tell "nothing failed" from "this report stopped running".
     let stream_failures = pass.channels.stream_failures();
-    if !stream_failures.is_empty() {
-        println!();
-        println!("=== Stream failures ({} shown) ===", stream_failures.len());
-        for line in stream_failures {
-            println!("  {line}");
-        }
+    println!();
+    println!("=== Stream failures ({} shown) ===", stream_failures.len());
+    for line in stream_failures {
+        println!("  {line}");
     }
 
-    if !stats.diagnostics.is_empty() {
+    println!();
+    // Capped (uncapped, ~100 MB on a wrong transform), so past the cap
+    // `len()` alone under-reports.
+    if stats.diagnostics_dropped == 0 {
+        println!(
+            "=== Diagnostic Events ({} total) ===",
+            stats.diagnostics.len()
+        );
+    } else {
+        println!(
+            "=== Diagnostic Events ({} total, {} shown, {} dropped at the cap) ===",
+            stats.diagnostics.len() + stats.diagnostics_dropped as usize,
+            stats.diagnostics.len(),
+            stats.diagnostics_dropped
+        );
+    }
+
+    print_skip_breakdown(&stats.diagnostics);
+
+    if diagnostics {
         println!();
-        // Capped (uncapped, ~100 MB on a wrong transform), so past the cap
-        // `len()` alone under-reports.
-        if stats.diagnostics_dropped == 0 {
-            println!(
-                "=== Diagnostic Events ({} total) ===",
-                stats.diagnostics.len()
-            );
-        } else {
-            println!(
-                "=== Diagnostic Events ({} total, {} shown, {} dropped at the cap) ===",
-                stats.diagnostics.len() + stats.diagnostics_dropped as usize,
-                stats.diagnostics.len(),
-                stats.diagnostics_dropped
-            );
+        for (i, event) in stats.diagnostics.iter().enumerate() {
+            print_diagnostic_event(i, event);
         }
-
-        print_skip_breakdown(&stats.diagnostics);
-
-        if diagnostics {
-            println!();
-            for (i, event) in stats.diagnostics.iter().enumerate() {
-                print_diagnostic_event(i, event);
-            }
-        } else {
-            println!();
-            println!("  (use --diagnostics to see full event dumps)");
-        }
+    } else if !stats.diagnostics.is_empty() {
+        println!();
+        println!("  (use --diagnostics to see full event dumps)");
     }
 
     println!();

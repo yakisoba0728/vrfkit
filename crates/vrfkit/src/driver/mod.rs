@@ -28,7 +28,7 @@ use vrf_export::{
     PartialRecord, PartialWriter,
 };
 
-use crate::error::CliError;
+use crate::error::{CliError, io_at};
 use crate::manifest::{self, ManifestQuality};
 use crate::pass::{Chunk, Pass, Replay, net_guid_rows};
 use crate::reader_input::FileInput;
@@ -82,7 +82,9 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     let out_path = output.path();
 
     let create = |name: &str| -> Result<BufWriter<fs::File>, CliError> {
-        Ok(BufWriter::new(fs::File::create(out_path.join(name))?))
+        let path = out_path.join(name);
+        let file = fs::File::create(&path).map_err(|error| io_at(&path, error))?;
+        Ok(BufWriter::new(file))
     };
 
     let mut actor_writer = ActorWriter::new(create("actors.parquet")?)?;

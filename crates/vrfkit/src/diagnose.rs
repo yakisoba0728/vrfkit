@@ -21,7 +21,7 @@ use vrf_frame::FrameSkips;
 use vrf_net::stats::NetStats;
 use vrf_schema::read_checkpoint_tables;
 
-use crate::error::CliError;
+use crate::error::{CliError, io_at, read_input};
 use crate::pass::{Chunk, Pass, Replay, for_each_chunk};
 use crate::sink::{ExportStats, FailureAggregate, MAX_FAILURE_CELLS};
 
@@ -56,7 +56,7 @@ pub fn run(path: &str, json_path: Option<&str>, include_payloads: bool) -> Resul
         reject_input_output_alias(path, output)?;
     }
     eprintln!("reading {path}...");
-    let data = fs::read(path)?;
+    let data = read_input(Path::new(path))?;
     let file_size = data.len();
     let preamble = parse_preamble(&data)?;
     let replay = Replay::new(&preamble);
@@ -191,7 +191,7 @@ pub fn run(path: &str, json_path: Option<&str>, include_payloads: bool) -> Resul
 /// Refuse an output path that resolves to the replay itself: the JSON is built
 /// in memory and written last, so a successful run could replace its source.
 fn reject_input_output_alias(input: &str, output: &str) -> Result<(), CliError> {
-    let input = fs::canonicalize(input)?;
+    let input = fs::canonicalize(input).map_err(|error| io_at(Path::new(input), error))?;
     let output = canonicalize_destination(output)?;
     if input == output {
         return Err(CliError::Usage(
@@ -206,9 +206,10 @@ fn canonicalize_destination(path: &str) -> Result<PathBuf, CliError> {
         Ok(path) => Ok(path),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let (parent, name) = json_parent_and_name(Path::new(path))?;
-            Ok(fs::canonicalize(parent)?.join(name))
+            let parent = fs::canonicalize(parent).map_err(|error| io_at(parent, error))?;
+            Ok(parent.join(name))
         }
-        Err(error) => Err(error.into()),
+        Err(error) => Err(io_at(Path::new(path), error).into()),
     }
 }
 
@@ -247,7 +248,7 @@ fn write_json_file(path: &str, json: &str) -> Result<(), CliError> {
                 break;
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
+            Err(error) => return Err(io_at(path, error).into()),
         }
     }
     let Some((mut file, temp)) = created else {
@@ -264,13 +265,13 @@ fn write_json_file(path: &str, json: &str) -> Result<(), CliError> {
     {
         drop(file);
         let _ = fs::remove_file(&temp);
-        return Err(error.into());
+        return Err(io_at(path, error).into());
     }
     drop(file);
 
     if let Err(error) = publish_json_file(&temp, path) {
         let _ = fs::remove_file(&temp);
-        return Err(error.into());
+        return Err(io_at(path, error).into());
     }
     Ok(())
 }

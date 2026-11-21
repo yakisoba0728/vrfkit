@@ -46,7 +46,13 @@ vrfkit inspect  <file.vrf> [--redact-identifiers]
 vrfkit validate <file.vrf> [--diagnostics]
 vrfkit diag     <file.vrf> [--json <path>] [--include-payloads]
 vrfkit export   <file.vrf> --out <dir> [--checkpoints]
+vrfkit --help | -h       # also `vrfkit <subcommand> --help`
+vrfkit --version | -V
 ```
+
+`--help` and `--version` print to stdout and exit 0. An input or output that
+cannot be opened is reported with its path (`error: I/O error: <path>: ...`),
+and a directory given as the replay says `is a directory`.
 
 The commands below use `vrfkit` as executable shorthand. After a source build,
 use `./target/release/vrfkit` on Linux/macOS or
@@ -141,9 +147,11 @@ all values have known types or meanings; `RPC unresolved/raw` includes whole
 unparsed tails as well as unresolved standalone RPC blocks.
 
 `validate` always prints up to 32 stream-failure lines
-(`=== Stream failures (N shown) ===`). `--diagnostics` adds every logged
-diagnostic event, up to 16,384; the header gives the total, and the shown and
-dropped counts once the cap is reached.
+(`=== Stream failures (N shown) ===`) and the
+`=== Diagnostic Events (N total) ===` header with its skip breakdown; both
+headers print at 0 as well, so an empty section is visible. `--diagnostics`
+adds every logged diagnostic event in full, up to 16,384; the header gives the
+total, and the shown and dropped counts once the cap is reached.
 
 Rejected partial fragments and abandoned partial accumulators are preserved in
 [`partials.parquet`](#partialsparquet); they remain unresolved and do not enter

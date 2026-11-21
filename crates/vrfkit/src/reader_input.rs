@@ -11,7 +11,7 @@ use vrf_container::{
     read_preamble,
 };
 
-use crate::error::CliError;
+use crate::error::{CliError, io_at, open_input};
 use crate::pass::{Chunk, Replay};
 
 pub(crate) struct FileInput {
@@ -32,8 +32,8 @@ struct FileChunks {
 
 impl FileInput {
     pub fn open(path: &Path) -> Result<(Preamble, Self), CliError> {
-        let mut file = File::open(path)?;
-        let len = file.metadata()?.len();
+        let mut file = open_input(path)?;
+        let len = file.metadata().map_err(|error| io_at(path, error))?.len();
         let preamble = read_preamble(&mut file).map_err(|error| match error {
             PreambleReadError::Io(error) => CliError::Io(error),
             PreambleReadError::Container(error) => CliError::Container(error),
@@ -42,7 +42,7 @@ impl FileInput {
         // try_clone shares the OS file position on some platforms. A second
         // read-only handle gives the prefetcher an independent cursor; the
         // documented input contract excludes concurrent file replacement.
-        let mut ahead = File::open(path)?;
+        let mut ahead = File::open(path).map_err(|error| io_at(path, error))?;
         if ahead.metadata()?.len() != len {
             return Err(std::io::Error::other("replay length changed while opening").into());
         }
@@ -73,7 +73,7 @@ impl FileInput {
     /// Independent handles keep checkpoint parsing and main prefetch parallel.
     #[cfg(feature = "export")]
     pub fn checkpoints(&self, path: &Path) -> Result<CheckpointInput, CliError> {
-        let mut file = File::open(path)?;
+        let mut file = File::open(path).map_err(|error| io_at(path, error))?;
         if file.metadata()?.len() != self.main.len {
             return Err(std::io::Error::other("replay length changed while opening").into());
         }

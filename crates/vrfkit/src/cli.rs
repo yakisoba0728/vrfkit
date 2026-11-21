@@ -12,6 +12,8 @@ USAGE:
     vrfkit validate <file.vrf> [--diagnostics]
     vrfkit diag     <file.vrf> [--json <path>] [--include-payloads]
     vrfkit export   <file.vrf> --out <dir> [--checkpoints]
+    vrfkit --help | -h       Print this text (also `vrfkit <subcommand> --help`)
+    vrfkit --version | -V    Print the vrfkit version
 
 SUBCOMMANDS:
     inspect   Print replay info, header, branch, and chunk summary
@@ -50,7 +52,13 @@ pub fn run(args: &[String]) -> Result<u8, CliError> {
         return Err(CliError::Usage(USAGE.to_string()));
     }
 
-    match args[1].as_str() {
+    let subcommand = args[1].as_str();
+    if SUBCOMMANDS.contains(&subcommand) && asks_for_help(&args[2..]) {
+        println!("{USAGE}");
+        return Ok(0);
+    }
+
+    match subcommand {
         "inspect" => {
             let (file, [redact_identifiers], []) = parse(args, ["--redact-identifiers"], [])?;
             inspect::run(file, redact_identifiers).map(|()| 0)
@@ -72,10 +80,34 @@ pub fn run(args: &[String]) -> Result<u8, CliError> {
             println!("{USAGE}");
             Ok(0)
         }
+        "--version" | "-V" => {
+            println!("vrfkit {}", env!("CARGO_PKG_VERSION"));
+            Ok(0)
+        }
         other => Err(CliError::Usage(format!(
             "unknown subcommand: {other}\n{USAGE}"
         ))),
     }
+}
+
+const SUBCOMMANDS: [&str; 4] = ["inspect", "validate", "diag", "export"];
+
+/// Every option that takes the next argument as its value, whatever it looks like.
+const VALUED: [&str; 2] = ["--json", "--out"];
+
+/// Whether `--help` or `-h` stands where the file or a flag may stand. A
+/// valued option's value is skipped, so `--json -h` still names a file; a
+/// replay literally named `-h` is reached as `./-h`.
+fn asks_for_help(rest: &[String]) -> bool {
+    let mut rest = rest.iter();
+    while let Some(arg) = rest.next() {
+        if VALUED.contains(&arg.as_str()) {
+            rest.next();
+        } else if arg == "--help" || arg == "-h" {
+            return true;
+        }
+    }
+    false
 }
 
 /// The input path, whether each flag was given, and each valued option's value.

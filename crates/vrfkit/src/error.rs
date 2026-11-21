@@ -1,5 +1,10 @@
 //! Unified error type for the CLI.
 
+use std::fmt;
+use std::fs::File;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
+
 use thiserror::Error;
 use vrf_net::pipeline::ReplicationReader;
 
@@ -68,6 +73,68 @@ impl CliError {
             },
             other => other,
         }
+    }
+}
+
+/// `error`, prefixed with the path it happened on. The kind is kept, and the
+/// original error stays reachable through `Error::source`.
+pub(crate) fn io_at(path: &Path, error: io::Error) -> io::Error {
+    io::Error::new(
+        error.kind(),
+        PathError {
+            path: path.to_path_buf(),
+            source: error,
+        },
+    )
+}
+
+/// Open a replay for reading, naming the path on failure. A directory is
+/// refused by name: Windows reports it only as "access denied", and elsewhere
+/// the open succeeds and the first read fails.
+pub(crate) fn open_input(path: &Path) -> io::Result<File> {
+    let is_directory = || {
+        io::Error::new(
+            io::ErrorKind::IsADirectory,
+            format!("{}: is a directory, not a replay file", path.display()),
+        )
+    };
+    match File::open(path) {
+        Ok(file) => match file.metadata() {
+            Ok(metadata) if metadata.is_dir() => Err(is_directory()),
+            Ok(_) => Ok(file),
+            Err(error) => Err(io_at(path, error)),
+        },
+        Err(_) if path.is_dir() => Err(is_directory()),
+        Err(error) => Err(io_at(path, error)),
+    }
+}
+
+/// [`open_input`], then the whole file.
+pub(crate) fn read_input(path: &Path) -> io::Result<Vec<u8>> {
+    let mut file = open_input(path)?;
+    // The length is a hint, as in `fs::read`; the read decides.
+    let hint = file.metadata().map_or(0, |metadata| metadata.len());
+    let mut data = Vec::with_capacity(usize::try_from(hint).unwrap_or(0));
+    file.read_to_end(&mut data)
+        .map_err(|error| io_at(path, error))?;
+    Ok(data)
+}
+
+#[derive(Debug)]
+struct PathError {
+    path: PathBuf,
+    source: io::Error,
+}
+
+impl fmt::Display for PathError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.path.display(), self.source)
+    }
+}
+
+impl std::error::Error for PathError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
     }
 }
 

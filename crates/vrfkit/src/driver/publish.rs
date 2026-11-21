@@ -23,6 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{CHECKPOINT_TABLES, MAIN_TABLES, MANIFEST};
 use crate::diagnose::usable_parent;
+use crate::error::io_at;
 
 static NEXT_OUTPUT_PATH: AtomicU64 = AtomicU64::new(0);
 
@@ -59,10 +60,18 @@ impl OutputTransaction {
         input: &Path,
         warnings: &mut dyn Write,
     ) -> io::Result<Self> {
+        // Staging and the prior-output backup are siblings named after the
+        // last component, so `.`, `..` and a root (no such component) are refused.
         let file_name = destination.file_name().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "export destination must be a named directory, not a filesystem root",
+                format!(
+                    "export destination {} does not end in a directory name: `.`, `..` and \
+                     filesystem roots are refused because the export is staged in a sibling \
+                     named after the last path component and renamed into place; name the \
+                     directory itself or a new subdirectory (e.g. --out export)",
+                    destination.display()
+                ),
             )
         })?;
         if destination.exists() && !destination.is_dir() {
@@ -104,7 +113,11 @@ impl OutputTransaction {
         // A replay can have an export-owned filename, so the name allowlist
         // alone cannot protect it. Resolve aliases before creating staging.
         match fs::canonicalize(destination) {
-            Ok(directory) if fs::canonicalize(input)?.starts_with(&directory) => {
+            Ok(directory)
+                if fs::canonicalize(input)
+                    .map_err(|error| io_at(input, error))?
+                    .starts_with(&directory) =>
+            {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!(
@@ -117,11 +130,11 @@ impl OutputTransaction {
             }
             Ok(_) => {}
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
+            Err(error) => return Err(io_at(destination, error)),
         }
 
         let parent = usable_parent(destination);
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).map_err(|error| io_at(parent, error))?;
         // Before this run's staging exists, so a run never reports itself.
         report_leftovers(destination, parent, file_name, warnings);
         let staging = create_unique_directory(parent, file_name, STAGING)?;
@@ -497,7 +510,7 @@ fn create_unique_directory(
         match fs::create_dir(&candidate) {
             Ok(()) => return Ok(candidate),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
+            Err(error) => return Err(io_at(&candidate, error)),
         }
     }
 }
