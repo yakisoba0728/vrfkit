@@ -894,10 +894,7 @@ mod dictionary_encoding {
     }
 
     fn identity(i: u32) -> CheckpointIdentity {
-        CheckpointIdentity {
-            checkpoint_index: i / 4,
-            checkpoint_id: Arc::from(format!("checkpoint-{}", i / 4)),
-        }
+        CheckpointIdentity::new(i / 4, format!("checkpoint-{}", i / 4))
     }
 
     fn field_rows() -> Vec<FieldRecord> {

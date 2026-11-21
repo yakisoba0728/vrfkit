@@ -20,6 +20,7 @@ pub enum PreambleReadError {
 
 /// The parsed info and header, and where the chunk stream resumes.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct Preamble {
     pub info: ReplayInfo,
     pub header: ReplayHeader,

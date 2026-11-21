@@ -38,6 +38,7 @@ use crate::sink::ExportStats;
 /// look at" are different answers, and a corpus sweep that merged them could
 /// not tell a broken build from a file carrying no replication stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Verdict {
     /// Content blocks were found and every one of them framed.
     Passed,
@@ -488,9 +489,10 @@ mod tests {
             |s| (s.rpc_stream_failures, s.unresolved_rpc_payloads_preserved) = (1, 1),
             |s| s.partial_errors = 1,
         ];
-        let clean = || NetStats {
-            rep_layout_blocks: 1,
-            ..NetStats::default()
+        let clean = || {
+            let mut stats = NetStats::default();
+            stats.rep_layout_blocks = 1;
+            stats
         };
         let verdict = |set: fn(&mut NetStats)| {
             let mut stats = clean();

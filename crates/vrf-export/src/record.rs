@@ -175,9 +175,22 @@ pub struct NetGuidRecord {
 /// not be unique: join checkpoint tables on it together with the zero-based
 /// chunk index.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct CheckpointIdentity {
     pub checkpoint_index: u32,
     pub checkpoint_id: Arc<str>,
+}
+
+impl CheckpointIdentity {
+    /// The identity of the zero-based `checkpoint_index`-th checkpoint chunk,
+    /// whose wire id is `checkpoint_id`.
+    #[must_use]
+    pub fn new(checkpoint_index: u32, checkpoint_id: impl Into<Arc<str>>) -> Self {
+        Self {
+            checkpoint_index,
+            checkpoint_id: checkpoint_id.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

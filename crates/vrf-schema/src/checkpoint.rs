@@ -139,6 +139,7 @@ const MAX_RESOLVED_GUID_PATH_BYTES: usize = 256 * 1024 * 1024;
 
 /// What [`read_checkpoint_tables`] consumed, for the caller to report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct CheckpointTables {
     /// GUID cache entries read.
     pub guid_count: u32,

@@ -321,10 +321,7 @@ fn checkpoint_movement_keeps_provenance_raw_rpc_and_all_native_counters() {
     let summary = ReplayReader
         .read_with_options(
             &combined,
-            ReadOptions {
-                checkpoints: true,
-                ..ReadOptions::default()
-            },
+            ReadOptions::default().with_checkpoints(true),
             |event| {
                 match event {
                     ReplayEvent::Records(batch) => {

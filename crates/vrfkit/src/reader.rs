@@ -41,10 +41,29 @@ pub enum ReadError<E> {
 ///
 /// Defaults preserve the main-only callback contract. Each enabled checkpoint
 /// receives a fresh cache with these same limits, separate from the main cache.
+/// Build one from [`Self::default`] and the `with_` methods; new options are
+/// added without breaking that path.
 #[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
 pub struct ReadOptions {
     pub schema_limits: SchemaLimits,
     pub checkpoints: bool,
+}
+
+impl ReadOptions {
+    /// These options with `schema_limits` for the main and checkpoint caches.
+    #[must_use]
+    pub const fn with_schema_limits(mut self, schema_limits: SchemaLimits) -> Self {
+        self.schema_limits = schema_limits;
+        self
+    }
+
+    /// These options with checkpoint callbacks enabled or disabled.
+    #[must_use]
+    pub const fn with_checkpoints(mut self, checkpoints: bool) -> Self {
+        self.checkpoints = checkpoints;
+        self
+    }
 }
 
 /// Records from one packet, or rejected partials flushed at end of input.
@@ -214,10 +233,7 @@ impl ReplayReader {
     ) -> Result<ReplaySummary, ReadError<E>> {
         self.read_with_options(
             data,
-            ReadOptions {
-                schema_limits,
-                checkpoints: false,
-            },
+            ReadOptions::default().with_schema_limits(schema_limits),
             consumer,
         )
     }
@@ -337,10 +353,7 @@ impl ReplayReader {
     ) -> Result<ReplaySummary, ReadError<E>> {
         self.read_path_with_options(
             path,
-            ReadOptions {
-                schema_limits,
-                checkpoints: false,
-            },
+            ReadOptions::default().with_schema_limits(schema_limits),
             consumer,
         )
     }

@@ -13,7 +13,7 @@ not bump versions or publish a package.
 Existing `read(&bytes, consumer)` and `read_path(path, consumer)` calls retain
 their default behavior: main records and native Events are emitted, while
 checkpoint chunks are counted as skipped. Call `read_with_options` or
-`read_path_with_options` with `ReadOptions { checkpoints: true, .. }` to
+`read_path_with_options` with `ReadOptions::default().with_checkpoints(true)` to
 receive `ReplayEvent::Checkpoint` callbacks. Keep any existing custom
 `schema_limits` when constructing the options; opting into snapshots should
 not silently replace the caller's resource policy.

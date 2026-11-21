@@ -2362,10 +2362,7 @@ mod tests {
         rig.cache.set_net_guid_path(9, "ActorGroup", None);
         let mut sink = rig.sink();
         sink.enable_checkpoint_block_context(
-            vrf_export::CheckpointIdentity {
-                checkpoint_index: 2,
-                checkpoint_id: Arc::from("duplicate-id"),
-            },
+            vrf_export::CheckpointIdentity::new(2, "duplicate-id"),
             100,
             7,
         );

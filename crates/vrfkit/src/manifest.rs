@@ -564,15 +564,13 @@ mod tests {
     /// nothing lost.
     #[test]
     fn content_blocks_lost_publishes_the_measured_number() {
-        let net = NetStats {
-            content_block_framing_failures: 8,
-            malformed_content_blocks: 1,
-            transform_failures: 2,
-            field_stream_failures: 4,
-            rpc_stream_failures: 100,
-            unresolved_rpc_payloads_preserved: 92,
-            ..NetStats::default()
-        };
+        let mut net = NetStats::default();
+        net.content_block_framing_failures = 8;
+        net.malformed_content_blocks = 1;
+        net.transform_failures = 2;
+        net.field_stream_failures = 4;
+        net.rpc_stream_failures = 100;
+        net.unresolved_rpc_payloads_preserved = 92;
         let json = quality_json(&ManifestQuality {
             run: &RunTotals::default(),
             net: &net,

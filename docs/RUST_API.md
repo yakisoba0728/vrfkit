@@ -108,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let summary = ReplayReader.read_bounded(
         &mut input,
         max_input_bytes,
-        ReadOptions { checkpoints: true, ..ReadOptions::default() },
+        ReadOptions::default().with_checkpoints(true),
         |_| Ok::<(), Infallible>(()),
     )?;
     println!("{} snapshots completed", summary.checkpoints.chunks);
@@ -256,10 +256,9 @@ use std::convert::Infallible;
 use vrfkit::{ReplayReader, SchemaLimits};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let limits = SchemaLimits {
-        max_groups: 1_024,
-        max_field_slots: 65_536,
-    };
+    let limits = SchemaLimits::default()
+        .with_max_groups(1_024)
+        .with_max_field_slots(65_536);
     let summary = ReplayReader::new().read_path_with_schema_limits(
         "match.vrf",
         limits,
@@ -347,7 +346,7 @@ use vrfkit::{CheckpointEvent, ReadOptions, ReplayEvent, ReplayReader};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let summary = ReplayReader.read_path_with_options(
         "match.vrf",
-        ReadOptions { checkpoints: true, ..ReadOptions::default() },
+        ReadOptions::default().with_checkpoints(true),
         |event| {
             if let ReplayEvent::Checkpoint(CheckpointEvent::Records {
                 checkpoint, records, blocks,
@@ -431,6 +430,9 @@ matches already needed a wildcard. Handle its new `Checkpoint` variant only
 when opting in. `ReplayError::CheckpointSchema { checkpoint, error }` replaces
 the old CLI-only rendered usage error for checkpoint table/schema failures.
 Its displayed text is unchanged, and its source retains the typed
-`SchemaError`, including resource refusals. Consumers matching every
-`ReplayError` variant must add this variant or a wildcard. CLI commands,
+`SchemaError`, including resource refusals. `ReplayError` is
+`#[non_exhaustive]`, so matches need a wildcard; it also has
+`UnsupportedBranch` and a `Checkpoint` wrapper for container and frame
+failures inside a snapshot. See the
+[final migration](FINAL_CONSOLIDATION_MIGRATION.md#rust-api). CLI commands,
 Parquet columns and existing main counters are unchanged.

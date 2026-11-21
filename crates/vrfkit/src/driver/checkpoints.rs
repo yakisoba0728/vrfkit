@@ -280,25 +280,19 @@ mod tests {
     #[test]
     fn actor_rows_a_chunk_opened_or_closed_but_did_not_write_are_dropped() {
         let mut stats = CheckpointStats::default();
-        let mut clean = NetStats {
-            actor_opens: 3,
-            actor_closes: 1,
-            ..NetStats::default()
-        };
+        let mut clean = NetStats::default();
+        clean.actor_opens = 3;
+        clean.actor_closes = 1;
         stats.absorb_chunk_net(&mut clean, 4);
         assert_eq!(stats.actor_rows_dropped, 0);
 
-        let mut lossy = NetStats {
-            actor_opens: 2,
-            ..NetStats::default()
-        };
+        let mut lossy = NetStats::default();
+        lossy.actor_opens = 2;
         stats.absorb_chunk_net(&mut lossy, 1);
         assert_eq!(stats.actor_rows_dropped, 1, "one open wrote no row");
 
-        let mut surplus = NetStats {
-            actor_opens: 1,
-            ..NetStats::default()
-        };
+        let mut surplus = NetStats::default();
+        surplus.actor_opens = 1;
         stats.absorb_chunk_net(&mut surplus, 2);
         assert_eq!(stats.actor_rows_dropped, 1, "a surplus is not a refund");
         assert_eq!((stats.net.actor_opens, stats.net.actor_closes), (6, 1));

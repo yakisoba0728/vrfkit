@@ -24,10 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let summary = ReplayReader.read_bounded(
         &mut io::stdin().lock(),
         limit,
-        ReadOptions {
-            checkpoints,
-            ..ReadOptions::default()
-        },
+        ReadOptions::default().with_checkpoints(checkpoints),
         |event| {
             // The entire encoded input has been buffered and EOF observed.
             // Parser callbacks still remain provisional until the call succeeds.

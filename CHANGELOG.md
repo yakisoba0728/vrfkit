@@ -31,6 +31,19 @@ to the recovered Phase A-D candidate:
 - New `NetStats::partial_payload_overrun` (manifest `net` key) classifies
   partial payload overruns; the `Partial causes:` / `Checkpoint causes:`
   lines gain a `N payload overrun` term after `unaligned`.
+- `ReplayError` is `#[non_exhaustive]`; exhaustive matches need a wildcard.
+- An unsupported branch is `ReplayError::UnsupportedBranch { branch, message }`
+  instead of `Usage`, with unchanged text.
+- A container or frame failure inside a checkpoint is
+  `ReplayError::Checkpoint { checkpoint_index, checkpoint_id, error }`,
+  printed as `checkpoint <id>: <error>` (`checkpoint #<index>: ...` before
+  the id is read); main-stream failures stay bare.
+- `ReadOptions` and `SchemaLimits` are `#[non_exhaustive]`; build them with
+  `default()` and the new `with_*` methods instead of struct literals.
+- `CheckpointIdentity` is `#[non_exhaustive]` with `CheckpointIdentity::new`.
+- `NetStats`, `Preamble`, `CheckpointTables` and `ValidationVerdict` are
+  `#[non_exhaustive]`. See the
+  [final migration](docs/FINAL_CONSOLIDATION_MIGRATION.md#rust-api).
 
 The two public partial-error enums add `PayloadOverrun`; exhaustive matches
 need a new case. See the [final migration](docs/FINAL_CONSOLIDATION_MIGRATION.md)

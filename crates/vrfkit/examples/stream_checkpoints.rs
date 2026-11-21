@@ -11,10 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut completed = 0_u64;
     let summary = ReplayReader.read_path_with_options(
         input,
-        ReadOptions {
-            checkpoints: true,
-            ..ReadOptions::default()
-        },
+        ReadOptions::default().with_checkpoints(true),
         |event| {
             if let ReplayEvent::Checkpoint(CheckpointEvent::Summary(_)) = event {
                 completed += 1;

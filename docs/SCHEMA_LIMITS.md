@@ -54,10 +54,11 @@ Applications with trusted inputs can choose explicit budgets:
 use vrf_schema::{NetGuidCache, SchemaLimits};
 
 fn main() -> Result<(), vrf_schema::SchemaError> {
-    let mut cache = NetGuidCache::with_limits(SchemaLimits {
-        max_groups: 8_192,
-        max_field_slots: 2_097_152,
-    });
+    let mut cache = NetGuidCache::with_limits(
+        SchemaLimits::default()
+            .with_max_groups(8_192)
+            .with_max_field_slots(2_097_152),
+    );
     cache.declare_export_group("Example".into(), 1, 16)?;
     Ok(())
 }

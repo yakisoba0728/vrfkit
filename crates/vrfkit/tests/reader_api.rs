@@ -6,7 +6,9 @@ use std::convert::Infallible;
 use std::error::Error;
 
 use common::*;
-use vrfkit::{ReadError, ReplayEvent, ReplayReader, SchemaError, SchemaLimits, ValidationVerdict};
+use vrfkit::{
+    ReadError, ReplayError, ReplayEvent, ReplayReader, SchemaError, SchemaLimits, ValidationVerdict,
+};
 
 fn replay(frames: &[u8]) -> Vec<u8> {
     let mut data = replay_info(&Info::default());
@@ -222,7 +224,20 @@ fn metadata_can_describe_an_unsupported_branch_but_full_reads_refuse_it() {
         callbacks += 1;
         Ok::<(), Infallible>(())
     });
-    assert!(matches!(result, Err(ReadError::Replay(_))));
+    let Err(ReadError::Replay(error)) = result else {
+        panic!("an unsupported branch must be refused: {result:?}");
+    };
+    assert!(
+        error.to_string().starts_with("unsupported branch: "),
+        "{error}"
+    );
+    match error {
+        ReplayError::UnsupportedBranch { branch, message } => {
+            assert_eq!(branch, "future");
+            assert!(message.contains("'future'"), "{message}");
+        }
+        other => panic!("a library user cannot match this as a branch: {other:?}"),
+    }
     assert_eq!(callbacks, 0);
 }
 
@@ -288,10 +303,9 @@ fn group_limits_accumulate_across_chunks_and_reset_for_each_read() {
     let second = declared_frame(2, "Second", 4, &[]);
     both.extend(chunk(1, &replay_data(&second, second.len())));
     both.extend(event_chunk());
-    let limits = SchemaLimits {
-        max_groups: 1,
-        max_field_slots: 8,
-    };
+    let limits = SchemaLimits::default()
+        .with_max_groups(1)
+        .with_max_field_slots(8);
     let reader = ReplayReader; // existing unit-struct construction stays valid
     let mut order = Vec::new();
     let error = reader
@@ -325,14 +339,7 @@ fn group_limits_accumulate_across_chunks_and_reset_for_each_read() {
     );
     assert_eq!(
         reader
-            .read_with_schema_limits(
-                &both,
-                SchemaLimits {
-                    max_groups: 2,
-                    ..limits
-                },
-                accept,
-            )
+            .read_with_schema_limits(&both, limits.with_max_groups(2), accept)
             .unwrap()
             .frames,
         2
@@ -356,10 +363,9 @@ fn slot_limits_refuse_a_declaration_before_its_truncated_field_flag() {
     let error = ReplayReader::new()
         .read_with_schema_limits(
             &data,
-            SchemaLimits {
-                max_groups: 1,
-                max_field_slots: 7,
-            },
+            SchemaLimits::default()
+                .with_max_groups(1)
+                .with_max_field_slots(7),
             |_| {
                 callbacks += 1;
                 Ok::<(), Infallible>(())
@@ -387,10 +393,9 @@ fn slot_limits_refuse_a_declaration_before_its_truncated_field_flag() {
 #[test]
 fn zero_group_limit_allows_no_declarations_even_when_the_group_is_empty() {
     let reader = ReplayReader::new();
-    let limits = SchemaLimits {
-        max_groups: 0,
-        max_field_slots: 0,
-    };
+    let limits = SchemaLimits::default()
+        .with_max_groups(0)
+        .with_max_field_slots(0);
     let accept = |_: ReplayEvent<'_>| Ok::<(), Infallible>(());
     assert_eq!(
         reader
@@ -415,10 +420,9 @@ fn zero_group_limit_allows_no_declarations_even_when_the_group_is_empty() {
 #[test]
 fn zero_slot_limit_permits_empty_groups_but_refuses_their_growth() {
     let reader = ReplayReader::new();
-    let limits = SchemaLimits {
-        max_groups: 1,
-        max_field_slots: 0,
-    };
+    let limits = SchemaLimits::default()
+        .with_max_groups(1)
+        .with_max_field_slots(0);
     let mut frames = declared_frame(1, "Empty", 0, &[]);
     let accept = |_: ReplayEvent<'_>| Ok::<(), Infallible>(());
     assert_eq!(
@@ -477,10 +481,9 @@ fn custom_file_limits_match_memory_reads_and_leave_the_input_unchanged() {
     let path = dir.join("synthetic.vrf");
     std::fs::write(&path, &data).unwrap();
     let reader = ReplayReader::new();
-    let limits = SchemaLimits {
-        max_groups: 1,
-        max_field_slots: 3,
-    };
+    let limits = SchemaLimits::default()
+        .with_max_groups(1)
+        .with_max_field_slots(3);
     let accept = |_: ReplayEvent<'_>| Ok::<(), Infallible>(());
     let file_error = reader
         .read_path_with_schema_limits(&path, limits, accept)
@@ -497,10 +500,7 @@ fn custom_file_limits_match_memory_reads_and_leave_the_input_unchanged() {
             limit: 3,
         })
     );
-    let exact = SchemaLimits {
-        max_field_slots: 4,
-        ..limits
-    };
+    let exact = limits.with_max_field_slots(4);
     let file = reader
         .read_path_with_schema_limits(&path, exact, accept)
         .unwrap();
@@ -524,10 +524,9 @@ fn consumer_error_outranks_a_later_schema_refusal_under_custom_limits() {
     let mut calls = 0;
     let result = ReplayReader::new().read_with_schema_limits(
         &data,
-        SchemaLimits {
-            max_groups: 1,
-            max_field_slots: 8,
-        },
+        SchemaLimits::default()
+            .with_max_groups(1)
+            .with_max_field_slots(8),
         |event| {
             calls += 1;
             if matches!(event, ReplayEvent::Records(_)) {

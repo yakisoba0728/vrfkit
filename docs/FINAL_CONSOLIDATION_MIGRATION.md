@@ -22,11 +22,39 @@ counts supplied bytes and prior buffered bits, never nonexistent claimed bytes.
 Callers can inspect and preserve the displaced payload before continuing with
 a fresh assembly.
 
-The normal replication pipeline supplies complete declared byte windows. No
-manifest counter is added. The CLI raw-partial reason mapping includes
+The normal replication pipeline supplies complete declared byte windows. The
+pipeline counts any such refusal in `NetStats::partial_payload_overrun` (a new
+manifest `net` key, 0 on that path) so it is classified, not a residual. The
+CLI raw-partial reason mapping includes
 `payload_overrun`; consumers that enumerate reason strings should accept it.
 Direct packet-reader length arithmetic now uses checked wide operations;
 ordinary frame packet limits and sentinel interpretation are unchanged.
+
+## Rust API
+
+These public types are now `#[non_exhaustive]`; struct literals and
+exhaustive matches outside their crate need the replacements below.
+
+- `ReplayError` (`vrfkit::ReplayError`): match with a wildcard. An
+  unsupported branch is `ReplayError::UnsupportedBranch { branch, message }`
+  instead of `Usage`; its text is unchanged. A container or frame failure
+  inside a checkpoint snapshot is `ReplayError::Checkpoint { checkpoint_index,
+  checkpoint_id, error }` wrapping the original error, displayed as
+  `checkpoint <id>: <error>` (`checkpoint #<index>: ...` when the id never
+  parsed). The same failure in the main stream stays a bare `Container` or
+  `Frame`.
+- `ReadOptions`: `ReadOptions::default().with_checkpoints(true)` and
+  `.with_schema_limits(limits)` replace struct literals.
+- `SchemaLimits`: `SchemaLimits::default().with_max_groups(n)` and
+  `.with_max_field_slots(n)`.
+- `CheckpointIdentity`: `CheckpointIdentity::new(index, id)`.
+- `NetStats`: start from `NetStats::default()` and assign fields.
+- `Preamble`, `CheckpointTables` and `ValidationVerdict` are read-only
+  results; exhaustive `ValidationVerdict` matches need a wildcard.
+
+`FieldRecord` and `MovementRecord` stay exhaustive: they are the rows callers
+build for the writers and the identity timeline, and a new column must not
+default silently.
 
 ## Checkpoint admission
 
@@ -66,5 +94,5 @@ and the original RPC remains available as raw data. No new wire type, field
 meaning, schema column or required counter is inferred by this correction.
 
 Ordinary replay equality, checkpoint separation, all nine native counters,
-both FocusProjectiles counters, typed/raw agreement and CLI failure behavior
+the FocusProjectiles counters, typed/raw agreement and CLI failure behavior
 are verified by independent tests.

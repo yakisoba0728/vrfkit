@@ -270,14 +270,13 @@ pub(crate) fn decode_checkpoint<'a>(
     stats: &mut ExportStats,
     mut output: impl FnMut(CheckpointOutput<'_>) -> Result<(), CliError>,
 ) -> Result<DecodedCheckpoint<'a>, CliError> {
-    let cp = parse_checkpoint_chunk(payload)?;
+    let cp = parse_checkpoint_chunk(payload)
+        .map_err(|error| CliError::from(error).in_checkpoint(index, None))?;
     let (plain, unread) =
-        decompress_checkpoint_with_trailing(cp.archive, replay.compressed, replay.encrypted)?;
+        decompress_checkpoint_with_trailing(cp.archive, replay.compressed, replay.encrypted)
+            .map_err(|error| CliError::from(error).in_checkpoint(index, Some(&cp.id)))?;
     let metadata = CheckpointMetadata {
-        identity: CheckpointIdentity {
-            checkpoint_index: index,
-            checkpoint_id: cp.id.into(),
-        },
+        identity: CheckpointIdentity::new(index, cp.id),
         group: cp.group,
         metadata: cp.metadata,
         time1: cp.time1,
@@ -326,7 +325,8 @@ pub(crate) fn decode_checkpoint<'a>(
         rows.blocks += buffers.checkpoint_blocks.len() as u64;
         output(CheckpointOutput::Records(&metadata, buffers))
     };
-    pass.walk(&plain[tables.frame_offset..], stats, &mut emit)?;
+    pass.walk(&plain[tables.frame_offset..], stats, &mut emit)
+        .map_err(|error| error.in_checkpoint(index, Some(&metadata.identity.checkpoint_id)))?;
     pass.finish();
     emit(&mut pass.buffers)?;
     Ok(DecodedCheckpoint {

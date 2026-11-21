@@ -34,10 +34,11 @@ fn tiny_declarations_cannot_grow_default_cache_without_bound() {
 }
 
 fn cache(groups: usize, slots: usize) -> NetGuidCache {
-    NetGuidCache::with_limits(SchemaLimits {
-        max_groups: groups,
-        max_field_slots: slots,
-    })
+    NetGuidCache::with_limits(
+        SchemaLimits::default()
+            .with_max_groups(groups)
+            .with_max_field_slots(slots),
+    )
 }
 
 fn slot_limit(requested: usize, limit: usize) -> SchemaError {

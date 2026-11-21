@@ -20,8 +20,11 @@ pub const MAX_DIAGNOSTIC_EVENTS: usize = 16_384;
 /// another.
 macro_rules! net_stats {
     ($($(#[$doc:meta])* $name:ident,)*) => {
-        /// Cumulative counters for one replay's replication pass.
+        /// Cumulative counters for one replay's replication pass. Outside
+        /// this crate, start from `default()` and assign fields: counters
+        /// are added without that path breaking.
         #[derive(Debug, Clone, Default)]
+        #[non_exhaustive]
         pub struct NetStats {
             $($(#[$doc])* pub $name: u64,)*
             /// Diagnostic events, capped at [`MAX_DIAGNOSTIC_EVENTS`].

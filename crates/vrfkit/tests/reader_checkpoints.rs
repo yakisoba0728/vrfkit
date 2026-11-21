@@ -7,14 +7,12 @@ use std::error::Error;
 
 use common::*;
 use vrfkit::{
-    CheckpointEvent, ReadError, ReadOptions, ReplayEvent, ReplayReader, SchemaError, SchemaLimits,
+    CheckpointEvent, ReadError, ReadOptions, ReplayError, ReplayEvent, ReplayReader, SchemaError,
+    SchemaLimits,
 };
 
 fn options() -> ReadOptions {
-    ReadOptions {
-        checkpoints: true,
-        ..ReadOptions::default()
-    }
+    ReadOptions::default().with_checkpoints(true)
 }
 
 fn preamble() -> Vec<u8> {
@@ -429,6 +427,63 @@ fn prefetch_decompression_failure_matches_the_slice_path() {
     }
 }
 
+/// A frame or container failure inside a snapshot carries the snapshot's
+/// identity; the same frame failure in the main stream stays bare.
+#[test]
+fn snapshot_structural_failures_carry_checkpoint_identity() {
+    let packet = unresolved_packet();
+    let mut frames = frame(1.0, &[], 0, &[&packet]);
+    frames.push(0xff);
+    let mut unparsed = preamble();
+    unparsed.extend(chunk(2, &[1, 0]));
+    let mut main = preamble();
+    main.extend(chunk(1, &replay_data(&frames, frames.len())));
+    let dir = scratch("reader-checkpoints", "snapshot-identity");
+    let path = dir.join("input.vrf");
+    for (data, id, prefix) in [
+        (
+            input_with_checkpoint(&checkpoint_tables(&frames)),
+            Some("checkpoint0"),
+            "checkpoint checkpoint0: frame error:",
+        ),
+        (unparsed, None, "checkpoint #0: container error:"),
+    ] {
+        std::fs::write(&path, &data).unwrap();
+        let memory = ReplayReader
+            .read_with_options(&data, options(), |_| Ok::<(), Infallible>(()))
+            .unwrap_err();
+        let file = ReplayReader
+            .read_path_with_options(&path, options(), |_| Ok::<(), Infallible>(()))
+            .unwrap_err();
+        assert_eq!(memory.to_string(), file.to_string());
+        assert!(memory.to_string().starts_with(prefix), "{memory}");
+        let ReadError::Replay(ReplayError::Checkpoint {
+            checkpoint_index,
+            checkpoint_id,
+            error,
+        }) = memory
+        else {
+            panic!("snapshot failure lost its identity: {memory:?}");
+        };
+        assert_eq!(checkpoint_index, 0);
+        assert_eq!(checkpoint_id.as_deref(), id);
+        assert!(
+            matches!(
+                (id, &*error),
+                (Some(_), ReplayError::Frame(_)) | (None, ReplayError::Container(_))
+            ),
+            "{error:?}"
+        );
+    }
+    let bare = ReplayReader
+        .read_with_options(&main, options(), |_| Ok::<(), Infallible>(()))
+        .unwrap_err();
+    assert!(
+        matches!(bare, ReadError::Replay(ReplayError::Frame(_))),
+        "{bare:?}"
+    );
+}
+
 #[test]
 fn checkpoint_consumer_error_keeps_identity_and_outranks_later_frame_failure() {
     let packet = unresolved_packet();
@@ -506,13 +561,13 @@ fn checkpoint_summary_callback_can_stop_without_a_successful_replay_summary() {
 fn checkpoint_schema_limits_are_independent_and_keep_the_typed_cause() {
     let mut data = input_with_checkpoint(&snapshot("First", &[]));
     data.extend(chunk(2, &checkpoint(1, &snapshot("Second", &[]), 0)));
-    let limits = ReadOptions {
-        schema_limits: SchemaLimits {
-            max_groups: 1,
-            max_field_slots: 2,
-        },
-        checkpoints: true,
-    };
+    let limits = ReadOptions::default()
+        .with_schema_limits(
+            SchemaLimits::default()
+                .with_max_groups(1)
+                .with_max_field_slots(2),
+        )
+        .with_checkpoints(true);
     assert_eq!(
         ReplayReader
             .read_with_options(&data, limits, |_| Ok::<(), Infallible>(()))
@@ -524,13 +579,7 @@ fn checkpoint_schema_limits_are_independent_and_keep_the_typed_cause() {
     let error = ReplayReader
         .read_with_options(
             &data,
-            ReadOptions {
-                schema_limits: SchemaLimits {
-                    max_field_slots: 1,
-                    ..limits.schema_limits
-                },
-                ..limits
-            },
+            limits.with_schema_limits(limits.schema_limits.with_max_field_slots(1)),
             |_| Ok::<(), Infallible>(()),
         )
         .unwrap_err();

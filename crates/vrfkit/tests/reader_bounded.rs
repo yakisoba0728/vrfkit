@@ -350,10 +350,7 @@ fn later_structural_failure_leaves_only_provisional_callbacks() {
 fn checkpoint_callbacks_and_summaries_match_slice_order_for_both_options() {
     let data = checkpoint_input();
     for checkpoints in [false, true] {
-        let options = ReadOptions {
-            checkpoints,
-            ..ReadOptions::default()
-        };
+        let options = ReadOptions::default().with_checkpoints(checkpoints);
         let mut expected = Vec::new();
         let slice = ReplayReader
             .read_with_options(&data, options, |event| {
@@ -445,13 +442,13 @@ fn main_schema_limit_keeps_typed_cause() {
         .read_bounded(
             &mut &data[..],
             data.len(),
-            ReadOptions {
-                schema_limits: SchemaLimits {
-                    max_groups: 1,
-                    max_field_slots: 7,
-                },
-                checkpoints: false,
-            },
+            ReadOptions::default()
+                .with_schema_limits(
+                    SchemaLimits::default()
+                        .with_max_groups(1)
+                        .with_max_field_slots(7),
+                )
+                .with_checkpoints(false),
             |_| Ok::<(), Infallible>(()),
         )
         .unwrap_err();
@@ -482,13 +479,13 @@ fn checkpoint_schema_limit_keeps_typed_cause() {
         .read_bounded(
             &mut &data[..],
             data.len(),
-            ReadOptions {
-                schema_limits: SchemaLimits {
-                    max_groups: 0,
-                    max_field_slots: 0,
-                },
-                checkpoints: true,
-            },
+            ReadOptions::default()
+                .with_schema_limits(
+                    SchemaLimits::default()
+                        .with_max_groups(0)
+                        .with_max_field_slots(0),
+                )
+                .with_checkpoints(true),
             |_| Ok::<(), Infallible>(()),
         )
         .unwrap_err();

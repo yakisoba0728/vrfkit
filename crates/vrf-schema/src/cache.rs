@@ -19,7 +19,10 @@ const GAMEPLAY_TAG_GROUP_PATH: &str = "NetworkGameplayTagNodeIndex";
 /// slot limit covers declared slots, including holes; it is not a cap on total
 /// process memory, strings, map storage or spare vector capacity. See
 /// docs/SCHEMA_LIMITS.md for the measured scope and configuration example.
+/// Build one from [`Self::default`] and the `with_` methods; a new limit is
+/// added without breaking that path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct SchemaLimits {
     /// Maximum simultaneously registered export groups.
     pub max_groups: usize,
@@ -33,6 +36,22 @@ impl Default for SchemaLimits {
             max_groups: 4_096,
             max_field_slots: 1_048_576,
         }
+    }
+}
+
+impl SchemaLimits {
+    /// These limits with at most `max_groups` registered export groups.
+    #[must_use]
+    pub const fn with_max_groups(mut self, max_groups: usize) -> Self {
+        self.max_groups = max_groups;
+        self
+    }
+
+    /// These limits with at most `max_field_slots` declared field slots.
+    #[must_use]
+    pub const fn with_max_field_slots(mut self, max_field_slots: usize) -> Self {
+        self.max_field_slots = max_field_slots;
+        self
     }
 }
 
@@ -93,10 +112,11 @@ impl NetGuidCache {
     ///
     /// ```
     /// use vrf_schema::{NetGuidCache, SchemaLimits};
-    /// let mut cache = NetGuidCache::with_limits(SchemaLimits {
-    ///     max_groups: 8,
-    ///     max_field_slots: 128,
-    /// });
+    /// let mut cache = NetGuidCache::with_limits(
+    ///     SchemaLimits::default()
+    ///         .with_max_groups(8)
+    ///         .with_max_field_slots(128),
+    /// );
     /// cache.declare_export_group("Example".into(), 1, 16)?;
     /// assert_eq!(cache.field_slot_count(), 16);
     /// # Ok::<(), vrf_schema::SchemaError>(())
