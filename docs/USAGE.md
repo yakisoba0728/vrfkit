@@ -1068,7 +1068,9 @@ scoped geometry/enum shapes above, decoded from Unreal's wire layout rather
 than by the Rust readers. Each specification
 names an exact exported group and field, and the decoder requires full payload
 consumption. Its recursive search skips the leftovers of an interrupted export
-and refuses a table without `manifest.json` beside it. This checks structure and observed numeric ranges, not gameplay
+and refuses a table without `manifest.json` beside it; unusable input (a missing
+root, an unreadable or malformed specification) is one `error:` line and exit 2.
+This checks structure and observed numeric ranges, not gameplay
 meaning. Use it before adding overlay types and when comparing their emitted
 values after export (`--compare-typed`). Besides the byte-aligned primitives (`UInt32`
 read unsigned, and `VectorDouble` as exactly 192 bits of three finite

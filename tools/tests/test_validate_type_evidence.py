@@ -344,8 +344,8 @@ class SpecificationFileTests(TempDirTestCase):
             self.assertEqual(main([str(root), str(spec), "--output", str(report)]), 0)
         passed = json.loads(report.read_text(encoding="utf-8"))
         self.assertEqual((passed["status"], passed["failure_count"]), ("pass", 0))
-        with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, "does not exist"):
-            main([str(root / "absent"), str(spec), "--output", str(report)])
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(main([str(root / "absent"), str(spec), "--output", str(report)]), 2)
         failed = json.loads(report.read_text(encoding="utf-8"))
         self.assertEqual(failed["status"], "error")
         self.assertIn("does not exist", failed["error"])
@@ -412,6 +412,38 @@ class SpecificationFileTests(TempDirTestCase):
                     main([str(root), str(spec), "--output", str(output)])
                 self.assertEqual(exc.exception.code, 2)
         self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+    def test_unusable_input_is_one_error_line_and_exit_2(self):
+        """A missing export root, an unreadable or malformed specification:
+        one `error:` line, exit 2, nothing on stdout, and `--output` left at
+        `error`, never a traceback."""
+        root = self.tmp()
+        write_int_export(root / "a")
+        spec = root / "spec.json"
+        spec.write_text(json.dumps([{"group": "g", "field": "f", "type": "Int32"}]), encoding="utf-8")
+        malformed, no_entries, wrong_shape = root / "malformed.json", root / "object.json", root / "shape.json"
+        malformed.write_text("{not json", encoding="utf-8")
+        no_entries.write_text('{"version": 1}', encoding="utf-8")
+        wrong_shape.write_text('[1, 2]', encoding="utf-8")
+        cases = {
+            "missing root": ([str(root / "absent"), str(spec)], "export root does not exist"),
+            "missing spec": ([str(root), str(root / "absent.json")], "cannot read evidence specification"),
+            "malformed spec": ([str(root), str(malformed)], "is not valid JSON"),
+            "no entries": ([str(root), str(no_entries)], '"entries" list'),
+            "wrong shape": ([str(root), str(wrong_shape)], "invalid evidence specification"),
+        }
+        for name, (argv, message) in cases.items():
+            report = root / f"report-{name.replace(' ', '-')}.json"
+            with self.subTest(name), contextlib.redirect_stdout(io.StringIO()) as out, \
+                    contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(main([*argv, "--output", str(report)]), 2)
+            lines = err.getvalue().splitlines()
+            self.assertEqual(len(lines), 1, err.getvalue())
+            self.assertTrue(lines[0].startswith("error: ") and message in lines[0], lines[0])
+            self.assertEqual(out.getvalue(), "")
+            written = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(written["status"], "error")
+            self.assertIn(message, written["error"])
 
     def test_empty_specification_and_missing_root_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "empty"):
