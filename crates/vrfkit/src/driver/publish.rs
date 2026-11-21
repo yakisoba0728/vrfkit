@@ -137,7 +137,16 @@ impl OutputTransaction {
         fs::create_dir_all(parent).map_err(|error| io_at(parent, error))?;
         // Before this run's staging exists, so a run never reports itself.
         report_leftovers(destination, parent, file_name, warnings);
-        let staging = create_unique_directory(parent, file_name, STAGING)?;
+        // The failing path is a generated sibling; name what the user passed too.
+        let staging = create_unique_directory(parent, file_name, STAGING).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "export destination {}: could not create its staging directory: {error}",
+                    destination.display()
+                ),
+            )
+        })?;
         Ok(Self {
             destination: destination.to_path_buf(),
             staging,

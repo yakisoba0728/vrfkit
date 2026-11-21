@@ -102,7 +102,8 @@ fn output_errors_name_the_path() {
         let run = vrfkit(&["export", path_arg(&input), "--out", path_arg(&out)]);
         assert_eq!(run.code, Some(1), "{}", run.stderr);
         assert!(
-            run.stderr.contains(&blocker.display().to_string()),
+            run.stderr
+                .contains(&format!("I/O error: {}", blocker.display())),
             "{}",
             run.stderr
         );
