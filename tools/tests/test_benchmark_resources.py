@@ -38,9 +38,9 @@ def valid_manifest(checkpoints=False):
             "players": [{"subject": "private-player-marker"}], "replay_build": "synthetic"}
 
 
-def valid_log(checkpoints=False):
+def valid_log(checkpoints=False, decoded=1):
     counters = dict.fromkeys(sc.WHERE, 0)
-    counters["overlay_decoded_ok"] = counters["overlay_rows_offered"] = 1
+    counters["overlay_decoded_ok"] = counters["overlay_rows_offered"] = decoded
     return "\n".join(sc.render(line, counters) for line in sc.SPEC
                      if checkpoints or not line.keys[0].startswith("cp_"))
 
@@ -141,6 +141,23 @@ class EquivalenceTests(TempDirTestCase):
         self.assertFalse(bench.same_output(original, bench.fingerprint(directory, log, False, 6)))
         (directory / "fields.parquet").write_bytes(b"PAR1MUTATION!PAR1")
         self.assertNotEqual(original["tables"]["fields.parquet"], bench.fingerprint(directory, log, False, 6)["tables"]["fields.parquet"])
+
+    def test_runs_differing_only_in_summary_counters_are_not_equivalent(self):
+        directory, log = self.make_export()
+        original = bench.fingerprint(directory, log, False, 6)
+        log.write_text(valid_log(decoded=2), encoding="utf-8")
+        changed = bench.fingerprint(directory, log, False, 6)
+        self.assertEqual((changed["tables"], changed["manifest_sha256"]),
+                         (original["tables"], original["manifest_sha256"]))
+        self.assertNotEqual(changed["counters"], original["counters"])
+        self.assertFalse(bench.same_output(original, changed))
+
+    def test_manifest_from_a_different_input_size_is_rejected(self):
+        directory, log = self.make_export()
+        bench.fingerprint(directory, log, False, 6)
+        for size in (5, 7):
+            with self.subTest(size=size), self.assertRaisesRegex(ValueError, "input size"):
+                bench.fingerprint(directory, log, False, size)
 
     def test_missing_tables_and_invalid_envelopes_are_rejected(self):
         for action in ("missing", "magic", "extra"):
