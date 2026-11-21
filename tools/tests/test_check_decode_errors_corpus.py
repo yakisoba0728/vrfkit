@@ -103,6 +103,22 @@ class ReadCountersTests(unittest.TestCase):
         self.assertIsNone(counters)
         self.assertIn("exit 1", err)
 
+    def test_unreconciled_movement_component_accounting_is_unreadable_in_each_pass(self):
+        """attempted = complete + errors: every count present and every
+        failure counter zero, but the components do not add up."""
+        for old, new, problem in (
+                ("Movement components: 3 attempted", "Movement components: 4 attempted",
+                 "native movement counters: attempted != complete + errors"),
+                ("Checkpoint movement components: 0 attempted",
+                 "Checkpoint movement components: 1 attempted",
+                 "cp_native movement counters: attempted != complete + errors")):
+            with self.subTest(line=old):
+                text = CLEAN_WITH_CHECKPOINTS.replace(old, new, 1)
+                self.assertNotEqual(text, CLEAN_WITH_CHECKPOINTS)
+                counters, err = guard.read_counters(text, 0, require_checkpoints=True)
+                self.assertIsNone(counters)
+                self.assertIn(problem, err)
+
     def test_a_missing_line_makes_the_replay_unreadable_and_is_named(self):
         text = "\n".join(l for l in LIVE_EXPORT.splitlines() if "No field name" not in l)
         counters, err = guard.read_counters(text, 0)
