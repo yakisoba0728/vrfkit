@@ -13,7 +13,7 @@ USAGE:
     vrfkit diag     <file.vrf> [--json <path>] [--include-payloads]
     vrfkit export   <file.vrf> --out <dir> [--checkpoints]
     vrfkit --help | -h       Print this text (also `vrfkit <subcommand> --help`)
-    vrfkit --version | -V    Print the vrfkit version
+    vrfkit --version | -V    Print the vrfkit version (also after a subcommand)
 
 SUBCOMMANDS:
     inspect   Print replay info, header, branch, and chunk summary
@@ -53,9 +53,18 @@ pub fn run(args: &[String]) -> Result<u8, CliError> {
     }
 
     let subcommand = args[1].as_str();
-    if SUBCOMMANDS.contains(&subcommand) && asks_for_help(&args[2..]) {
-        println!("{USAGE}");
-        return Ok(0);
+    if SUBCOMMANDS.contains(&subcommand) {
+        match info_request(&args[2..]) {
+            Some(InfoRequest::Help) => {
+                println!("{USAGE}");
+                return Ok(0);
+            }
+            Some(InfoRequest::Version) => {
+                print_version();
+                return Ok(0);
+            }
+            None => {}
+        }
     }
 
     match subcommand {
@@ -81,7 +90,7 @@ pub fn run(args: &[String]) -> Result<u8, CliError> {
             Ok(0)
         }
         "--version" | "-V" => {
-            println!("vrfkit {}", env!("CARGO_PKG_VERSION"));
+            print_version();
             Ok(0)
         }
         other => Err(CliError::Usage(format!(
@@ -95,19 +104,34 @@ const SUBCOMMANDS: [&str; 4] = ["inspect", "validate", "diag", "export"];
 /// Every option that takes the next argument as its value, whatever it looks like.
 const VALUED: [&str; 2] = ["--json", "--out"];
 
-/// Whether `--help` or `-h` stands where the file or a flag may stand. A
-/// valued option's value is skipped, so `--json -h` still names a file; a
-/// replay literally named `-h` is reached as `./-h`.
-fn asks_for_help(rest: &[String]) -> bool {
+fn print_version() {
+    println!("vrfkit {}", env!("CARGO_PKG_VERSION"));
+}
+
+/// What a help or version flag after a subcommand asks for.
+#[derive(Debug, PartialEq, Eq)]
+enum InfoRequest {
+    Help,
+    Version,
+}
+
+/// The first `--help`/`-h` or `--version`/`-V` standing where the file or a
+/// flag may stand. A valued option's value is skipped, so `--json -h` and
+/// `--out -V` still name a path; a replay literally named `-h` or `-V` is
+/// reached as `./-h` or `./-V`.
+fn info_request(rest: &[String]) -> Option<InfoRequest> {
     let mut rest = rest.iter();
     while let Some(arg) = rest.next() {
-        if VALUED.contains(&arg.as_str()) {
-            rest.next();
-        } else if arg == "--help" || arg == "-h" {
-            return true;
+        match arg.as_str() {
+            valued if VALUED.contains(&valued) => {
+                rest.next();
+            }
+            "--help" | "-h" => return Some(InfoRequest::Help),
+            "--version" | "-V" => return Some(InfoRequest::Version),
+            _ => {}
         }
     }
-    false
+    None
 }
 
 /// The input path, whether each flag was given, and each valued option's value.
@@ -205,6 +229,29 @@ mod tests {
                 Err(CliError::Io(_)) if !refused => {}
                 other => panic!("{args:?}: {other:?}"),
             }
+        }
+    }
+
+    /// Help and version flags are found wherever the file or a flag may
+    /// stand, the first one wins, and a valued option's value never counts.
+    #[test]
+    fn info_flags_are_found_outside_valued_option_values() {
+        use InfoRequest::{Help, Version};
+        let cases: [(&[&str], Option<InfoRequest>); 10] = [
+            (&["-V"], Some(Version)),
+            (&["m.vrf", "--version"], Some(Version)),
+            (&["m.vrf", "--checkpoints", "-V"], Some(Version)),
+            (&["m.vrf", "-h", "-V"], Some(Help)),
+            (&["m.vrf", "-V", "--help"], Some(Version)),
+            (&["m.vrf", "--out", "-V"], None),
+            (&["m.vrf", "--json", "--version"], None),
+            (&["m.vrf", "--out", "-V", "-V"], Some(Version)),
+            (&["./-V"], None),
+            (&["m.vrf", "-v"], None),
+        ];
+        for (rest, expected) in cases {
+            let rest: Vec<String> = rest.iter().map(|a| a.to_string()).collect();
+            assert_eq!(info_request(&rest), expected, "{rest:?}");
         }
     }
 }

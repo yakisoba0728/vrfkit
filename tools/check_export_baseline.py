@@ -47,13 +47,6 @@ DEFAULT_EXE = REPO / "target" / "release" / "vrfkit.exe"
 #: The summary counters the baselines pin, main pass and `--checkpoints` pass.
 COUNTERS = sc.keys("P", checkpoint=False)
 CHECKPOINT_COUNTERS = sc.keys("P", checkpoint=True)
-# Archived private measurements retain their exact key set and values. These
-# sets are for archive schema validation only, never current comparisons.
-LEGACY_COUNTERS = tuple(key for key in COUNTERS if key not in (*sc.MOVEMENT_COUNTERS, *sc.FOCUS_PROJECTILES_COUNTERS)) \
-    + sc.LEGACY_PINNED_MOVEMENT_COUNTERS
-LEGACY_CHECKPOINT_COUNTERS = tuple(key for key in CHECKPOINT_COUNTERS
-                                  if key.removeprefix("cp_") not in (*sc.MOVEMENT_COUNTERS, *sc.FOCUS_PROJECTILES_COUNTERS)) \
-    + tuple("cp_" + key for key in sc.LEGACY_PINNED_MOVEMENT_COUNTERS)
 #: The frame-walk tallies, after the manifest's `frame_` / `checkpoint_frame_`.
 FRAME_SKIP_KEYS = ("external_data_blobs", "external_data_bytes", "game_specific_bytes",
                    "non_finite_times")
@@ -452,7 +445,7 @@ def measure(exe: Path, replay: Path, out_dir: Path, checkpoints: bool = False) -
 
 def diff(baseline: dict, current: dict) -> list[str]:
     """Every way the pinned numbers and the current ones disagree."""
-    if sc.obsolete_movement_contract(baseline["counters"]):
+    if sc.obsolete_baseline(baseline["counters"]):
         return [sc.OBSOLETE_MOVEMENT_CONTRACT]
     out = []
     for key in sorted(set(baseline["counters"]) | set(current["counters"])):
@@ -496,7 +489,7 @@ def main() -> int:
     if sc.no_exe(args.exe):
         return 2
     stored = sc.load_baseline(args.baseline)
-    obsolete = sc.obsolete_movement_contract(stored.get("counters", {}))
+    obsolete = sc.obsolete_baseline(stored.get("counters", {}))
     if not args.update and obsolete:
         print(sc.OBSOLETE_MOVEMENT_CONTRACT, file=sys.stderr)
         return 1

@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.7.0
+
+0.7.0 is a minor bump for one source-breaking Rust API change. `vrfkit export`
+writes the same Parquet tables, manifest and summary counters as 0.6.0.
+
+### Breaking changes
+
+Rust API (source-breaking for downstream exhaustive matches; CLI arguments
+and output schemas are unchanged):
+
+- `vrf_bitio::BitError` and `vrf_net::stats::SkipReason` are
+  `#[non_exhaustive]`; a `match` outside their crate needs a wildcard arm.
+  Inside the workspace that arm is loud, not silent: a `BitError` with no
+  case in `DecodeErrorKind::from_bit_error` is counted as the new
+  `DecodeErrorKind::Unclassified`, and a `SkipReason` the `validate` skip
+  breakdown does not know is tallied on a new `Unclassified:` row, printed
+  with zeros like the others. The decode error report's kind column widens
+  to fit `Unclassified`.
+
+### Fixed
+
+- `-V` and `--version` are also recognised after a subcommand, wherever
+  `-h`/`--help` already were (`vrfkit diag replay.vrf -V`). A valued
+  option's value is still a value: `--out -V` names a directory, and a
+  replay literally named `-V` is reached as `./-V`.
+- The corrupt-archive tests assert the property that matters, a clean
+  `ContainerError::OodleDecompression` and a CLI exit of 1 without a panic
+  report, rather than the `decoder panicked: ` wording, so an oozextract
+  release that returns `Err` instead of panicking on the same stream does not
+  fail them. The panic boundary is tested on its own against a closure that
+  always panics.
+- The committed 13.01 export and checkpoint baselines
+  (`tools/baselines/*_02d4d478.json`) were remeasured with the 0.6.0 decoder,
+  so `check_export_baseline.py` compares current output again. Every Parquet
+  file and every carried-over counter is unchanged; the tail/trailer keys are
+  replaced by the native component counters, and the FocusProjectiles counters
+  are pinned as measured zeros. The schema validator no longer accepts the
+  archived key set.
+- `check_export_baseline.py` and `check_baseline_schemas.py` also refuse a
+  baseline whose checkpoint counters alone carry obsolete tail/trailer keys.
+
 ## 0.6.0
 
 0.6.0 changes what `vrfkit export` writes to the manifest and summary, so it

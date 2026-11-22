@@ -29,8 +29,8 @@ and through [`fbf24b6`](https://github.com/michel-giehl/ValorantReplayParser/com
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Test suites:** **901 Rust tests (Windows)**,
-**900 Rust tests (non-Windows)** and **1201 Python tests**.
+**Test suites:** **904 Rust tests (Windows)**,
+**903 Rust tests (non-Windows)** and **1201 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -50,17 +50,19 @@ checks and remaining limits.
 
 ## Quick start
 
-These examples describe release **0.6.0**. Check out the `v0.6.0` tag; an
+These examples describe release **0.7.0**. Check out the `v0.7.0` tag; an
 older release package may expose different APIs, and `main` moves on after
 the release. Record the full source revision when reproducing a result or
 embedding the library.
 
-0.6.0 changes manifest counters, summary lines and the Rust API; see the
-[migration guide](docs/PHASE_C_MIGRATION.md) before upgrading a consumer.
+0.6.0 changed manifest counters, summary lines and the Rust API; see the
+[migration guide](docs/PHASE_C_MIGRATION.md) before upgrading a consumer from
+0.5.x. 0.7.0 makes two more Rust enums `#[non_exhaustive]`; see
+[`CHANGELOG.md`](CHANGELOG.md).
 The version number does not claim a measured performance improvement.
 
 ```bash
-git clone --branch v0.6.0 --single-branch https://github.com/yakisoba0728/vrfkit.git
+git clone --branch v0.7.0 --single-branch https://github.com/yakisoba0728/vrfkit.git
 cd vrfkit
 git rev-parse HEAD
 
@@ -249,7 +251,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Workspace unsafe-code policy** — `#![forbid(unsafe_code)]` in every crate.
   Dependencies have separate policies; default Parquet compression includes
   native Zstd. The core-only Reader excludes Arrow, Parquet and Zstd.
-- **901 Rust tests (Windows)** / **900 Rust tests (non-Windows)** plus
+- **904 Rust tests (Windows)** / **903 Rust tests (non-Windows)** plus
   a layered validation suite (framing / bytes / decode
   errors / semantics).
 
@@ -295,17 +297,17 @@ row order; it does not infer gameplay events or retain Parquet physical encoding
 
 ## Status
 
-The current release is **0.6.0**. Controlled measurements during its
+The current release is **0.7.0**. Controlled measurements during 0.6.0
 development found performance superiority inconclusive, and the single
-optimization experiment was withdrawn; 0.6.0 carries correctness and resource
-fixes, and no ordinary-replay speedup is implied.
+optimization experiment was withdrawn; 0.6.0 and 0.7.0 carry correctness and
+resource fixes, and no ordinary-replay speedup is implied.
 The [changelog](CHANGELOG.md) and
 [migration guide](docs/PHASE_C_MIGRATION.md) describe the API and output
 changes.
 
 Fresh local `cargo +1.86.0 test --workspace --locked` passes all
-**900 Rust tests (non-Windows)**, with zero failures or ignored tests. The
-Windows suite contains **901 Rust tests (Windows)**. The full Python suite has
+**903 Rust tests (non-Windows)**, with zero failures or ignored tests. The
+Windows suite contains **904 Rust tests (Windows)**. The full Python suite has
 **1201 passing** tests in the fresh local run. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for

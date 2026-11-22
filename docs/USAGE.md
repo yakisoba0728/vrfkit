@@ -24,8 +24,8 @@ When upgrading an existing consumer to 0.6.0, review the
 
 ## 1. Build
 
-The API and examples documented here are those of release 0.6.0 (tag
-`v0.6.0`). Use the [source checkout instructions](ADOPTION.md#select-and-record-the-source)
+The API and examples documented here are those of release 0.7.0 (tag
+`v0.7.0`). Use the [source checkout instructions](ADOPTION.md#select-and-record-the-source)
 and record `git rev-parse HEAD`; a later checkout of `main` can have a
 different interface. Source API compatibility is not promised across revisions,
 and the crates are not yet published to crates.io.
@@ -47,7 +47,7 @@ vrfkit validate <file.vrf> [--diagnostics]
 vrfkit diag     <file.vrf> [--json <path>] [--include-payloads]
 vrfkit export   <file.vrf> --out <dir> [--checkpoints]
 vrfkit --help | -h       # also `vrfkit <subcommand> --help`
-vrfkit --version | -V
+vrfkit --version | -V    # also `vrfkit <subcommand> --version`
 ```
 
 `--help` and `--version` print to stdout and exit 0. An input or output that
@@ -277,8 +277,8 @@ Redirect `2>` to capture an export summary.
 (The lines appear in this order with others between them; `Decode errors`
 belongs to the overlay block printed after the counters. The values are
 `02d4d478`'s, a 13.01 replay, from `tools/baselines/export_02d4d478.json`;
-that archived baseline predates the FocusProjectiles counters, whose zeros
-here follow from the route being admitted on 12.05 only.)
+its FocusProjectiles counts are measured zeros, since the route is admitted
+on 12.05 only.)
 
 `Sink tally` counts what the sink wrote (its `fields` equals the
 `fields.parquet` rows); `Route children` counts each measured array route's
@@ -302,8 +302,9 @@ envelopes <= attempted, component errors no more than `Movement errors`,
 plausible unused-bit, payload-byte and header counts -- and rejects the
 obsolete tail/trailer counter names. The decode-error corpus guard, the
 export-baseline checker and the common build audit fail on any violation. The
-baseline guard validates and prints these fresh counts against the manifest
-without adding guessed measurements to older baseline snapshots.
+baseline guard checks these counts against the manifest and pins them; a
+baseline that still carries the tail/trailer names is refused, never
+converted.
 
 `Struct blobs` is the output of the dedicated decoders for `RoundResults` /
 `TeamEconomy` / `RoundInfos`. These decoders are **additive**, so failing
@@ -1215,7 +1216,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-901 Rust tests (Windows), 900 Rust tests (non-Windows), and 1201 Python tests.
+904 Rust tests (Windows), 903 Rust tests (non-Windows), and 1201 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
@@ -1257,9 +1258,9 @@ These read their inputs from `VRFKIT_CORPUS_DIR` and
 **With the variable unset, input-dependent checks can print `SKIP` and exit 0**,
 so read the output rather than the exit code. An exception is
 `check_export_baseline.py` with an obsolete movement-counter baseline: it
-fails before checking for the replay. The committed private export/checkpoint
-baselines retain their historical values and require genuine remeasurement
-under the [native component contract](NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration).
+fails before checking for the replay. The committed export/checkpoint
+baselines pin the [native component contract](NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration)'s
+counters, measured with the 0.6.0 decoder.
 
 `compare_combat_report.py` is the exception: it exits 2 when either input is
 missing. Its C# side is a CliReader export of the same replay, kept

@@ -7,40 +7,41 @@ import check_baseline_schemas as schemas
 
 
 class BaselineSchemaTests(TempDirTestCase):
-    def test_focus_counts_are_required_currently_and_never_invented_in_archives(self):
+    def test_focus_and_native_movement_counts_are_required_in_committed_baselines(self):
         names = ("route_children_focus_projectiles", "focus_projectiles_empty_trailers",
-                 "focus_projectiles_declaration_refusals")
-        archived_path = schemas.BASELINES / "export_02d4d478.json"
-        archived = json.loads(archived_path.read_text(encoding="utf-8"))
-        self.assertEqual(schemas.validate_export_baseline(archived_path, archived), [])
-        self.assertTrue(all(name not in archived["counters"] for name in names))
-        current = {"replay": "synthetic.vrf",
-                   "counters": dict.fromkeys(schemas.MAIN_COUNTERS, 0),
-                   "parquet": {name: {"rows": 0, "bytes": 0, "sha256": "a" * 64}
-                               for name in schemas.MAIN_PARQUET}}
-        path = Path("export_synthetic.json")
-        self.assertEqual(schemas.validate_export_baseline(path, current), [])
-        for name in names:
-            missing = json.loads(json.dumps(current))
-            del missing["counters"][name]
-            self.assertIn(name, " ".join(schemas.validate_export_baseline(path, missing)))
-            invented = json.loads(json.dumps(archived))
-            invented["counters"][name] = 0
-            self.assertTrue(schemas.validate_export_baseline(archived_path, invented))
+                 "focus_projectiles_declaration_refusals", *schemas.sc.MOVEMENT_COUNTERS)
+        for baseline in ("export_02d4d478.json", "checkpoint_02d4d478.json"):
+            path = schemas.BASELINES / baseline
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(schemas.validate_export_baseline(path, data), [])
+            prefixes = ("", "cp_") if baseline.startswith("checkpoint_") else ("",)
+            for key in (prefix + name for prefix in prefixes for name in names):
+                with self.subTest(baseline=baseline, key=key):
+                    missing = json.loads(json.dumps(data))
+                    del missing["counters"][key]
+                    self.assertIn(key, " ".join(schemas.validate_export_baseline(path, missing)))
 
     def test_committed_baselines_are_schema_valid_and_cross_consistent(self):
         self.assertEqual(schemas.validate_repository(), [])
 
-    def test_archived_movement_contract_cannot_mix_current_or_missing_keys(self):
+    def test_obsolete_movement_contract_is_named_and_refused(self):
         for name in ("export_02d4d478.json", "checkpoint_02d4d478.json"):
             path = schemas.BASELINES / name
-            data = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(schemas.validate_export_baseline(path, data), [])
-            data["counters"]["movement_component_streams"] = 0
-            self.assertTrue(schemas.validate_export_baseline(path, data))
-            del data["counters"]["movement_component_streams"]
-            del data["counters"]["movement_envelope_trailer_bits"]
-            self.assertTrue(schemas.validate_export_baseline(path, data))
+            prefixes = ("", "cp_") if name.startswith("checkpoint_") else ("",)
+            for prefix in prefixes:
+                with self.subTest(name=name, prefix=prefix):
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    for key in schemas.sc.MOVEMENT_COUNTERS:
+                        del data["counters"][prefix + key]
+                    data["counters"].update(
+                        dict.fromkeys((prefix + key for key in schemas.sc.LEGACY_MOVEMENT_COUNTERS), 0))
+                    problems = " ".join(schemas.validate_export_baseline(path, data))
+                    self.assertIn("obsolete movement counter contract", problems)
+                    # A single legacy key beside the current set is refused too.
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    data["counters"][prefix + "movement_envelope_trailers"] = 0
+                    problems = " ".join(schemas.validate_export_baseline(path, data))
+                    self.assertIn("obsolete movement counter contract", problems)
 
     def test_an_export_without_a_measured_sha256_fails(self):
         for digest in (None, "not-measured"):

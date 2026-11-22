@@ -320,18 +320,15 @@ fn verdict_line(verdict: Verdict) -> &'static str {
 }
 
 /// Print a breakdown of where skipped bits come from, zeros included, so a
-/// category that stops being recorded stays visible.
+/// category that stops being recorded stays visible. `SkipReason` is
+/// `#[non_exhaustive]`: a reason this match has no case for is tallied as
+/// `Unclassified`, never dropped from the breakdown.
 fn print_skip_breakdown(events: &[DiagnosticEvent]) {
-    let mut tally = [(0u32, 0u64); 4];
+    let mut tally = [(0u32, 0u64); 5];
     for ev in events {
-        let reason = match ev.reason {
-            SkipReason::ContentBitsOverrun { .. } => 0,
-            SkipReason::HeaderReadError => 1,
-            SkipReason::ContentBitsReadError => 2,
-            SkipReason::ParseFailure => 3,
-        };
-        tally[reason].0 += 1;
-        tally[reason].1 += ev.bits_skipped;
+        let row = &mut tally[skip_reason_row(&ev.reason)];
+        row.0 += 1;
+        row.1 += ev.bits_skipped;
     }
     println!("  Skip breakdown:");
     let labels = [
@@ -339,9 +336,22 @@ fn print_skip_breakdown(events: &[DiagnosticEvent]) {
         "HeaderReadError:",
         "ContentBitsReadError:",
         "ParseFailure:",
+        "Unclassified:",
     ];
     for (label, (count, bits)) in labels.into_iter().zip(tally) {
         println!("    {label:<22}{count} events, {bits} bits");
+    }
+}
+
+/// The skip-breakdown row of `reason`; the last row takes any reason added to
+/// `SkipReason` after this match.
+fn skip_reason_row(reason: &SkipReason) -> usize {
+    match reason {
+        SkipReason::ContentBitsOverrun { .. } => 0,
+        SkipReason::HeaderReadError => 1,
+        SkipReason::ContentBitsReadError => 2,
+        SkipReason::ParseFailure => 3,
+        _ => 4,
     }
 }
 
@@ -405,9 +415,28 @@ fn print_diagnostic_event(index: usize, ev: &DiagnosticEvent) {
 mod tests {
     use super::{
         Verdict, checkpoint_scope_note, partial_reassembly_scope_note, pass_rate_line,
-        verdict_from_stats,
+        skip_reason_row, verdict_from_stats,
     };
-    use vrf_net::stats::NetStats;
+    use vrf_net::stats::{NetStats, SkipReason};
+
+    /// Each known reason has its own breakdown row; the `Unclassified` row
+    /// (the last) is reserved for reasons this match does not know.
+    #[test]
+    fn every_known_skip_reason_has_its_own_row() {
+        let rows: Vec<usize> = [
+            SkipReason::ContentBitsOverrun {
+                declared_content_bits: 9,
+                available_bits: 8,
+            },
+            SkipReason::HeaderReadError,
+            SkipReason::ContentBitsReadError,
+            SkipReason::ParseFailure,
+        ]
+        .iter()
+        .map(skip_reason_row)
+        .collect();
+        assert_eq!(rows, [0, 1, 2, 3]);
+    }
 
     #[test]
     fn skipped_checkpoint_chunks_are_named_rather_than_implied() {

@@ -37,6 +37,7 @@ const LAST_INT_PACKED_MAX: u32 = u32::MAX >> LAST_INT_PACKED_SHIFT;
 /// Why a bit read failed: the stream is not what the caller assumed, never
 /// "the value was empty". Positions are bit offsets within the reader's window.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BitError {
     /// Fewer bits remain than the read requires; `length` is the window's.
     Eof {

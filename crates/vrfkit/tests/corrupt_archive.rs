@@ -1,6 +1,11 @@
 //! An archive the Oodle codec panics on is a `ReadError::Replay`, never a
 //! panic: in memory, from a path (prefetch thread), bounded, inside a
 //! checkpoint, and through the CLI subcommands.
+//!
+//! Only the error variant is asserted, not the `decoder panicked: ` wording:
+//! a codec release that returns `Err` for the same stream must still pass. The
+//! panic boundary itself is pinned in vrf-container against a closure that is
+//! known to panic.
 
 mod common;
 
@@ -11,7 +16,9 @@ use common::*;
 use vrf_container::ContainerError;
 use vrfkit::{ReadError, ReadOptions, ReplayError, ReplayReader};
 
-const CAUGHT: &str = "decoder panicked: ";
+/// The `Display` prefix of `ContainerError::OodleDecompression`, whichever way
+/// the codec refused the stream.
+const DECOMPRESSION_ERROR: &str = "Oodle decompression error: ";
 
 fn preamble() -> Vec<u8> {
     let mut data = replay_info(&Info {
@@ -90,7 +97,10 @@ fn every_entry_point(
 type Entry<'a> = Box<dyn Fn() -> Result<(), ReadError<Infallible>> + 'a>;
 
 fn caught(error: &ReplayError) -> bool {
-    matches!(error, ReplayError::Container(ContainerError::OodleDecompression(m)) if m.starts_with(CAUGHT))
+    matches!(
+        error,
+        ReplayError::Container(ContainerError::OodleDecompression(_))
+    )
 }
 
 #[test]
@@ -124,8 +134,9 @@ fn a_codec_panic_in_a_checkpoint_carries_the_checkpoint() {
     }
 }
 
-/// The binary reports the caught panic as an error line with exit 1, and its
-/// panic hook keeps the codec's own `panicked at` report off stderr.
+/// The binary reports the corrupt archive as an error line with exit 1 (not
+/// the 101 of an escaped panic), and its panic hook keeps the codec's own
+/// `panicked at` report off stderr if the codec panicked.
 #[test]
 fn the_cli_reports_a_codec_panic_as_an_error() {
     let dir = scratch("corrupt-archive", "cli");
@@ -145,7 +156,13 @@ fn the_cli_reports_a_codec_panic_as_an_error() {
     for args in runs {
         let run = vrfkit(&args);
         assert_eq!(run.code, Some(1), "{args:?}: {}", run.stderr);
-        assert!(run.stderr.contains(CAUGHT), "{args:?}: {}", run.stderr);
+        assert!(
+            run.stderr
+                .lines()
+                .any(|line| line.starts_with("error: ") && line.contains(DECOMPRESSION_ERROR)),
+            "{args:?}: {}",
+            run.stderr
+        );
         assert!(
             !run.stderr.contains("panicked at"),
             "{args:?}: {}",

@@ -28,13 +28,14 @@ ROUTES = tuple(f"route_children_{name}" for name in (
     "server_active_effects", "requested_ignore_actors", "active_blinds", "projectile_path",
     "focus_projectiles"))
 
-# Added with the exact 12.05 FocusProjectiles route. Archived private
-# baselines predate these counts; their absence must not become measured zero.
+# Added with the exact 12.05 FocusProjectiles route. A summary or manifest
+# without them is from an older executable; their absence is never a zero.
 FOCUS_PROJECTILES_COUNTERS = ("route_children_focus_projectiles", "focus_projectiles_empty_trailers",
                               "focus_projectiles_declaration_refusals")
 
-# Current native ComponentDataStream counters. Legacy names identify archived
-# measurements only: they must never be interpreted as native envelope data.
+# Current native ComponentDataStream counters. A baseline, summary or manifest
+# carrying any legacy tail/trailer name is refused; its numbers are never
+# interpreted as native envelope data.
 MOVEMENT_COUNTERS = tuple("movement_component_" + name for name in (
     "streams", "complete", "errors", "empty", "envelopes", "payload_bytes",
     "unused_bits", "input_headers", "discrepancy_headers"))
@@ -42,14 +43,11 @@ LEGACY_MOVEMENT_COUNTERS = tuple("movement_" + name for name in (
     "sized_section_tails", "sized_section_tail_bits", "open_section_tails",
     "open_section_tail_bits", "sized_section_trailers", "sized_section_trailer_bits",
     "envelope_trailers", "envelope_trailer_bits"))
-LEGACY_PINNED_MOVEMENT_COUNTERS = tuple(key for key in LEGACY_MOVEMENT_COUNTERS
-                                      if "sized_section_trailer" not in key)
 OBSOLETE_MOVEMENT_CONTRACT = (
     "obsolete movement counter contract: native component envelopes require genuine "
     "remeasurement; archived tail/trailer counts cannot be converted")
 
-#: Who reads a line. P: check_export_baseline.py pins every key (the committed
-#: historical `*_02d4d478.json` retain their older contract). G:
+#: Who reads a line. P: check_export_baseline.py pins every key. G:
 #: check_decode_errors_corpus.py gates on it. `cp_` keys are the
 #: `=== Checkpoints ===` block, printed only
 #: under `--checkpoints`, so a default run never reads them.
@@ -229,6 +227,12 @@ def keys(reader: str, checkpoint: bool) -> tuple[str, ...]:
 
 def obsolete_movement_contract(counters: dict, prefix: str = "") -> bool:
     return any(prefix + key in counters for key in LEGACY_MOVEMENT_COUNTERS)
+
+
+def obsolete_baseline(counters: dict) -> bool:
+    """A pinned baseline from the obsolete contract, in its main or its
+    `cp_` checkpoint pass: either alone makes the whole file obsolete."""
+    return any(obsolete_movement_contract(counters, prefix) for prefix in ("", "cp_"))
 
 
 def movement_contract_errors(counters: dict, prefix: str = "", *,

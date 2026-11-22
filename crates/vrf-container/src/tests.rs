@@ -438,27 +438,69 @@ fn a_compressed_archive_with_the_decoder_reaches_the_codec() {
     ));
 }
 
-/// A stream the codec panics on is an error, not a panic, on both archive
-/// paths; the caught panic's message is kept.
+/// An archive the codec currently panics on is a clean decompression error on
+/// both archive paths. Whether the codec panics or returns `Err` on it is the
+/// codec's choice, so only the variant is asserted; the boundary itself is
+/// pinned by `the_codec_panic_boundary_turns_a_panic_into_an_error`.
 #[cfg(feature = "oodle")]
 #[test]
-fn a_codec_panic_is_reported_as_a_decompression_error() {
+fn a_corrupt_archive_is_reported_as_a_decompression_error() {
     let archive = archive_that_panics_the_codec();
     let payload = replay_data(archive.len() as i32, 64, &archive);
     let result = std::panic::catch_unwind(|| decompress_replay_data(&payload, true, false));
-    let Ok(Err(ContainerError::OodleDecompression(message))) = result else {
-        panic!("expected a decompression error, got {result:?}");
-    };
-    assert!(message.starts_with("decoder panicked: "), "{message}");
+    assert!(
+        matches!(result, Ok(Err(ContainerError::OodleDecompression(_)))),
+        "expected a decompression error, got {result:?}"
+    );
 
     #[cfg(feature = "checkpoint")]
     {
         let result = std::panic::catch_unwind(|| decompress_checkpoint(&archive, true, false));
         assert!(
-            matches!(result, Ok(Err(ContainerError::OodleDecompression(ref m))) if m.starts_with("decoder panicked: ")),
+            matches!(result, Ok(Err(ContainerError::OodleDecompression(_)))),
             "{result:?}"
         );
     }
+}
+
+/// The boundary `inflate` runs the codec behind, driven by closures that are
+/// known to panic, so it stays tested whatever the codec does with a given
+/// stream: a `&str` or `String` panic becomes `OodleDecompression` carrying its
+/// message, any other payload is still an error, and an `Err` or `Ok` from the
+/// closure passes through untouched.
+#[cfg(feature = "oodle")]
+#[test]
+fn the_codec_panic_boundary_turns_a_panic_into_an_error() {
+    use crate::oodle::catch_codec_panic;
+
+    let caught = std::panic::catch_unwind(|| {
+        (
+            catch_codec_panic::<()>(|| panic!("static message")),
+            catch_codec_panic::<()>(|| panic!("formatted {}", 7)),
+            catch_codec_panic::<()>(|| std::panic::panic_any(7_u32)),
+        )
+    });
+    let Ok((literal, formatted, opaque)) = caught else {
+        panic!("a panic escaped the codec boundary");
+    };
+    assert!(
+        matches!(&literal, Err(ContainerError::OodleDecompression(m)) if m == "decoder panicked: static message"),
+        "{literal:?}"
+    );
+    assert!(
+        matches!(&formatted, Err(ContainerError::OodleDecompression(m)) if m == "decoder panicked: formatted 7"),
+        "{formatted:?}"
+    );
+    assert!(
+        matches!(&opaque, Err(ContainerError::OodleDecompression(m)) if m == "decoder panicked: non-string panic payload"),
+        "{opaque:?}"
+    );
+
+    assert!(matches!(
+        catch_codec_panic::<()>(|| Err(ContainerError::OodleDecompression("rejected".into()))),
+        Err(ContainerError::OodleDecompression(m)) if m == "rejected"
+    ));
+    assert!(matches!(catch_codec_panic(|| Ok(5_u8)), Ok(5)));
 }
 
 #[test]
