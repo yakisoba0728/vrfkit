@@ -5,7 +5,7 @@ borrowed main records and optional snapshots in Rust, and the Python tools for d
 analysis or JSONL conversion. These paths share the existing decoder and
 preservation policy; they expose different output and ownership contracts.
 
-This guide describes release 0.6.0. Upgrading from an earlier version, read
+This guide describes release 0.7.0. Upgrading from 0.5.x or earlier, read
 the [output counter and Reader API migration](PHASE_C_MIGRATION.md) and the
 [error, network and publication changes](FINAL_CONSOLIDATION_MIGRATION.md).
 The crates are not published to a registry.
@@ -23,12 +23,12 @@ The crates are not published to a registry.
 
 ## Select and record the source
 
-This guide describes the `v0.6.0` tag. Select it explicitly when cloning.
+This guide describes the `v0.7.0` tag. Select it explicitly when cloning.
 Its source API and examples should not be assumed to exist in an older tagged
 binary, or to stay unchanged on a later `main`.
 
 ```bash
-git clone --branch v0.6.0 --single-branch https://github.com/yakisoba0728/vrfkit.git
+git clone --branch v0.7.0 --single-branch https://github.com/yakisoba0728/vrfkit.git
 cd vrfkit
 git rev-parse HEAD
 rustup toolchain install 1.86.0 --profile minimal

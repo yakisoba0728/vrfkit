@@ -245,6 +245,7 @@ impl NetStats {
 
 /// Why a content block or bunch tail was skipped.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SkipReason {
     /// `content_bits` exceeded the bits left in the bunch: the stream is
     /// misaligned for the rest of this bunch.

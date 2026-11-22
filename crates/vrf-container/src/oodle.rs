@@ -221,7 +221,17 @@ fn inflate(input: &[u8], decompressed_size: usize) -> Result<(Vec<u8>, usize), C
     // `&[u8]`) and a `usize`, which the compiler checks are unwind-safe. The
     // output buffer and the extractor are created inside and dropped with the
     // unwind, so a half-written buffer can never be returned.
-    match std::panic::catch_unwind(|| inflate_unguarded(input, decompressed_size)) {
+    catch_codec_panic(|| inflate_unguarded(input, decompressed_size))
+}
+
+/// The panic boundary of [`inflate`], separate so a test can drive a closure
+/// that is known to panic: whether a given corrupt stream makes the codec
+/// panic or return `Err` is the codec's choice and may change between versions.
+#[cfg(feature = "oodle")]
+pub(crate) fn catch_codec_panic<T>(
+    decode: impl FnOnce() -> Result<T, ContainerError> + std::panic::UnwindSafe,
+) -> Result<T, ContainerError> {
+    match std::panic::catch_unwind(decode) {
         Ok(result) => result,
         Err(payload) => {
             let message = payload

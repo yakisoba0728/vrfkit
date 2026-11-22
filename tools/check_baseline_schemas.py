@@ -12,8 +12,7 @@ from collections import Counter
 from pathlib import Path, PureWindowsPath
 
 from check_export_baseline import (
-    CHECKPOINT_COUNTERS, CHECKPOINT_PARQUET_FILES, COUNTERS, LEGACY_CHECKPOINT_COUNTERS,
-    LEGACY_COUNTERS, PARQUET_FILES,
+    CHECKPOINT_COUNTERS, CHECKPOINT_PARQUET_FILES, COUNTERS, PARQUET_FILES,
 )
 import summary_counters as sc
 
@@ -128,11 +127,10 @@ def validate_export_baseline(path: Path, data: dict) -> list[str]:
     if not isinstance(counters, dict):
         problems.append(f"{path.name}: counters must be an object")
         counters = {}
-    # Validate historical artifacts as historical artifacts. Comparing one
-    # with a current executable is separately refused by check_export_baseline.
-    if sc.obsolete_movement_contract(counters):
-        expected_counters = set(LEGACY_COUNTERS) | (set(LEGACY_CHECKPOINT_COUNTERS)
-                                                   if checkpoint else set())
+    # Named, not only a key mismatch: its tail/trailer numbers must be
+    # remeasured with a current executable, never converted.
+    if sc.obsolete_baseline(counters):
+        problems.append(f"{path.name}: {sc.OBSOLETE_MOVEMENT_CONTRACT}")
     _keys(path, counters, set(expected_counters), problems)
     for key, value in counters.items():
         if not _nonnegative_int(value):

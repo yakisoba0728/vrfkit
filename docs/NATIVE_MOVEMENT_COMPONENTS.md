@@ -141,20 +141,30 @@ The main and checkpoint summaries replace the tail/trailer lines with
 guards share the new contract in `tools/summary_counters.py`; missing counters,
 impossible partitions, impossible header counts and obsolete names fail.
 
-Historical private export baselines and historical reports remain byte for
-byte unchanged. `check_baseline_schemas.py` validates their archived key sets;
-this is not a current-executable comparison. `check_export_baseline.py` refuses
-an obsolete baseline with a nonzero exit **before** a missing replay can turn
-the run into a skip. To create a current baseline, genuinely export its original
-input and review the resulting changes before using `--update`; never fill in
-new values from the old trailer numbers. `benchmark_resources.py` likewise
-refuses an obsolete movement counter contract and does not normalize unequal
-counter contracts into equivalent benchmark work.
+Historical reports remain byte for byte unchanged. `check_export_baseline.py`
+refuses an obsolete baseline (a tail/trailer key in its main or checkpoint
+counters) with a nonzero exit **before** a missing replay can turn the run into
+a skip, and `check_baseline_schemas.py` refuses one in the tree. To replace
+one, genuinely export its original input and review the resulting changes
+before using `--update`; never fill in new values from the old trailer numbers.
+`benchmark_resources.py` likewise refuses an obsolete movement counter contract
+and does not normalize unequal counter contracts into equivalent benchmark
+work.
+
+The committed 13.01 export and checkpoint baselines (`*_02d4d478.json`) were
+remeasured that way with the 0.6.0 decoder. Every Parquet file kept its rows,
+bytes and SHA-256 and every surviving counter its value; the six main (and six
+checkpoint) tail/trailer keys were replaced by the nine native counters per
+pass. On that replay the main stream has 1,837,580 attempted components, all
+complete and validated with an input header, 0 errors, 0 empty, 64,291,646
+payload bytes, 6,837,740 unused bits and 1,832,454 discrepancy headers; the
+checkpoint pass has none. The old `Envelope trailers` line counted the same
+1,837,580 streams with 24 bits each; those bits are not a native quantity and
+were not converted.
 
 Removing published manifest keys and summary lines is a CLI output breaking
 change, so this migration ships in 0.6.0, a minor version bump from 0.5.x.
-The archived export baselines were not regenerated; the decoder itself was
-run on the private corpus, see
+The decoder itself was also run on the private corpus, see
 [0.6.0 revalidation](BUILD_VERIFICATION.md#060-revalidation).
 
 ## Focused verification

@@ -248,11 +248,14 @@ a contributor without one is not blocked — but it means an unset variable read
 as a pass at a glance. If you meant to run them, read the output and check it
 says how many replays it walked.
 
-`check_export_baseline.py` rejects an obsolete movement-counter baseline before
-that missing-input skip. The archived private export/checkpoint baselines need
-genuine remeasurement for the [native component migration](docs/NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration);
-their historical numbers must not be converted into new counters. The old
-summary/manifest fields were removed in 0.6.0, a minor version bump.
+`check_export_baseline.py` rejects an obsolete movement-counter baseline (a
+tail/trailer key from before the [native component migration](docs/NATIVE_MOVEMENT_COMPONENTS.md#counter-and-source-api-migration),
+main or checkpoint) before that missing-input skip, and
+`check_baseline_schemas.py` refuses one in the tree. The committed
+export/checkpoint baselines were remeasured with the 0.6.0 decoder; an obsolete
+baseline is replaced the same way, by a genuine export with `--update`, never
+by converting its old numbers into the new counters. The old summary/manifest
+fields were removed in 0.6.0, a minor version bump.
 
 ## The load-bearing invariants (do not break)
 

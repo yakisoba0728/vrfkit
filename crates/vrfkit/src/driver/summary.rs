@@ -635,15 +635,15 @@ fn print_decode_errors(error_report: &OverlayErrorReport) {
         error_report.bucket_count(),
         error_report.total_errors()
     );
-    // The kind column is as wide as the longest label, `Malformed`.
+    // The kind column is as wide as the longest label, `Unclassified`.
     eprintln!(
-        "  {:>7}  {:<9}  {:>5}  {:<20}  {:<30}  group_path",
+        "  {:>7}  {:<12}  {:>5}  {:<20}  {:<30}  group_path",
         "count", "kind", "bits", "type", "field_name"
     );
     for row in &error_report.top_n(15) {
         let gp_display = display_tail(&row.group_path, 60);
         eprintln!(
-            "  {:>7}  {:<9}  {:>5}  {:<20}  {:<30}  {}",
+            "  {:>7}  {:<12}  {:>5}  {:<20}  {:<30}  {}",
             row.count, row.error_kind, row.bit_count, row.declared_type, row.field_name, gp_display
         );
     }

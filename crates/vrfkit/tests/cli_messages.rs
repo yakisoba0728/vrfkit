@@ -39,19 +39,29 @@ fn help_and_version_exit_zero_on_stdout() {
         assert!(run.stderr.is_empty(), "{args:?}: {}", run.stderr);
     }
     let version = format!("vrfkit {}", env!("CARGO_PKG_VERSION"));
-    for flag in ["--version", "-V"] {
-        let run = vrfkit(&[flag]);
-        assert_eq!(run.code, Some(0), "{flag}: {}", run.stderr);
-        assert_eq!(run.stdout.trim_end(), version);
+    let mut asks: Vec<Vec<&str>> = vec![vec!["--version"], vec!["-V"]];
+    for sub in subcommands() {
+        for flag in ["--version", "-V"] {
+            asks.push(vec![sub, flag]);
+            asks.push(vec![sub, "missing.vrf", flag]);
+        }
+    }
+    for args in asks {
+        let run = vrfkit(&args);
+        assert_eq!(run.code, Some(0), "{args:?}: {}", run.stderr);
+        assert_eq!(run.stdout.trim_end(), version, "{args:?}");
+        assert!(run.stderr.is_empty(), "{args:?}: {}", run.stderr);
     }
 }
 
-/// A valued option's value is a value even when it reads `-h`.
+/// A valued option's value is a value even when it reads `-h` or `-V`.
 #[test]
-fn a_valued_options_value_is_not_a_help_request() {
-    let run = vrfkit(&["diag", "missing.vrf", "--json", "-h"]);
-    assert_eq!(run.code, Some(1), "{}", run.stdout);
-    assert!(run.stderr.contains("missing.vrf"), "{}", run.stderr);
+fn a_valued_options_value_is_not_a_help_or_version_request() {
+    for flag in ["-h", "--help", "-V", "--version"] {
+        let run = vrfkit(&["diag", "missing.vrf", "--json", flag]);
+        assert_eq!(run.code, Some(1), "{flag}: {}", run.stdout);
+        assert!(run.stderr.contains("missing.vrf"), "{flag}: {}", run.stderr);
+    }
 }
 
 #[test]

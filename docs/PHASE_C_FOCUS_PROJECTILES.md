@@ -90,11 +90,10 @@ row, column and order; changed Parquet bytes alone are not a regression or
 an equivalence proof. Other stream data and previous typed values must still
 match.
 
-Historical private baselines are left byte-for-byte unchanged. Their
-legacy-only schema excludes these new counters because the historical run
-never measured them. The exclusion does not apply to current baselines and
-does not convert missing counts to zero. Existing obsolete native-counter
-baselines still require genuine remeasurement before current comparison.
+Baselines require these counters; a missing count is never read as zero. The
+committed 13.01 export and checkpoint baselines were remeasured with the 0.6.0
+decoder and pin all three, main and checkpoint, as measured zeros (the route
+is admitted on 12.05 only).
 
 ## Local verification
 

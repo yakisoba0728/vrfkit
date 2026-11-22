@@ -42,6 +42,19 @@ def checkpoint_measurement(**overrides):
     return current
 
 
+def obsolete_copy(name: str, prefixes: tuple[str, ...] = ("",)) -> dict:
+    """A committed baseline rewritten to the obsolete tail/trailer contract:
+    the native component counters replaced by the legacy names, in each pass
+    `prefixes` names ("" main, "cp_" checkpoint)."""
+    data = json.loads((guard.REPO / "tools/baselines" / name).read_text(encoding="utf-8"))
+    for prefix in prefixes:
+        for key in guard.sc.MOVEMENT_COUNTERS:
+            del data["counters"][prefix + key]
+        data["counters"].update(
+            dict.fromkeys((prefix + key for key in guard.sc.LEGACY_MOVEMENT_COUNTERS), 0))
+    return data
+
+
 class UnpinnableTests(unittest.TestCase):
     def test_a_complete_summary_can_be_pinned(self):
         self.assertEqual(guard.unpinnable(measurement()), [])
@@ -695,10 +708,12 @@ class MainTests(TempDirTestCase):
                 measured.assert_not_called()
 
     def test_obsolete_baseline_fails_before_missing_input_can_skip(self):
-        for name in ("export_02d4d478.json", "checkpoint_02d4d478.json"):
-            with self.subTest(name=name):
+        for name, prefixes in (("export_02d4d478.json", ("",)),
+                               ("checkpoint_02d4d478.json", ("", "cp_")),
+                               ("checkpoint_02d4d478.json", ("cp_",))):
+            with self.subTest(name=name, prefixes=prefixes):
                 root = self.tmp()
-                original = (guard.REPO / "tools/baselines" / name).read_bytes()
+                original = json.dumps(obsolete_copy(name, prefixes)).encode("utf-8")
                 baseline = root / "baseline.json"
                 baseline.write_bytes(original)
                 code, output, measured = self.run_main(root)
@@ -799,12 +814,14 @@ Route children: 0 player info / 0 rewards / 0 selected / 0 kills / 0 active effe
         self.assertTrue((output / "fields.parquet").is_file())
         self.assertEqual(result["parquet"]["fields"]["rows"], 1)
 
-    def test_fresh_telemetry_does_not_invent_historical_baseline_measurements(self):
+    def test_fresh_telemetry_matches_the_committed_key_set_and_never_an_obsolete_one(self):
         _, _, result = self.run_fake_export(fail=False)
-        historical = json.loads(
+        committed = json.loads(
             (guard.REPO / "tools/baselines/export_02d4d478.json").read_text(encoding="utf-8"))
 
         self.assertEqual(set(result["counters"]), set(guard.COUNTERS))
-        self.assertEqual(set(historical["counters"]), set(guard.LEGACY_COUNTERS))
-        self.assertNotEqual(set(result["counters"]), set(historical["counters"]))
-        self.assertEqual(guard.diff(historical, result), [guard.sc.OBSOLETE_MOVEMENT_CONTRACT])
+        self.assertEqual(set(committed["counters"]), set(result["counters"]))
+        for name, prefixes in (("export_02d4d478.json", ("",)),
+                               ("checkpoint_02d4d478.json", ("cp_",))):
+            self.assertEqual(guard.diff(obsolete_copy(name, prefixes), result),
+                             [guard.sc.OBSOLETE_MOVEMENT_CONTRACT])

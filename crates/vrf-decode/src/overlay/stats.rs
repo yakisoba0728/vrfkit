@@ -14,7 +14,9 @@ use crate::ftext::FTextTreeError;
 /// the bit-count expectation or something structural. It is the report's only
 /// per-cause column (`field_name` says which field), so every failure maps to
 /// its own cause through exhaustive matches with no wildcard: a new error
-/// variant has to be classified before it compiles.
+/// variant has to be classified before it compiles. The exception is
+/// `BitError`, which is `#[non_exhaustive]` and so needs a wildcard here: a
+/// variant added to it without a case below reads [`Self::Unclassified`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum DecodeErrorKind {
@@ -39,6 +41,10 @@ pub enum DecodeErrorKind {
     /// quantization scale or `SerializedInt` maximum) no value can be read
     /// against. Usually a table entry to revisit rather than a wire problem.
     Rejected,
+    /// A `BitError` variant [`Self::from_bit_error`] has no case for: the
+    /// failure is still counted, under a label that says the classification
+    /// is missing rather than a plausible guess.
+    Unclassified,
 }
 
 /// `pad`, not `write_str`: the report prints this in a padded column, and
@@ -51,6 +57,7 @@ impl std::fmt::Display for DecodeErrorKind {
             Self::ZeroBits => "ZeroBits",
             Self::Malformed => "Malformed",
             Self::Rejected => "Rejected",
+            Self::Unclassified => "Unclassified",
         })
     }
 }
@@ -72,6 +79,7 @@ impl DecodeErrorKind {
             | BitError::InvalidReadWidth { .. }
             | BitError::InvalidRotatorWidth { .. }
             | BitError::InvalidVectorScale { .. } => Self::Rejected,
+            _ => Self::Unclassified,
         }
     }
 
@@ -412,9 +420,10 @@ mod tests {
             DecodeErrorKind::ZeroBits,
             DecodeErrorKind::Malformed,
             DecodeErrorKind::Rejected,
+            DecodeErrorKind::Unclassified,
         ] {
-            let cell = format!("{kind:<9}|");
-            assert_eq!(cell.len(), 10, "{cell:?}");
+            let cell = format!("{kind:<12}|");
+            assert_eq!(cell.len(), 13, "{cell:?}");
             assert!(cell.starts_with(&kind.to_string()), "{cell:?}");
         }
         // And unpadded where no width is asked for.
