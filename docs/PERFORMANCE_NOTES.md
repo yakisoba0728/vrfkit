@@ -214,6 +214,24 @@ Walking ClassNetCache RPC payloads into one row per named parameter produces
 580,027 of the reference replay's 1,296,660 field rows (rows under a
 `_ClassNetCache` group with a function-qualified `Function.Param` name).
 
+### Per-handle name and overlay memo
+
+Code: `crates/vrfkit/src/sink/field_names.rs`.
+
+Every field and RPC-parameter row hashed its group path into `by_path`, its
+name into the interner (RPC parameters also formatted `Function.Param`) and
+resolved the overlay through several hashed probes and binary searches. Those
+were about 15% of the main thread's samples on `export --checkpoints` (a
+user-mode sampling profile over 9 replays of 13.05, 13.10 and 12.00). The memo
+keys on the interned path's address, stamps the group position with
+`schema_generation`, and reuses a name or overlay resolution only after
+comparing every input it was made from. Interleaved A/B, 6 rounds x 9 replays,
+on a machine shared with other builds: process CPU (user+kernel) paired median
+`validate` -6.5%, `export` -3.8%, `export --checkpoints` -1.8% (inside noise);
+peak working set +1-2 MB. All 13 Parquet files byte-identical over 32 replays
+(every build folder), manifests and summaries equal. Remeasure on an idle
+machine before relying on the size of the gain.
+
 ### What the whole sink costs
 
 Code: the module doc of `crates/vrfkit/src/sink/mod.rs`.

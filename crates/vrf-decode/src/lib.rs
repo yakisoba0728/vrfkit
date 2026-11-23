@@ -106,9 +106,10 @@ pub use effect::{EffectArrayKind, EffectBlobError, decode_effect_blob_json};
 #[cfg(feature = "overlay")]
 pub use overlay::{
     DecodeErrorKind, GroupHashState, OverlayEntry, OverlayErrorReport, OverlayErrorRow,
-    OverlayHandleEntry, OverlayStats, OverlayTable, apply_overlay, apply_overlay_with_checksum,
-    apply_overlay_with_handle, canonical_group, group_hash_state, lookup_checksum,
-    resolve_field_type, resolve_field_type_with_checksum,
+    OverlayHandleEntry, OverlayResolution, OverlayStats, OverlayTable, apply_overlay,
+    apply_overlay_resolved, apply_overlay_with_checksum, apply_overlay_with_handle,
+    canonical_group, group_hash_state, lookup_checksum, resolve_field_type,
+    resolve_field_type_with_checksum, resolve_overlay,
 };
 #[cfg(feature = "overlay")]
 pub use table::{OVERLAY_HANDLE_TABLE, OVERLAY_TABLE};

@@ -363,6 +363,14 @@ impl NetGuidCache {
         self.by_path.get(path).map(|&i| &self.groups[i])
     }
 
+    /// [`Self::get_group_by_path`]'s group as its position in [`Self::groups`].
+    /// Valid while [`Self::schema_generation`] holds: only a registration or
+    /// [`Self::clear`] moves a path to another position, and both bump it.
+    #[must_use]
+    pub fn group_index_by_path(&self, path: &str) -> Option<usize> {
+        self.by_path.get(path).copied()
+    }
+
     /// Changes whenever a NetGUID -> path or -> outer mapping does; a memo over
     /// those maps stamps with it, as with [`Self::schema_generation`].
     #[must_use]
