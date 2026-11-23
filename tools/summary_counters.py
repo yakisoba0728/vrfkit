@@ -75,7 +75,7 @@ LINES = (
     ("Bunches: {}", "bunches", "PG"),
     ("Malformed pkts: {}", "malformed_packets", "P"),
     # `unresolved RPC raw` is preserved whole, legitimately nonzero; the four
-    # before it are loss.
+    # before it are loss. `?` RPC loss (more preserved than failed) reads as None.
     ("Content failures: {} malformed / {} transform / {} field / {} RPC loss / "
      "{} unresolved RPC raw",
      "malformed_content_blocks transform_failures field_stream_failures rpc_payloads_lost "

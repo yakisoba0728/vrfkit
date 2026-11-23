@@ -24,7 +24,7 @@ RUST_NAMES = {
     "cp_frame_non_finite_times": "non_finite_frame_times",
     "overlay_decode_errors": "overlay_decoded_err", "cp_overlay_decode_errors": "overlay_decoded_err",
     "overlay_raw_skip": "overlay_raw_or_skip", "cp_overlay_raw_skip": "overlay_raw_or_skip",
-    "overlay_rows_offered": "total", "rpc_payloads_lost": "rpc_payloads_lost()",
+    "overlay_rows_offered": "total",
     **{f"{cp}sink_{name}": name for cp in ("", "cp_")
        for name in ("actor_opens", "actor_closes", "content_blocks")},
 }

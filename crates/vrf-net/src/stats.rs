@@ -215,21 +215,24 @@ impl NetStats {
     /// is unreadable. Published as manifest `quality.content_blocks_lost`.
     /// RPC failures enter netted ([`Self::rpc_payloads_lost`]): an unresolved
     /// ClassNetCache block is exported whole as one reserved row, so it is no
-    /// loss (6,490 such blocks and 0 lost on 02d4d478).
+    /// loss (6,490 such blocks and 0 lost on 02d4d478). Preserved payloads in
+    /// excess of RPC failures are broken bookkeeping, added as loss, never netted to 0.
     pub fn lost_content_blocks(&self) -> u64 {
         self.content_block_framing_failures
             + self.malformed_content_blocks
             + self.transform_failures
             + self.field_stream_failures
-            + self.rpc_payloads_lost()
+            + self
+                .rpc_stream_failures
+                .abs_diff(self.unresolved_rpc_payloads_preserved)
     }
 
-    /// RPC stream failures whose payload was not preserved. Saturating: the
-    /// two counters move on different paths.
+    /// RPC stream failures whose payload was not preserved; `None` when more
+    /// payloads were preserved than failed, which the summary prints as `?`.
     #[must_use]
-    pub fn rpc_payloads_lost(&self) -> u64 {
+    pub fn rpc_payloads_lost(&self) -> Option<u64> {
         self.rpc_stream_failures
-            .saturating_sub(self.unresolved_rpc_payloads_preserved)
+            .checked_sub(self.unresolved_rpc_payloads_preserved)
     }
 
     /// Record one diagnostic event, or count it dropped if the log is full; the
@@ -365,8 +368,9 @@ mod tests {
     use super::*;
 
     /// Each failure depth alone reaches the loss total and the five add;
-    /// preserved unresolved RPC payloads net out, saturating; loud but normal
-    /// counters are no loss (02d4d478 skips 18,217,181 bits and exports whole).
+    /// preserved unresolved RPC payloads net out, and an excess is loss; loud
+    /// but normal counters are no loss (02d4d478 skips 18,217,181 bits and
+    /// exports whole).
     #[test]
     fn lost_content_blocks_counts_each_depth_and_nets_preserved_rpcs() {
         type Case = (fn(&mut NetStats), u64);
@@ -396,7 +400,7 @@ mod tests {
             ),
             (
                 |s| (s.rpc_stream_failures, s.unresolved_rpc_payloads_preserved) = (1, 5),
-                0,
+                4,
             ),
             (
                 |s| {
@@ -413,6 +417,26 @@ mod tests {
             let mut stats = NetStats::default();
             set(&mut stats);
             assert_eq!(stats.lost_content_blocks(), lost, "case {i}");
+        }
+    }
+
+    /// More preserved payloads than RPC failures has no loss figure: `None`,
+    /// never a plausible 0. Equal counts are a real 0.
+    #[test]
+    fn rpc_payloads_lost_is_none_when_preserved_exceeds_failures() {
+        for (failures, preserved, lost) in [
+            (0, 0, Some(0)),
+            (10, 10, Some(0)),
+            (10, 7, Some(3)),
+            (1, 2, None),
+            (0, 5, None),
+        ] {
+            let stats = NetStats {
+                rpc_stream_failures: failures,
+                unresolved_rpc_payloads_preserved: preserved,
+                ..NetStats::default()
+            };
+            assert_eq!(stats.rpc_payloads_lost(), lost, "{failures} - {preserved}");
         }
     }
 

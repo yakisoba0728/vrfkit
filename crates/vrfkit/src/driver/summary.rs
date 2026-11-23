@@ -115,12 +115,13 @@ pub(super) fn print(
     eprintln!("  Partial bunches:  {}", report::partial_bunches(net_stats));
     eprintln!("  Partial causes:   {}", report::partial_causes(net_stats));
     eprintln!("  Bunch header fails: {}", net_stats.bunch_header_failures);
+    let rpc_payloads_lost = report::count_or_unknown(net_stats.rpc_payloads_lost());
     eprintln!(
         "  Content failures: {} malformed / {} transform / {} field / {} RPC loss / {} unresolved RPC raw",
         net_stats.malformed_content_blocks,
         net_stats.transform_failures,
         net_stats.field_stream_failures,
-        net_stats.rpc_payloads_lost(),
+        rpc_payloads_lost,
         net_stats.unresolved_rpc_payloads_preserved
     );
     // Blocks whose header or `content_bits` could not be read, a depth before
@@ -357,7 +358,7 @@ fn print_checkpoints(cp: &CheckpointStats) {
         cp.net.malformed_content_blocks,
         cp.net.transform_failures,
         cp.net.field_stream_failures,
-        cp.net.rpc_payloads_lost(),
+        report::count_or_unknown(cp.net.rpc_payloads_lost()),
         cp.net.unfinished_partials,
         cp.net.unfinished_partial_bits,
         cp.net.skipped_bits

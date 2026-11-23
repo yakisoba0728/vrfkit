@@ -104,7 +104,7 @@ and reports a block pass rate. **It writes no files.**
     Malformed framing:  0      <- blocks whose framing slipped. Nonzero is serious
     Transform failed:   0      <- payload transform failed. Signals an unsupported build
     Field stream failed:0
-    RPC payload lost:   0      <- unresolved payloads that were not preserved. Must stay zero
+    RPC payload lost:   0      <- unresolved payloads that were not preserved. Must stay zero; `?` = more preserved than failed (broken bookkeeping, also counted in content_blocks_lost)
     RPC unresolved/raw:6490    <- full decoded payload preserved, but inner handles cannot be named
   Unknown chunks:       0
   NOT COVERED:          18 Checkpoint chunk(s) were NOT walked - this verdict covers the ReplayData stream only (use `export --checkpoints` to decode them)
