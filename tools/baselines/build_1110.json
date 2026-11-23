@@ -1,0 +1,42 @@
+{
+ "corpus": "%LOCALAPPDATA%\\vrfkit\\baseline-corpora\\build_1110",
+ "branches": {
+  "++Ares-Core+release-11.10": 3
+ },
+ "totals": {
+  "blocks": 1839376,
+  "fields": 1354956,
+  "rpcs": 946366,
+  "malformed": 0,
+  "skipped": 11445552
+ },
+ "per_file": {
+  "sample-1.vrf": {
+   "branch": "++Ares-Core+release-11.10",
+   "rate": "100.000000",
+   "blocks": 756733,
+   "fields": 549476,
+   "rpcs": 395498,
+   "malformed": 0,
+   "skipped": 3925260
+  },
+  "sample-2.vrf": {
+   "branch": "++Ares-Core+release-11.10",
+   "rate": "100.000000",
+   "blocks": 478420,
+   "fields": 359246,
+   "rpcs": 241923,
+   "malformed": 0,
+   "skipped": 4703116
+  },
+  "sample-3.vrf": {
+   "branch": "++Ares-Core+release-11.10",
+   "rate": "100.000000",
+   "blocks": 604223,
+   "fields": 446234,
+   "rpcs": 308945,
+   "malformed": 0,
+   "skipped": 2817176
+  }
+ }
+}

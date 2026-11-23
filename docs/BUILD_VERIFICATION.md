@@ -5,7 +5,11 @@ revisions named in each section. The 0.6.0 decoder and counter contract were
 measured separately on the archived private corpus; see
 [0.6.0 revalidation](#060-revalidation). The 13.01 export and checkpoint
 baselines under `tools/baselines` (`*_02d4d478.json`) were remeasured with the
-0.6.0 decoder; the `build_*.json` corpus baselines were not.
+0.6.0 decoder. The `build_*.json` corpus baselines were rechecked with the
+0.7.0 decoder: 12.10, 12.11, 13.00, 13.04, 13.05 and 13.06 match unchanged,
+and 11.06-12.09, 13.01 and 13.08-13.10 were pinned new. `build_1302.json` was
+not rechecked: its replay is not in the archived private corpus.
+`metrics_builds.json` was not remeasured with either decoder.
 
 All **1,018 unique available replays**, spanning **24 supported builds**, were
 checked with parser commit `259ed10c7e0c9d87c852f80fab7535d38d2e187f`. The two

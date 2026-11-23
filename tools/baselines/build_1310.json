@@ -1,0 +1,258 @@
+{
+ "corpus": "%LOCALAPPDATA%\\vrfkit\\baseline-corpora\\build_1310",
+ "branches": {
+  "++Ares-Core+release-13.10": 27
+ },
+ "totals": {
+  "blocks": 12842762,
+  "fields": 9338493,
+  "rpcs": 7082087,
+  "malformed": 0,
+  "skipped": 237952986
+ },
+ "per_file": {
+  "03725d7b-5309-44e4-abc4-1c760a6f4c9f.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 420922,
+   "fields": 299561,
+   "rpcs": 244842,
+   "malformed": 0,
+   "skipped": 1435851
+  },
+  "10001114-3d35-4614-9df4-f3ba7e171ff8.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 855838,
+   "fields": 603303,
+   "rpcs": 475685,
+   "malformed": 0,
+   "skipped": 3504645
+  },
+  "160b829d-dff8-4d67-b17d-de4810c291f1.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 145628,
+   "fields": 103017,
+   "rpcs": 83061,
+   "malformed": 0,
+   "skipped": 481653
+  },
+  "25723eb6-66f3-4ef1-890b-5d2dc804f305.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 699092,
+   "fields": 502926,
+   "rpcs": 384669,
+   "malformed": 0,
+   "skipped": 5409765
+  },
+  "2690a7bd-9e23-4f25-b778-9329b95810ec.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 255190,
+   "fields": 184204,
+   "rpcs": 140993,
+   "malformed": 0,
+   "skipped": 1567105
+  },
+  "30f5b356-cfe6-41e8-81b4-6e6589caf409.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 212295,
+   "fields": 156424,
+   "rpcs": 116535,
+   "malformed": 0,
+   "skipped": 1322070
+  },
+  "35fe5884-b73c-42e5-bc0a-e99a5418ec80.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 301766,
+   "fields": 220679,
+   "rpcs": 169327,
+   "malformed": 0,
+   "skipped": 2115407
+  },
+  "3be02409-151e-4e46-8984-622f03c459b1.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 331388,
+   "fields": 238864,
+   "rpcs": 178898,
+   "malformed": 0,
+   "skipped": 6900021
+  },
+  "441372b0-f01a-417e-b6d9-fb060c519925.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 248027,
+   "fields": 186307,
+   "rpcs": 136780,
+   "malformed": 0,
+   "skipped": 4230749
+  },
+  "4972c80c-47ad-4092-a533-ef0d07bc444f.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 221773,
+   "fields": 160127,
+   "rpcs": 126240,
+   "malformed": 0,
+   "skipped": 935328
+  },
+  "52251f77-8018-43a2-bf24-d7c9829bd381.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 876074,
+   "fields": 632082,
+   "rpcs": 491767,
+   "malformed": 0,
+   "skipped": 4817928
+  },
+  "5314517f-81d6-4761-af17-bd9c06dc9fb0.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 609499,
+   "fields": 429278,
+   "rpcs": 343717,
+   "malformed": 0,
+   "skipped": 7755094
+  },
+  "54c25ed6-4dc2-4441-954e-750abbe27cf0.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 307910,
+   "fields": 221415,
+   "rpcs": 173824,
+   "malformed": 0,
+   "skipped": 1907298
+  },
+  "711e4b0a-3518-4227-aeae-4972a7dba909.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 777460,
+   "fields": 566992,
+   "rpcs": 416492,
+   "malformed": 0,
+   "skipped": 31965522
+  },
+  "7c1e5fbc-83e0-4426-8798-fed8b2f0ba48.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 260822,
+   "fields": 187938,
+   "rpcs": 142325,
+   "malformed": 0,
+   "skipped": 1225970
+  },
+  "7c9bbce7-b408-4ffc-836b-798c4dd6a811.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 822701,
+   "fields": 624194,
+   "rpcs": 444389,
+   "malformed": 0,
+   "skipped": 41491412
+  },
+  "7f2eecf7-ad2f-43e3-a05b-f94cd267d95e.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 604024,
+   "fields": 428873,
+   "rpcs": 341736,
+   "malformed": 0,
+   "skipped": 21143167
+  },
+  "804028df-abdc-4f77-9af6-bc74999bf36d.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 710721,
+   "fields": 516700,
+   "rpcs": 372453,
+   "malformed": 0,
+   "skipped": 29934125
+  },
+  "86a71f74-b6c2-4610-ab5a-274803f501a8.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 567812,
+   "fields": 432790,
+   "rpcs": 297943,
+   "malformed": 0,
+   "skipped": 4289064
+  },
+  "a3a21544-cc61-4d69-90a7-1b8ea9bbc6f0.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 289589,
+   "fields": 210372,
+   "rpcs": 157586,
+   "malformed": 0,
+   "skipped": 1308508
+  },
+  "a7849404-bf78-4e8b-b552-a88f76cf5115.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 297590,
+   "fields": 224315,
+   "rpcs": 168668,
+   "malformed": 0,
+   "skipped": 3631669
+  },
+  "b7067b06-5ecf-4bd2-bc5c-e302163b3dbe.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 681217,
+   "fields": 510086,
+   "rpcs": 361215,
+   "malformed": 0,
+   "skipped": 24124470
+  },
+  "bee46bfb-3f61-4228-ac5c-09777a1b3ec1.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 294176,
+   "fields": 210125,
+   "rpcs": 167694,
+   "malformed": 0,
+   "skipped": 1900240
+  },
+  "d14b8271-19ff-4dfe-9cf9-599518c770cf.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 287805,
+   "fields": 211071,
+   "rpcs": 157420,
+   "malformed": 0,
+   "skipped": 1584475
+  },
+  "d5a432c2-56de-4ec5-b43e-e8ded2872df7.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 642377,
+   "fields": 471240,
+   "rpcs": 357246,
+   "malformed": 0,
+   "skipped": 3921755
+  },
+  "f4d4933c-e1fd-4d8f-aea4-212f35dd7ef1.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 837354,
+   "fields": 590854,
+   "rpcs": 469967,
+   "malformed": 0,
+   "skipped": 26744204
+  },
+  "f63c3481-4807-4de5-beee-feb98e30722c.vrf": {
+   "branch": "++Ares-Core+release-13.10",
+   "rate": "100.000000",
+   "blocks": 283712,
+   "fields": 214756,
+   "rpcs": 160615,
+   "malformed": 0,
+   "skipped": 2305491
+  }
+ }
+}

@@ -1252,6 +1252,11 @@ python tools/check_decode_errors_corpus.py ./target/release/vrfkit.exe <corpus> 
 diagnostics with run-local labels such as `replay-0001`; use it whenever logs
 may leave the private analysis machine.
 
+There is one `build_*.json` per build with a preserved replay: 11.06-13.06
+and 13.08-13.10, except 13.03 and 13.07. Each names its corpus as
+`%LOCALAPPDATA%\vrfkit\baseline-corpora\build_<build>`; only 12.10, 12.11 and
+13.00 are public fixtures that CI fetches, the rest are private copies.
+
 These read their inputs from `VRFKIT_CORPUS_DIR` and
 `VRFKIT_VALPLAY_DIR` -- see
 [Environment](../CONTRIBUTING.md#environment) for what each one points at.
