@@ -2706,4 +2706,41 @@ mod tests {
         assert_eq!(sink.rejected_partials[0].rejection_packet_id, Some(1));
         assert_eq!(stats.skipped_bits, 8);
     }
+
+    /// A dormant close keeps the channel's buffered partial (see
+    /// `close_channel`): the continuation completes it and nothing is lost.
+    /// The fragments are unreliable so the close does not break the sequence.
+    #[test]
+    fn a_dormant_close_mid_partial_keeps_the_buffered_payload() {
+        let fragment = |initial, last| BunchSpec {
+            ch_index: 2,
+            b_open: initial,
+            unreliable: true,
+            b_partial: true,
+            b_partial_initial: initial,
+            b_partial_final: last,
+            ..Default::default()
+        };
+        let dormant_close = BunchSpec {
+            ch_index: 2,
+            b_close: true,
+            dormant: true,
+            ..Default::default()
+        };
+        let mut first = Vec::new();
+        write_bunch(&mut first, &fragment(true, false), &guid(3));
+        write_bunch(&mut first, &dormant_close, &[]);
+        let (reader, sink) = run_packets(&[
+            build_packet(&first),
+            build_bunch_packet(&fragment(false, true), &empty_actor_block()),
+        ]);
+
+        let stats = reader.stats();
+        assert_eq!(stats.partial_channel_close, 0);
+        assert_eq!(stats.partial_errors, 0);
+        assert_eq!(stats.partial_completed, 1);
+        assert_eq!(stats.skipped_bits, 0);
+        assert!(rejected_rows(&sink).is_empty());
+        assert_eq!(stats.content_blocks, 1, "the completed bunch is framed");
+    }
 }

@@ -16,8 +16,11 @@ validate_type_evidence's reader:
 - rotator: rows consumed exactly as byte only / short only / either / neither.
 
 A class the overlay types (`table.rs`, `scoped_types.rs`) must measure clean
-at its declared level, with no row only the other rotator width consumes.
-Exit 1 otherwise, 2 when there is no export or no `ReplicatedMovement` row.
+at its declared level, with no row only the other rotator width consumes and
+a typed value (`value_str`) on every row. A typed class with no row in the
+input is counted, not failed -- one replay holds few of them -- unless
+`--require-all` is given. Exit 1 otherwise, 2 when there is no export or no
+`ReplicatedMovement` row.
 """
 from __future__ import annotations
 
@@ -170,6 +173,8 @@ def verdict(declared, m: dict, s: ClassStats) -> tuple[str, bool]:
     other = next(n for k, n in WIDTHS.items() if k != rotator)
     if s.rotator[other] or s.rotator["neither"]:
         return f"FAILED: {rotator} does not consume every row", True
+    if s.typed < s.rows:
+        return f"FAILED: {s.rows - s.typed} of {s.rows} rows have no typed value", True
     if m["level"] is None:
         return "typed, no joins", False
     if not m["clean"]:
@@ -187,6 +192,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("roots", nargs="+", type=Path)
+    parser.add_argument("--require-all", action="store_true",
+                        help="fail when a class the overlay types has no row in the input")
     args = parser.parse_args(argv)
     try:
         exports = discover_exports(args.roots)
@@ -219,6 +226,10 @@ def main(argv: list[str] | None = None) -> int:
               f"{sums} | {text} | {group}")
     missing = sorted(g for g, d in declared.items() if isinstance(d, tuple) and g not in stats)
     print(f"typed classes with no row: {len(missing)}; failed: {failed}")
+    if args.require_all and missing:
+        print(f"FAILED: --require-all, {len(missing)} typed classes with no row: "
+              + ", ".join(g.rsplit(".", 1)[-1] for g in missing), file=sys.stderr)
+        return 1
     return 1 if failed else 0
 
 

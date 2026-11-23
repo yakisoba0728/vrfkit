@@ -354,6 +354,33 @@ fn round_infos_rejects_one_more_than_max_fields() {
     );
 }
 
+/// A bit left after the array terminator is `NotFullyConsumed`, not dropped;
+/// the same blob without it decodes.
+#[test]
+fn a_bit_after_the_array_terminator_is_not_fully_consumed() {
+    for extra in [false, true] {
+        let mut bits = BitWriter::new();
+        bits.int_packed(1).int_packed(1); // one element, index 0
+        bits.int_packed(41).int_packed(32).u32(0);
+        bits.int_packed(0).int_packed(0); // field and element terminators
+        if extra {
+            bits.bit(false);
+        }
+        let (data, bit_len) = bits.finish();
+        let mut r = BitReader::with_bit_len(&data, u64::from(bit_len)).unwrap();
+        let result = decode_round_infos(&mut r, &owner_exclusive_player_info());
+        if extra {
+            let err = result.unwrap_err();
+            assert!(
+                matches!(err, StructBlobError::NotFullyConsumed { remaining: 1 }),
+                "expected NotFullyConsumed, got {err:?}"
+            );
+        } else {
+            assert_eq!(result.unwrap().len(), 1);
+        }
+    }
+}
+
 /// Each shared framing failure keeps its name and fields (cap 128).
 #[test]
 fn framing_failures_reach_the_caller_as_their_own_variant() {

@@ -666,6 +666,48 @@ mod tests {
         assert_eq!(seen, [1, 2, 1]);
     }
 
+    /// A dormant close keeps the channel's state: its reliable sequence runs
+    /// on, and an unreliable partial in flight across it still completes.
+    #[test]
+    fn a_dormant_close_keeps_the_channels_sequence_and_partial_state() {
+        let dormant_close = BunchSpec {
+            b_close: true,
+            dormant: true,
+            ..reliable(2)
+        };
+        let unreliable_fragment = |initial, last| BunchSpec {
+            unreliable: true,
+            ..fragment(2, initial, last)
+        };
+
+        let mut bits = Vec::new();
+        write_bunch(&mut bits, &unreliable_fragment(true, false), &[false; 8]);
+        write_bunch(&mut bits, &reliable(2), &[]);
+        write_bunch(&mut bits, &dormant_close, &[]);
+        let mut reader = RawPacketReader::new();
+        let mut seen = Vec::new();
+        let first = reader.read_packet(&build_packet(&bits), 0, |header, _| {
+            seen.push(header.ch_sequence)
+        });
+
+        let mut headers = Vec::new();
+        let second = reader.read_packet(
+            &build_bunch_packet(&unreliable_fragment(false, true), &[false; 8]),
+            1,
+            |header, _| headers.push(header.clone()),
+        );
+        reader.read_packet(&build_bunch_packet(&reliable(2), &[]), 2, |header, _| {
+            seen.push(header.ch_sequence)
+        });
+
+        assert_eq!(
+            (first.partial_error_count, second.partial_error_count),
+            (0, 0)
+        );
+        assert!(headers[0].is_partial_completed, "the partial survives");
+        assert_eq!(seen, [0, 1, 2, 3], "the reliable sequence does not restart");
+    }
+
     #[test]
     fn payload_overrun_returns_malformed() {
         let mut bits = Vec::new();

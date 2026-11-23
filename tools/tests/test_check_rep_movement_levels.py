@@ -1,4 +1,5 @@
 import json
+from unittest import mock
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -53,8 +54,9 @@ def write_export(root, opens, rows):
 
 
 class LevelTests(TempDirTestCase):
-    def run_tool(self, opens, rows):
-        code, out, err = run_cli(levels.main, write_export(self.tmp() / "e", opens, rows))
+    def run_tool(self, opens, rows, *flags):
+        code, out, err = run_cli(levels.main, write_export(self.tmp() / "e", opens, rows),
+                                 *flags)
         table = {line.split(" | ")[-1]: line.split(" | ") for line in out.splitlines()
                  if line.startswith(("Projectile_", "Pawn_", "Equippable"))}
         return code, table, out + err
@@ -116,9 +118,44 @@ class LevelTests(TempDirTestCase):
         """Whole units at any level: joined, it would read SEEKER as whole."""
         code, table, out = self.run_tool(
             [(100, 1, 10, SEEKER, (1500, -700, 200))],
-            [(100, 1, 10, SEEKER, movement((1500, -700, 200), scaled=False, yaw=512))])
+            [(100, 1, 10, SEEKER, movement((1500, -700, 200), scaled=False, yaw=512), "{}")])
         self.assertEqual((code, table[SEEKER][3], table[SEEKER][5], table[SEEKER][11]),
                          (0, "0 (0)", "1", "typed, no joins"), out)
+
+    def test_a_declared_class_must_be_typed_on_every_row(self):
+        """A null typed column on a declared class is the overlay not running,
+        whatever level the raw bits measure."""
+        spawn = (1500, -700, 200)
+        for texts, verdict, want in (
+            (("{}", "{}"), "typed, agrees", 0),
+            (("{}", None), "FAILED: 1 of 2 rows have no typed value", 1),
+            ((None, None), "FAILED: 2 of 2 rows have no typed value", 1),
+        ):
+            with self.subTest(texts=texts):
+                code, table, out = self.run_tool(
+                    [(100, 1, 10, PICKUP, spawn)],
+                    [(t, 1, 10, PICKUP, movement(spawn), text)
+                     for t, text in zip((100, 200), texts)])
+                self.assertEqual((code, table[PICKUP][11]), (want, verdict), out)
+
+    def test_an_untyped_class_needs_no_typed_value(self):
+        code, table, out = self.run_tool([], [(100, 1, 10, UNTYPED, movement((5, 5, 5)))])
+        self.assertEqual((code, table[UNTYPED][2]), (0, "0"), out)
+
+    def test_require_all_fails_on_a_typed_class_with_no_row(self):
+        rows = [(100, 1, 10, PICKUP, movement((1500, -700, 200)), "{}")]
+        declared = {PICKUP: ("ByteComponents", "RoundWholeNumber"),
+                    SEEKER: ("ShortComponents", "RoundTwoDecimals")}
+        with mock.patch.object(levels, "declared_types", return_value=declared):
+            code, _table, out = self.run_tool([], rows)
+            self.assertEqual(code, 0, out)
+            self.assertIn("typed classes with no row: 1; failed: 0", out)
+            code, _table, out = self.run_tool([], rows, "--require-all")
+            self.assertEqual(code, 1, out)
+            self.assertIn("1 typed classes with no row: Pawn_Aggrobot_SeekerNade_C", out)
+            del declared[SEEKER]
+            code, _table, out = self.run_tool([], rows, "--require-all")
+            self.assertEqual(code, 0, out)
 
     def test_no_export_or_no_row_exits_2(self):
         self.assertEqual(run_cli(levels.main, self.tmp())[0], 2)

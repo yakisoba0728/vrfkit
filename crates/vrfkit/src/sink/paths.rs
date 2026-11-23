@@ -722,6 +722,30 @@ mod tests {
         );
     }
 
+    /// A dormant close keeps the channel's archetype entry, so only the actor
+    /// stamp stops a different actor reopening there from taking its class.
+    #[test]
+    fn a_different_actor_after_a_dormant_close_does_not_inherit_the_archetype() {
+        let mut rig = smoke_rig();
+        rig.cache.set_net_guid_path(77, "SomeStaticProp", None);
+
+        let mut sink = rig.sink();
+        let header = actor_block(true);
+
+        sink.on_actor_open(&channel_open(5, 42, 8));
+        sink.on_content_block(5, NetworkGuid(42), &header);
+        assert_eq!(&*sink.current_group_path, "/Game/Effects/Smoke.Smoke_C");
+
+        // Dormant, not destroyed: the saved archetype survives the close.
+        sink.on_actor_close(5, NetworkGuid(42), true);
+        sink.on_actor_open(&channel_open(5, 77, 0));
+        sink.on_content_block(5, NetworkGuid(77), &header);
+        assert_eq!(
+            &*sink.current_group_path, "SomeStaticProp",
+            "a dormant channel's archetype must not decode a different actor",
+        );
+    }
+
     /// ...while the *same* actor waking from dormancy without re-sending its
     /// archetype keeps its class.
     #[test]
