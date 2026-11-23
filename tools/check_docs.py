@@ -17,7 +17,10 @@ passes every test. So this reads the repo and the docs and compares:
      overlay buckets still partition `overlay_rows_offered`; no quoted overlay
      counter or `Typed` ratio is stale, and README still carries the block
   9. README's build table covers exactly the registered payload transforms,
-     with the audit's clean/checked counts and one verification method
+     with the audit's clean/checked counts and one verification method; and
+     BUILD_VERIFICATION.md's arithmetic-evidence paragraph counts the
+     registered builds, each vector group's builds and its cases per build as
+     crates/vrf-transform/tests/data holds them
  10. every `#anchor` a doc links, and every `docs/<name>.md[#<anchor>]` a
      tracked .rs, .py or .json file names, exists by GitHub's slug rules;
      Setext headings are not read, so a link to one is reported
@@ -66,6 +69,7 @@ EXTERNAL_SCRIPTS = {"compute_metrics.py", "python_interop.py"}
 
 BUILD_AUDIT = REPO / "tools/fixtures/build_verification.json"
 BUILD_METHOD = "Validation + checkpoints + typed/raw"
+TRANSFORM_VECTORS = REPO / "crates/vrf-transform/tests/data"
 
 LINK_RE = re.compile(r"\[`?([^\]]+?)`?\]\(([^)]+)\)")
 SCRIPT_RE = re.compile(r"`?([a-z_][a-z0-9_]*\.py)`?")
@@ -132,6 +136,103 @@ def check_build_verification(readme: str, usage: str, registry: str, report: dic
             problems.append(f"README: {version} uses a different verification method")
         if cells[1] != f"`release-{version}`":
             problems.append(f"README: {version} branch label differs")
+    return problems
+
+
+NUMBER_WORDS = {word: i for i, word in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
+    "fifteen sixteen seventeen eighteen nineteen".split())}
+NUMBER_WORDS.update({word: 10 * i for i, word in enumerate(
+    "twenty thirty forty fifty sixty seventy eighty ninety".split(), 2)})
+VERSION_RE = re.compile(r"\d\d\.\d\d")
+#: One vector tuple per line, `("++Ares-Core+release-11.06", ...` or `(287, "...`.
+BRANCH_TUPLE_RE = re.compile(r'^\s*\("\+\+Ares-Core\+release-(\d\d\.\d\d)",', re.M)
+BIT_TUPLE_RE = re.compile(r'^\s*\(\d+,\s*"', re.M)
+RECOVERED_RE = re.compile(r"recovered_(\d\d)(\d\d)_vectors\.rs")
+
+
+def number(text: str) -> int | None:
+    """`79`, `eleven` or `twenty-seven` as an int; None for anything else."""
+    text = text.lower()
+    if text.isdigit():
+        return int(text)
+    tens, _, unit = text.partition("-")
+    if unit:
+        return (NUMBER_WORDS[tens] + NUMBER_WORDS[unit]
+                if tens in NUMBER_WORDS and NUMBER_WORDS.get(unit, 10) < 10 else None)
+    return NUMBER_WORDS.get(text)
+
+
+def vector_cases(vectors: dict[str, str]) -> dict[str, dict[str, int]]:
+    """`{source: {build: cases}}` read off the transform test data files:
+    `native` and `golden` by branch, `recovered` by file name."""
+    out = {"native": {}, "golden": {}, "recovered": {}}
+    for name, text in vectors.items():
+        if name in ("native_vectors.rs", "golden_vectors.rs"):
+            source = out[name.removesuffix("_vectors.rs")]
+            for version in BRANCH_TUPLE_RE.findall(text):
+                source[version] = source.get(version, 0) + 1
+        elif match := RECOVERED_RE.fullmatch(name):
+            out["recovered"][f"{match[1]}.{match[2]}"] = len(BIT_TUPLE_RE.findall(text))
+    return out
+
+
+def check_transform_evidence(build_doc: str, registry: str,
+                             vectors: dict[str, str]) -> list[str]:
+    """BUILD_VERIFICATION.md's arithmetic-evidence paragraph against the
+    registry and the vector files: the total, each group's build count and
+    range, and its per-build case count. Every claim must parse; a group
+    nobody claims, or a build no group covers, fails."""
+    match = re.search(r"^transforms! \{$(.*?)^\}$", registry, re.S | re.M)
+    order = sorted({f"{a}.{b}" for a, b in re.findall(r"\bV(\d\d)(\d\d)\b", match[1])}
+                   if match else ())
+    if not order:
+        return ["BUILD_VERIFICATION.md: cannot read the transform registry"]
+    section = re.search(r"^## Arithmetic evidence$(.*?)(?=^## |\Z)", build_doc, re.S | re.M)
+    if not section:
+        return ["BUILD_VERIFICATION.md: no '## Arithmetic evidence' section"]
+    text = " ".join(section[1].split())
+    problems = []
+
+    total = re.findall(r"cover all (\S+) registered builds", text)
+    if len(total) != 1 or number(total[0]) != len(order):
+        problems.append(f"BUILD_VERIFICATION.md: transform tests must claim all "
+                        f"{len(order)} registered builds, found {total}")
+
+    def expand(listed: str) -> list[str]:
+        builds = []
+        for first, last in re.findall(r"(\d\d\.\d\d)(?:--(\d\d\.\d\d))?", listed):
+            last = last or first
+            if first not in order or last not in order:
+                problems.append(f"BUILD_VERIFICATION.md: {first}--{last} is not registered")
+                continue
+            builds += order[order.index(first):order.index(last) + 1]
+        return builds
+
+    claims = [("native" if "native" in kind else "golden", count, listed, cases)
+              for count, listed, cases, kind in re.findall(
+                  r"[Tt]he (\S+) builds ((?:\d\d\.\d\d|--|, | and )+?) have (\S+) "
+                  r"([\w -]*?) cases each", text)]
+    claims += [("recovered", "one", version, cases) for version, cases in re.findall(
+        r"(\d\d\.\d\d) has (\S+) fixed boundary vectors", text)]
+    data = vector_cases(vectors)
+    covered: list[str] = []
+    for source, count, listed, cases in claims:
+        builds = expand(listed)
+        covered += builds
+        where = f"BUILD_VERIFICATION.md: {source} group {listed}"
+        if number(count) != len(builds):
+            problems.append(f"{where} says {count} builds, lists {len(builds)}")
+        # A listed build its source lacks has no count, so it fails here; with
+        # every registered build listed exactly once, no vector goes unclaimed.
+        wrong = sorted(b for b in builds if data[source].get(b) != number(cases))
+        if wrong:
+            problems.append(f"{where} says {cases} cases each; {wrong} have "
+                            f"{[data[source].get(b) for b in wrong]}")
+    if sorted(covered) != order:
+        problems.append(f"BUILD_VERIFICATION.md: no group lists "
+                        f"{sorted(set(order) - set(covered))}; listed twice: "
+                        f"{sorted({b for b in covered if covered.count(b) > 1})}")
     return problems
 
 
@@ -793,6 +894,10 @@ def main() -> int:
         check_build_verification(
             readme, usage, read(REPO / "crates/vrf-transform/src/lib.rs"),
             json.loads(read(BUILD_AUDIT))),
+        check_transform_evidence(
+            read(REPO / "docs/BUILD_VERIFICATION.md"),
+            read(REPO / "crates/vrf-transform/src/lib.rs"),
+            {path.name: read(path) for path in TRANSFORM_VECTORS.glob("*.rs")}),
         anchor_problems(anchors_checked),
     ]
 

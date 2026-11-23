@@ -104,7 +104,7 @@ and reports a block pass rate. **It writes no files.**
     Malformed framing:  0      <- blocks whose framing slipped. Nonzero is serious
     Transform failed:   0      <- payload transform failed. Signals an unsupported build
     Field stream failed:0
-    RPC payload lost:   0      <- unresolved payloads that were not preserved. Must stay zero
+    RPC payload lost:   0      <- unresolved payloads that were not preserved. Must stay zero; `?` = more preserved than failed (broken bookkeeping, also counted in content_blocks_lost)
     RPC unresolved/raw:6490    <- full decoded payload preserved, but inner handles cannot be named
   Unknown chunks:       0
   NOT COVERED:          18 Checkpoint chunk(s) were NOT walked - this verdict covers the ReplayData stream only (use `export --checkpoints` to decode them)
@@ -825,7 +825,7 @@ the list. `check_docs.py` checks both figures.
 | `check_corpus_baseline.py` | Per-build corpus baseline |
 | `check_export_baseline.py` | Export counters + per-file rows/bytes/SHA-256 content identity, and the `Sink tally` fields against the `fields.parquet` rows; with `--checkpoints`, also every checkpoint GUID path against the main stream's own declaration of that GUID ([method](CHECKPOINT_PATH_RESOLUTION.md#cross-check-against-the-main-stream)) |
 | `check_baseline_schemas.py` | All committed baseline schemas, measured SHA-256 hashes, and cross-file replay/counter/table identities. |
-| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads and native movement component failures -- the same zero-required counters as `verify_build_corpus.py` -- plus native envelope/header counter consistency. Fails when a work counter behind a gate never moves; the unwalked-CNC and checkpoint movement gates lack observed work and are printed as unbacked (top level; `--recursive` for subdirectories, `--checkpoints` to also decode Checkpoint chunks). |
+| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads and native movement component failures -- the same zero-required counters as `verify_build_corpus.py` -- plus the main pass's network loss (`Content failures` malformed/transform/field/RPC loss, `Failed reopens`, `Unopened channel`) and native envelope/header counter consistency. Preserved RPC payloads and `RPC suffix bits` are legitimately nonzero: printed here, pinned by `check_export_baseline.py`. Fails when a work counter behind a gate never moves; the unwalked-CNC and checkpoint movement gates lack observed work and are printed as unbacked (top level; `--recursive` for subdirectories, `--checkpoints` to also decode Checkpoint chunks). |
 | `corpus_scan.py` | Not a check -- the `.vrf` discovery `validate_corpus.py` and `check_decode_errors_corpus.py` share, so the two can no longer glob a directory two different ways and disagree about what "the corpus" is without saying so. Non-recursive by default; read its docstring for why. |
 | `summary_counters.py` | Not a check -- what the guard tools share: the export summary's counter lines as one table, read by `check_export_baseline.py`, `check_decode_errors_corpus.py` and `verify_build_corpus.py`, each pattern anchored on the whole line (a Python test reads every line and the argument behind each count back out of `summary.rs`); and the helpers that run vrfkit and resolve, skip or pin a baseline's input. |
 | `export_scan.py` | Not a check -- the export discovery the tools that read a directory of exports share: it names the staging and backup directories an interrupted `vrfkit export` leaves behind ([section 2](#if-an-export-is-interrupted)), so none of those tools can count one as an export. A Python test reads the names back out of the Rust code that creates them. |
@@ -859,7 +859,8 @@ resolving, and the live value of each number it can re-derive, in the
 phrasings it reads -- the overlay and handle table sizes (in Rust doc comments
 and `Cargo.toml` too), the test counts, the reference replay's printed overlay
 counters, `Typed` ratio and export rows/bytes, the build table's clean/checked
-counts, and the counts its `MEASURED_RE` names. Any other figure, DATA.md's
+counts, BUILD_VERIFICATION.md's transform-vector build and case counts, and the
+counts its `MEASURED_RE` names. Any other figure, DATA.md's
 measurements among them, is a measurement nothing re-runs, and nothing checks
 it. A stale sentence compiles and passes every test.
 
@@ -1216,7 +1217,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-908 Rust tests (Windows), 907 Rust tests (non-Windows), and 1209 Python tests.
+910 Rust tests (Windows), 909 Rust tests (non-Windows), and 1220 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
@@ -1300,7 +1301,7 @@ other difference, and on that one if it stops occurring exactly as listed
 |---|---|---|---|
 | `validate_corpus.py` | Framing (top level of the corpus dir; `--recursive` for subdirectories) | Type errors, broken semantics | ~30 s |
 | `check_export_baseline.py` | Every export counter + per-file rows/bytes/SHA-256 | Other builds | 1 s |
-| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads, native component failures and counter consistency, and a decoder whose work counter never moves (top level; `--recursive` for subdirectories) | Broken semantics; a decoder stopped on one build or route while the rest keep its corpus total up; a CNC brute force that never runs (`attempted` can legitimately be 0); Checkpoint chunks, unless `--checkpoints` | ~50 s in the historical audit; native contract requires remeasurement |
+| `check_decode_errors_corpus.py` | Overlay type errors, struct blob failures, array/leaf/truncated-RPC/movement failures, unwalked CNC brute-force payloads, native component failures and counter consistency, main-pass network loss (content failures, failed reopens, unopened-channel bunches), and a decoder whose work counter never moves (top level; `--recursive` for subdirectories) | Broken semantics; a decoder stopped on one build or route while the rest keep its corpus total up; a CNC brute force that never runs (`attempted` can legitimately be 0); Checkpoint chunks, unless `--checkpoints` | ~50 s in the historical audit; native contract requires remeasurement |
 | `check_decode_errors_corpus.py --checkpoints` | The same failure counters and native component counter consistency for every Checkpoint chunk, plus checkpoint work counters (decoded fields, blobs, array elements and fields) | Broken semantics; checkpoint movement, CNC brute-force and truncated-RPC failures remain unbacked when no checkpoint RPC reaches those decoders. That was the case in the historical 1,018-replay audit; its old movement counters are not current validation | slower: `vrfkit export` also decodes every Checkpoint chunk per replay |
 | `check_metrics_baseline.py` | **Semantics** -- rounds, score, K/D/A (8 builds) | Errors in the metrics pipeline itself | ~46 s |
 | `compare_combat_report.py` | Metrics-input multiset | Framing | seconds |
@@ -1506,5 +1507,8 @@ strict audit still writes its results and exits nonzero. Read
 `check_docs.py` checks README's supported-build table against that committed
 report and the Rust registry (the same verification wording and clean/checked
 denominators), and this document's `Payload transform (N builds)` count
-against the registry. The native and golden vector counts remain
+against the registry. It also checks the arithmetic-evidence paragraph of
+BUILD_VERIFICATION.md -- the registered-build total, each vector group's builds
+and its cases per build -- against the registry and
+`crates/vrf-transform/tests/data`. The native and golden vector counts remain
 separate arithmetic evidence; they do not substitute for any replay check.

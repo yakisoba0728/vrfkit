@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+Rust API: `vrf_net::stats::NetStats::rpc_payloads_lost` returns
+`Option<u64>`, `None` when more unresolved RPC payloads were preserved than
+RPC streams failed. It used to saturate to 0 there. `validate` and the export
+summary print that case as `?` (`RPC payload lost:`, `Content failures:` and
+`Checkpoint loss:`), and `lost_content_blocks` (manifest
+`content_blocks_lost`) adds the excess as loss instead of netting it to 0.
+Output on a replay whose counts are consistent is unchanged.
+
 ## 0.7.0
 
 0.7.0 is a minor bump for one source-breaking Rust API change. `vrfkit export`

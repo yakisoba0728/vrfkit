@@ -19,9 +19,10 @@ Usage:
     python tools/check_decode_errors_corpus.py <vrfkit.exe> <corpus dir> --checkpoints
 
 Every G line of summary_counters.py must print on every replay; `--checkpoints`
-adds the checkpoint block's. Exit 0 only when every `FAILURES` counter is zero
-on every replay, every `MUST_MOVE` work counter moved across the corpus, and
-the overlay buckets reconcile. Every failure gate is backed in `MUST_MOVE` by
+adds the checkpoint block's. Exit 0 only when every `FAILURES` and
+`NET_FAILURES` counter is zero on every replay, every `MUST_MOVE` and
+`NET_MUST_MOVE` work counter moved across the corpus, and the overlay buckets
+reconcile. Every failure gate is backed in a must-move table by
 the work counter whose movement makes its zero evidence, or listed in
 `UNBACKED` with the reason none exists and printed as unbacked on every run.
 Checkpoint `conflicts` is printed, never gated: a conflict is the overlay
@@ -52,6 +53,14 @@ FAILURES = (
     "cnc_bruteforce_payloads_unwalked", "movement_component_errors",
 )
 CHECKPOINT_FAILURES = tuple("cp_" + key for key in FAILURES)
+#: Main-pass network loss, zero on every replay: verify_build_corpus.py's
+#: NET_ZERO terms the summary prints, and its `rpc_loss` (the test pins both).
+#: The checkpoint pass prints these on its own `Checkpoint loss:` line.
+NET_FAILURES = (
+    "malformed_content_blocks", "transform_failures", "field_stream_failures",
+    "rpc_payloads_lost", "failed_reopens_while_open", "bunches_on_unopened_channel",
+    "unopened_channel_bits",
+)
 
 #: `(work counter, the FAILURES it backs)`: corpus totals that cannot stay at
 #: zero, or every gate they back reads 0 vacuously. The array walker, leaf
@@ -74,6 +83,15 @@ MUST_MOVE = (
     ("movement_rows", ("movement_rpc_errors", "movement_component_errors")),
     ("rpc_param_walks", ("truncated_rpcs",)),
 )
+#: The network reader's work: a reader that stopped frames nothing, and every
+#: loss counter beside it reads 0.
+NET_MUST_MOVE = (
+    ("content_blocks", ("malformed_content_blocks", "transform_failures",
+                        "field_stream_failures")),
+    ("rpcs", ("rpc_payloads_lost",)),
+    ("actor_opens", ("failed_reopens_while_open",)),
+    ("bunches", ("bunches_on_unopened_channel", "unopened_channel_bits")),
+)
 #: The checkpoint pass: the same minus movement (at least 2,054 decoded
 #: fields, 16 blobs, 30 array elements and 255 array fields per replay).
 CHECKPOINT_MUST_MOVE = tuple(("cp_" + work, tuple("cp_" + g for g in gates))
@@ -94,7 +112,7 @@ CHECKPOINT_UNBACKED = (
     ("cp_cnc_bruteforce_payloads_unwalked",
      "no checkpoint RPC reaches the fc=34 brute-force walk (attempted is 0)"),
 )
-PASSES = {False: (FAILURES, MUST_MOVE, UNBACKED),
+PASSES = {False: (FAILURES + NET_FAILURES, MUST_MOVE + NET_MUST_MOVE, UNBACKED),
           True: (CHECKPOINT_FAILURES, CHECKPOINT_MUST_MOVE, CHECKPOINT_UNBACKED)}
 
 
@@ -124,7 +142,7 @@ def read_counters(
 def replay_failures(counters: dict[str, int], checkpoints: bool) -> list[tuple[str, int]]:
     """`(key, count)` for every failure counter that is nonzero on one replay.
     Indexed, never `.get(key, 0)`: a missing counter must raise."""
-    gated = FAILURES + (CHECKPOINT_FAILURES if checkpoints else ())
+    gated = PASSES[False][0] + (PASSES[True][0] if checkpoints else ())
     return [(key, counters[key]) for key in gated if counters[key]]
 
 
@@ -294,8 +312,8 @@ def main() -> int:
     print(f"reconciles: decoded OK + decode errors + raw/skip + not in table + no "
           f"field name = rows offered ({totals['overlay_rows_offered']:,})")
 
-    ok_msg = (f"\nOK: {len(files)} replays reported 0 on all {len(FAILURES)} "
-              f"failure counters: {backing_summary(MUST_MOVE, UNBACKED, totals)}")
+    ok_msg = (f"\nOK: {len(files)} replays reported 0 on all {len(PASSES[False][0])} "
+              f"failure counters: {backing_summary(*PASSES[False][1:], totals)}")
     if args.checkpoints:
         ok_msg += (f"; checkpoints 0 on all {len(CHECKPOINT_FAILURES)} failure "
                    f"counters: "

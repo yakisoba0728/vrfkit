@@ -31,6 +31,11 @@ pub fn route_children(sink: &crate::sink::ExportStats) -> String {
     )
 }
 
+/// A count, or `?` where none exists: a missing value never prints as 0.
+pub fn count_or_unknown(count: Option<u64>) -> String {
+    count.map_or_else(|| "?".to_owned(), |n| n.to_string())
+}
+
 /// `N attempted / N errors / N accepted fragments / N completed`.
 pub fn partial_bunches(stats: &NetStats) -> String {
     format!(
@@ -57,4 +62,21 @@ pub fn partial_causes(stats: &NetStats) -> String {
         stats.partial_unclassified_errors(),
         stats.partial_overclassified_errors()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A missing count is `?`, a present one its digits, zero included.
+    #[test]
+    fn a_missing_count_prints_as_a_question_mark_never_as_zero() {
+        assert_eq!(count_or_unknown(None), "?");
+        assert_eq!(count_or_unknown(Some(0)), "0");
+        assert_eq!(count_or_unknown(Some(6490)), "6490");
+        let mut stats = NetStats::default();
+        stats.rpc_stream_failures = 1;
+        stats.unresolved_rpc_payloads_preserved = 2;
+        assert_eq!(count_or_unknown(stats.rpc_payloads_lost()), "?");
+    }
 }

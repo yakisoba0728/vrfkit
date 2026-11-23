@@ -14,8 +14,17 @@ from support import TempDirTestCase, run_cli
 import check_decode_errors_corpus as guard
 
 #: The main-pass sink lines, failure counters at zero. Values from a real 13.02
-#: `--checkpoints` export log, except synthetic CNC, movement, route, FocusProjectiles trailer and walk lines.
+#: `--checkpoints` export log, except synthetic CNC, movement, route, FocusProjectiles trailer and walk lines;
+#: the network lines are the 13.01 reference replay's (tools/baselines/export_02d4d478.json).
 CLEAN_SINK = """
+Content blocks:   608080
+RPCs:             342990
+Actor opens:      2028
+Bunches:          530401
+Content failures: 0 malformed / 0 transform / 0 field / 0 RPC loss / 6490 unresolved RPC raw
+Failed reopens:   0
+Unopened channel: 0 bunches / 0 bits
+RPC suffix bits:  23581
 Movement rows:     2407298
 Movement errors:   0
 Array decode:      25052 elements / 96076 fields / 0 errors / 0 truncations
@@ -65,6 +74,7 @@ CLEAN_WITH_CHECKPOINTS = LIVE_EXPORT + """
   Checkpoint ActiveBlinds trailers: 1 empty deltas
   Checkpoint FocusProjectiles trailers: 0 empty deltas
   Checkpoint FocusProjectiles refused: 0 parent updates with a mismatched declaration
+  Checkpoint suffix:0 RPC bits
   Checkpoint CNC:   3 RPC rows
   Checkpoint CNC brute force: 0 attempted / 0 unwalked
 """
@@ -133,6 +143,8 @@ class ReadCountersTests(unittest.TestCase):
 WORKING_TOTALS = {"overlay_decoded_ok": 129000, "struct_blobs_decoded": 63,
                   "array_elements_decoded": 25052, "array_fields_emitted": 96076,
                   "movement_rows": 2407298, "rpc_param_walks": 338107,
+                  "content_blocks": 608080, "rpcs": 342990, "actor_opens": 2028,
+                  "bunches": 530401,
                   "cp_overlay_decoded_ok": 500,
                   "cp_struct_blobs_decoded": 8, "cp_array_elements_decoded": 44652,
                   "cp_array_fields_emitted": 364594}
@@ -145,6 +157,10 @@ WORK_CASES = (
     (False, "array_fields_emitted", "Array decode fields", "Array leaf errs"),
     (False, "movement_rows", "Movement rows", "Movement errors"),
     (False, "rpc_param_walks", "RPC param walks", "Truncated RPCs"),
+    (False, "content_blocks", "Content blocks", "Content failures transform"),
+    (False, "rpcs", "RPCs", "Content failures RPC loss"),
+    (False, "actor_opens", "Actor opens", "Failed reopens"),
+    (False, "bunches", "Bunches", "Unopened channel bits"),
     (True, "cp_overlay_decoded_ok", "Checkpoint Overlay decoded", "Checkpoint Overlay errors"),
     (True, "cp_struct_blobs_decoded", "Checkpoint blobs decoded", "Checkpoint blobs failed"),
     (True, "cp_array_elements_decoded", "Checkpoint array elements", "Checkpoint fails array"),
@@ -210,7 +226,7 @@ class FailureTests(unittest.TestCase):
         clean, err = guard.read_counters(CLEAN_WITH_CHECKPOINTS, 0, require_checkpoints=True)
         self.assertEqual(err, "")
         self.assertEqual(guard.replay_failures(clean, checkpoints=True), [])
-        for key in guard.FAILURES + guard.CHECKPOINT_FAILURES:
+        for key in guard.FAILURES + guard.NET_FAILURES + guard.CHECKPOINT_FAILURES:
             with self.subTest(counter=key):
                 self.assertEqual(guard.replay_failures(dict(clean, **{key: 7}), checkpoints=True),
                                  [(key, 7)])
@@ -237,6 +253,41 @@ class FailureTests(unittest.TestCase):
         self.assertEqual({"overlay_decoded_err" if k == "overlay_decode_errors" else k
                           for k in guard.FAILURES}, set(sink_zero))
         self.assertEqual(guard.CHECKPOINT_FAILURES, tuple("cp_" + k for k in guard.FAILURES))
+
+    def test_the_network_gates_are_verify_build_corpus_net_zero_and_rpc_loss(self):
+        """Every NET_ZERO counter the summary prints is gated here, and RPC
+        loss stands for the `rpc_loss` verify_build_corpus.py nets itself."""
+        tree = ast.parse((Path(guard.__file__).parent / "verify_build_corpus.py")
+                         .read_text(encoding="utf-8"))
+        net_zero = next(ast.literal_eval(node.value) for node in tree.body
+                        if isinstance(node, ast.Assign) and node.targets[0].id == "NET_ZERO")
+        printed = set(guard.sc.keys("G", False))
+        self.assertEqual(set(guard.NET_FAILURES) - {"rpc_payloads_lost"},
+                         set(net_zero) & printed)
+        self.assertIn("rpc_payloads_lost", guard.NET_FAILURES)
+
+    def test_legitimately_nonzero_network_counters_are_read_but_never_gated(self):
+        """Preserved RPC payloads and suffix bits are measured shapes: pinned
+        by check_export_baseline.py, never zero gates here."""
+        clean, err = guard.read_counters(CLEAN_WITH_CHECKPOINTS, 0, require_checkpoints=True)
+        self.assertEqual(err, "")
+        self.assertEqual((clean["unresolved_rpc_payloads_preserved"],
+                          clean["rpc_suffix_bits_dropped"]), (6490, 23581))
+        for key in ("unresolved_rpc_payloads_preserved", "rpc_suffix_bits_dropped",
+                    "cp_rpc_suffix_bits_dropped"):
+            with self.subTest(key=key):
+                self.assertEqual(guard.replay_failures(dict(clean, **{key: 9}), True), [])
+                self.assertIn(key, guard.sc.keys("P", key.startswith("cp_")))
+
+    def test_each_network_line_is_required(self):
+        for label in ("Content failures:", "Failed reopens:", "Unopened channel:",
+                      "RPC suffix bits:", "Content blocks:", "Bunches:"):
+            with self.subTest(label=label):
+                text = "\n".join(line for line in LIVE_EXPORT.splitlines()
+                                 if not line.startswith(label))
+                counters, error = guard.read_counters(text, 0)
+                self.assertIsNone(counters)
+                self.assertIn(label, error)
 
 
 class LivenessCoverageTests(unittest.TestCase):
@@ -271,6 +322,14 @@ out.mkdir(parents=True, exist_ok=True)
 name = Path(argv[1]).name
 
 SINK = """
+Content blocks:    50
+RPCs:              30
+Actor opens:       6
+Bunches:           70
+Content failures:  0 malformed / 0 transform / 0 field / 0 RPC loss / 3 unresolved RPC raw
+Failed reopens:    0
+Unopened channel:  0 bunches / 0 bits
+RPC suffix bits:   9
 Movement rows:     100
 Movement errors:   0
 Array decode:      10 elements / 40 fields / 0 errors / 0 truncations
@@ -305,6 +364,7 @@ CHECKPOINTS = """
   Checkpoint ActiveBlinds trailers: 1 empty deltas
   Checkpoint FocusProjectiles trailers: 0 empty deltas
   Checkpoint FocusProjectiles refused: 0 parent updates with a mismatched declaration
+  Checkpoint suffix:0 RPC bits
   Checkpoint CNC brute force: 0 attempted / 0 unwalked
 """
 
@@ -349,6 +409,13 @@ if "noarray" in name:
     emit(sink=SINK.replace("10 elements / 40 fields", "0 elements / 0 fields"))
 if "nowalk" in name:
     emit(sink=SINK.replace("RPC param walks:   20", "RPC param walks:   0"))
+if "noframe" in name:
+    emit(sink=SINK.replace("Content blocks:    50", "Content blocks:    0"))
+if "unopened" in name:
+    emit(sink=SINK.replace("Unopened channel:  0 bunches / 0 bits",
+                           "Unopened channel:  2 bunches / 96 bits"))
+if "unknownloss" in name:
+    emit(sink=SINK.replace("0 RPC loss", "? RPC loss"))
 emit()
 '''.replace("import sys\n", "import re\nimport sys\n", 1)
 
@@ -405,9 +472,17 @@ class MainWiringTests(TempDirTestCase):
                     r"\(.+\); Checkpoint CNC brute force unwalked \(.+\)$")
         ok = [line for line in output.splitlines() if line.startswith("OK:")]
         self.assertEqual(len(ok), 1, output)
-        self.assertIn("11 backed by work that moved (Decoded OK 90, Struct blobs decoded 5, "
-                      "Array decode elements 10, Array decode fields 40, Movement rows 100, "
-                      "RPC param walks 20), 1 with no work counter (CNC brute force unwalked)", ok[0])
+        self.assertIn("0 on all 19 failure counters: 18 backed by work that moved (Decoded OK "
+                      "90, Struct blobs decoded 5, Array decode elements 10, Array decode fields "
+                      "40, Movement rows 100, RPC param walks 20, Content blocks 50, RPCs 30, "
+                      "Actor opens 6, Bunches 70), 1 with no work counter (CNC brute force "
+                      "unwalked)", ok[0])
+        for line in ("Content failures: 0 malformed / 0 transform / 0 field / 0 RPC loss / "
+                     "3 unresolved RPC raw", "Failed reopens: 0",
+                     "Unopened channel: 0 bunches / 0 bits", "RPC suffix bits: 9",
+                     "Checkpoint suffix:0 RPC bits"):
+            with self.subTest(line=line):
+                self.assertRegex(output, rf"(?m)^  {re.escape(line)}$")
         self.assertIn("8 backed by work that moved (Checkpoint Overlay decoded 500, "
                       "Checkpoint blobs decoded 8, Checkpoint array elements 30, Checkpoint "
                       "array fields 90), 4 with no work counter (Checkpoint fails movement, "
@@ -421,7 +496,9 @@ class MainWiringTests(TempDirTestCase):
         for name, extra, line in (
                 ("decodeerr.vrf", (), "decodeerr.vrf: Decode errors=10"),
                 ("cpleaf.vrf", ("--checkpoints",),
-                 "cpleaf.vrf: Checkpoint leaf typed decode errors=4")):
+                 "cpleaf.vrf: Checkpoint leaf typed decode errors=4"),
+                ("unopened.vrf", (),
+                 "unopened.vrf: Unopened channel bunches=2, Unopened channel bits=96")):
             with self.subTest(name):
                 code, output = self.run_main(name, extra_args=extra)
                 (self.corpus / name).unlink()
@@ -435,6 +512,7 @@ class MainWiringTests(TempDirTestCase):
                 ("nothingran.vrf", (), "Decoded OK totalled 0"),
                 ("noarray.vrf", (), "Array decode elements totalled 0"),
                 ("nowalk.vrf", (), "RPC param walks totalled 0"),
+                ("noframe.vrf", (), "Content blocks totalled 0"),
                 ("cpnoarray.vrf", ("--checkpoints",), "Checkpoint array elements totalled 0")):
             with self.subTest(name):
                 code, output = self.run_main(name, extra_args=extra)
@@ -452,6 +530,7 @@ class MainWiringTests(TempDirTestCase):
     def test_an_unreadable_or_unreconciled_replay_fails_the_run(self):
         for name, expected in (("missingcounter.vrf", "did not report the counter"),
                                ("badexit.vrf", "did not report the counter"),
+                               ("unknownloss.vrf", "no 'Content failures: "),
                                ("mismatch.vrf", "do not reconcile")):
             with self.subTest(name):
                 code, output = self.run_main(name)
