@@ -302,9 +302,13 @@ on line endings: compare sources with Git, not by digest alone.
 
 ## Arithmetic evidence
 
-The shared replay audit supplements the transform tests. The eighteen builds
-11.06--12.09, 13.08 and 13.09 have 79 independently captured native-machine-code
-cases each; the eight other builds have eleven golden cases each. These remain
+The shared replay audit supplements the transform tests, which cover all 27
+registered builds. The eighteen builds 11.06--12.09, 13.08 and 13.09 have 79
+independently captured native-machine-code cases each; the eight builds
+12.10--13.06 have eleven golden cases each; 13.10 has eleven fixed boundary
+vectors, of which the 1-, 7-, 8-, 31- and 32-bit cases were checked against its
+native reader (`crates/vrf-transform/tests/data/recovered_1310_vectors.rs`).
+These remain
 different sources of arithmetic evidence, not substitutes for the replay
 checks; [LEGACY_BUILD_SUPPORT.md](LEGACY_BUILD_SUPPORT.md) records the 48
 samples used while adding 11.06--12.09.
