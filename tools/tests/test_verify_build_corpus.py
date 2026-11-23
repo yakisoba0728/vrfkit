@@ -52,7 +52,8 @@ def manifest():
                             "overlay_error_buckets", "overlay_errors_reported",
                             "unknown_chunks"), 0)
     quality.update(checkpoints_enabled=True, net=net, sink=sink,
-                   checkpoints={"net": deepcopy(net), "sink": deepcopy(sink),
+                   checkpoints={"net": deepcopy(net),
+                                "sink": dict(deepcopy(sink), rpc_suffix_bits_dropped=0),
                                 "checkpoint_chunks": 1, "checkpoint_trailing_bytes": 0})
     return {"quality": quality}
 
@@ -74,7 +75,8 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(counts["main_rpc_loss"], 0)
         self.assertEqual(counts["main_overlay_offered"], 100)
         self.assertEqual(counts["main_skipped_bits"], 20)
-        self.assertEqual(counts["checkpoint_rpc_suffix_bits_dropped"], 4)
+        self.assertEqual(counts["main_rpc_suffix_bits_dropped"], 4)
+        self.assertEqual(counts["checkpoint_rpc_suffix_bits_dropped"], 0)
         self.assertEqual(counts["main_route_children_focus_projectiles"], 2)
         self.assertEqual(counts["checkpoint_focus_projectiles_empty_trailers"], 3)
         self.assertEqual(counts["main_focus_projectiles_declaration_refusals"], 4)
@@ -88,6 +90,19 @@ class ManifestTests(unittest.TestCase):
                         target = data["quality"] if scope == "main" else data["quality"]["checkpoints"]
                         target[category][key] = 1
                         self.assertIn(f"{scope}_{key}=1", audit.manifest_counts(data)[1])
+
+    def test_rpc_suffix_bits_fail_the_checkpoint_pass_only(self):
+        """Main-pass suffix bits are a measured delta shape, recorded; a
+        checkpoint suffix has never been seen, so it fails."""
+        for scope, failing in (("main", False), ("checkpoint", True)):
+            with self.subTest(scope=scope):
+                data = manifest()
+                target = data["quality"] if scope == "main" else data["quality"]["checkpoints"]
+                target["sink"]["rpc_suffix_bits_dropped"] = 9
+                counts, failures = audit.manifest_counts(data)
+                self.assertEqual(counts[f"{scope}_rpc_suffix_bits_dropped"], 9)
+                self.assertEqual(f"{scope}_rpc_suffix_bits_dropped=9" in failures, failing,
+                                 failures)
 
     def test_package_map_export_bunches_fail_each_pass(self):
         """Named here, not read from NET_ZERO, so dropping either term fails."""

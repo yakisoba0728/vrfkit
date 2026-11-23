@@ -274,9 +274,10 @@ audit are separate measurements.
 
 Unknown whole RPCs preserved as raw payloads are counted separately from RPC
 loss. Skipped bits, RPC suffix bits, refused handle conflicts and untyped
-properties remain explicit in the report. A clean audit does not imply full
-semantic coverage, complete understanding of every field, or verification
-against what the game displayed.
+properties remain explicit in the report; RPC suffix bits fail the audit only
+in the checkpoint pass, where none has been observed. A clean audit does not
+imply full semantic coverage, complete understanding of every field, or
+verification against what the game displayed.
 
 The audit command also reports `build_errors` and exits unsuccessfully if any
 build has no observed checkpoint decoding. Documentation checks require

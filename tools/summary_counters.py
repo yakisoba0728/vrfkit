@@ -59,12 +59,12 @@ LINES = (
     ("Frame times: {} non-finite", "frame_non_finite_times", "P"),
     ("Packets: {}", "packets", "P"),
     ("Export groups: {}", "export_groups", "P"),
-    ("Content blocks: {}", "content_blocks", "P"),
+    ("Content blocks: {}", "content_blocks", "PG"),
     ("RepLayout blocks: {}", "rep_layout_blocks", "P"),
     ("ClassNetCache: {}", "class_net_cache_blocks", "P"),
     ("Fields: {}", "fields", "P"),
-    ("RPCs: {}", "rpcs", "P"),
-    ("Actor opens: {}", "actor_opens", "P"),
+    ("RPCs: {}", "rpcs", "PG"),
+    ("Actor opens: {}", "actor_opens", "PG"),
     ("Actor closes: {}", "actor_closes", "P"),
     ("Partial raw rows: {} ({} bits)", "partial_rows partial_bits", "P"),
     # `fields` is the fields.parquet row count (check_export_baseline.py
@@ -72,8 +72,17 @@ LINES = (
     # and content blocks.
     ("Sink tally: {} fields / {} RPCs / {} opens / {} closes / {} content blocks",
      "fields_emitted rpcs_emitted sink_actor_opens sink_actor_closes sink_content_blocks", "P"),
-    ("Bunches: {}", "bunches", "P"),
+    ("Bunches: {}", "bunches", "PG"),
     ("Malformed pkts: {}", "malformed_packets", "P"),
+    # `unresolved RPC raw` is preserved whole, legitimately nonzero; the four
+    # before it are loss.
+    ("Content failures: {} malformed / {} transform / {} field / {} RPC loss / "
+     "{} unresolved RPC raw",
+     "malformed_content_blocks transform_failures field_stream_failures rpc_payloads_lost "
+     "unresolved_rpc_payloads_preserved", "PG"),
+    ("Failed reopens: {}", "failed_reopens_while_open", "PG"),
+    ("Unopened channel: {} bunches / {} bits",
+     "bunches_on_unopened_channel unopened_channel_bits", "PG"),
     ("Skipped bits: {}", "skipped_bits", "P"),
     ("Movement rows: {}", "movement_rows", "PG"),
     ("NetGUID rows: {}", "net_guid_rows", "P"),
@@ -109,6 +118,8 @@ LINES = (
      "focus_projectiles_declaration_refusals", "PG"),
     ("Truncated RPCs: {}", "truncated_rpcs", "G"),
     ("RPC param walks: {}", "rpc_param_walks", "PG"),
+    # Legitimately nonzero (ActiveGameplayEffects custom delta): pinned, not gated.
+    ("RPC suffix bits: {}", "rpc_suffix_bits_dropped", "PG"),
     ("Event layout err: {}", "event_layout_mismatches", "P"),
     ("Event payloads: {} decoded / {} unknown groups",
      "event_payloads_decoded event_payload_unknown_groups", "P"),
@@ -176,6 +187,7 @@ LINES = (
      "cp_movement_component_unused_bits", "PG"),
     ("Checkpoint component headers: {} input / {} discrepancy",
      "cp_movement_component_input_headers cp_movement_component_discrepancy_headers", "PG"),
+    ("Checkpoint suffix:{} RPC bits", "cp_rpc_suffix_bits_dropped", "PG"),
     ("Checkpoint CNC: {} RPC rows", "cp_cnc_rpcs_emitted", "P"),
     ("Checkpoint CNC brute force: {} attempted / {} unwalked",
      "cp_cnc_bruteforce_payloads_attempted cp_cnc_bruteforce_payloads_unwalked", "PG"),

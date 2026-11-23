@@ -51,6 +51,10 @@ SINK_ZERO = (
     "cnc_bruteforce_payloads_unwalked",
     "movement_component_errors",
 )
+#: Zero in the checkpoint pass only: main-pass suffix bits are the measured
+#: ActiveGameplayEffects delta (nonzero on 24 of 27 builds), but no checkpoint
+#: RPC has carried one (0 on all 27 builds, 11.06-13.10).
+CHECKPOINT_SINK_ZERO = ("rpc_suffix_bits_dropped",)
 #: Each sink event tally and the NetStats counter it must equal: vrf-net calls
 #: the sink beside its own increment, so a difference is broken bookkeeping.
 #: `fields_emitted` pairs with fields.parquet's rows instead (`check_export`).
@@ -99,6 +103,8 @@ def manifest_counts(manifest):
                              *summary_counters.MOVEMENT_COUNTERS,
                              "active_blinds_empty_trailers",
                              *summary_counters.FOCUS_PROJECTILES_COUNTERS))
+            if category == "sink" and prefix == "checkpoint":
+                zero_keys = zero_keys + CHECKPOINT_SINK_ZERO
             for key in sorted(keys):
                 name = f"{prefix}_{key}"
                 counts[name] = require_count(source, key)
