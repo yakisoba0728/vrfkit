@@ -166,6 +166,10 @@ The legacy unnamed damage-parameter fallback remains unverified for the
 pre-12.10 shift recorded in the previous audit. A named field resolving by its
 own descriptor does not prove that an unnamed field's fixed handle is correct.
 This change neither relaxes that boundary nor claims to resolve that risk.
+The private 11.06-12.09 corpus (48 replays) has since been measured: no damage
+or temporary-death parameter arrived unnamed there, so the fallback is
+unexercised rather than verified
+([measurement](UPSTREAM_AUDIT_2026_11.md#legacy-corpus-measurement)).
 
 ## Complete commit ledger (4)
 
@@ -220,6 +224,8 @@ Python guard executes the 1,081-test inventory but cannot create symlinks under
 this Windows account (`WinError 1314`); the complete suite is also exercised
 by the PR's Windows/Ubuntu Python CI matrix.
 
-The previous audit's legacy unnamed damage-handle question remains open.
+The previous audit's legacy unnamed damage-handle question remains open in
+the sense that matters: the fallback has no unnamed input to verify on the
+48-replay legacy corpus (0 rows), so its correctness is untested, not proven.
 Unobserved Base/Downed arrays, zero-only overrides and absent checkpoint
 temporary-death calls are not counted as verified behavior.

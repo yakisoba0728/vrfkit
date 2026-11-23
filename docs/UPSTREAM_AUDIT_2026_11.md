@@ -13,7 +13,7 @@ Continues [`UPSTREAM_AUDIT_2026_10.md`](UPSTREAM_AUDIT_2026_10.md) with the same
 
 | Upstream commit | Decision | Evidence |
 |---|---|---|
-| `5907abd` 12.09 damage RPCs (`KillCreditPlayerState` absent before 12.10, later handles one lower) | **Not ported; the fixed-handle bug does not apply to named parameters. Needs private 12.09 evidence for unnamed ones.** | See [12.09 damage handles](#1209-damage-handles-5907abd). |
+| `5907abd` 12.09 damage RPCs (`KillCreditPlayerState` absent before 12.10, later handles one lower) | **Not ported; the fixed-handle bug does not apply to named parameters.** On 48 private 11.06-12.09 replays no damage parameter arrived unnamed (0 rows), so the unnamed fallback is unexercised there, not verified. | See [12.09 damage handles](#1209-damage-handles-5907abd). |
 | `5907abd` RoundResults 12.11 handle layout from 12.09 | **Already in vrfkit.** | `decode_round_results` selects members by declared name, never by handle. On the public 12.08, 12.10, 12.11 and 13.00 fixtures every `RoundResults[i]` member row is typed (0 null) with `Struct blobs: N decoded / 0 failed`, 12.08 included, which upstream's old layout did not cover. |
 | `c5035c8` Hush Flashbulb as a flash, Suspension's field, new projectile registrations | **Ported where it decodes** (exact scoped identities); the flash-event enricher is not ported. | See [Hush](#hush-c5035c8). |
 | `b70629b` crosshair settings (159-leaf positional binding, Legacy/Current orderings) | **Not ported.** vrfkit already types the leaves by name (`apply_type_corrections.py` ADDITIONS, `BombPlayerState`), and a name has one type in both orderings, so the reordering upstream found changes no vrfkit value. What upstream adds is section attribution (which `LineThickness` is primary, ADS or sniper), a derived view. | Needs replays of 12.08/12.10 and 12.11+ that carry crosshair blocks to verify the two orderings before any Python view is built on them. |
@@ -28,7 +28,7 @@ Upstream binds every `FNetworkedDamageResponseData` member to a fixed handle, so
 
 The residual exposure is `OVERLAY_HANDLE_TABLE`. It maps `MulticastNotifyDamage_{Base,Point}` handles to the 13.x layout (`17 = KillCreditPlayerState`, `18 = RegionalDamage`, ...) and is consulted only when the wire gives no name or a bare decimal FName index. A different real name is refused and counted (`Handle conflicts`). If a 12.09 replay ever sent an unnamed damage parameter at handle 17 or above, it would be typed as the 13.x member at that handle, with no counter moving.
 
-This could not be measured here. The public 12.08/12.10/12.11/13.00 fixtures declare no damage RPC group at all, and no 12.09 replay was available. Two things are known:
+The public fixtures cannot measure this: 12.08/12.10/12.11/13.00 declare no damage RPC group at all. The private-corpus measurement is in [Legacy corpus measurement](#legacy-corpus-measurement). Two further things are known:
 
 - Handle-conflict refusals are not 0 from 12.10 onward. Summing `quality.sink.overlay_handle_conflicts_refused` over the 1,011 private-corpus `manifest.json` files exported by the 0.6.0 code (grouped by `replay_build`; `quality.checkpoints.sink` is 0 on all of them) gives 18,896 refusals in 51 replays:
 
@@ -41,7 +41,7 @@ This could not be measured here. The public 12.08/12.10/12.11/13.00 fixtures dec
   The corpus has no 12.10, 12.11 or 13.00 replay. The rows were identified by a temporary `eprintln!` in `apply_overlay_inner`'s refusal branch (group, handle, wire name, checksum, bits; not committed) run through `validate` on those 51 replays: its count matched the manifest on every replay. Each refusal is the intended fail-closed outcome, not a lost type: the wire declares a real name the table does not type, at a handle the table assigns to another member, so the row stays raw instead of being decoded as that member. The displaced members still arrive by name and are typed on every row of these exports (`DamageType` 12,518/12,518 and 6,343/6,343 on 13.10; `bEquippableUsedInFocusMode` 14,355/14,355 on 11.06-12.09). `DamageIconOverride` is raw by decision (all observed payloads zero; see [DATA.md](DATA.md)) and `AssistsList` is `Raw` on `_Point`.
 - `typed_mismatches: 0` in that file compares against an independent decoder that uses the **same** type assignment. It cannot catch a wrong-name/right-width row and is not evidence here. `KILL_OBSERVATIONS.md` reads `KillData`, not the damage RPCs, so it is not evidence either.
 
-To close this, run on each private 12.09 (and 11.06-12.08) export:
+The query below was run on each private 11.06-12.09 export (results in [Legacy corpus measurement](#legacy-corpus-measurement)):
 
 ```python
 import collections, re, pyarrow.parquet as pq
@@ -61,6 +61,35 @@ for k, n in sorted(c.items()): print(n, *k)
 
 vrfkit is immune on that corpus if no row has `unnamed=True, typed=True`. No `KillCreditPlayerState` row on 12.09 independently confirms upstream's claim. If unnamed typed rows exist, check their widths against the shifted layout before trusting them.
 
+#### Legacy corpus measurement
+
+All 48 private 11.06-12.09 replays (3 per build) were exported by `cargo +1.86.0 build --release -p vrfkit --locked` at `e9f79b4` (`vrfkit export <vrf> --out <dir>`, no `--checkpoints`; 48 exit 0, `Decode errors: 0` on all 48), and the query above was aggregated per `replay_build`. The 13.09 (1) and 13.10 (27) exports from the same run are the comparison.
+
+| Builds | Top-level damage/temporary-death parameter rows | Unnamed, typed | Unnamed, untyped | `KillCreditPlayerState` rows |
+|---|---:|---:|---:|---:|
+| 11.06-12.09 (16 builds, 48 replays) | 1,898,836 | 0 | 0 | 0 |
+| 12.09 alone (3 replays) | 108,172 | 0 | 0 | 0 |
+| 13.09 (1 replay) | 9,461 | 0 | 0 | 296 |
+| 13.10 (27 replays) | 629,582 | 0 | 0 | 18,879 |
+
+Each of the 16 legacy builds is 0 / 0 / 0 on its own. Every legacy damage and temporary-death parameter arrived with a declared name, so `OVERLAY_HANDLE_TABLE` typed no legacy damage row and the shifted-handle risk does not reach this corpus. `KillCreditPlayerState` is absent on all 16 legacy builds and present on 13.09 and 13.10, consistent with upstream's claim that it was added at 12.10 (the corpus has no 12.10 replay, so the boundary itself is not observed). The manifest's `overlay_handle_conflicts_refused` sums to 35 over the 48 exports, the same 35 as the refusal table above.
+
+Controls, so that these zeros can fail:
+
+- The unnamed path is live on the same exports: 2,180-3,648 `overlay_no_field_name` per build, and 154,485-224,765 `{func}._h{N}` rows per legacy build, almost all typed, from effect RPCs such as `ClientPlayOneShotEffectAtLocation`. None of them is a damage or temporary-death function on any of the 18 builds.
+- Renaming one typed `MulticastNotifyDamage_Base.DamageTaken` row to `._h17` in a copy of a 12.09 `fields.parquet` makes the query report `unnamed_typed 1`.
+
+**Value check against an independent source.** The fallback produced no value on this corpus, so it has nothing to compare: 0 passes and 0 mismatches out of 0 fallback rows. Its correctness is still **unverified**, because nothing exercises it. The named values on the same exports were checked with `tools/extract_damage_events.py`, which pairs every killing blow on a player body (`bDamageKilledTarget` plus the row's actor) one to one, in time order, with the replay's own `events.characterDeath` entries:
+
+| Builds | Damage invocations | Killing blows | `characterDeath` | Pairs | Blows without a death | Deaths without a blow | Untyped parameter rows |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 11.06-12.09 (48 replays) | 62,032 | 7,381 | 7,381 | 7,381 | 0 | 0 | 0 |
+| 12.09 (3 replays) | 3,555 | 440 | 440 | 440 | 0 | 0 | 0 |
+| 13.09 (1) | 295 | 38 | 38 | 38 | 0 | 0 | 0 |
+| 13.10 (27) | 18,861 | 2,803 | 2,803 | 2,803 | 0 | 0 | 0 |
+
+All 76 runs exit 0. As a mutation control, setting one killing blow's `bDamageKilledTarget` to false in a copy of a 12.09 export makes the run exit 1, with 16 blows without a death and 17 deaths without a blow. This verifies the kill flag, the victim actor and the time order. It does not verify `DamageDealt` / `DamageTaken` amounts against an independent total; no CombatReport damage reconciliation was done.
+
 ### Hush (`c5035c8`)
 
 Upstream registers Hush's Flashbulb (overhand and underhand), Displacement (overhand and underhand) and Suspension projectiles, and Suspension's `GameObject_Paprika_X_LevitateZone_C`, with `Owner`, `Instigator`, `ReplicatedMovement` and `Selected Point`. In vrfkit, `Owner` / `Instigator` were already typed on all of them, the levitation zone included (`ENGINE_OBJECT_REFS`). The zone's `PlayerLevitatePositions` is variable-width and stays raw.
@@ -77,10 +106,41 @@ The re-export moved exactly 753 rows from `Not in table` to `Decoded OK`, with `
 
 **Not typed:** `ReplicatedMovement` on the underhand Flashbulb and Displacement, which consume as byte but have no spawn join, so their location level is unmeasured. `Actor_Paprika_X_ForceModuleProxy_C` movement (short-only rotator, not in the upstream delta). `LocationOffset` / `RotationOffset`, which upstream does not register. The flash-event semantics (windup-end detonation, `BlindObserved`) are C# enrichment with no Python counterpart yet.
 
+#### Re-check on the private 13.09 and 13.10 corpus
+
+The same exports as the [legacy measurement](#legacy-corpus-measurement): the corpus's 13.09 replay (1; its row counts differ from the replay above, so it is a second 13.09 replay) and all 27 13.10 replays, `Decode errors: 0` on all 28. Commands, each run per build root:
+
+```powershell
+# hush_evidence.json = the 12 scoped_type_evidence.json entries whose group contains /Paprika/
+python tools/validate_type_evidence.py <root> hush_evidence.json --compare-typed
+python tools/check_rep_movement_levels.py <root>
+python tools/extract_damage_events.py --export <export> --out <scratch>.parquet
+```
+
+| Identity | 13.09 rows | 13.10 rows | Check |
+|---|---:|---:|---|
+| `ReplicatedMovement`, `E_RedirectPull` | 45 | 1,883 | All typed, all at /1. Spawn joins 4 and 139, every one within 0.5000; ratio p1-p99 0.9997-1.0002; speed 1.00. 0 rows consumed only as short |
+| `ReplicatedMovement`, `Q_RedirectFlash` | 34 | 1,313 | All typed, at /1. Joins 3 and 86, worst 0.4000 and 0.5000; ratio 0.9998-1.0004; speed 1.00. 0 short-only |
+| `ReplicatedMovement`, `X_FullBendPop` | 179 | 2,478 | All typed, at /1. Joins 1 and 31, worst 0.4000 and 0.5000; ratio 0.9987-1.0001; speed 0.99 and 0.98. 0 short-only |
+| `Selected Point`, overhand E / Q | 31 / 20 | 1,525 / 1,038 | All 192 bits, finite. Median distance to the projectile's own path 122 / 259 (13.09) and 210 / 341 (13.10); to other projectiles' paths 1,413 / 2,590 and 461 / 672 |
+| `Selected Point`, underhand E / Q | 0 / 1 | 21 / 27 | All 192 bits, finite. No own-path distance, because underhand movement is untyped |
+| `CreatedByCharacter`, five `Ability_Paprika_*_C` | 12 | 472 | All 16 bits. 12/12 and 472/472 resolve to a `Paprika_PC_C` actor in the same export (0 unresolved, 0 other class, 0 null) |
+
+`validate_type_evidence.py --compare-typed` reported 0 failures and 0 typed mismatches on both roots. 13.10 passes (exit 0) with 0 missing identities. 13.09 exits 1 only because one identity has no row in that replay (`Selected Point` on `E_RedirectPull_Underhand`). `check_rep_movement_levels.py` exits 0 on both, with `failed: 0`.
+
+**Underhand projectiles: still no spawn join.** No underhand projectile in the 28 replays was thrown free in a way that produces a join:
+
+| Class | `open` rows | `ReplicatedMovement` rows | Spawn joins | First movement row after the open |
+|---|---:|---:|---:|---|
+| `E_RedirectPull_Underhand` | 23 | 88 | 0 | 21 measured, 2 opens with no row. 383-6,285 ms later, never the same tick; distance to spawn at /1 94-1,780 |
+| `Q_RedirectFlash_Underhand` | 35 | 101 | 0 | 28 measured, 7 opens with no row. 680-7,192 ms later; distance at /1 27-2,272 |
+
+The ratio |packed| / |spawn| between the open and that later first row has a median of 1.007 and 0.982 (range 0.78-1.32), and /100 lands 1,006-13,666 units from the spawn. Level 1 is therefore likely, but this is **inferred**: the row comes seconds after the spawn, so the distance is not a join. Both classes stay raw. Their rotators consume as byte (68 rows byte-only, 0 short-only). `Actor_Paprika_X_ForceModuleProxy_C` stays short-only and untyped (4,830 short-only and 23 either-width rows of 4,853 on 13.10).
+
 ## Revalidation needed before expanding the port
 
-1. Run the 12.09 damage query above on the private legacy corpus (11.06-12.09) and record the counts here.
-2. Re-check the Hush identities on more 13.09 (and later) replays, ideally one where an underhand projectile is thrown free so a spawn join exists.
+1. **Done, as far as this corpus allows** ([Legacy corpus measurement](#legacy-corpus-measurement)). 0 unnamed damage or temporary-death parameter rows in 48 legacy replays, so the handle fallback is never exercised there. Named kill values pair 7,381/7,381 with `characterDeath`. **Still open:** the fallback has no input to verify, so its correctness is unverified; no 12.10, 12.11 or 13.00 replay is available; damage amounts have not been reconciled against CombatReport.
+2. **Done for 13.09 (1) and 13.10 (27)** ([re-check](#re-check-on-the-private-1309-and-1310-corpus)). Every typed Hush identity holds, with 0 failures and 0 mismatches. **Still open:** an underhand spawn join (0 of 58 opens), so underhand `ReplicatedMovement` stays raw.
 3. Crosshair section attribution needs replays from both orderings before a Python view is built.
 4. China 13.09 stays off `main` until a verified transform with native vectors and a full replay exists.
 
