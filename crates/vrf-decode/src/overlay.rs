@@ -426,15 +426,15 @@ pub fn lookup_checksum(checksum: u32) -> Option<FieldType> {
 /// The group's order, then the same order against the aliased class (the
 /// WHOLE order, so an aliased field gets the same fallbacks), then scoped
 /// types, engine object references and the checksum.
-fn resolve_entry<'a>(
+fn resolve_entry(
     table: &OverlayTable,
     group_path: &str,
     group_state: GroupHashState,
-    field_name: Option<&'a str>,
+    field_name: Option<&str>,
     handle: Option<u32>,
     checksum: Option<u32>,
     refused: &mut bool,
-) -> Option<(FieldType, &'a str)> {
+) -> Option<(FieldType, DiagnosticName)> {
     if let Some(hit) = resolve_in_group(table, group_path, group_state, field_name, handle, refused)
     {
         return Some(hit);
@@ -462,28 +462,28 @@ fn resolve_entry<'a>(
         if let Ok(index) = scoped.binary_search_by_key(&(name, group_path, checksum), |entry| {
             (entry.0, entry.1, entry.2)
         }) {
-            return Some((scoped[index].3, name));
+            return Some((scoped[index].3, DiagnosticName::Wire));
         }
     }
     if ENGINE_OBJECT_REFS.contains(&name) {
-        return Some((FieldType::ObjectNetGuid, name));
+        return Some((FieldType::ObjectNetGuid, DiagnosticName::Wire));
     }
     // Last on purpose: a type stated for the same property on another class is
     // weaker than anything declared for this one.
-    lookup_checksum(checksum?).map(|field_type| (field_type, name))
+    lookup_checksum(checksum?).map(|field_type| (field_type, DiagnosticName::Wire))
 }
 
 /// Resolve which table entry a wire field belongs to within ONE group: name,
 /// then b-prefix, then handle -- see docs/OVERLAY_RESOLUTION.md "The
 /// b-prefix fallback" for why and the measured row counts.
-fn resolve_in_group<'a>(
+fn resolve_in_group(
     table: &OverlayTable,
     group_path: &str,
     group_state: GroupHashState,
-    field_name: Option<&'a str>,
+    field_name: Option<&str>,
     handle: Option<u32>,
     refused: &mut bool,
-) -> Option<(FieldType, &'a str)> {
+) -> Option<(FieldType, DiagnosticName)> {
     if let Some(name) = field_name {
         // One hash serves both probes; only the field name is folded here.
         let hash = name_hash_from_group(group_state, name);
@@ -491,7 +491,7 @@ fn resolve_in_group<'a>(
             .lookup_hashed(hash, group_path, name)
             .or_else(|| table.lookup_b_prefixed_hashed(hash, group_path, name))
         {
-            return Some((field_type, name));
+            return Some((field_type, DiagnosticName::Wire));
         }
     }
 
@@ -519,7 +519,49 @@ fn resolve_in_group<'a>(
     )?;
     // Report the DESCRIPTOR's name: the type came from it, and the only wire
     // name left here is a bare index like `"248"`.
-    Some((field_type, descriptor_name))
+    Some((field_type, DiagnosticName::Descriptor(descriptor_name)))
+}
+
+/// The name an error row reports: the wire's, or the handle descriptor's the
+/// type came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticName {
+    Wire,
+    Descriptor(&'static str),
+}
+
+/// Everything the overlay decides about one field before reading its bits: a
+/// pure function of the table, the group path, the field name, the handle and
+/// the checksum, so a caller may keep it for those exact inputs and pass it to
+/// [`apply_overlay_resolved`] instead of resolving the same field again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OverlayResolution {
+    entry: Option<(FieldType, DiagnosticName)>,
+    refused: bool,
+}
+
+/// [`apply_overlay_with_checksum`]'s resolution step alone; see
+/// [`OverlayResolution`].
+#[must_use]
+pub fn resolve_overlay(
+    table: &OverlayTable,
+    group_path: &str,
+    group_state: GroupHashState,
+    field_name: Option<&str>,
+    handle: u32,
+    checksum: Option<u32>,
+) -> OverlayResolution {
+    let mut refused = false;
+    let entry = resolve_entry(
+        table,
+        group_path,
+        group_state,
+        field_name,
+        Some(handle),
+        checksum,
+        &mut refused,
+    );
+    OverlayResolution { entry, refused }
 }
 
 /// Whether a declared field name is a bare decimal: an unresolved hardcoded
@@ -542,7 +584,7 @@ fn apply_overlay_inner(
     stats: &mut OverlayStats,
 ) -> Option<OverlayResult> {
     let mut refused = false;
-    let (field_type, diagnostic_name) = match resolve_entry(
+    let entry = resolve_entry(
         table,
         group_path,
         group_state,
@@ -550,8 +592,32 @@ fn apply_overlay_inner(
         handle,
         checksum,
         &mut refused,
-    ) {
-        Some(resolved) => resolved,
+    );
+    apply_overlay_resolved(
+        OverlayResolution { entry, refused },
+        group_path,
+        field_name,
+        raw_bits,
+        bit_count,
+        stats,
+    )
+}
+
+/// [`apply_overlay_with_checksum`] from a resolution [`resolve_overlay`] made
+/// for this same group path and field name: the tallies, the decode and the
+/// error rows, exactly as the one-step call.
+pub fn apply_overlay_resolved(
+    resolution: OverlayResolution,
+    group_path: &str,
+    field_name: Option<&str>,
+    raw_bits: Option<&[u8]>,
+    bit_count: u32,
+    stats: &mut OverlayStats,
+) -> Option<OverlayResult> {
+    let OverlayResolution { entry, refused } = resolution;
+    let (field_type, diagnostic_name) = match entry {
+        Some((field_type, DiagnosticName::Wire)) => (field_type, field_name.unwrap_or_default()),
+        Some((field_type, DiagnosticName::Descriptor(name))) => (field_type, name),
         None => {
             if field_name.is_none() {
                 stats.no_field_name += 1;

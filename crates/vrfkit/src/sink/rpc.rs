@@ -12,13 +12,13 @@ use vrf_decode::{
     ArrayFieldSchema, DecodeErrorKind, EffectArrayKind, EffectBlobError, FieldType,
     LIFE_CHANGE_BY_SECTION_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA, LIFE_CHANGE_DAMAGE_SCHEMA_1310,
     LIFE_CHANGE_SECTION_SCHEMA, LIFE_CHANGE_TEMPORARY_DEATH_POINT_SCHEMA_1310,
-    apply_overlay_with_checksum, decode_effect_blob_json, decode_struct_array,
+    apply_overlay_resolved, decode_effect_blob_json, decode_struct_array,
     decode_struct_array_exact, group_hash_state,
 };
 use vrf_schema::{FxHashMap, NetGuidCache};
 
 use super::intern::put;
-use super::{ExportSink, FieldValues, MeasuredArrayRoute, TABLE};
+use super::{ChannelState, ExportSink, FieldValues, MeasuredArrayRoute};
 
 /// Memo for [`ExportSink::find_rpc_param_group_path`], a pure function of (block
 /// group path, function name, declared group paths); clearing it when
@@ -122,20 +122,28 @@ impl ExportSink<'_> {
             };
 
             // One schema walk for the name and the overlay's last-resort checksum.
-            let param_export = param_group_path_ref.and_then(|gp| {
-                self.cache
-                    .get_group_by_path(gp)
-                    .and_then(|g| g.get_field(param_handle))
-            });
+            let ChannelState {
+                field_names, names, ..
+            } = &mut *self.channel_state;
+            let mut param_names = param_group_path
+                .as_ref()
+                .map(|gp| field_names.group(self.cache, gp));
+            let param_export = (param_names.as_ref())
+                .and_then(|entry| entry.group_index())
+                .and_then(|i| self.cache.groups().get(i))
+                .and_then(|g| g.get_field(param_handle));
             let param_name: Option<&str> = param_export.map(|f| f.name.as_str());
             let param_checksum: Option<u32> = param_export.map(|f| f.compatible_checksum);
 
             // "Function.Param", or "Function._h{N}" unnamed: a dot, because group
             // paths already use ':' and downstream splits on the first '.'.
-            let full_field_name = self.channel_state.names.intern_fmt(|out| match param_name {
-                Some(pn) => put(out, format_args!("{func_name}.{pn}")),
-                None => put(out, format_args!("{func_name}._h{param_handle}")),
-            });
+            let full_field_name = match (param_name, param_names.as_mut()) {
+                (Some(pn), Some(entry)) => entry.qualified(names, param_handle, func_name, pn),
+                _ => names.intern_fmt(|out| match param_name {
+                    Some(pn) => put(out, format_args!("{func_name}.{pn}")),
+                    None => put(out, format_args!("{func_name}._h{param_handle}")),
+                }),
+            };
 
             let raw_bits = copy_raw_bits(sub, payload_bits);
 
@@ -150,13 +158,20 @@ impl ExportSink<'_> {
             // is no wire-declared name, and passed as one it would trip
             // `resolve_in_group`'s conflict guard against its own placeholder,
             // refusing the handle fallback that guard exists to allow.
-            let (value_i64, value_f64, value_bool, mut value_str) = apply_overlay_with_checksum(
-                &TABLE,
-                overlay_group,
+            let resolution = self.channel_state.field_names.resolve_overlay(
+                self.cache,
+                param_group_path
+                    .as_ref()
+                    .unwrap_or(&self.current_group_path),
                 group_state,
                 param_name,
                 param_handle,
                 param_checksum,
+            );
+            let (value_i64, value_f64, value_bool, mut value_str) = apply_overlay_resolved(
+                resolution,
+                overlay_group,
+                param_name,
                 raw_bits.as_deref(),
                 payload_bits,
                 &mut self.stats.overlay,

@@ -29,8 +29,8 @@ and through [`fbf24b6`](https://github.com/michel-giehl/ValorantReplayParser/com
 only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
-**Test suites:** **910 Rust tests (Windows)**,
-**909 Rust tests (non-Windows)** and **1220 Python tests**.
+**Test suites:** **913 Rust tests (Windows)**,
+**912 Rust tests (non-Windows)** and **1220 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -251,7 +251,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
 - **Workspace unsafe-code policy** — `#![forbid(unsafe_code)]` in every crate.
   Dependencies have separate policies; default Parquet compression includes
   native Zstd. The core-only Reader excludes Arrow, Parquet and Zstd.
-- **910 Rust tests (Windows)** / **909 Rust tests (non-Windows)** plus
+- **913 Rust tests (Windows)** / **912 Rust tests (non-Windows)** plus
   a layered validation suite (framing / bytes / decode
   errors / semantics).
 
@@ -306,8 +306,8 @@ The [changelog](CHANGELOG.md) and
 changes.
 
 Fresh local `cargo +1.86.0 test --workspace --locked` passes all
-**909 Rust tests (non-Windows)**, with zero failures or ignored tests. The
-Windows suite contains **910 Rust tests (Windows)**. The full Python suite has
+**912 Rust tests (non-Windows)**, with zero failures or ignored tests. The
+Windows suite contains **913 Rust tests (Windows)**. The full Python suite has
 **1220 passing** tests in the fresh local run. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for

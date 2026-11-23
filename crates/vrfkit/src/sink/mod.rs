@@ -13,6 +13,7 @@
 
 mod blobs;
 mod failure_stats;
+mod field_names;
 mod intern;
 mod measured_routes;
 mod paths;
@@ -37,6 +38,7 @@ use vrf_net::pipeline::ContentBlockContext;
 use vrf_net::types::NetworkGuid;
 use vrf_schema::{FxHashMap, NetGuidCache};
 
+use field_names::FieldNameMemo;
 use intern::NameInterner;
 use measured_routes::{MeasuredArrayRoute, MeasuredArrayRoutes};
 use paths::{BlockPathMemo, ChannelArchetype};
@@ -69,6 +71,7 @@ pub struct ChannelState {
     archetypes: FxHashMap<u32, ChannelArchetype>,
     rpc_param_groups: RpcParamGroupMemo,
     block_paths: BlockPathMemo,
+    field_names: FieldNameMemo,
     names: NameInterner,
     /// Bumped when the archetype map changes: one of [`BlockPathMemo`]'s three
     /// stamps (see [`paths`]).

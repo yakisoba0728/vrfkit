@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use vrf_bitio::BitReader;
-use vrf_decode::apply_overlay_with_checksum;
+use vrf_decode::apply_overlay_resolved;
 use vrf_decode::cnc::{CncRpc, decode_cnc_payload};
 use vrf_export::{
     ActorRecord, CheckpointBlockRecord, MovementProvenance, MovementRecord, MovementSource,
@@ -117,13 +117,13 @@ impl ExportSink<'_> {
             current_group_path,
             ..
         } = self;
-        if let Some(group) = cache.get_group_by_path(current_group_path) {
-            if let Some(field) = group.get_field(handle) {
-                return (
-                    Some(channel_state.names.intern(field.name.as_str())),
-                    Some(field.compatible_checksum),
-                );
-            }
+        let entry = channel_state.field_names.group(cache, current_group_path);
+        let group = entry.group_index().and_then(|i| cache.groups().get(i));
+        if let Some(field) = group.and_then(|group| group.get_field(handle)) {
+            return (
+                Some(entry.name(&mut channel_state.names, handle, &field.name)),
+                Some(field.compatible_checksum),
+            );
         }
         // Groups declared without field names (e.g. `MagazineAmmo`) fall back to
         // the overlay's handle table, or the row stays unnamed though typed.
@@ -148,13 +148,18 @@ impl FieldSink for ExportSink<'_> {
             self.emit_multi_contents(name, raw, bit_count);
         }
 
-        let (value_i64, value_f64, value_bool, value_str) = apply_overlay_with_checksum(
-            &TABLE,
+        let resolution = self.channel_state.field_names.resolve_overlay(
+            self.cache,
             &self.current_group_path,
             self.current_group_hash,
             field_name.as_deref(),
             handle,
             field_checksum,
+        );
+        let (value_i64, value_f64, value_bool, value_str) = apply_overlay_resolved(
+            resolution,
+            &self.current_group_path,
+            field_name.as_deref(),
             raw_bits.as_deref(),
             bit_count,
             &mut self.stats.overlay,
