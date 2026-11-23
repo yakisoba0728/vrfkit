@@ -859,7 +859,8 @@ resolving, and the live value of each number it can re-derive, in the
 phrasings it reads -- the overlay and handle table sizes (in Rust doc comments
 and `Cargo.toml` too), the test counts, the reference replay's printed overlay
 counters, `Typed` ratio and export rows/bytes, the build table's clean/checked
-counts, and the counts its `MEASURED_RE` names. Any other figure, DATA.md's
+counts, BUILD_VERIFICATION.md's transform-vector build and case counts, and the
+counts its `MEASURED_RE` names. Any other figure, DATA.md's
 measurements among them, is a measurement nothing re-runs, and nothing checks
 it. A stale sentence compiles and passes every test.
 
@@ -1506,5 +1507,8 @@ strict audit still writes its results and exits nonzero. Read
 `check_docs.py` checks README's supported-build table against that committed
 report and the Rust registry (the same verification wording and clean/checked
 denominators), and this document's `Payload transform (N builds)` count
-against the registry. The native and golden vector counts remain
+against the registry. It also checks the arithmetic-evidence paragraph of
+BUILD_VERIFICATION.md -- the registered-build total, each vector group's builds
+and its cases per build -- against the registry and
+`crates/vrf-transform/tests/data`. The native and golden vector counts remain
 separate arithmetic evidence; they do not substitute for any replay check.
