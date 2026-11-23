@@ -16,7 +16,7 @@ import unittest
 import support  # puts tools/ on sys.path
 import extract_checksum_types as ect
 import generate_scoped_types as gst
-from check_checksum_types import chain_checksum
+from check_checksum_types import chain_checksum, implied_parent
 
 #: (replay checksum, chain, rival leaf types that must NOT reproduce it,
 #:  the FieldType checksum_table.rs must give it or None when it has no entry,
@@ -310,3 +310,42 @@ class ScopedFactTests(unittest.TestCase):
                 for entry in carriers:
                     self.assertEqual(entry["field"], name)
                     self.assertEqual(gst.TYPES[entry["type"]], (field_type,))
+
+
+#: `ZoomMultiplierComponent`'s members: one flattened struct whose parent name
+#: is not known, so its seed is recovered from the typed Float siblings
+#: (`implied_parent`) instead of a chain. The replay's own declarations.
+ZOOM_FLOATS = {
+    "SourceFov": 590672874, "SourceFov1P": 969419109, "TargetFov": 1552272055,
+    "TargetFov1P": 1610913853, "TotalTransitionTimeDuration": 4010079194,
+}
+ZOOM_LEVELS = {"SourceZoomLevel": 2522443847, "TargetZoomLevel": 1894259017}
+
+
+class SiblingSeedFactTests(unittest.TestCase):
+    """ZoomLevel's Int32 pin in apply_type_corrections.py."""
+
+    def zoom_seed(self):
+        seeds = {implied_parent(c, n, "float") for n, c in ZOOM_FLOATS.items()}
+        self.assertEqual(len(seeds), 1, "the five Float siblings imply different parents")
+        return seeds.pop()
+
+    def test_the_float_siblings_agree_on_one_parent(self):
+        self.assertNotEqual(self.zoom_seed(), 0)
+
+    def test_zoom_levels_reproduce_only_as_int32(self):
+        seed = self.zoom_seed()
+        for name, checksum in ZOOM_LEVELS.items():
+            with self.subTest(name=name):
+                self.assertEqual(implied_parent(checksum, name, "int32"), seed)
+                for rival in ("uint32", "float", "int64", "int16", "uint8"):
+                    self.assertNotEqual(implied_parent(checksum, name, rival), seed, rival)
+
+    def test_the_overlay_pins_the_proven_type(self):
+        import apply_type_corrections as atc
+        pinned = {(g, f): t for g, f, t in atc.EXPECTED}
+        for name in ZOOM_LEVELS:
+            with self.subTest(name=name):
+                self.assertEqual(
+                    pinned.get(("/Script/ShooterGame.ZoomMultiplierComponent", name)),
+                    "FieldType::Int32")

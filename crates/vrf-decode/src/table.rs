@@ -6,7 +6,7 @@ use crate::overlay::{OverlayEntry, OverlayHandleEntry};
 use crate::types::{RotatorQuantization, VectorQuantization};
 
 #[rustfmt::skip]
-pub static OVERLAY_TABLE: [OverlayEntry; 1124] = [
+pub static OVERLAY_TABLE: [OverlayEntry; 1126] = [
     OverlayEntry { group_path: "/Game/Abilities/GrenadeExplodeIndicator.GrenadeExplodeIndicator_C:MulticastTriggerExplodeIndicator", field_name: "IndicatorLocation", field_type: FieldType::VectorDouble },
     OverlayEntry { group_path: "/Game/BaseGameState.BaseGameState_C:OrbPickedUpRPC", field_name: "Collectable Orb", field_type: FieldType::ObjectNetGuid },
     OverlayEntry { group_path: "/Game/BaseGameState.BaseGameState_C:OrbPickedUpRPC", field_name: "Orb Gatherer", field_type: FieldType::ObjectNetGuid },
@@ -1128,8 +1128,10 @@ pub static OVERLAY_TABLE: [OverlayEntry; 1124] = [
     OverlayEntry { group_path: "/Script/ShooterGame.UsableComponent", field_name: "bIsActive", field_type: FieldType::Bool },
     OverlayEntry { group_path: "/Script/ShooterGame.ZoomMultiplierComponent", field_name: "SourceFov", field_type: FieldType::Float },
     OverlayEntry { group_path: "/Script/ShooterGame.ZoomMultiplierComponent", field_name: "SourceFov1P", field_type: FieldType::Float },
+    OverlayEntry { group_path: "/Script/ShooterGame.ZoomMultiplierComponent", field_name: "SourceZoomLevel", field_type: FieldType::Int32 },
     OverlayEntry { group_path: "/Script/ShooterGame.ZoomMultiplierComponent", field_name: "TargetFov", field_type: FieldType::Float },
     OverlayEntry { group_path: "/Script/ShooterGame.ZoomMultiplierComponent", field_name: "TargetFov1P", field_type: FieldType::Float },
+    OverlayEntry { group_path: "/Script/ShooterGame.ZoomMultiplierComponent", field_name: "TargetZoomLevel", field_type: FieldType::Int32 },
     OverlayEntry { group_path: "/Script/ShooterGame.ZoomMultiplierComponent", field_name: "TotalTransitionTimeDuration", field_type: FieldType::Float },
 ];
 

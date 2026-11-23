@@ -647,6 +647,7 @@ apart.
 | Equipped weapon (on damage) | `MulticastNotifyDamage.EquippableUsed` | ✅ |
 | Holder of a weapon effect | `AresEquippable:MulticastPlay{Continuous,OneShot}EffectFromClient.EffectManagerComponent` → `net_guids` (`EffectManager`, whose outer is the holding pawn) | ✅ ObjectNetGuid; a just-dropped weapon can still name its previous holder |
 | Weapon readying speed | `ReadyingStateComponent.AuthEquipSpeed` | ✅ EnumByte, {0, 1, 2} in the main stream (same values as `AutoEquipSpeed`); member names unknown. Always 0 in checkpoints, so not readying state there |
+| Zoom (scope) level and FOV | `ZoomMultiplierComponent.{Source,Target}ZoomLevel` (Int32) beside `{Source,Target}Fov` (Float), on the weapon's channel | ✅ -1 is no zoom, 0 the first zoom level, 1 the second; the checksum reproduces only as int32 (sibling seed). Over 60 exports (11.06-13.10) all 64,273 main rows are 32 bits in {-1, 0, 1}, and on every same-packet pair -1 comes with Fov 103.0, 1 with 20.6. A transition's state, not an aim trace |
 | Buyer team recorded on an equippable | `AresEquippableDataTracker.OriginalBuyerTeam` | ✅ FName as sent, `Red` or `Blue`; nothing maps it to attacker/defender or to a player |
 | Skin / spray / charm | `manifest` playerLoadouts (per subject) | ✅ |
 
