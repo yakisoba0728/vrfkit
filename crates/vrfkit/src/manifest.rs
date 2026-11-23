@@ -200,6 +200,7 @@ fn quality_json(quality: &ManifestQuality<'_>) -> String {
         .add("movement_rows", run.movement_rows)
         .add("net_guid_rows", run.net_guid_rows)
         .add("event_rows", run.event_rows)
+        .add("ability_cast_rows", run.ability_cast_rows)
         .add("partial_rows", run.partial_rows)
         .add("partial_bits", run.partial_bits)
         .add("event_trailing_bytes", run.event_trailing_bytes)
@@ -471,6 +472,7 @@ mod tests {
             movement_rows: next("movement_rows"),
             net_guid_rows: next("net_guid_rows") as usize,
             event_rows: next("event_rows"),
+            ability_cast_rows: next("ability_cast_rows"),
             partial_rows: next("partial_rows"),
             partial_bits: next("partial_bits"),
             event_trailing_bytes: next("event_trailing_bytes"),

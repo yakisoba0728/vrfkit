@@ -21,7 +21,8 @@ use std::path::Path;
 use common::*;
 
 /// What a plain export leaves in its directory, sorted.
-const MAIN_OUTPUTS: [&str; 7] = [
+const MAIN_OUTPUTS: [&str; 8] = [
+    "ability_casts.parquet",
     "actors.parquet",
     "events.parquet",
     "fields.parquet",

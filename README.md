@@ -209,7 +209,7 @@ All branches are `++Ares-Core+release-<build>`. Adding a build is one
   column helps distinguish untyped fields from fields lacking a descriptor.
 - **Self-describing stream** — field names come from the replay itself
   (`NetFieldExportGroup`); no hardcoded agent or map names in the parser.
-- **Main and checkpoint Parquet output** — six main tables are always written;
+- **Main and checkpoint Parquet output** — seven main tables are always written;
   `--checkpoints` adds seven checkpoint tables. All are ready for polars,
   pandas, or DuckDB.
 - **Spike state** — plant site A/B (`PlantedAtSite` + position), defuser

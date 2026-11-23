@@ -224,3 +224,13 @@ Rust API:
   emitted, and the kill extractors accept the build.
 - CombatReport `DamageIcon` references and the 13.10 `TemporaryDeath`
   life-change array are typed.
+
+## Unreleased
+
+- `export` now writes `ability_casts.parquet`: one row per ability cast,
+  rebuilt from the `AbilityCastsThisRound` array snapshots. The array is reused
+  every round (reading its final value keeps the last round alone) and shifts as
+  casts are added (the array index is not an identity), so the extractor emits
+  on a never-before-seen `(actor, Round, Slot, CastTime, CastLocation)` tuple in
+  stream order. Rows: 942 on a 22-round `release-13.10` replay, against 45
+  located casts from a final-value read.

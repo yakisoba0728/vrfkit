@@ -38,6 +38,7 @@ pub(crate) struct RunTotals {
     pub movement_rows: u64,
     pub net_guid_rows: usize,
     pub event_rows: u64,
+    pub ability_cast_rows: u64,
     pub partial_rows: u64,
     pub partial_bits: u64,
     /// Payload bytes an Event chunk declared that its own header layout does

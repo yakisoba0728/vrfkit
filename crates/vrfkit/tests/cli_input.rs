@@ -120,7 +120,7 @@ fn sparse_unknown_chunks_do_not_change_main_or_checkpoint_tables() {
             })
             .collect();
         tables.sort_unstable_by(|left, right| left.0.cmp(&right.0));
-        assert_eq!(tables.len(), 13);
+        assert_eq!(tables.len(), 14);
         outputs.push(tables);
     }
     assert_eq!(
@@ -245,7 +245,7 @@ fn export_can_replace_an_output_hardlink_to_an_external_input() {
             .unwrap()
             .starts_with(b"PAR1")
     );
-    assert_eq!(fs::read_dir(&out).unwrap().count(), 7);
+    assert_eq!(fs::read_dir(&out).unwrap().count(), 8);
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
     fs::remove_dir_all(dir).unwrap();
 }

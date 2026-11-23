@@ -167,6 +167,7 @@ schema_refs! {
     net_guids_schema_ref => net_guids_schema,
     events_schema_ref => events_schema,
     partials_schema_ref => partials_schema,
+    ability_casts_schema_ref => ability_casts_schema,
 }
 
 columns! {
@@ -488,5 +489,26 @@ mod tests {
             assert_eq!(actual.values().to_data(), expected.values().to_data());
             assert_eq!(actual.nulls(), expected.nulls());
         }
+    }
+}
+
+columns! {
+    /// Schema for the `ability_casts` table: one row per ability cast, rebuilt
+    /// from the `AbilityCastsThisRound` snapshots (why: `crate::ability`).
+    /// `cast_index` is the replicated array index and is reused across rounds,
+    /// so it is not an identity; `round`, `slot` and `cast_time` together are.
+    pub fn ability_casts_schema;
+    #[cfg(feature = "ability-casts")]
+    AbilityCastRecord {
+        time_ms: u32,
+        packet_id: u32,
+        round: u32,
+        actor_net_guid: u32,
+        cast_index: u32,
+        slot: i64,
+        cast_time: f64,
+        x: f64,
+        y: f64,
+        z: f64,
     }
 }

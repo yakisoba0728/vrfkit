@@ -24,6 +24,7 @@ export = [
     "vrf-export/events",
     "vrf-export/partials",
     "vrf-export/checkpoint-context",
+    "vrf-export/ability-casts",
 ]
 
 [dependencies]

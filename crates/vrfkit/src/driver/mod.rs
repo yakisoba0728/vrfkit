@@ -24,8 +24,8 @@ use vrf_container::{
     parse_known_event_payload,
 };
 use vrf_export::{
-    ActorWriter, EventRecord, EventWriter, FieldWriter, MovementWriter, NetGuidWriter,
-    PartialRecord, PartialWriter,
+    AbilityCastExtractor, AbilityCastRecord, AbilityCastWriter, ActorWriter, EventRecord,
+    EventWriter, FieldWriter, MovementWriter, NetGuidWriter, PartialRecord, PartialWriter,
 };
 
 use crate::error::{CliError, io_at};
@@ -40,7 +40,8 @@ use writers::WriterThread;
 /// [`MANIFEST`], every name `run` creates: `publish` refuses a destination
 /// holding anything else, so a table missing here makes the next export to
 /// that directory refuse it.
-const MAIN_TABLES: [&str; 6] = [
+const MAIN_TABLES: [&str; 7] = [
+    "ability_casts.parquet",
     "fields.parquet",
     "movement.parquet",
     "actors.parquet",
@@ -91,6 +92,11 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     // A couple of hundred rows, so inline like `actors`: far below a thread's
     // worth of encoding.
     let mut event_writer = EventWriter::new(create("events.parquet")?)?;
+    // A few thousand rows: inline, like `events`. The extractor keeps one small
+    // state entry per (PlayerState, array index), never the fields rows.
+    let mut ability_writer = AbilityCastWriter::new(create("ability_casts.parquet")?)?;
+    let mut ability_extractor = AbilityCastExtractor::default();
+    let mut ability_rows: Vec<AbilityCastRecord> = Vec::new();
     let mut partial_writer = PartialWriter::new(create("partials.parquet")?)?;
     let checkpoint_writers = with_checkpoints
         .then(|| checkpoints::CheckpointWriters::new(create))
@@ -124,6 +130,16 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
                 Chunk::ReplayData(frames, unread) => {
                     totals.replay_data_trailing_bytes += unread as u64;
                     pass.walk(&frames, &mut totals.sink, |buffers| {
+                        // Before the rows are consumed: the casts are a delta
+                        // over this chunk's field rows, in write order.
+                        ability_rows.clear();
+                        for row in &buffers.fields {
+                            ability_extractor.push(row, &mut ability_rows);
+                        }
+                        totals.ability_cast_rows += ability_rows.len() as u64;
+                        if !ability_rows.is_empty() {
+                            ability_writer.push_batch(ability_rows.drain(..))?;
+                        }
                         fields.append(&mut buffers.fields)?;
                         totals.movement_rows += buffers.movement.len() as u64;
                         movement.append(&mut buffers.movement)?;
@@ -176,6 +192,7 @@ pub fn run(vrf_path: &str, out_dir: &str, with_checkpoints: bool) -> Result<(), 
     }
     actor_writer.finish()?;
     event_writer.finish()?;
+    ability_writer.finish()?;
     partial_writer.finish()?;
 
     // After the pass: a GUID's outer may be declared in a later chunk than the

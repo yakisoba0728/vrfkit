@@ -3,6 +3,8 @@
 //! not gated: the validation oracle builds records for tables it does not
 //! write.
 
+#[cfg(feature = "ability-casts")]
+pub mod ability_casts;
 #[cfg(feature = "actors")]
 pub mod actors;
 #[cfg(feature = "checkpoint-context")]
@@ -20,6 +22,7 @@ pub mod partials;
 
 /// `RecordBatch::try_new`, with its error as this crate's.
 #[cfg(any(
+    feature = "ability-casts",
     feature = "actors",
     feature = "checkpoint-context",
     feature = "events",

@@ -21,6 +21,7 @@ net-guids = ["parquet"]
 events = ["parquet"]
 partials = ["parquet"]
 checkpoint-context = ["parquet"]
+ability-casts = ["parquet"]
 # Snappy is never selected by a writer -- every table compresses with ZSTD --
 # so it is opt-in, for consumers who want the codec available for reading.
 # ZSTD is deliberately NOT a feature: making it optional would let a build

@@ -35,6 +35,8 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "ability-casts")]
+pub mod ability;
 mod error;
 pub mod record;
 #[cfg(feature = "parquet")]
@@ -46,10 +48,10 @@ pub mod writer;
 
 pub use error::ExportError;
 pub use record::{
-    ActorRecord, CheckpointActorRecord, CheckpointBlockRecord, CheckpointExportFieldRecord,
-    CheckpointExportGroupRecord, CheckpointFieldRecord, CheckpointGuidEntryRecord,
-    CheckpointIdentity, CheckpointNetGuidRecord, EventRecord, FieldRecord, MovementProvenance,
-    MovementRecord, MovementSource, NetGuidRecord, PartialRecord,
+    AbilityCastRecord, ActorRecord, CheckpointActorRecord, CheckpointBlockRecord,
+    CheckpointExportFieldRecord, CheckpointExportGroupRecord, CheckpointFieldRecord,
+    CheckpointGuidEntryRecord, CheckpointIdentity, CheckpointNetGuidRecord, EventRecord,
+    FieldRecord, MovementProvenance, MovementRecord, MovementSource, NetGuidRecord, PartialRecord,
     UNRESOLVED_CLASS_NET_CACHE_PAYLOAD_FIELD_NAME,
 };
 #[cfg(feature = "checkpoint-context")]
@@ -61,6 +63,10 @@ pub use tables::checkpoints::{
     CheckpointNetGuidsTable,
 };
 
+#[cfg(feature = "ability-casts")]
+pub use ability::AbilityCastExtractor;
+#[cfg(feature = "ability-casts")]
+pub use tables::ability_casts::{AbilityCastWriter, AbilityCastsTable};
 #[cfg(feature = "actors")]
 pub use tables::actors::{ActorWriter, ActorsTable, DEFAULT_ACTOR_ROW_GROUP_SIZE};
 #[cfg(feature = "events")]

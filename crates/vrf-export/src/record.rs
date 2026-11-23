@@ -54,6 +54,29 @@ pub struct FieldRecord {
     pub value_str: Option<String>,
 }
 
+/// A single ability cast, reconstructed from the `AbilityCastsThisRound` array
+/// snapshots on a `PlayerState` (why: `crate::ability`). The array is reused
+/// every round, so a consumer reading only its final value sees the last round
+/// alone; this record is one entry of the chronological delta.
+#[derive(Debug, Clone, Copy)]
+pub struct AbilityCastRecord {
+    /// `time_ms` of the packet that completed this cast's identity.
+    pub time_ms: u32,
+    pub packet_id: u32,
+    pub round: u32,
+    pub actor_net_guid: u32,
+    /// Index within the replicated array; reused across rounds, so it is not
+    /// an identity on its own.
+    pub cast_index: u32,
+    /// Observed 3-6; the wire value, not a letter.
+    pub slot: i64,
+    /// Seconds since the round's `RoundStart`.
+    pub cast_time: f64,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+
 /// A single movement sample ready for export: one decoded move, nothing
 /// merged. Every field is set; a variant-0 move carries no velocity and gets
 /// 0.0 (none in the 157,457,629 measured, `vrf_movement` crate docs).
