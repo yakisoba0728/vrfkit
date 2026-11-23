@@ -171,8 +171,7 @@ HAWK_FLASH = ("/Game/Characters/Guide/S0/Ability_E/Projectile_Guide_E_HawkFlash.
 #: * Comp_AbilityFuelSystem FuelFull/FuelEmpty: 0-bit payloads.
 #: * BlindManagerComponent.ActiveBlinds, DamageableComponent LifeChangeBySection
 #:   and FiniteSpeedMovementComponent.RequestedIgnoreActors: variable-width arrays.
-#: * ZoomMultiplierComponent SourceZoomLevel/TargetZoomLevel: ~70% of rows are
-#:   the 0xFFFFFFFF sentinel; CooldownOption/TransitionState: 2 bits, where
+#: * ZoomMultiplierComponent CooldownOption/TransitionState: 2 bits, where
 #:   width cannot tell an enum from a SerializedInt.
 #: * FiniteSpeedMovementComponent bIsActive: all 574 rows 0x01; NumCollisions:
 #:   i32 values only 0/1, indistinguishable from a widened Bool.
@@ -302,6 +301,12 @@ ADDITIONS = pins([
     # default hip-fire FOV), the 1P pair 5.0..70.0, the duration 0.0..0.25 s.
     ("/Script/ShooterGame.ZoomMultiplierComponent", "Float",
      ("SourceFov", "SourceFov1P", "TargetFov", "TargetFov1P", "TotalTransitionTimeDuration")),
+    # Signed: the seed TargetFov (float) implies reproduces both checksums only as
+    # int32 (check_checksum_types.py sibling seeds). All 64,273 rows (60 exports,
+    # 11.06-13.10) are 32 bits in {-1, 0, 1}; -1 (0xFFFFFFFF) pairs with Fov 103.0
+    # and 1 with 20.6 on every same-packet pair.
+    ("/Script/ShooterGame.ZoomMultiplierComponent", "Int32",
+     ("SourceZoomLevel", "TargetZoomLevel")),
     # Hold-to-interact objects (plant/defuse, orbs, doors): HighestProgress
     # advances 1/128 per tick as a 0..1 float (a u32 read is not monotonic);
     # bIsActive is the 1-bit interacting flag.

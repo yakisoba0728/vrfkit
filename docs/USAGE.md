@@ -789,7 +789,7 @@ needs it.
 ### Generators
 
 **Never hand-edit the output.** The overlay table
-`crates/vrf-decode/src/table.rs` (1,124 + 96 handles) and `equippable_table.py`
+`crates/vrf-decode/src/table.rs` (1,126 + 96 handles) and `equippable_table.py`
 are not generated: they are maintained in the repository.
 
 | Script | Produces |
@@ -803,15 +803,15 @@ applying would change `table.rs` at all -- a type, a missing entry, the order or
 the declared length -- and prints the difference.
 
 ```bash
-python tools/apply_type_corrections.py           # apply (225 corrections)
+python tools/apply_type_corrections.py           # apply (227 corrections)
 python tools/apply_type_corrections.py --check   # fail unless applying changes nothing
 ```
 
 CI runs the `--check` line.
 
-Those 225 corrections are the live expectation set the script re-verifies.
+Those 227 corrections are the live expectation set the script re-verifies.
 `ADDITIONS` pins types nothing else declares:
-currently 148 of them, each on complete wire evidence (one width on every row
+currently 150 of them, each on complete wire evidence (one width on every row
 and a value distribution a wrong type cannot produce) or a checksum or
 sibling that fixes the type, recorded at its entry under the bar stated above
 the list. `check_docs.py` checks both figures.
@@ -1216,7 +1216,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-908 Rust tests (Windows), 907 Rust tests (non-Windows), and 1206 Python tests.
+908 Rust tests (Windows), 907 Rust tests (non-Windows), and 1209 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
