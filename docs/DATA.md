@@ -747,6 +747,52 @@ stays raw and moves `array_leaf_decode_errors`. `TransitionContext`
 (`EquippableStateMachineComponent`) is a packed NetGUID in `value_i64` too, and
 all its checkpoint observations are 0.
 
+### TrackedRewards: Rewards is derived, not typed
+
+`OwnerExclusivePlayerInfo.TrackedRewards[i].Rewards` is nine 32-bit windows
+(handles 19-27; 22-30 on 11.06) that the overlay leaves raw.
+`tools/extract_round_rewards.py` reads them from the parent array window, so
+11.06 is covered too, although it emits no child rows. Each window is read as
+a little-endian int32. Measured on 60 exports (11.06-13.10, 600 info actors):
+
+| index | meaning | check | pass / total | control |
+|---|---|---|---|---|
+| 1 | credits | round-end Money, below | 8,624 / 8,624 classified, 0 unexplained | index 2: 8,129 unexplained; big-endian: 8,270 |
+| 1 | credits (plant bonus, paid at once) | `TotalMoneyGranted` and `Money` step by the same amount within 1.5 s | 2,768 / 2,800 | +30 s shift: 0 / 2,800 |
+| 4 | kills (only on `Kill` with Source 1) | per round, vs `AggregateKills` steps before the round result | 2,814 / 2,938 | `AggregateDeaths` 1,213 / 5,778; `AggregateAssists` 290 / 2,963 |
+| 5 | ultimate points (Kill, Death, plant, defuse) | `NumUltimatePoints` rises within 1 s when below the match max | 10,148 / 10,880 | rewards with index 5 = 0: 1,491 / 9,680 |
+| 0, 2, 3, 6, 7, 8 | unknown | zero on every element | 8,526 / 8,526 rounds | -- |
+
+The round-end check: at each `EndOfRoundBeforeRewardsMoney` write E, the next
+`Money` of the player (joined by the shared `Owner` value: 600 / 600) is
+min(9000, E + credits of elements with `RewardGrantStrategy` 1):
+
+| category | round ends |
+|---|---:|
+| equal | 7,090 |
+| equal, a round-start grant (strategy 0, written with E: RoundNumStart, PistolWinBonus, MissingPlayer(s)) added after E | 969 |
+| equal, that grant already in E (LoseSaveRound*) | 30 |
+| equal, reset to the GameStart / OvertimeStart credits | 489 |
+| balance already the expected value, so no Money row at round end (290 of the equal are capped at 9000) | 21 |
+| player `ConnectionStatus` 1 or `bIsAfk` on some viewer's slot | 25 |
+| unexplained | 0 |
+| no Money after E | 1 |
+
+Under the same controls the connection category stays at 20-38, so it does
+not absorb a wrong reading.
+
+**Why it is not typed.** The width and sign are not established: all 288,134
+windows are 32 bits and no value is negative or above 65,535, so int32,
+uint32 and a 16-bit read give the same numbers. The checksum does not settle
+it either: the element seed recovered from `InstancesOfReward` (int32)
+reproduces `RewardName` (FName) and `LocalizedRewardName` (FText), and all
+nine `Rewards` checksums imply one type state at static indices 0-8, but no
+type spelling reproduces it -- not `int32`, `uint32`, `float`, `int`,
+`uint8`, `int64`, `double`, no string of 1-5 characters at all, and no
+dictionary spelling of up to three words (124.7M tried), nor `int32` /
+`uint32` / `float` inside a one-word nested struct. The type string stays
+open.
+
 ### FText history trees
 
 `LocalizedRewardName` (and the timer text below) keeps its raw bytes and adds
