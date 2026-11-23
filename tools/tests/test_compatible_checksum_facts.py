@@ -16,7 +16,8 @@ import unittest
 import support  # puts tools/ on sys.path
 import extract_checksum_types as ect
 import generate_scoped_types as gst
-from check_checksum_types import chain_checksum
+from check_checksum_types import (
+    ALTERNATIVE_TYPES, chain_checksum, compatible_checksum, implied_parent)
 
 #: (replay checksum, chain, rival leaf types that must NOT reproduce it,
 #:  the FieldType checksum_table.rs must give it or None when it has no entry,
@@ -310,3 +311,72 @@ class ScopedFactTests(unittest.TestCase):
                 for entry in carriers:
                     self.assertEqual(entry["field"], name)
                     self.assertEqual(gst.TYPES[entry["type"]], (field_type,))
+
+
+INTERACTABLE_USER = "/Script/ShooterGame.InteractableUserComponent"
+
+#: Struct members with no known parent name: CRC-32 runs backwards, so each
+#: (name, checksum, C++ type) implies one parent (`implied_parent`), and
+#: differently named members typed right imply the same one. Each set is
+#: (members as (name, checksum, C++ type, rivals, FieldType), group, where).
+#: The parent of the first set is `InteractableUserComponent`'s unnamed use
+#: state; the second, its FNetworkedMovementTimestamp member.
+SIBLING_FACTS = [
+    ([("ChangeId", 3631242266, "int32", ["uint32", "float"], "FieldType::Int32"),
+      ("CurrentUsingStartTime", 2319860043, "float", ["int32", "double"], "FieldType::Float"),
+      ("CurrentUsingComponent", 2976205367, "UUsableComponent*", ["AUsableComponent*"],
+       "FieldType::ObjectNetGuid")],
+     INTERACTABLE_USER, "InteractableUserComponent use state"),
+    ([("NetTimestamp", 1526373506, "float", ["int32", "double"], "FieldType::Float"),
+      ("RespawnNumber", 1804051860, "int32", ["uint32", "float"], "FieldType::Int32"),
+      ("Character", 1771532671, "TWeakObjectPtr<AShooterCharacter>", ["AShooterCharacter*"],
+       "FieldType::ObjectNetGuid")],
+     INTERACTABLE_USER, "InteractableUserComponent timestamp"),
+]
+
+#: A member of the first set that is an enum: no plain spelling reproduces it
+#: under the parent its siblings imply, so EnumByte is the only reader left.
+ENUM_SIBLING = ("UseFinishType", 985368745, "FieldType::EnumByte")
+
+
+class SiblingFactTests(unittest.TestCase):
+    """Members of one struct, each typed right, imply one parent checksum."""
+
+    def test_members_imply_one_parent(self):
+        for members, _group, where in SIBLING_FACTS:
+            with self.subTest(where=where):
+                parents = {implied_parent(c, n, t) for n, c, t, _r, _f in members}
+                self.assertEqual(len(parents), 1, parents)
+
+    def test_no_rival_implies_that_parent(self):
+        for members, _group, where in SIBLING_FACTS:
+            (name0, c0, t0, _r0, _f0) = members[0]
+            parent = implied_parent(c0, name0, t0)
+            for name, checksum, _cpp, rivals, _ft in members:
+                for rival in rivals:
+                    with self.subTest(where=where, name=name, rival=rival):
+                        self.assertNotEqual(implied_parent(checksum, name, rival), parent)
+
+    def test_the_overlay_table_types_each_member_as_proven(self):
+        table = ect.load_overlay_table()
+        for members, group, where in SIBLING_FACTS:
+            for name, _checksum, _cpp, _rivals, field_type in members:
+                with self.subTest(where=where, name=name):
+                    self.assertEqual(table.get((group, name)), field_type)
+
+    def test_the_weak_character_pointer_is_the_force_modules_too(self):
+        """The same spelling reproduces NetMulticastApplyForceModule's
+        Character under its named `TimeStamp` chain: one struct type."""
+        self.assertEqual(
+            chain_checksum([("TimeStamp", "FNetworkedMovementTimestamp"),
+                            ("Character", "TWeakObjectPtr<AShooterCharacter>")]),
+            1346692128)
+
+    def test_use_finish_type_is_an_enum(self):
+        name, checksum, field_type = ENUM_SIBLING
+        members, group, _where = SIBLING_FACTS[0]
+        parent = implied_parent(members[0][1], members[0][0], members[0][2])
+        for spelling in ALTERNATIVE_TYPES:
+            with self.subTest(spelling=spelling):
+                self.assertNotEqual(compatible_checksum(name, spelling, 0, parent), checksum)
+        self.assertEqual(ect.load_overlay_table().get((group, name)), field_type)

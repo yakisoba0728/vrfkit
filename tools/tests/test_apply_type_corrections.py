@@ -54,7 +54,7 @@ class PinTests(unittest.TestCase):
     def test_additions_stay_the_narrow_exception(self):
         """Pinned exactly, so adding or removing an ADDITION updates this
         number in the same commit; check_docs measures the count too."""
-        self.assertEqual(len(atc.ADDITIONS), 148, atc.ADDITIONS)
+        self.assertEqual(len(atc.ADDITIONS), 155, atc.ADDITIONS)
 
 
 class MainTests(TempDirTestCase):

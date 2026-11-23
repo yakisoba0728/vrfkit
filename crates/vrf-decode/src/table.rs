@@ -6,7 +6,7 @@ use crate::overlay::{OverlayEntry, OverlayHandleEntry};
 use crate::types::{RotatorQuantization, VectorQuantization};
 
 #[rustfmt::skip]
-pub static OVERLAY_TABLE: [OverlayEntry; 1124] = [
+pub static OVERLAY_TABLE: [OverlayEntry; 1131] = [
     OverlayEntry { group_path: "/Game/Abilities/GrenadeExplodeIndicator.GrenadeExplodeIndicator_C:MulticastTriggerExplodeIndicator", field_name: "IndicatorLocation", field_type: FieldType::VectorDouble },
     OverlayEntry { group_path: "/Game/BaseGameState.BaseGameState_C:OrbPickedUpRPC", field_name: "Collectable Orb", field_type: FieldType::ObjectNetGuid },
     OverlayEntry { group_path: "/Game/BaseGameState.BaseGameState_C:OrbPickedUpRPC", field_name: "Orb Gatherer", field_type: FieldType::ObjectNetGuid },
@@ -1036,6 +1036,13 @@ pub static OVERLAY_TABLE: [OverlayEntry; 1124] = [
     OverlayEntry { group_path: "/Script/ShooterGame.ForceModuleManagerComponent:NetMulticastApplyForceModule", field_name: "NetTimestamp", field_type: FieldType::Float },
     OverlayEntry { group_path: "/Script/ShooterGame.ForceModuleManagerComponent:NetMulticastApplyForceModule", field_name: "RespawnNumber", field_type: FieldType::Int32 },
     OverlayEntry { group_path: "/Script/ShooterGame.ForceModuleManagerComponent:NetMulticastApplyForceModule", field_name: "SourceLocation", field_type: FieldType::VectorDouble },
+    OverlayEntry { group_path: "/Script/ShooterGame.InteractableUserComponent", field_name: "ChangeId", field_type: FieldType::Int32 },
+    OverlayEntry { group_path: "/Script/ShooterGame.InteractableUserComponent", field_name: "Character", field_type: FieldType::ObjectNetGuid },
+    OverlayEntry { group_path: "/Script/ShooterGame.InteractableUserComponent", field_name: "CurrentUsingComponent", field_type: FieldType::ObjectNetGuid },
+    OverlayEntry { group_path: "/Script/ShooterGame.InteractableUserComponent", field_name: "CurrentUsingStartTime", field_type: FieldType::Float },
+    OverlayEntry { group_path: "/Script/ShooterGame.InteractableUserComponent", field_name: "NetTimestamp", field_type: FieldType::Float },
+    OverlayEntry { group_path: "/Script/ShooterGame.InteractableUserComponent", field_name: "RespawnNumber", field_type: FieldType::Int32 },
+    OverlayEntry { group_path: "/Script/ShooterGame.InteractableUserComponent", field_name: "UseFinishType", field_type: FieldType::EnumByte },
     OverlayEntry { group_path: "/Script/ShooterGame.ItemSlot", field_name: "Contents", field_type: FieldType::ObjectNetGuid },
     OverlayEntry { group_path: "/Script/ShooterGame.LocationalEffectManagerComponent:ClientPlayOneShotEffectAtLocation", field_name: "248", field_type: FieldType::VectorDouble },
     OverlayEntry { group_path: "/Script/ShooterGame.LocationalEffectManagerComponent:ClientPlayOneShotEffectAtLocation", field_name: "249", field_type: FieldType::RotationShort },

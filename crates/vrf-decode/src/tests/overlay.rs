@@ -1352,3 +1352,66 @@ fn bomb_objective_and_orb_rpc_parameters_decode_their_wire_payloads() {
     assert_eq!(residual, None);
     assert_eq!((stats.decoded_ok, stats.decoded_err), (6, 1));
 }
+
+/// `InteractableUserComponent`, one plant on a 13.06 replay: the start update,
+/// the completed clear 4 s later, and a cancelled clear. Every payload is cut
+/// from the replay with its handle and checksum. The clear carries the struct's
+/// sentinels -- -1.0, -FLT_MAX and RespawnNumber -1 -- which an unsigned or
+/// integer read of the same bits would turn into plausible numbers.
+#[test]
+fn interactable_user_fields_decode_their_wire_payloads() {
+    const USER: &str = "/Script/ShooterGame.InteractableUserComponent";
+    let mut stats = OverlayStats::default();
+    let mut apply = |field: &str, handle: u32, checksum: u32, raw: &[u8], bits| {
+        apply_scoped(&mut stats, USER, field, handle, checksum, raw, bits)
+    };
+    // Start: a BombDestination's `Usable` component, used by the row's own pawn.
+    let usable = apply("CurrentUsingComponent", 2, 2_976_205_367, &[0xc7, 0x24], 16);
+    assert_eq!(usable.value_i64, Some(2403));
+    let character = apply("Character", 6, 1_771_532_671, &[0x0d, 0x0e], 16);
+    assert_eq!(character.value_i64, Some(902));
+    let change = apply("ChangeId", 4, 3_631_242_266, &[0x02, 0, 0, 0], 32);
+    assert_eq!(change.value_i64, Some(2));
+    let start = apply(
+        "CurrentUsingStartTime",
+        5,
+        2_319_860_043,
+        &[0x10, 0x0b, 0x9f, 0x42],
+        32,
+    );
+    assert_eq!(
+        start.value_f64,
+        Some(f64::from(f32::from_bits(0x429f_0b10)))
+    );
+    let stamp = apply("NetTimestamp", 7, 1_526_373_506, &[0, 0xe8, 0x8a, 0x42], 32);
+    assert_eq!(stamp.value_f64, Some(69.453_125));
+    let life = apply("RespawnNumber", 8, 1_804_051_860, &[0, 0, 0, 0], 32);
+    assert_eq!(life.value_i64, Some(0));
+    // Completed clear: null references and the sentinels.
+    let finish = apply("UseFinishType", 3, 985_368_745, &[0x01], 2);
+    assert_eq!(finish.value_i64, Some(1));
+    let cleared = apply("CurrentUsingComponent", 2, 2_976_205_367, &[0x00], 8);
+    assert_eq!(cleared.value_i64, Some(0));
+    let unset = apply(
+        "CurrentUsingStartTime",
+        5,
+        2_319_860_043,
+        &[0, 0, 0x80, 0xbf],
+        32,
+    );
+    assert_eq!(unset.value_f64, Some(-1.0));
+    let unstamped = apply(
+        "NetTimestamp",
+        7,
+        1_526_373_506,
+        &[0xff, 0xff, 0x7f, 0xff],
+        32,
+    );
+    assert_eq!(unstamped.value_f64, Some(f64::from(f32::MIN)));
+    let no_life = apply("RespawnNumber", 8, 1_804_051_860, &[0xff; 4], 32);
+    assert_eq!(no_life.value_i64, Some(-1));
+    // Cancelled clear.
+    let cancelled = apply("UseFinishType", 3, 985_368_745, &[0x02], 2);
+    assert_eq!(cancelled.value_i64, Some(2));
+    assert_eq!((stats.decoded_ok, stats.decoded_err), (12, 0));
+}

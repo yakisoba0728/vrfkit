@@ -154,6 +154,7 @@ ABILITY_STATS = ("/Game/Characters/_Core/Comp_AbilityStatisticsReplicator."
                  "Comp_AbilityStatisticsReplicator_C")
 HAWK_FLASH = ("/Game/Characters/Guide/S0/Ability_E/Projectile_Guide_E_HawkFlash."
               "Projectile_Guide_E_HawkFlash_C")
+INTERACTABLE_USER = "/Script/ShooterGame.InteractableUserComponent"
 
 #: Fields no declaration types, typed anyway. The bar is higher than for a
 #: correction: complete, self-checking wire evidence -- one bit width on every
@@ -307,6 +308,25 @@ ADDITIONS = pins([
     # bIsActive is the 1-bit interacting flag.
     ("/Script/ShooterGame.UsableComponent", "Float", "HighestProgress"),
     ("/Script/ShooterGame.UsableComponent", "Bool", "bIsActive"),
+    # The user side of a hold-to-interact (plant, defuse, orb), one struct per
+    # character. Its members' checksums imply one parent under int32 ChangeId,
+    # float CurrentUsingStartTime and UUsableComponent* CurrentUsingComponent;
+    # no non-enum spelling reproduces UseFinishType there.
+    # ChangeId: 32 bits, LE i32 2..161, strictly increasing per actor 9,207/9,207.
+    (INTERACTABLE_USER, "Int32", "ChangeId"),
+    # CurrentUsingStartTime: equals the pawn's ReplayLastTransformUpdateTimeStamp
+    # on 2,060 of 2,137 starts, the other 77 resumed defuses 3.5 s earlier; -1.0 cleared.
+    (INTERACTABLE_USER, "Float", "CurrentUsingStartTime"),
+    # Exact IntPacked; every non-null value a `Usable` (BombDestination, TimedBomb,
+    # UltPointOrb, ability objects), the Character the row's own actor 2,137/2,137.
+    (INTERACTABLE_USER, "ObjectNetGuid", ("CurrentUsingComponent", "Character")),
+    # 2 bits: 0 using, 1 on 573/573 plants and 147/147 defuses, 2 on 76/76 plant cancels.
+    (INTERACTABLE_USER, "EnumByte", "UseFinishType"),
+    # The FNetworkedMovementTimestamp members (Character is TWeakObjectPtr<AShooterCharacter>):
+    # RespawnNumber equals AresInventory's 2,137/2,137, -1 cleared; NetTimestamp a
+    # per-life clock, -FLT_MAX cleared.
+    (INTERACTABLE_USER, "Int32", "RespawnNumber"),
+    (INTERACTABLE_USER, "Float", "NetTimestamp"),
     # 3 bits on all 1,015,515 rows, values {0, 1, 2}, like the EnumByte sibling
     # AutoEquipSpeed. Every checkpoint row reads 0, so a checkpoint value is not
     # readying state.

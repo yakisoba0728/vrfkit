@@ -402,7 +402,7 @@ identified: it cannot be expanded into fields, so it emits one preservation
 row (`handle` = `u32::MAX`, full payload in `raw_bits`) and an explicit
 unresolved/raw diagnostic rather than pretending the properties were decoded.
 
-The overlay table (`crates/vrf-decode/src/table.rs`) -- 224 groups, 1,124
+The overlay table (`crates/vrf-decode/src/table.rs`) -- 225 groups, 1,131
 entries, 96 handles -- is maintained in the repository, and
 `tools/apply_type_corrections.py --check` keeps every measured type in it.
 Four names resolve without a table entry: `Owner`, `Instigator`,
