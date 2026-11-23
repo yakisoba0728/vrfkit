@@ -30,7 +30,7 @@ only measured compatible behaviors are ported. See [`NOTICE.md`](NOTICE.md).
 Not affiliated with, endorsed by, or approved by Riot Games.
 
 **Test suites:** **908 Rust tests (Windows)**,
-**907 Rust tests (non-Windows)** and **1204 Python tests**.
+**907 Rust tests (non-Windows)** and **1206 Python tests**.
 The historical audit of the 24 builds through 13.06 used the same verification
 on **1,018 unique replays**; all **1,018** meet every strict criterion. 13.08 was
 checked the same way on 3 replays, and 2 meet every criterion; all 5
@@ -308,7 +308,7 @@ changes.
 Fresh local `cargo +1.86.0 test --workspace --locked` passes all
 **907 Rust tests (non-Windows)**, with zero failures or ignored tests. The
 Windows suite contains **908 Rust tests (Windows)**. The full Python suite has
-**1204 passing** tests in the fresh local run. The documentation guard
+**1206 passing** tests in the fresh local run. The documentation guard
 measures the executing platform's suites. The historical [common build audit](docs/BUILD_VERIFICATION.md)
 records replay validation, checkpoint export and independent value checks for
 each supported build.

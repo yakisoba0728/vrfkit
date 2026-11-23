@@ -77,6 +77,21 @@ class BaselineSchemaTests(TempDirTestCase):
         problems = schemas.validate_export_baseline(path, missing_counter)
         self.assertTrue(any("cp_net_guid_rows_written" in problem for problem in problems), problems)
 
+    def test_every_metrics_build_has_a_corpus_baseline(self):
+        self.assertLessEqual(set(schemas.BUILDS), set(schemas.CORPUS_BUILDS))
+
+    def test_a_missing_or_wrong_build_corpus_baseline_fails(self):
+        root = self.tmp()
+        for path in schemas.BASELINES.glob("*.json"):
+            (root / path.name).write_bytes(path.read_bytes())
+        (root / "build_1106.json").unlink()
+        problems = schemas.validate_repository(root)
+        self.assertIn("missing committed baselines: build_1106.json", problems)
+
+        (root / "build_1106.json").write_bytes((root / "build_1107.json").read_bytes())
+        problems = schemas.validate_repository(root)
+        self.assertIn("build_1106.json: branch does not identify build 11.06", problems)
+
     def test_unknown_baseline_json_fails_closed(self):
         root = self.tmp()
         (root / "unvalidated.json").write_text("{}", encoding="utf-8")

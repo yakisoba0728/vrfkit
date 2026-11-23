@@ -22,10 +22,18 @@ MAIN_COUNTERS = frozenset(COUNTERS)
 CHECKPOINT_ONLY_COUNTERS = frozenset(CHECKPOINT_COUNTERS)
 MAIN_PARQUET = tuple(PARQUET_FILES)
 CORPUS_TOTALS = ("blocks", "fields", "rpcs", "malformed", "skipped")
+#: Builds pinned by metrics_builds.json; each also has a corpus baseline.
 BUILDS = ("12.10", "12.11", "13.00", "13.01", "13.02", "13.04", "13.05", "13.06")
-#: The corpus baseline of each build; 13.01 is pinned by export_02d4d478.json.
+#: Builds pinned by a corpus baseline. 12.10, 12.11 and 13.00 are the public
+#: fixtures CI fetches; every other corpus is private and checked locally.
+CORPUS_BUILDS = (
+    "11.06", "11.07", "11.08", "11.09", "11.10", "11.11",
+    "12.00", "12.01", "12.02", "12.03", "12.04", "12.05", "12.06", "12.07",
+    "12.08", "12.09", "12.10", "12.11",
+    "13.00", "13.01", "13.02", "13.04", "13.05", "13.06", "13.08", "13.09", "13.10",
+)
 CORPUS_BASELINES = {build: f"build_{build.replace('.', '')}.json"
-                    for build in BUILDS if build != "13.01"}
+                    for build in CORPUS_BUILDS}
 SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 KNOWN_BASELINES = {
     "bench.json", "metrics_builds.json", "export_02d4d478.json",
@@ -262,7 +270,7 @@ def validate_repository(root: Path = BASELINES) -> list[str]:
         if corpus.get("branches") != {expected_branch: len(corpus.get("per_file", {}))}:
             problems.append(f"{filename}: branch does not identify build {build}")
         corpus_names = set(corpus.get("per_file", {}))
-        if _basename(replays.get(build, "")) not in corpus_names:
+        if build in BUILDS and _basename(replays.get(build, "")) not in corpus_names:
             problems.append(f"metrics/build baseline replay disagrees for {build}")
     if _basename(replays.get("13.01", "")) != export.get("replay"):
         problems.append("metrics/export baseline replay disagrees for 13.01")

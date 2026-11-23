@@ -1,0 +1,24 @@
+{
+ "corpus": "%LOCALAPPDATA%\\vrfkit\\baseline-corpora\\build_1309",
+ "branches": {
+  "++Ares-Core+release-13.09": 1
+ },
+ "totals": {
+  "blocks": 162945,
+  "fields": 113675,
+  "rpcs": 97128,
+  "malformed": 0,
+  "skipped": 604010
+ },
+ "per_file": {
+  "97c1e875-846d-4615-85fb-5ce891001307.vrf": {
+   "branch": "++Ares-Core+release-13.09",
+   "rate": "100.000000",
+   "blocks": 162945,
+   "fields": 113675,
+   "rpcs": 97128,
+   "malformed": 0,
+   "skipped": 604010
+  }
+ }
+}

@@ -127,8 +127,10 @@ need a corpus — see [Environment](#environment) below.
 - **`windows-package`**: see [Tagged Windows releases](#tagged-windows-releases).
 
 `CI complete` succeeds only when every job above succeeds; a failure,
-cancellation or skip cannot pass it. The 13.02, 13.04, 13.05 and 13.06
-baselines have no public fixture and are still yours to run.
+cancellation or skip cannot pass it. Only the 12.10, 12.11 and 13.00 corpus
+baselines have a public fixture; every other `build_*.json` (11.06-12.09,
+13.01, 13.02, 13.04-13.06, 13.08-13.10) names a private corpus under
+`%LOCALAPPDATA%\vrfkit\baseline-corpora` and is still yours to run.
 
 These checks live in the reusable `ci.yml`, so Linux runtime and replay
 validation are required on main, main-targeted PRs, manual runs and tagged
