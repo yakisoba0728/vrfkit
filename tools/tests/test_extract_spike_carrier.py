@@ -221,7 +221,10 @@ class ReconnectedCarrierTests(TempDirTestCase):
                     before = source.read_bytes()
                     target = root / "alias.parquet" if alias else source
                     if alias:
-                        target.symlink_to(source)
+                        try:
+                            target.symlink_to(source)
+                        except OSError:
+                            self.skipTest("symlink creation unavailable on this platform")
                     with mock.patch.object(spike, "build", wraps=spike.build) as build:
                         code = run_cli(spike.main, "--export", root, "--out", target,
                                        prog="extract_spike_carrier.py")[0]
