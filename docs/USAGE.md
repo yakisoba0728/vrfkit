@@ -1164,6 +1164,7 @@ This measures value presence, not semantic understanding or block preservation.
 | `minimap.py` | Minimap projection (`project`, crossed axes: u from `pos_y`, v from `pos_x`) and park-slot mask (`parked`, on both x and z), importable. As a command, `--export <dir> --maps <valorant-api /v1/maps JSON>` prints the share of live movement rows inside [0,1]짼 and the u/v range, and exits 1 for a map the file lacks or leaves at zero, or a share below 99%. The constants file is the user's; nothing in the repo carries it. See [DATA.md](DATA.md#minimap-projection). |
 | `extract_damage_events.py` | Derives a `damage_events.parquet` view -- one row per `MulticastNotifyDamage_{Point,Base}` invocation: time, victim actor, class and (for a `SpawnedCharacter` pawn) subject, damager subject from `DamagerPlayerState`, weapon class and name, origin/impact/direction, dealt/taken/falloff, bone, regional damage, killed, wallbang. The victim is the row's actor, not the `Character` parameter (0 on a kill against utility); the `NetTimestamp`/`RespawnNumber` sentinels and GUID 0 are null. Invocations sharing a bunch split on a repeated parameter (counted). Killing blows on a player body must pair one to one with `characterDeath`, or the run exits 1 and writes nothing. |
 | `extract_rounds.py` | Derives a `rounds.parquet` view -- one row per played round: reset, round start, buy phase end (`buy_end_ms`, the `CastTime` epoch), the unnamed post-round phase and the side switch from the `MulticastSetPhase` RPC, each checked against the named RPC of its frame (a difference exits 1 and writes nothing); `round_number` from `roundStarted`; winner, role, result and attacker team from `RoundResults` by `RoundNumber`; plant/defuse/explode times and the replicated plant site. A surrender pads `RoundResults` with awarded rounds, which are counted, never rows. A missing phase stays null. |
+| `extract_round_rewards.py` | Derives a `round_rewards.parquet` view -- one row per `TrackedRewards` element life per player: reward name, grant strategy, source, instances and the nine `Rewards` windows read as little-endian int32 from the parent array window (index 1 is `credits`). Each `EndOfRoundBeforeRewardsMoney` write is checked against the player's next `Money`; every round end lands in one printed category, zeros included. More than 1% unexplained, or a child `Rewards` row that differs from its parent leaf, exits 1 and writes nothing. |
 
 ```bash
 python tools/extract_match_observations.py --export <export-directory> --out observations.json
@@ -1217,7 +1218,7 @@ schema drift, not meaning.
 
 The pre-PR sweep, and what CI runs, is in
 [CONTRIBUTING.md](../CONTRIBUTING.md#before-you-open-a-pr); the suites have
-910 Rust tests (Windows), 909 Rust tests (non-Windows), and 1220 Python tests.
+910 Rust tests (Windows), 909 Rust tests (non-Windows), and 1231 Python tests.
 
 **The ASCII rule is correctness, not style.** The Windows console is cp949, so a
 single non-ASCII character in a format string truncates output at that point.
